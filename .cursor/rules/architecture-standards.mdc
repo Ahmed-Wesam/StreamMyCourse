@@ -1,0 +1,53 @@
+---
+description: Architectural principles, complexity budget, and Lambda layering (hexagonal-style)
+alwaysApply: true
+---
+
+# Architecture standards (StreamMyCourse)
+
+Ground decisions in **`design.md`** (MVP contract) and **`plans/architecture/`** (ADRs). Prefer **simple designs** that the repo already enforces via **`scripts/check_lambda_boundaries.py`** and **`.cursor/rules/clean-architecture-boundaries.mdc`**.
+
+## Principles
+
+- **Separation of concerns / single responsibility:** UI in `frontend/`; API behavior in `infrastructure/lambda/catalog/`; IaC in `infrastructure/templates/` (see **`.cursor/rules/project-structure.mdc`**).
+- **Thin boundaries, minimal abstraction:** Clean layering **without** extra indirection (no new “framework inside the framework” unless an ADR says so).
+- **Prefer AWS and managed behavior:** Use **CloudFormation** stacks, **API Gateway**, **Lambda**, **DynamoDB**, **S3**, **Cognito** as documented in `design.md` / templates—avoid custom replicas of what the platform already solves.
+- **Testability where it pays off:** Focus tests on **domain rules** and **integration points** (`tests/unit`, `tests/integration`); don’t paper over unclear boundaries with brittle mocks.
+- **Documentation discipline:** Capture **durable decisions** in ADRs and `design.md`; skip novel-length specs for behavior implied by existing patterns.
+
+## Layering (backend Lambda ≈ ports & adapters)
+
+Map concepts to this repo’s files under `infrastructure/lambda/catalog/services/<context>/`:
+
+| Concern | Role | Typical modules |
+|--------|------|-----------------|
+| Incoming HTTP | Primary adapter | `controller.py` |
+| Business rules | Domain / application | `service.py`, `models.py` |
+| Contracts | API JSON shapes | `contracts.py` (typed DTOs), strict parsing via `services/common/validation.py` |
+| Persistence / cloud IO | Secondary adapters | `repo.py`, `storage.py` implementing `ports.py` |
+
+**Rules:** Same as **clean-architecture-boundaries** (controller ↔ service ↔ repo; **no** `boto3` in controller/service). **Wiring** stays in `bootstrap.py` / `index.py`; **env config** in `config.py` (`dataclass` + env vars), not scattered magic strings.
+
+**Domain shape:** Prefer **`dataclass`** (immutable where useful) for domain types, like existing `models.py`; keep SDKs and Dynamo item shapes out of domain logic.
+
+## When to add complexity
+
+Add layers, services, or dependencies only when:
+
+1. A **concrete** pain (bugs, ops cost, coupling) shows up—not hypothetical scale.
+2. **Value** is clear for the MVP or an agreed milestone (`roadmap.md`).
+3. **Simpler options** (config toggle, single module, existing pattern) are insufficient.
+4. Maintenance cost is acceptable (CI boundaries, docs, tests).
+
+Revert or simplify when a pattern stops earning its keep.
+
+## Anti-patterns
+
+- **Over-engineering:** Extra abstractions, parallel architectures, or new libraries without a justified pull.
+- **Bypassing boundaries:** Direct Dynamo/S3 from controllers or domain services (breaks testability and CI checks).
+- **Sprawl:** New top-level domains without updating **`plans/architecture/module-map.md`** or an ADR when the decision is non-obvious.
+- **Under-engineering:** No structure, secrets in repo, ignoring existing error/validation patterns (`services/common/errors.py`, validation at the edge).
+
+## Frontend
+
+Keep **data fetching and auth config** in **`lib/`**; **route screens** in **`pages/`**; reusable UI in **`components/`**. Mirror existing **student vs teacher** entry patterns instead of inventing a third app shape without cause.

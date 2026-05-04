@@ -1,0 +1,73 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'StreamMyCourse - Billing alarm for estimated charges'
+
+Parameters:
+  ThresholdAmount:
+    Type: Number
+    Default: 10
+    Description: Estimated charges threshold in USD that triggers the alarm
+  
+  EmailAddress:
+    Type: String
+    Default: ''
+    Description: Email address to receive billing alerts (leave empty to skip SNS topic creation)
+
+Conditions:
+  CreateEmailSubscription: !Not [!Equals [!Ref EmailAddress, '']]
+
+Resources:
+  # SNS Topic for billing alerts
+  BillingAlertTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      TopicName: StreamMyCourse-BillingAlerts
+      DisplayName: StreamMyCourse Billing Alerts
+      Tags:
+        - Key: Project
+          Value: StreamMyCourse
+
+  # Email subscription (only created if EmailAddress is provided)
+  BillingAlertEmailSubscription:
+    Type: AWS::SNS::Subscription
+    Condition: CreateEmailSubscription
+    Properties:
+      TopicArn: !Ref BillingAlertTopic
+      Protocol: email
+      Endpoint: !Ref EmailAddress
+
+  # CloudWatch alarm for estimated charges
+  # Note: This alarm requires AWS Billing to publish metrics to CloudWatch
+  # You must enable this in AWS Billing Console > Billing Preferences
+  BillingAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: StreamMyCourse-EstimatedCharges-Alarm
+      AlarmDescription: !Sub 'Alert when estimated charges exceed $${ThresholdAmount}'
+      MetricName: EstimatedCharges
+      Namespace: AWS/Billing
+      Statistic: Maximum
+      Period: 86400  # 1 day
+      EvaluationPeriods: 1
+      Threshold: !Ref ThresholdAmount
+      ComparisonOperator: GreaterThanThreshold
+      AlarmActions:
+        - !Ref BillingAlertTopic
+      Dimensions:
+        - Name: Currency
+          Value: USD
+      Tags:
+        - Key: Project
+          Value: StreamMyCourse
+
+Outputs:
+  BillingAlarmArn:
+    Description: ARN of the billing alarm
+    Value: !Ref BillingAlarm
+    Export:
+      Name: !Sub '${AWS::StackName}-BillingAlarmArn'
+
+  BillingAlertTopicArn:
+    Description: ARN of the SNS topic for billing alerts
+    Value: !Ref BillingAlertTopic
+    Export:
+      Name: !Sub '${AWS::StackName}-BillingAlertTopicArn'

@@ -1,0 +1,415 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: >-
+  StreamMyCourse - Unified edge hosting (us-east-1): ACM certificate + student and teacher
+  S3 + CloudFront + Route 53. Single stack so certificate replacement and distribution updates share one CFN dependency graph.
+
+Parameters:
+  Environment:
+    Type: String
+    Default: dev
+    AllowedValues:
+      - dev
+      - staging
+      - prod
+    Description: Deployment environment
+
+  HostedZoneId:
+    Type: String
+    Description: Route 53 hosted zone ID for DNS validation and alias records
+
+  CertPrimaryDomain:
+    Type: String
+    Description: Primary domain name on the ACM certificate (often the student apex)
+
+  StudentDomainName:
+    Type: String
+    Description: Full hostname for the student SPA (CloudFront alias + Route 53)
+
+  TeacherDomainName:
+    Type: String
+    Description: Full hostname for the teacher SPA (CloudFront alias + Route 53)
+
+  SubjectAlternativeNames:
+    Type: CommaDelimitedList
+    Default: ''
+    Description: >-
+      Optional SANs on the same ACM cert (comma-separated). Template wires DomainValidationOptions
+      for primary + first SAN only (same contract as web-cert-stack).
+
+  PriceClass:
+    Type: String
+    Default: PriceClass_100
+    AllowedValues:
+      - PriceClass_100
+      - PriceClass_200
+      - PriceClass_All
+    Description: CloudFront price class for both distributions
+
+  AttachCloudFrontAliases:
+    Type: String
+    Default: 'true'
+    AllowedValues:
+      - 'true'
+      - 'false'
+    Description: >-
+      When false, CloudFront uses default *.cloudfront.net only (no custom alternate domain names) and
+      this stack does not create Route 53 A/AAAA for the student/teacher hostnames. Use while legacy
+      Web/TeacherWeb distributions still hold the same hostnames (otherwise CloudFront returns 409).
+
+Conditions:
+  HasSANs: !Not [!Equals [!Join ['', !Ref SubjectAlternativeNames], '']]
+  UseCfAliases: !Equals [!Ref AttachCloudFrontAliases, 'true']
+
+Resources:
+  Certificate:
+    Type: AWS::CertificateManager::Certificate
+    Properties:
+      DomainName: !Ref CertPrimaryDomain
+      SubjectAlternativeNames: !If
+        - HasSANs
+        - !Ref SubjectAlternativeNames
+        - !Ref 'AWS::NoValue'
+      ValidationMethod: DNS
+      DomainValidationOptions: !If
+        - HasSANs
+        - - DomainName: !Ref CertPrimaryDomain
+            HostedZoneId: !Ref HostedZoneId
+          - DomainName: !Select [0, !Ref SubjectAlternativeNames]
+            HostedZoneId: !Ref HostedZoneId
+        - - DomainName: !Ref CertPrimaryDomain
+            HostedZoneId: !Ref HostedZoneId
+      Tags:
+        - Key: Project
+          Value: StreamMyCourse
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Name
+          Value: !Sub 'StreamMyCourse-EdgeCert-${Environment}'
+
+  SiteBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub 'streammycourse-site-${Environment}-${AWS::Region}-${AWS::AccountId}'
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      VersioningConfiguration:
+        Status: Enabled
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      Tags:
+        - Key: Project
+          Value: StreamMyCourse
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Name
+          Value: !Sub 'SiteBucket-${Environment}'
+
+  SiteBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref SiteBucket
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: AllowCloudFrontOACRead
+            Effect: Allow
+            Principal:
+              Service: cloudfront.amazonaws.com
+            Action:
+              - s3:GetObject
+            Resource: !Sub '${SiteBucket.Arn}/*'
+            Condition:
+              StringEquals:
+                AWS:SourceArn: !Sub 'arn:aws:cloudfront::${AWS::AccountId}:distribution/${SiteDistribution}'
+
+  SiteOAC:
+    Type: AWS::CloudFront::OriginAccessControl
+    Properties:
+      OriginAccessControlConfig:
+        # Name must differ from legacy web-stack OAC (CloudFront OAC names are account-global).
+        Name: !Sub 'StreamMyCourse-EdgeHosting-Student-OAC-${Environment}'
+        Description: OAC for student site S3 origin (unified edge stack)
+        OriginAccessControlOriginType: s3
+        SigningBehavior: always
+        SigningProtocol: sigv4
+
+  # Response security headers (HSTS, nosniff, frame deny). CSP left to HTML/host policy to avoid breaking Amplify OAuth without edge compute.
+  SpaSecurityHeadersPolicy:
+    Type: AWS::CloudFront::ResponseHeadersPolicy
+    Properties:
+      ResponseHeadersPolicyConfig:
+        Name: !Sub 'StreamMyCourse-SpaHeaders-${Environment}'
+        SecurityHeadersConfig:
+          StrictTransportSecurity:
+            AccessControlMaxAgeSec: 31536000
+            IncludeSubdomains: true
+            Preload: false
+            Override: true
+          ContentTypeOptions:
+            Override: true
+          FrameOptions:
+            FrameOption: DENY
+            Override: true
+          ReferrerPolicy:
+            ReferrerPolicy: strict-origin-when-cross-origin
+            Override: true
+
+  SiteDistribution:
+    Type: AWS::CloudFront::Distribution
+    Properties:
+      DistributionConfig:
+        Enabled: true
+        Comment: !Sub 'StreamMyCourse ${Environment} student site'
+        DefaultRootObject: index.html
+        Aliases: !If
+          - UseCfAliases
+          - - !Ref StudentDomainName
+          - []
+        Origins:
+          - Id: S3Origin
+            DomainName: !GetAtt SiteBucket.RegionalDomainName
+            S3OriginConfig:
+              OriginAccessIdentity: ''
+            OriginAccessControlId: !Ref SiteOAC
+        DefaultCacheBehavior:
+          TargetOriginId: S3Origin
+          ViewerProtocolPolicy: redirect-to-https
+          CachePolicyId: 658327ea-f89d-4fab-a63d-7e88639e58f6
+          ResponseHeadersPolicyId: !Ref SpaSecurityHeadersPolicy
+          Compress: true
+          AllowedMethods:
+            - GET
+            - HEAD
+            - OPTIONS
+          CachedMethods:
+            - GET
+            - HEAD
+        CustomErrorResponses:
+          - ErrorCode: 403
+            ResponseCode: 200
+            ResponsePagePath: /index.html
+            ErrorCachingMinTTL: 10
+          - ErrorCode: 404
+            ResponseCode: 200
+            ResponsePagePath: /index.html
+            ErrorCachingMinTTL: 10
+        PriceClass: !Ref PriceClass
+        ViewerCertificate: !If
+          - UseCfAliases
+          - AcmCertificateArn: !Ref Certificate
+            MinimumProtocolVersion: TLSv1.2_2021
+            SslSupportMethod: sni-only
+          - CloudFrontDefaultCertificate: true
+        HttpVersion: http2and3
+        IPV6Enabled: true
+      Tags:
+        - Key: Project
+          Value: StreamMyCourse
+        - Key: Environment
+          Value: !Ref Environment
+
+  SiteRecordA:
+    Type: AWS::Route53::RecordSet
+    Condition: UseCfAliases
+    Properties:
+      HostedZoneId: !Ref HostedZoneId
+      Name: !Ref StudentDomainName
+      Type: A
+      AliasTarget:
+        HostedZoneId: Z2FDTNDATAQYW2
+        DNSName: !GetAtt SiteDistribution.DomainName
+        EvaluateTargetHealth: false
+
+  SiteRecordAAAA:
+    Type: AWS::Route53::RecordSet
+    Condition: UseCfAliases
+    Properties:
+      HostedZoneId: !Ref HostedZoneId
+      Name: !Ref StudentDomainName
+      Type: AAAA
+      AliasTarget:
+        HostedZoneId: Z2FDTNDATAQYW2
+        DNSName: !GetAtt SiteDistribution.DomainName
+        EvaluateTargetHealth: false
+
+  TeacherSiteBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub 'streammycourse-teacher-${Environment}-${AWS::Region}-${AWS::AccountId}'
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      VersioningConfiguration:
+        Status: Enabled
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      Tags:
+        - Key: Project
+          Value: StreamMyCourse
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Name
+          Value: !Sub 'TeacherSiteBucket-${Environment}'
+        - Key: Type
+          Value: teacher-dashboard
+
+  TeacherSiteBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref TeacherSiteBucket
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: AllowCloudFrontOACRead
+            Effect: Allow
+            Principal:
+              Service: cloudfront.amazonaws.com
+            Action:
+              - s3:GetObject
+            Resource: !Sub '${TeacherSiteBucket.Arn}/*'
+            Condition:
+              StringEquals:
+                AWS:SourceArn: !Sub 'arn:aws:cloudfront::${AWS::AccountId}:distribution/${TeacherSiteDistribution}'
+
+  TeacherSiteOAC:
+    Type: AWS::CloudFront::OriginAccessControl
+    Properties:
+      OriginAccessControlConfig:
+        # Name must differ from legacy teacher-web-stack OAC (CloudFront OAC names are account-global).
+        Name: !Sub 'StreamMyCourse-EdgeHosting-Teacher-OAC-${Environment}'
+        Description: OAC for teacher site S3 origin (unified edge stack)
+        OriginAccessControlOriginType: s3
+        SigningBehavior: always
+        SigningProtocol: sigv4
+
+  TeacherSiteDistribution:
+    Type: AWS::CloudFront::Distribution
+    Properties:
+      DistributionConfig:
+        Enabled: true
+        Comment: !Sub 'StreamMyCourse ${Environment} teacher dashboard'
+        DefaultRootObject: index.html
+        Aliases: !If
+          - UseCfAliases
+          - - !Ref TeacherDomainName
+          - []
+        Origins:
+          - Id: S3Origin
+            DomainName: !GetAtt TeacherSiteBucket.RegionalDomainName
+            S3OriginConfig:
+              OriginAccessIdentity: ''
+            OriginAccessControlId: !Ref TeacherSiteOAC
+        DefaultCacheBehavior:
+          TargetOriginId: S3Origin
+          ViewerProtocolPolicy: redirect-to-https
+          CachePolicyId: 658327ea-f89d-4fab-a63d-7e88639e58f6
+          ResponseHeadersPolicyId: !Ref SpaSecurityHeadersPolicy
+          Compress: true
+          AllowedMethods:
+            - GET
+            - HEAD
+            - OPTIONS
+          CachedMethods:
+            - GET
+            - HEAD
+        CustomErrorResponses:
+          - ErrorCode: 403
+            ResponseCode: 200
+            ResponsePagePath: /index.html
+            ErrorCachingMinTTL: 10
+          - ErrorCode: 404
+            ResponseCode: 200
+            ResponsePagePath: /index.html
+            ErrorCachingMinTTL: 10
+        PriceClass: !Ref PriceClass
+        ViewerCertificate: !If
+          - UseCfAliases
+          - AcmCertificateArn: !Ref Certificate
+            MinimumProtocolVersion: TLSv1.2_2021
+            SslSupportMethod: sni-only
+          - CloudFrontDefaultCertificate: true
+        HttpVersion: http2and3
+        IPV6Enabled: true
+      Tags:
+        - Key: Project
+          Value: StreamMyCourse
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Type
+          Value: teacher-dashboard
+
+  TeacherSiteRecordA:
+    Type: AWS::Route53::RecordSet
+    Condition: UseCfAliases
+    Properties:
+      HostedZoneId: !Ref HostedZoneId
+      Name: !Ref TeacherDomainName
+      Type: A
+      AliasTarget:
+        HostedZoneId: Z2FDTNDATAQYW2
+        DNSName: !GetAtt TeacherSiteDistribution.DomainName
+        EvaluateTargetHealth: false
+
+  TeacherSiteRecordAAAA:
+    Type: AWS::Route53::RecordSet
+    Condition: UseCfAliases
+    Properties:
+      HostedZoneId: !Ref HostedZoneId
+      Name: !Ref TeacherDomainName
+      Type: AAAA
+      AliasTarget:
+        HostedZoneId: Z2FDTNDATAQYW2
+        DNSName: !GetAtt TeacherSiteDistribution.DomainName
+        EvaluateTargetHealth: false
+
+Outputs:
+  CertificateArn:
+    Description: ACM certificate ARN (us-east-1) attached to both distributions
+    Value: !Ref Certificate
+
+  StudentBucketName:
+    Description: S3 bucket for student SPA static assets
+    Value: !Ref SiteBucket
+
+  StudentDistributionId:
+    Description: CloudFront distribution ID for student site
+    Value: !Ref SiteDistribution
+
+  StudentSiteUrl:
+    Description: HTTPS URL for student site (custom hostname when aliases enabled, else CloudFront domain)
+    Value: !If
+      - UseCfAliases
+      - !Sub 'https://${StudentDomainName}'
+      - !Sub 'https://${SiteDistribution.DomainName}'
+
+  TeacherBucketName:
+    Description: S3 bucket for teacher SPA static assets
+    Value: !Ref TeacherSiteBucket
+
+  TeacherDistributionId:
+    Description: CloudFront distribution ID for teacher site
+    Value: !Ref TeacherSiteDistribution
+
+  TeacherSiteUrl:
+    Description: HTTPS URL for teacher dashboard (custom hostname when aliases enabled, else CloudFront domain)
+    Value: !If
+      - UseCfAliases
+      - !Sub 'https://${TeacherDomainName}'
+      - !Sub 'https://${TeacherSiteDistribution.DomainName}'
+
+  StudentDistributionDomainName:
+    Description: CloudFront domain for student distribution
+    Value: !GetAtt SiteDistribution.DomainName
+
+  TeacherDistributionDomainName:
+    Description: CloudFront domain for teacher distribution
+    Value: !GetAtt TeacherSiteDistribution.DomainName

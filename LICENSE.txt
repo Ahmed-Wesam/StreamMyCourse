@@ -1,0 +1,11 @@
+Proprietary and confidential — all rights reserved
+
+Copyright (c) 2026 StreamMyCourse. All rights reserved.
+
+This software, its source code, documentation, and related materials (collectively, the "Software") are the exclusive property of the copyright holder. The Software is provided only to authorized parties under a separate written agreement.
+
+Without prior written permission from the copyright holder, you may not use, copy, modify, merge, publish, distribute, sublicense, sell, rent, lease, or otherwise exploit the Software, in whole or in part, for any purpose.
+
+No license is granted by estoppel, implication, or otherwise. Unauthorized use may violate applicable law.
+
+THE SOFTWARE IS PROVIDED "AS IS," WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE, AND NONINFRINGEMENT. IN NO EVENT SHALL THE COPYRIGHT HOLDER BE LIABLE FOR ANY CLAIM, DAMAGES, OR OTHER LIABILITY ARISING FROM OR RELATED TO THE SOFTWARE OR ITS USE.

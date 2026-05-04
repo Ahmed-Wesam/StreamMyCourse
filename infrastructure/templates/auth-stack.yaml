@@ -1,0 +1,377 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: >-
+  StreamMyCourse - Cognito User Pool (student + teacher app clients, Google federation only; Google OAuth credentials required; no Identity Pool)
+
+Parameters:
+  Environment:
+    Type: String
+    Default: dev
+    AllowedValues:
+      - dev
+      - integ
+      - staging
+      - prod
+
+  CognitoDomainPrefix:
+    Type: String
+    Description: Globally unique hosted UI domain prefix (e.g. streammycourse-auth-dev)
+
+  StudentCallbackUrls:
+    Type: String
+    Description: Comma-separated OAuth callback URLs for the student SPA (must match app client)
+    Default: 'http://localhost:5173/'
+
+  StudentLogoutUrls:
+    Type: String
+    Description: Comma-separated sign-out URLs for the student SPA
+    Default: 'http://localhost:5173/'
+
+  TeacherCallbackUrls:
+    Type: String
+    Description: Comma-separated OAuth callback URLs for the teacher SPA
+    Default: 'http://localhost:5174/'
+
+  TeacherLogoutUrls:
+    Type: String
+    Description: Comma-separated sign-out URLs for the teacher SPA
+    Default: 'http://localhost:5174/'
+
+  GoogleClientId:
+    Type: String
+    MinLength: 1
+    Description: Google OAuth client ID (required for Google IdP)
+
+  GoogleClientSecret:
+    Type: String
+    NoEcho: true
+    MinLength: 1
+    Description: Google OAuth client secret (required for Google IdP)
+
+  RdsStackName:
+    Type: String
+    Default: ''
+    Description: >-
+      RDS stack name (e.g. StreamMyCourse-Rds-dev) whose exports supply VPC, DB
+      secret, and endpoints for the optional PostAuthentication user sync Lambda.
+      Leave empty to skip the sync Lambda (local auth-only deploys).
+
+  EnableUserProfileSync:
+    Type: String
+    Default: 'false'
+    AllowedValues:
+      - 'true'
+      - 'false'
+    Description: >-
+      When true, and RdsStackName plus Lambda S3 code params are set, attach
+      PostAuthentication to upsert RDS users on each successful login.
+
+  CognitoUserProfileSyncCodeS3Bucket:
+    Type: String
+    Default: ''
+    Description: Artifacts bucket containing the Cognito user profile sync Lambda zip
+
+  CognitoUserProfileSyncCodeS3Key:
+    Type: String
+    Default: ''
+    Description: S3 key for the Cognito user profile sync Lambda deployment zip
+
+Conditions:
+  HasRdsStackName: !Not [!Equals [!Ref RdsStackName, '']]
+  HasSyncLambdaCode: !And
+    - !Not [!Equals [!Ref CognitoUserProfileSyncCodeS3Bucket, '']]
+    - !Not [!Equals [!Ref CognitoUserProfileSyncCodeS3Key, '']]
+  ShouldDeployUserProfileSync: !And
+    - !Condition HasRdsStackName
+    - !Equals [!Ref EnableUserProfileSync, 'true']
+    - !Condition HasSyncLambdaCode
+
+Resources:
+  UserProfileSyncLambdaRole:
+    Type: AWS::IAM::Role
+    Condition: ShouldDeployUserProfileSync
+    Properties:
+      RoleName: !Sub '${AWS::StackName}-UserProfileSyncLambdaRole'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaVPCAccessExecutionRole
+      Policies:
+        - PolicyName: CloudWatchLogs
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource: !Sub 'arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/${AWS::StackName}-UserProfileSync:*'
+        - PolicyName: SecretsManagerRdsCreds
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - secretsmanager:GetSecretValue
+                Resource: !ImportValue
+                  'Fn::Sub': '${RdsStackName}-DbSecretArn'
+        - PolicyName: LambdaVpcEni
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - ec2:CreateNetworkInterface
+                  - ec2:DescribeNetworkInterfaces
+                  - ec2:DeleteNetworkInterface
+                  - ec2:AssignPrivateIpAddresses
+                  - ec2:UnassignPrivateIpAddresses
+                Resource: '*'
+      Tags:
+        - Key: Project
+          Value: StreamMyCourse
+        - Key: Environment
+          Value: !Ref Environment
+
+  UserProfileSyncLambda:
+    Type: AWS::Lambda::Function
+    Condition: ShouldDeployUserProfileSync
+    DependsOn:
+      - UserProfileSyncLambdaRole
+    Properties:
+      FunctionName: !Sub '${AWS::StackName}-UserProfileSync'
+      Runtime: python3.11
+      Handler: handler.lambda_handler
+      Role: !GetAtt UserProfileSyncLambdaRole.Arn
+      Timeout: 30
+      MemorySize: 256
+      VpcConfig:
+        SubnetIds:
+          - !ImportValue
+            'Fn::Sub': '${RdsStackName}-PrivateSubnetId'
+        SecurityGroupIds:
+          - !ImportValue
+            'Fn::Sub': '${RdsStackName}-LambdaSecurityGroupId'
+      Environment:
+        Variables:
+          DB_SECRET_ARN: !ImportValue
+            'Fn::Sub': '${RdsStackName}-DbSecretArn'
+          DB_HOST: !ImportValue
+            'Fn::Sub': '${RdsStackName}-DbHost'
+          DB_PORT: !ImportValue
+            'Fn::Sub': '${RdsStackName}-DbPort'
+          DB_NAME: !ImportValue
+            'Fn::Sub': '${RdsStackName}-DbName'
+          LOG_LEVEL: INFO
+      Code:
+        S3Bucket: !Ref CognitoUserProfileSyncCodeS3Bucket
+        S3Key: !Ref CognitoUserProfileSyncCodeS3Key
+      Tags:
+        - Key: Project
+          Value: StreamMyCourse
+        - Key: Environment
+          Value: !Ref Environment
+
+  CatalogUserPool:
+    Type: AWS::Cognito::UserPool
+    Properties:
+      UserPoolName:
+        Fn::Sub: '${AWS::StackName}-users'
+      UsernameAttributes:
+        - email
+      AutoVerifiedAttributes:
+        - email
+      Policies:
+        PasswordPolicy:
+          MinimumLength: 8
+          RequireLowercase: true
+          RequireNumbers: true
+          RequireSymbols: false
+          RequireUppercase: true
+      Schema:
+        - Name: role
+          AttributeDataType: String
+          Mutable: true
+          Required: false
+      UserAttributeUpdateSettings:
+        AttributesRequireVerificationBeforeUpdate: []
+      EmailConfiguration:
+        EmailSendingAccount: COGNITO_DEFAULT
+      AccountRecoverySetting:
+        RecoveryMechanisms:
+          - Name: verified_email
+            Priority: 1
+      UserPoolTags:
+        Project: StreamMyCourse
+        Environment:
+          Ref: Environment
+      LambdaConfig: !If
+        - ShouldDeployUserProfileSync
+        - PostAuthentication: !GetAtt UserProfileSyncLambda.Arn
+        - !Ref AWS::NoValue
+
+  UserProfileSyncLambdaPermission:
+    Type: AWS::Lambda::Permission
+    Condition: ShouldDeployUserProfileSync
+    DependsOn:
+      - CatalogUserPool
+      - UserProfileSyncLambda
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !Ref UserProfileSyncLambda
+      Principal: cognito-idp.amazonaws.com
+      SourceArn: !GetAtt CatalogUserPool.Arn
+
+  GoogleIdentityProvider:
+    Type: AWS::Cognito::UserPoolIdentityProvider
+    DependsOn:
+      - CatalogUserPool
+    Properties:
+      ProviderName: Google
+      ProviderType: Google
+      UserPoolId:
+        Ref: CatalogUserPool
+      ProviderDetails:
+        client_id:
+          Ref: GoogleClientId
+        client_secret:
+          Ref: GoogleClientSecret
+        authorize_scopes: 'openid email profile'
+      AttributeMapping:
+        email: email
+        email_verified: email_verified
+        given_name: given_name
+        family_name: family_name
+        name: name
+        picture: picture
+
+  StudentUserPoolClient:
+    Type: AWS::Cognito::UserPoolClient
+    DependsOn:
+      - CatalogUserPool
+      - GoogleIdentityProvider
+    Properties:
+      ClientName:
+        Fn::Sub: 'streammycourse-student-${Environment}'
+      UserPoolId:
+        Ref: CatalogUserPool
+      GenerateSecret: false
+      # ALLOW_ADMIN_USER_PASSWORD_AUTH enables server-side AdminInitiateAuth for CI
+      # tokens (e.g. CI mint or COGNITO_RDS_VERIFY_JWT on the GitHub Environment) without exposing USER_PASSWORD_AUTH on the public client.
+      ExplicitAuthFlows:
+        - ALLOW_REFRESH_TOKEN_AUTH
+        - ALLOW_ADMIN_USER_PASSWORD_AUTH
+      SupportedIdentityProviders:
+        - Google
+      PreventUserExistenceErrors: ENABLED
+      AllowedOAuthFlowsUserPoolClient: true
+      AllowedOAuthFlows:
+        - code
+      AllowedOAuthScopes:
+        # Required for Cognito GetUser / Amplify fetchUserAttributes with the access token (OAuth code flow).
+        - aws.cognito.signin.user.admin
+        - openid
+        - email
+        - profile
+      CallbackURLs:
+        Fn::Split:
+          - ','
+          - Ref: StudentCallbackUrls
+      LogoutURLs:
+        Fn::Split:
+          - ','
+          - Ref: StudentLogoutUrls
+      AccessTokenValidity: 60
+      IdTokenValidity: 60
+      RefreshTokenValidity: 30
+      TokenValidityUnits:
+        AccessToken: minutes
+        IdToken: minutes
+        RefreshToken: days
+
+  TeacherUserPoolClient:
+    Type: AWS::Cognito::UserPoolClient
+    DependsOn:
+      - CatalogUserPool
+      - GoogleIdentityProvider
+    Properties:
+      ClientName:
+        Fn::Sub: 'streammycourse-teacher-${Environment}'
+      UserPoolId:
+        Ref: CatalogUserPool
+      GenerateSecret: false
+      ExplicitAuthFlows:
+        - ALLOW_REFRESH_TOKEN_AUTH
+        - ALLOW_ADMIN_USER_PASSWORD_AUTH
+      SupportedIdentityProviders:
+        - Google
+      PreventUserExistenceErrors: ENABLED
+      AllowedOAuthFlowsUserPoolClient: true
+      AllowedOAuthFlows:
+        - code
+      AllowedOAuthScopes:
+        # Same as student client: GetUser / Amplify fetchUserAttributes needs this scope on the access token.
+        - aws.cognito.signin.user.admin
+        - openid
+        - email
+        - profile
+      CallbackURLs:
+        Fn::Split:
+          - ','
+          - Ref: TeacherCallbackUrls
+      LogoutURLs:
+        Fn::Split:
+          - ','
+          - Ref: TeacherLogoutUrls
+      AccessTokenValidity: 60
+      IdTokenValidity: 60
+      RefreshTokenValidity: 30
+      TokenValidityUnits:
+        AccessToken: minutes
+        IdToken: minutes
+        RefreshToken: days
+
+  CatalogUserPoolDomain:
+    Type: AWS::Cognito::UserPoolDomain
+    Properties:
+      Domain:
+        Ref: CognitoDomainPrefix
+      UserPoolId:
+        Ref: CatalogUserPool
+
+Outputs:
+  UserPoolId:
+    Description: Cognito User Pool ID
+    Value:
+      Ref: CatalogUserPool
+    Export:
+      Name:
+        Fn::Sub: '${AWS::StackName}-UserPoolId'
+
+  UserPoolArn:
+    Description: Cognito User Pool ARN (for API Gateway authorizer)
+    Value:
+      Fn::GetAtt: CatalogUserPool.Arn
+    Export:
+      Name:
+        Fn::Sub: '${AWS::StackName}-UserPoolArn'
+
+  HostedUIDomain:
+    Description: Hosted UI domain host (use with https:// prefix for Amplify oauth.domain)
+    Value:
+      Fn::Sub: '${CognitoDomainPrefix}.auth.${AWS::Region}.amazoncognito.com'
+
+  StudentUserPoolClientId:
+    Description: App client ID for student SPA
+    Value:
+      Ref: StudentUserPoolClient
+
+  TeacherUserPoolClientId:
+    Description: App client ID for teacher SPA
+    Value:
+      Ref: TeacherUserPoolClient

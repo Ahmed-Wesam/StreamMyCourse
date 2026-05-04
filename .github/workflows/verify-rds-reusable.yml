@@ -1,0 +1,194 @@
+# Reusable RDS smoke: pytest test_rds_path.py against one API + Cognito stack set.
+# Isolation model: this file never names dev- vs prod-specific GitHub secrets — those live on
+# each GitHub Environment under the same keys (see tests/integration/README.md). Callers only
+# pass stack inputs + which environment name to attach (dev | prod).
+# OIDC role ARN is passed as an input (see deploy-backend `with:`): the caller resolves
+# `${{ secrets.AWS_DEPLOY_ROLE_ARN }}` from a repository/org secret so `uses:` jobs do not need
+# `environment:` on the caller. Cognito secrets still come only from the job `environment:` below.
+name: Verify RDS path (reusable)
+
+on:
+  workflow_call:
+    inputs:
+      github_environment:
+        required: true
+        type: string
+        description: GitHub Environment name (e.g. dev, prod) — resolves secrets/vars for this run only
+      checkout_ref:
+        required: true
+        type: string
+      aws_deploy_role_arn:
+        required: true
+        type: string
+        description: IAM role ARN for GitHub OIDC (caller passes vars.AWS_DEPLOY_ROLE_ARN — set as repo Actions variable)
+      aws_region:
+        required: true
+        type: string
+      api_stack_name:
+        required: true
+        type: string
+      video_stack_name:
+        required: true
+        type: string
+      auth_stack_name:
+        required: true
+        type: string
+      catalog_table_name:
+        required: true
+        type: string
+      target_label:
+        required: true
+        type: string
+        description: Short label for logs (e.g. dev, prod)
+      api_endpoint_description:
+        required: true
+        type: string
+        description: Human-readable API target for the job summary
+    secrets:
+      # Caller's job must use `environment: <same as inputs.github_environment>` so these resolve,
+      # then pass them here — reusable workflows do not otherwise receive environment-scoped secrets.
+      COGNITO_RDS_VERIFY_TEST_PASSWORD:
+        required: false
+      COGNITO_RDS_VERIFY_JWT:
+        required: false
+
+jobs:
+  verify-rds:
+    name: Verify RDS path
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.github_environment }}
+    env:
+      USE_RDS: "true"
+      AWS_REGION: ${{ inputs.aws_region }}
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.checkout_ref }}
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ inputs.aws_deploy_role_arn }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+
+      - name: Install test dependencies
+        run: pip install -r tests/integration/requirements.txt
+
+      - name: Resolve API endpoint + stack outputs
+        env:
+          API_STACK: ${{ inputs.api_stack_name }}
+          VIDEO_STACK: ${{ inputs.video_stack_name }}
+          CATALOG_TABLE: ${{ inputs.catalog_table_name }}
+        run: |
+          set -euo pipefail
+          API_BASE_URL="$(aws cloudformation describe-stacks \
+            --stack-name "$API_STACK" \
+            --region "${AWS_REGION}" \
+            --query "Stacks[0].Outputs[?OutputKey=='ApiEndpoint'].OutputValue" \
+            --output text)"
+          VIDEO_BUCKET="$(aws cloudformation describe-stacks \
+            --stack-name "$VIDEO_STACK" \
+            --region "${AWS_REGION}" \
+            --query "Stacks[0].Outputs[?OutputKey=='BucketName'].OutputValue" \
+            --output text)"
+          if [[ -z "$API_BASE_URL" || -z "$VIDEO_BUCKET" ]]; then
+            echo "Failed to resolve stack outputs (ApiEndpoint / BucketName)" >&2
+            exit 1
+          fi
+          {
+            echo "INTEG_API_BASE_URL=$API_BASE_URL"
+            echo "INTEG_TABLE_NAME=$CATALOG_TABLE"
+            echo "INTEG_VIDEO_BUCKET=$VIDEO_BUCKET"
+            echo "INTEG_REGION=${AWS_REGION}"
+          } >> "$GITHUB_ENV"
+
+      - name: Require Cognito credentials for RDS verify
+        env:
+          COGNITO_TEST_PASSWORD: ${{ secrets.COGNITO_RDS_VERIFY_TEST_PASSWORD }}
+          COGNITO_TEST_USERNAME: ${{ vars.COGNITO_RDS_VERIFY_TEST_USERNAME }}
+          LEGACY_JWT: ${{ secrets.COGNITO_RDS_VERIFY_JWT }}
+        run: |
+          set -euo pipefail
+          if [[ -z "${COGNITO_TEST_PASSWORD:-}" ]] && [[ -z "${LEGACY_JWT:-}" ]]; then
+            echo "::error::On GitHub Environment \"${{ inputs.github_environment }}\" set secret COGNITO_RDS_VERIFY_TEST_PASSWORD and optional variable COGNITO_RDS_VERIFY_TEST_USERNAME (default ci-rds-verify@noreply.local), or secret COGNITO_RDS_VERIFY_JWT as fallback. See tests/integration/README.md."
+            exit 1
+          fi
+
+      - name: Mint Cognito JWT (or static JWT fallback)
+        env:
+          COGNITO_TEST_PASSWORD: ${{ secrets.COGNITO_RDS_VERIFY_TEST_PASSWORD }}
+          COGNITO_TEST_USERNAME: ${{ vars.COGNITO_RDS_VERIFY_TEST_USERNAME }}
+          LEGACY_JWT: ${{ secrets.COGNITO_RDS_VERIFY_JWT }}
+          AUTH_STACK: ${{ inputs.auth_stack_name }}
+        run: |
+          set -euo pipefail
+          REGION="${AWS_REGION}"
+          USERNAME="${COGNITO_TEST_USERNAME:-ci-rds-verify@noreply.local}"
+          TOKEN=""
+
+          if [[ -n "${COGNITO_TEST_PASSWORD:-}" ]]; then
+            pool="$(aws cloudformation describe-stacks \
+              --stack-name "$AUTH_STACK" \
+              --region "$REGION" \
+              --query "Stacks[0].Outputs[?OutputKey=='UserPoolId'].OutputValue" \
+              --output text)"
+            client="$(aws cloudformation describe-stacks \
+              --stack-name "$AUTH_STACK" \
+              --region "$REGION" \
+              --query "Stacks[0].Outputs[?OutputKey=='TeacherUserPoolClientId'].OutputValue" \
+              --output text)"
+            if [[ -n "$pool" && "$pool" != "None" && -n "$client" && "$client" != "None" ]]; then
+              tmp_json="$(mktemp)"
+              jq -n \
+                --arg pool "$pool" \
+                --arg client "$client" \
+                --arg user "$USERNAME" \
+                --arg pass "$COGNITO_TEST_PASSWORD" \
+                '{UserPoolId:$pool,ClientId:$client,AuthFlow:"ADMIN_USER_PASSWORD_AUTH",AuthParameters:{USERNAME:$user,PASSWORD:$pass}}' \
+                >"$tmp_json"
+              if TOKEN="$(aws cognito-idp admin-initiate-auth \
+                --cli-input-json "file://$tmp_json" \
+                --region "$REGION" \
+                --query 'AuthenticationResult.IdToken' \
+                --output text 2>/dev/null)"; then
+                :
+              else
+                TOKEN=""
+              fi
+              rm -f "$tmp_json"
+            fi
+          fi
+
+          if [[ -n "${TOKEN:-}" && "$TOKEN" != "None" ]]; then
+            echo "::add-mask::$TOKEN"
+            echo "INTEG_COGNITO_JWT=$TOKEN" >> "$GITHUB_ENV"
+            echo "Minted Cognito IdToken for RDS verify (${{ inputs.target_label }}; user: $USERNAME)"
+          elif [[ -n "${LEGACY_JWT:-}" ]]; then
+            if [[ -n "${COGNITO_TEST_PASSWORD:-}" ]]; then
+              echo "::warning::Cognito token minting failed - using static JWT fallback"
+            else
+              echo "Using static JWT fallback (COGNITO_RDS_VERIFY_TEST_PASSWORD unset on this environment)"
+            fi
+            echo "::add-mask::$LEGACY_JWT"
+            echo "INTEG_COGNITO_JWT=$LEGACY_JWT" >> "$GITHUB_ENV"
+          else
+            echo "::error::Could not mint Cognito IdToken and COGNITO_RDS_VERIFY_JWT is not set on this environment"
+            exit 1
+          fi
+
+      - name: Run RDS path integration tests
+        working-directory: tests/integration
+        run: pytest test_rds_path.py -v --tb=short
+
+      - name: Summary
+        if: always()
+        run: |
+          echo "## Verify ${{ inputs.target_label }} RDS" >> "$GITHUB_STEP_SUMMARY"
+          echo "Ran RDS-specific integration tests against ${{ inputs.api_endpoint_description }} (USE_RDS=true)." >> "$GITHUB_STEP_SUMMARY"

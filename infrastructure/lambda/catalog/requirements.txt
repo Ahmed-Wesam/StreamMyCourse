@@ -1,0 +1,8 @@
+# Lambda runtime dependencies.
+#
+# Packaged into the deployment zip under _vendor/ by scripts/deploy-backend.sh
+# using `pip install --platform manylinux2014_x86_64 --only-binary=:all:` so the
+# native wheel matches the Lambda x86_64 runtime even when building on
+# macOS/Windows. boto3 is NOT listed -- it ships with the Lambda runtime.
+
+psycopg2-binary==2.9.9

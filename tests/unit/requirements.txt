@@ -1,0 +1,8 @@
+pytest>=8.0
+coverage>=7.0
+# psycopg2 is imported at module load time by the RDS repository adapters. Unit
+# tests mock the connection/cursor (no live DB) but still need the module to
+# import. On CI Linux runners pip will pick the native wheel automatically.
+psycopg2-binary>=2.9,<3.0
+# rds_schema_apply/index.py imports boto3; tests/unit/test_rds_schema_apply.py loads that module for _split_sql_statements.
+boto3>=1.34,<2

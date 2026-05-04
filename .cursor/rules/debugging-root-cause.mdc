@@ -1,0 +1,49 @@
+---
+description: Reproduce first, narrow scope, verify fixes (frontend, Lambda, AWS, CI)
+alwaysApply: true
+---
+
+# Debugging and root cause analysis (StreamMyCourse)
+
+## Mindset
+
+- Treat failures as **signal**: reproduce reliably, form hypotheses, then change one thing at a time.
+- Prefer **evidence** (logs, failing test, minimal repro) over guessing.
+- After a non-obvious fix, add or extend a **test** or a short note in `ImplementationHistory.md` when it helps the team.
+
+## Narrow the blast radius
+
+1. **Classify:** frontend (`frontend/`, Vite, Vitest), API Lambda (`infrastructure/lambda/catalog/`), CloudFormation (`infrastructure/templates/`), CI (`.github/workflows/`), or auth/Cognito + env.
+2. **Reproduce locally** at the smallest scope: single Vitest file or `pytest` path under `tests/unit` / `tests/integration`, reproduce steps in the browser for UI issues.
+3. **Divide:** bisect commits or code paths (controller vs service vs repo vs stack) rather than editing everything at once.
+
+## Techniques (use what fits)
+
+- **Hypothesis elimination:** List plausible causes; rule each out with a quick experiment or log line.
+- **5 whys:** Move from symptom (500, blank UI, wrong item) to the underlying invariant or wiring mistake.
+- **Backtracking:** Trace from error message / stack / network response upstream to caller and config.
+
+## Project-specific tooling
+
+- **Frontend:** `npm run test` (Vitest), `npm run lint`, DevTools Network tab for API calls; optional **Chrome DevTools MCP** (`.cursor/mcp.json`) for live browser debugging when configured.
+- **Lambda:** CloudWatch Logs for the catalog function; correlate **request ID**, status, and JSON body/CORS headers. Respect **layer boundaries** (`.cursor/rules/clean-architecture-boundaries.mdc`)—suspected persistence bugs belong in repo/storage paths, not controllers.
+- **AWS / deployed state:** Prefer **AWS CLI** and stack outputs—see `.cursor/skills/aws-cli/SKILL.md` and `.cursor/skills/use-cli/SKILL.md` instead of guessing resource names.
+- **Static checks:** CI parity commands in `AGENTS.md` (**Before merging**) and `python scripts/check_lambda_boundaries.py`.
+
+## RCA short form
+
+1. **Problem statement** — expected vs actual, environment (local vs dev vs prod).
+2. **Data** — exact error text, failing test name, relevant log excerpts, repro steps.
+3. **Root cause** — one primary cause when possible; link to fix or PR.
+4. **Verify** — run the smallest test/lint/build slice that proves the fix; avoid bundling unrelated edits.
+
+## Pitfalls
+
+- Fixing without reproduction or without re-running targeted tests afterward.
+- Multiple unrelated changes before verifying each one (especially across frontend + Lambda + templates).
+- Chasing flaky UI tests without stabilizing async/assertions (**Vitest** + Testing Library patterns: `findBy*` / `waitFor` as appropriate).
+
+## Integration / E2E-style work
+
+- Prefer **focused integration tests** under `tests/integration` where they already exist; there is **no Playwright suite** in this repo’s default frontend scripts—don’t assume `networkidle`-style tooling unless it is added explicitly.
+- For API issues, verify **Lambda behavior and API Gateway routing** (`infrastructure/templates/api-stack.yaml`, permissions, stage) rather than copying generic VTL snippets from unrelated stacks.

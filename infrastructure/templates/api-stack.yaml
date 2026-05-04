@@ -1,0 +1,943 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'StreamMyCourse - MVP API Stack (API Gateway + Lambda, no event sources)'
+
+Parameters:
+  Environment:
+    Type: String
+    Default: dev
+    AllowedValues:
+      - dev
+      - integ
+      - staging
+      - prod
+    Description: Deployment environment
+
+  CorsAllowOrigin:
+    Type: String
+    Default: 'http://localhost:5173'
+    Description: Allowed CORS origins for Lambda success responses (CSV supported; e.g., "https://app.example.com,https://dev.example.com,http://localhost:5173")
+
+  GatewayResponseAllowOrigin:
+    Type: String
+    Default: 'http://localhost:5173'
+    Description: Single CORS origin for API Gateway error responses (must be a single value, not CSV). Avoid '*' in production.
+
+  DefaultMp4Url:
+    Type: String
+    Default: 'https://interactive-examples.mdn.mozilla.net/media/cc0-videos/flower.mp4'
+    Description: Default MP4 URL for playback (override in prod)
+
+  VideoUrl:
+    Type: String
+    Default: ''
+    Description: Real video URL from CloudFront (S3 hosted)
+
+  VideoBucketName:
+    Type: String
+    Default: ''
+    Description: S3 bucket name used for video uploads (presigned PUT)
+
+  LambdaCodeS3Bucket:
+    Type: String
+    Default: ''
+    Description: S3 bucket that contains the Lambda deployment zip
+
+  LambdaCodeS3Key:
+    Type: String
+    Default: ''
+    Description: S3 key for the Lambda deployment zip
+
+  CognitoUserPoolArn:
+    Type: String
+    Default: ''
+    Description: Cognito User Pool ARN for API Gateway COGNITO_USER_POOLS authorizer (optional; empty disables protected-route auth at gateway)
+
+  RdsStackName:
+    Type: String
+    Default: ''
+    Description: >-
+      Name of the RDS stack (e.g. StreamMyCourse-Rds-dev) whose exports provide
+      the VPC/subnet/SG/secret for the Lambda. Leave empty to skip VPC attachment
+      (DynamoDB-only mode).
+
+  LogLevel:
+    Type: String
+    Default: 'INFO'
+    AllowedValues:
+      - 'DEBUG'
+      - 'INFO'
+      - 'WARNING'
+      - 'ERROR'
+      - 'CRITICAL'
+    Description: Log level for Lambda function (DEBUG, INFO, WARNING, ERROR, CRITICAL)
+
+  UseRds:
+    Type: String
+    Default: 'false'
+    AllowedValues:
+      - 'true'
+      - 'false'
+    Description: >-
+      Feature flag. When 'true' the Lambda reads/writes via the PostgreSQL
+      adapter; when 'false' it continues using DynamoDB (instant rollback).
+
+Conditions:
+  HasVideoBucket: !Not [!Equals [!Ref VideoBucketName, '']]
+  HasCognitoAuthorizer: !Not [!Equals [!Ref CognitoUserPoolArn, '']]
+  IsProd: !Equals [!Ref Environment, prod]
+  HasRdsStack: !Not [!Equals [!Ref RdsStackName, '']]
+
+Resources:
+  # DynamoDB Table for Course Catalog
+  CatalogTable:
+    Type: AWS::DynamoDB::Table
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      TableName: !Sub 'StreamMyCourse-Catalog-${Environment}'
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: PK
+          AttributeType: S
+        - AttributeName: SK
+          AttributeType: S
+      KeySchema:
+        - AttributeName: PK
+          KeyType: HASH
+        - AttributeName: SK
+          KeyType: RANGE
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: !If [IsProd, true, false]
+      Tags:
+        - Key: Project
+          Value: StreamMyCourse
+        - Key: Environment
+          Value: !Ref Environment
+
+  # Lambda Execution Role
+  CatalogLambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub 'StreamMyCourse-CatalogLambdaRole-${Environment}'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: CloudWatchLogs
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource: !Sub 'arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/StreamMyCourse-Catalog-${Environment}:*'
+        - PolicyName: DynamoDBAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - dynamodb:GetItem
+                  - dynamodb:PutItem
+                  - dynamodb:UpdateItem
+                  - dynamodb:DeleteItem
+                  - dynamodb:BatchWriteItem
+                  - dynamodb:Query
+                  - dynamodb:Scan
+                Resource: !GetAtt CatalogTable.Arn
+        - PolicyName: S3PresignedUrl
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:PutObject
+                  - s3:GetObject
+                  - s3:DeleteObject
+                Resource: !If
+                  - HasVideoBucket
+                  - !Sub 'arn:aws:s3:::${VideoBucketName}/*'
+                  # Non-existent bucket prefix: avoids account-wide s3:* on all buckets when param is empty.
+                  - 'arn:aws:s3:::streammycourse-no-bucket-configured/NEVER_MATCH/*'
+        # VPC ENI lifecycle for Lambda-in-VPC. Always attached so flipping UseRds
+        # does not require a role redeploy. These actions are resource-less by
+        # AWS design (they return IDs from the global EC2 API) — standard for the
+        # Lambda-in-VPC pattern.
+        - PolicyName: LambdaVpcEni
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - ec2:CreateNetworkInterface
+                  - ec2:DescribeNetworkInterfaces
+                  - ec2:DeleteNetworkInterface
+                  - ec2:AssignPrivateIpAddresses
+                  - ec2:UnassignPrivateIpAddresses
+                Resource: '*'
+        # Scoped to the specific RDS credentials secret exported by the RDS stack.
+        # When RdsStackName is empty we fall back to a placeholder ARN that matches
+        # nothing, so the policy is always present but grants no access in that case.
+        - PolicyName: SecretsManagerRdsCreds
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - secretsmanager:GetSecretValue
+                Resource: !If
+                  - HasRdsStack
+                  - !ImportValue
+                    'Fn::Sub': '${RdsStackName}-DbSecretArn'
+                  - !Sub 'arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:streammycourse-no-rds-stack/NEVER_MATCH-xxxxxx'
+      Tags:
+        - Key: Project
+          Value: StreamMyCourse
+        - Key: Environment
+          Value: !Ref Environment
+
+  # Lambda Function
+  CatalogLambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub 'StreamMyCourse-Catalog-${Environment}'
+      Runtime: python3.11
+      Handler: index.lambda_handler
+      # Bumped from 15s to 30s to absorb VPC cold-start (~1-2s ENI attach) and
+      # Secrets Manager fetch (~0.5-1s on cold start) when UseRds=true.
+      Timeout: 30
+      MemorySize: 512
+      Role: !GetAtt CatalogLambdaRole.Arn
+      Code:
+        S3Bucket: !Ref LambdaCodeS3Bucket
+        S3Key: !Ref LambdaCodeS3Key
+      # Attach to the private subnet + Lambda SG from the RDS stack when present.
+      # Without HasRdsStack the Lambda runs outside a VPC (DynamoDB-only mode).
+      VpcConfig: !If
+        - HasRdsStack
+        - SubnetIds:
+            - !ImportValue
+              'Fn::Sub': '${RdsStackName}-PrivateSubnetId'
+          SecurityGroupIds:
+            - !ImportValue
+              'Fn::Sub': '${RdsStackName}-LambdaSecurityGroupId'
+        - !Ref AWS::NoValue
+      Environment:
+        Variables:
+          DEFAULT_MP4_URL: !Ref DefaultMp4Url
+          VIDEO_URL: !Ref VideoUrl
+          VIDEO_BUCKET: !Ref VideoBucketName
+          TABLE_NAME: !Ref CatalogTable
+          ALLOWED_ORIGINS: !Ref CorsAllowOrigin
+          COGNITO_AUTH_ENABLED: !If [HasCognitoAuthorizer, 'true', 'false']
+          LOG_LEVEL: !Ref LogLevel
+          USE_RDS: !Ref UseRds
+          DB_HOST: !If
+            - HasRdsStack
+            - !ImportValue
+              'Fn::Sub': '${RdsStackName}-DbHost'
+            - ''
+          DB_PORT: !If
+            - HasRdsStack
+            - !ImportValue
+              'Fn::Sub': '${RdsStackName}-DbPort'
+            - ''
+          DB_NAME: !If
+            - HasRdsStack
+            - !ImportValue
+              'Fn::Sub': '${RdsStackName}-DbName'
+            - ''
+          DB_SECRET_ARN: !If
+            - HasRdsStack
+            - !ImportValue
+              'Fn::Sub': '${RdsStackName}-DbSecretArn'
+            - ''
+      Tags:
+        - Key: Project
+          Value: StreamMyCourse
+        - Key: Environment
+          Value: !Ref Environment
+
+  # API Gateway REST API
+  CatalogApi:
+    Type: AWS::ApiGateway::RestApi
+    Properties:
+      Name: !Sub 'StreamMyCourse-Catalog-${Environment}'
+      Description: MVP Catalog API
+      EndpointConfiguration:
+        Types:
+          - REGIONAL
+      Tags:
+        - Key: Project
+          Value: StreamMyCourse
+        - Key: Environment
+          Value: !Ref Environment
+
+  CognitoAuthorizer:
+    Type: AWS::ApiGateway::Authorizer
+    Condition: HasCognitoAuthorizer
+    Properties:
+      Name: !Sub 'StreamMyCourse-Cognito-${Environment}'
+      Type: COGNITO_USER_POOLS
+      RestApiId: !Ref CatalogApi
+      ProviderARNs:
+        - !Ref CognitoUserPoolArn
+      IdentitySource: method.request.header.Authorization
+
+  # API Gateway GatewayResponses to guarantee CORS headers even on errors (e.g., 4XX/5XX)
+  # Note: GatewayResponseAllowOrigin must be a single value (not CSV) for API Gateway to accept it
+  ApiGatewayResponseDefault4XX:
+    Type: AWS::ApiGateway::GatewayResponse
+    Properties:
+      RestApiId: !Ref CatalogApi
+      ResponseType: DEFAULT_4XX
+      ResponseParameters:
+        gatewayresponse.header.Access-Control-Allow-Origin: !Sub "'${GatewayResponseAllowOrigin}'"
+        gatewayresponse.header.Access-Control-Allow-Methods: "'GET,POST,PUT,DELETE,OPTIONS'"
+        gatewayresponse.header.Access-Control-Allow-Headers: "'Content-Type,Authorization'"
+
+  ApiGatewayResponseDefault5XX:
+    Type: AWS::ApiGateway::GatewayResponse
+    Properties:
+      RestApiId: !Ref CatalogApi
+      ResponseType: DEFAULT_5XX
+      ResponseParameters:
+        gatewayresponse.header.Access-Control-Allow-Origin: !Sub "'${GatewayResponseAllowOrigin}'"
+        gatewayresponse.header.Access-Control-Allow-Methods: "'GET,POST,PUT,DELETE,OPTIONS'"
+        gatewayresponse.header.Access-Control-Allow-Headers: "'Content-Type,Authorization'"
+
+  # API Gateway Resource: /courses
+  CoursesResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref CatalogApi
+      ParentId: !GetAtt CatalogApi.RootResourceId
+      PathPart: courses
+
+  # API Gateway Resource: /courses/mine (instructor-owned courses incl. drafts)
+  CoursesMineResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref CatalogApi
+      ParentId: !Ref CoursesResource
+      PathPart: mine
+
+  # API Gateway Resource: /courses/{courseId}
+  CourseIdResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref CatalogApi
+      ParentId: !Ref CoursesResource
+      PathPart: '{courseId}'
+
+  # API Gateway Resource: /courses/{courseId}/preview (anonymous published outline)
+  CoursePreviewResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref CatalogApi
+      ParentId: !Ref CourseIdResource
+      PathPart: preview
+
+  # API Gateway Resource: /courses/{courseId}/enroll
+  CourseEnrollResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref CatalogApi
+      ParentId: !Ref CourseIdResource
+      PathPart: enroll
+
+  # API Gateway Resource: /courses/{courseId}/lessons
+  LessonsResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref CatalogApi
+      ParentId: !Ref CourseIdResource
+      PathPart: lessons
+
+  # API Gateway Resource: /courses/{courseId}/lessons/{lessonId}
+  LessonIdResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref CatalogApi
+      ParentId: !Ref LessonsResource
+      PathPart: '{lessonId}'
+
+  # API Gateway Resource: /courses/{courseId}/lessons/{lessonId}/video-ready
+  LessonVideoReadyResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref CatalogApi
+      ParentId: !Ref LessonIdResource
+      PathPart: video-ready
+
+  # API Gateway Resource: /playback
+  PlaybackResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref CatalogApi
+      ParentId: !GetAtt CatalogApi.RootResourceId
+      PathPart: playback
+
+  # API Gateway Resource: /playback/{courseId}
+  PlaybackCourseIdResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref CatalogApi
+      ParentId: !Ref PlaybackResource
+      PathPart: '{courseId}'
+
+  # API Gateway Resource: /playback/{courseId}/{lessonId}
+  PlaybackLessonIdResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref CatalogApi
+      ParentId: !Ref PlaybackCourseIdResource
+      PathPart: '{lessonId}'
+
+  # API Gateway Resource: /upload-url
+  UploadUrlResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref CatalogApi
+      ParentId: !GetAtt CatalogApi.RootResourceId
+      PathPart: upload-url
+
+  # API Gateway Resource: /users/me
+  UsersResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref CatalogApi
+      ParentId: !GetAtt CatalogApi.RootResourceId
+      PathPart: users
+
+  UsersMeResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref CatalogApi
+      ParentId: !Ref UsersResource
+      PathPart: me
+
+  # Lambda Permission for API Gateway
+  CatalogLambdaApiPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref CatalogLambda
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${CatalogApi}/*'
+
+  # API Gateway Method: GET /courses
+  CoursesGetMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref CatalogApi
+      ResourceId: !Ref CoursesResource
+      HttpMethod: GET
+      AuthorizationType: NONE
+      Integration:
+        IntegrationHttpMethod: POST
+        Type: AWS_PROXY
+        Uri: !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${CatalogLambda.Arn}/invocations'
+
+  # API Gateway Method: POST /courses
+  CoursesPostMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref CatalogApi
+      ResourceId: !Ref CoursesResource
+      HttpMethod: POST
+      AuthorizationType: !If [HasCognitoAuthorizer, COGNITO_USER_POOLS, NONE]
+      AuthorizerId: !If [HasCognitoAuthorizer, !Ref CognitoAuthorizer, !Ref AWS::NoValue]
+      Integration:
+        IntegrationHttpMethod: POST
+        Type: AWS_PROXY
+        Uri: !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${CatalogLambda.Arn}/invocations'
+
+  # API Gateway Method: OPTIONS /courses (CORS preflight)
+  CoursesOptionsMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref CatalogApi
+      ResourceId: !Ref CoursesResource
+      HttpMethod: OPTIONS
+      AuthorizationType: NONE
+      Integration:
+        IntegrationHttpMethod: POST
+        Type: AWS_PROXY
+        Uri: !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${CatalogLambda.Arn}/invocations'
+
+  # API Gateway Method: GET /courses/mine
+  CoursesMineGetMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref CatalogApi
+      ResourceId: !Ref CoursesMineResource
+      HttpMethod: GET
+      AuthorizationType: !If [HasCognitoAuthorizer, COGNITO_USER_POOLS, NONE]
+      AuthorizerId: !If [HasCognitoAuthorizer, !Ref CognitoAuthorizer, !Ref AWS::NoValue]
+      Integration:
+        IntegrationHttpMethod: POST
+        Type: AWS_PROXY
+        Uri: !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${CatalogLambda.Arn}/invocations'
+
+  # API Gateway Method: OPTIONS /courses/mine (CORS preflight)
+  CoursesMineOptionsMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref CatalogApi
+      ResourceId: !Ref CoursesMineResource
+      HttpMethod: OPTIONS
+      AuthorizationType: NONE
+      Integration:
+        IntegrationHttpMethod: POST
+        Type: AWS_PROXY
+        Uri: !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${CatalogLambda.Arn}/invocations'
+
+  # API Gateway Method: GET /courses/{courseId}
+  CourseIdGetMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref CatalogApi
+      ResourceId: !Ref CourseIdResource
+      HttpMethod: GET
+      AuthorizationType: !If [HasCognitoAuthorizer, COGNITO_USER_POOLS, NONE]
+      AuthorizerId: !If [HasCognitoAuthorizer, !Ref CognitoAuthorizer, !Ref AWS::NoValue]
+      Integration:
+        IntegrationHttpMethod: POST
+        Type: AWS_PROXY
+        Uri: !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${CatalogLambda.Arn}/invocations'
+
+  # API Gateway Method: GET /courses/{courseId}/preview
+  CoursePreviewGetMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref CatalogApi
+      ResourceId: !Ref CoursePreviewResource
+      HttpMethod: GET
+      AuthorizationType: NONE
+      Integration:
+        IntegrationHttpMethod: POST
+        Type: AWS_PROXY
+        Uri: !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${CatalogLambda.Arn}/invocations'
+
+  # API Gateway Method: OPTIONS /courses/{courseId}/preview
+  CoursePreviewOptionsMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref CatalogApi
+      ResourceId: !Ref CoursePreviewResource
+      HttpMethod: OPTIONS
+      AuthorizationType: NONE
+      Integration:
+        IntegrationHttpMethod: POST
+        Type: AWS_PROXY
+        Uri: !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${CatalogLambda.Arn}/invocations'
+
+  # API Gateway Method: POST /courses/{courseId}/enroll
+  CourseEnrollPostMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref CatalogApi
+      ResourceId: !Ref CourseEnrollResource
+      HttpMethod: POST
+      AuthorizationType: !If [HasCognitoAuthorizer, COGNITO_USER_POOLS, NONE]
+      AuthorizerId: !If [HasCognitoAuthorizer, !Ref CognitoAuthorizer, !Ref AWS::NoValue]
+      Integration:
+        IntegrationHttpMethod: POST
+        Type: AWS_PROXY
+        Uri: !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${CatalogLambda.Arn}/invocations'
+
+  # API Gateway Method: OPTIONS /courses/{courseId}/enroll
+  CourseEnrollOptionsMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref CatalogApi
+      ResourceId: !Ref CourseEnrollResource
+      HttpMethod: OPTIONS
+      AuthorizationType: NONE
+      Integration:
+        IntegrationHttpMethod: POST
+        Type: AWS_PROXY
+        Uri: !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${CatalogLambda.Arn}/invocations'
+
+  # API Gateway Method: PUT /courses/{courseId}
+  CourseIdPutMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref CatalogApi
+      ResourceId: !Ref CourseIdResource
+      HttpMethod: PUT
+      AuthorizationType: !If [HasCognitoAuthorizer, COGNITO_USER_POOLS, NONE]
+      AuthorizerId: !If [HasCognitoAuthorizer, !Ref CognitoAuthorizer, !Ref AWS::NoValue]
+      Integration:
+        IntegrationHttpMethod: POST
+        Type: AWS_PROXY
+        Uri: !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${CatalogLambda.Arn}/invocations'
+
+  # API Gateway Method: DELETE /courses/{courseId}
+  CourseIdDeleteMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref CatalogApi
+      ResourceId: !Ref CourseIdResource
+      HttpMethod: DELETE
+      AuthorizationType: !If [HasCognitoAuthorizer, COGNITO_USER_POOLS, NONE]
+      AuthorizerId: !If [HasCognitoAuthorizer, !Ref CognitoAuthorizer, !Ref AWS::NoValue]
+      Integration:
+        IntegrationHttpMethod: POST
+        Type: AWS_PROXY
+        Uri: !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${CatalogLambda.Arn}/invocations'
+
+  # API Gateway Method: OPTIONS /courses/{courseId} (CORS preflight)
+  CourseIdOptionsMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref CatalogApi
+      ResourceId: !Ref CourseIdResource
+      HttpMethod: OPTIONS
+      AuthorizationType: NONE
+      Integration:
+        IntegrationHttpMethod: POST
+        Type: AWS_PROXY
+        Uri: !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${CatalogLambda.Arn}/invocations'
+
+  # API Gateway Resource: /courses/{courseId}/publish
+  CoursePublishResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref CatalogApi
+      ParentId: !Ref CourseIdResource
+      PathPart: publish
+
+  # API Gateway Method: PUT /courses/{courseId}/publish
+  CoursePublishPutMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref CatalogApi
+      ResourceId: !Ref CoursePublishResource
+      HttpMethod: PUT
+      AuthorizationType: !If [HasCognitoAuthorizer, COGNITO_USER_POOLS, NONE]
+      AuthorizerId: !If [HasCognitoAuthorizer, !Ref CognitoAuthorizer, !Ref AWS::NoValue]
+      Integration:
+        IntegrationHttpMethod: POST
+        Type: AWS_PROXY
+        Uri: !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${CatalogLambda.Arn}/invocations'
+
+  # API Gateway Method: OPTIONS /courses/{courseId}/publish (CORS preflight)
+  CoursePublishOptionsMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref CatalogApi
+      ResourceId: !Ref CoursePublishResource
+      HttpMethod: OPTIONS
+      AuthorizationType: NONE
+      Integration:
+        IntegrationHttpMethod: POST
+        Type: AWS_PROXY
+        Uri: !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${CatalogLambda.Arn}/invocations'
+
+  # API Gateway Resource: /courses/{courseId}/thumbnail-ready
+  CourseThumbnailReadyResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref CatalogApi
+      ParentId: !Ref CourseIdResource
+      PathPart: thumbnail-ready
+
+  # API Gateway Method: PUT /courses/{courseId}/thumbnail-ready
+  CourseThumbnailReadyPutMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref CatalogApi
+      ResourceId: !Ref CourseThumbnailReadyResource
+      HttpMethod: PUT
+      AuthorizationType: !If [HasCognitoAuthorizer, COGNITO_USER_POOLS, NONE]
+      AuthorizerId: !If [HasCognitoAuthorizer, !Ref CognitoAuthorizer, !Ref AWS::NoValue]
+      Integration:
+        IntegrationHttpMethod: POST
+        Type: AWS_PROXY
+        Uri: !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${CatalogLambda.Arn}/invocations'
+
+  # API Gateway Method: OPTIONS /courses/{courseId}/thumbnail-ready (CORS preflight)
+  CourseThumbnailReadyOptionsMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref CatalogApi
+      ResourceId: !Ref CourseThumbnailReadyResource
+      HttpMethod: OPTIONS
+      AuthorizationType: NONE
+      Integration:
+        IntegrationHttpMethod: POST
+        Type: AWS_PROXY
+        Uri: !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${CatalogLambda.Arn}/invocations'
+
+  # API Gateway Method: GET /courses/{courseId}/lessons
+  LessonsGetMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref CatalogApi
+      ResourceId: !Ref LessonsResource
+      HttpMethod: GET
+      AuthorizationType: !If [HasCognitoAuthorizer, COGNITO_USER_POOLS, NONE]
+      AuthorizerId: !If [HasCognitoAuthorizer, !Ref CognitoAuthorizer, !Ref AWS::NoValue]
+      Integration:
+        IntegrationHttpMethod: POST
+        Type: AWS_PROXY
+        Uri: !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${CatalogLambda.Arn}/invocations'
+
+  # API Gateway Method: POST /courses/{courseId}/lessons
+  LessonsPostMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref CatalogApi
+      ResourceId: !Ref LessonsResource
+      HttpMethod: POST
+      AuthorizationType: !If [HasCognitoAuthorizer, COGNITO_USER_POOLS, NONE]
+      AuthorizerId: !If [HasCognitoAuthorizer, !Ref CognitoAuthorizer, !Ref AWS::NoValue]
+      Integration:
+        IntegrationHttpMethod: POST
+        Type: AWS_PROXY
+        Uri: !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${CatalogLambda.Arn}/invocations'
+
+  # API Gateway Method: OPTIONS /courses/{courseId}/lessons (CORS preflight)
+  LessonsOptionsMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref CatalogApi
+      ResourceId: !Ref LessonsResource
+      HttpMethod: OPTIONS
+      AuthorizationType: NONE
+      Integration:
+        IntegrationHttpMethod: POST
+        Type: AWS_PROXY
+        Uri: !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${CatalogLambda.Arn}/invocations'
+
+  # API Gateway Method: PUT /courses/{courseId}/lessons/{lessonId}
+  LessonIdPutMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref CatalogApi
+      ResourceId: !Ref LessonIdResource
+      HttpMethod: PUT
+      AuthorizationType: !If [HasCognitoAuthorizer, COGNITO_USER_POOLS, NONE]
+      AuthorizerId: !If [HasCognitoAuthorizer, !Ref CognitoAuthorizer, !Ref AWS::NoValue]
+      Integration:
+        IntegrationHttpMethod: POST
+        Type: AWS_PROXY
+        Uri: !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${CatalogLambda.Arn}/invocations'
+
+  # API Gateway Method: DELETE /courses/{courseId}/lessons/{lessonId}
+  LessonIdDeleteMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref CatalogApi
+      ResourceId: !Ref LessonIdResource
+      HttpMethod: DELETE
+      AuthorizationType: !If [HasCognitoAuthorizer, COGNITO_USER_POOLS, NONE]
+      AuthorizerId: !If [HasCognitoAuthorizer, !Ref CognitoAuthorizer, !Ref AWS::NoValue]
+      Integration:
+        IntegrationHttpMethod: POST
+        Type: AWS_PROXY
+        Uri: !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${CatalogLambda.Arn}/invocations'
+
+  # API Gateway Method: OPTIONS /courses/{courseId}/lessons/{lessonId} (CORS preflight)
+  LessonIdOptionsMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref CatalogApi
+      ResourceId: !Ref LessonIdResource
+      HttpMethod: OPTIONS
+      AuthorizationType: NONE
+      Integration:
+        IntegrationHttpMethod: POST
+        Type: AWS_PROXY
+        Uri: !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${CatalogLambda.Arn}/invocations'
+
+  # API Gateway Method: PUT /courses/{courseId}/lessons/{lessonId}/video-ready
+  LessonVideoReadyPutMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref CatalogApi
+      ResourceId: !Ref LessonVideoReadyResource
+      HttpMethod: PUT
+      AuthorizationType: !If [HasCognitoAuthorizer, COGNITO_USER_POOLS, NONE]
+      AuthorizerId: !If [HasCognitoAuthorizer, !Ref CognitoAuthorizer, !Ref AWS::NoValue]
+      Integration:
+        IntegrationHttpMethod: POST
+        Type: AWS_PROXY
+        Uri: !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${CatalogLambda.Arn}/invocations'
+
+  # API Gateway Method: OPTIONS /courses/{courseId}/lessons/{lessonId}/video-ready (CORS preflight)
+  LessonVideoReadyOptionsMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref CatalogApi
+      ResourceId: !Ref LessonVideoReadyResource
+      HttpMethod: OPTIONS
+      AuthorizationType: NONE
+      Integration:
+        IntegrationHttpMethod: POST
+        Type: AWS_PROXY
+        Uri: !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${CatalogLambda.Arn}/invocations'
+
+  # API Gateway Method: GET /playback/{courseId}/{lessonId}
+  PlaybackGetMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref CatalogApi
+      ResourceId: !Ref PlaybackLessonIdResource
+      HttpMethod: GET
+      AuthorizationType: !If [HasCognitoAuthorizer, COGNITO_USER_POOLS, NONE]
+      AuthorizerId: !If [HasCognitoAuthorizer, !Ref CognitoAuthorizer, !Ref AWS::NoValue]
+      Integration:
+        IntegrationHttpMethod: POST
+        Type: AWS_PROXY
+        Uri: !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${CatalogLambda.Arn}/invocations'
+
+  # API Gateway Method: OPTIONS /playback/{courseId}/{lessonId} (CORS preflight)
+  PlaybackOptionsMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref CatalogApi
+      ResourceId: !Ref PlaybackLessonIdResource
+      HttpMethod: OPTIONS
+      AuthorizationType: NONE
+      Integration:
+        IntegrationHttpMethod: POST
+        Type: AWS_PROXY
+        Uri: !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${CatalogLambda.Arn}/invocations'
+
+  # API Gateway Method: POST /upload-url
+  UploadUrlPostMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref CatalogApi
+      ResourceId: !Ref UploadUrlResource
+      HttpMethod: POST
+      AuthorizationType: !If [HasCognitoAuthorizer, COGNITO_USER_POOLS, NONE]
+      AuthorizerId: !If [HasCognitoAuthorizer, !Ref CognitoAuthorizer, !Ref AWS::NoValue]
+      Integration:
+        IntegrationHttpMethod: POST
+        Type: AWS_PROXY
+        Uri: !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${CatalogLambda.Arn}/invocations'
+
+  # API Gateway Method: OPTIONS /upload-url (CORS preflight)
+  UploadUrlOptionsMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref CatalogApi
+      ResourceId: !Ref UploadUrlResource
+      HttpMethod: OPTIONS
+      AuthorizationType: NONE
+      Integration:
+        IntegrationHttpMethod: POST
+        Type: AWS_PROXY
+        Uri: !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${CatalogLambda.Arn}/invocations'
+
+  UsersMeGetMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref CatalogApi
+      ResourceId: !Ref UsersMeResource
+      HttpMethod: GET
+      AuthorizationType: !If [HasCognitoAuthorizer, COGNITO_USER_POOLS, NONE]
+      AuthorizerId: !If [HasCognitoAuthorizer, !Ref CognitoAuthorizer, !Ref AWS::NoValue]
+      Integration:
+        IntegrationHttpMethod: POST
+        Type: AWS_PROXY
+        Uri: !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${CatalogLambda.Arn}/invocations'
+
+  UsersMeOptionsMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref CatalogApi
+      ResourceId: !Ref UsersMeResource
+      HttpMethod: OPTIONS
+      AuthorizationType: NONE
+      Integration:
+        IntegrationHttpMethod: POST
+        Type: AWS_PROXY
+        Uri: !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${CatalogLambda.Arn}/invocations'
+
+  # API Gateway Deployment
+  # Include Lambda artifact key in Description so this resource updates whenever the
+  # catalog zip changes, forcing a new deployment. Otherwise CloudFormation can leave
+  # the stage on an old snapshot while method definitions (e.g. Cognito) drift ahead —
+  # clients then hit Lambda without authorizer.claims and see "Authentication required".
+  # Bump logical id when API methods/resources change so CloudFormation always
+  # creates a new deployment; otherwise the stage can keep serving an old snapshot
+  # (symptom: GET /courses/{id}/preview returns API GW 403 Missing Authentication Token).
+  CatalogApiDeploymentV8:
+    Type: AWS::ApiGateway::Deployment
+    DependsOn:
+      - CatalogLambdaApiPermission
+      - CoursesGetMethod
+      - CoursesPostMethod
+      - CoursesOptionsMethod
+      - CoursesMineGetMethod
+      - CoursesMineOptionsMethod
+      - CourseIdGetMethod
+      - CoursePreviewGetMethod
+      - CoursePreviewOptionsMethod
+      - CourseEnrollPostMethod
+      - CourseEnrollOptionsMethod
+      - CourseIdPutMethod
+      - CourseIdDeleteMethod
+      - CourseIdOptionsMethod
+      - CoursePublishPutMethod
+      - CoursePublishOptionsMethod
+      - CourseThumbnailReadyPutMethod
+      - CourseThumbnailReadyOptionsMethod
+      - LessonsGetMethod
+      - LessonsPostMethod
+      - LessonsOptionsMethod
+      - LessonIdPutMethod
+      - LessonIdDeleteMethod
+      - LessonIdOptionsMethod
+      - LessonVideoReadyPutMethod
+      - LessonVideoReadyOptionsMethod
+      - PlaybackGetMethod
+      - PlaybackOptionsMethod
+      - UploadUrlPostMethod
+      - UploadUrlOptionsMethod
+      - UsersMeGetMethod
+      - UsersMeOptionsMethod
+    Properties:
+      RestApiId: !Ref CatalogApi
+      Description: !Sub 'catalog-${LambdaCodeS3Key}'
+
+  # API Gateway Stage
+  CatalogApiStage:
+    Type: AWS::ApiGateway::Stage
+    Properties:
+      RestApiId: !Ref CatalogApi
+      DeploymentId: !Ref CatalogApiDeploymentV8
+      StageName: !Ref Environment
+      Description: !Sub '${Environment} stage for Catalog API'
+      MethodSettings:
+        - ResourcePath: '/*'
+          HttpMethod: '*'
+          ThrottlingBurstLimit: 200
+          ThrottlingRateLimit: 100
+          MetricsEnabled: true
+
+Outputs:
+  ApiEndpoint:
+    Description: API Gateway endpoint URL
+    Value: !Sub 'https://${CatalogApi}.execute-api.${AWS::Region}.amazonaws.com/${Environment}'
+
+  LambdaFunctionName:
+    Description: Lambda function name
+    Value: !Ref CatalogLambda
+
+  TableName:
+    Description: DynamoDB table name
+    Value: !Ref CatalogTable
+    Export:
+      Name: !Sub '${AWS::StackName}-TableName'

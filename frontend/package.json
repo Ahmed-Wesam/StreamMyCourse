@@ -1,0 +1,53 @@
+{
+  "name": "frontend",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite --config vite.student.config.ts",
+    "dev:student": "vite --config vite.student.config.ts",
+    "dev:teacher": "vite --config vite.teacher.config.ts",
+    "build": "tsc && vite build --config vite.student.config.ts",
+    "prebuild:student": "node ../scripts/check-cognito-spa-env.mjs",
+    "prebuild:teacher": "node ../scripts/check-cognito-spa-env.mjs",
+    "build:student": "tsc && vite build --config vite.student.config.ts",
+    "build:teacher": "tsc && vite build --config vite.teacher.config.ts",
+    "build:all": "npm run build:student && npm run build:teacher",
+    "preview": "vite preview --config vite.student.config.ts",
+    "lint": "eslint .",
+    "knip": "knip",
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "@emnapi/core": "1.10.0",
+    "@emnapi/runtime": "1.10.0",
+    "@eslint/js": "^10.0.1",
+    "@testing-library/dom": "^10.4.1",
+    "@testing-library/react": "^16.3.2",
+    "@types/node": "^25.6.0",
+    "@vitejs/plugin-react": "^5.2.0",
+    "autoprefixer": "^10.5.0",
+    "eslint": "^10.3.0",
+    "eslint-plugin-react-hooks": "^7.1.1",
+    "eslint-plugin-react-refresh": "^0.5.2",
+    "globals": "^17.6.0",
+    "jsdom": "^29.1.1",
+    "knip": "^6.10.0",
+    "postcss": "^8.5.12",
+    "tailwindcss": "^3.4.19",
+    "typescript": "~6.0.2",
+    "typescript-eslint": "^8.59.1",
+    "vite": "^8.0.10",
+    "vitest": "^3.2.4"
+  },
+  "dependencies": {
+    "@aws-amplify/ui-react": "^6.15.3",
+    "@aws-amplify/ui-react-core": "^3.6.3",
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
+    "aws-amplify": "^6.16.4",
+    "react": "^19.2.5",
+    "react-dom": "^19.2.5",
+    "react-router-dom": "^7.14.2"
+  }
+}

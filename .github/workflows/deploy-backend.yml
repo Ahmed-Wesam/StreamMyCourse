@@ -1,0 +1,1027 @@
+# After CI succeeds on a push to main: deploy integ -> integ tests -> dev edge -> dev (backend +
+# student + teacher web in parallel) with prod edge in parallel to those three (prod edge only
+# needs integ + dev edge, not dev backend/SPA success). Prod RDS: deploy-rds-prod + apply-schema-prod
+# run after integ tests and successful dev edge (parallel with dev RDS). Prod backend waits for prod edge, prod RDS,
+# schema apply, dev column, then deploys with USE_RDS=true; verify-prod-rds runs after prod backend.
+# verify-dev-rds / verify-prod-rds call verify-rds-reusable.yml with environment-specific inputs + secret mapping only.
+# Prod SPAs run after prod edge (unchanged). Never prod-only on edge.
+# Manual dispatch: full or integ-only without waiting for CI (operator responsibility).
+#
+# Lambda zip is uploaded to catalog-{env}-{gitSha}.zip so LambdaCodeS3Key changes every commit
+# (CFN updates the function).
+name: Deploy
+
+on:
+  workflow_run:
+    workflows: [CI]
+    types:
+      - completed
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: "full = integ -> tests -> dev edge -> dev+prod edge (parallel) -> prod apps; integ-only = stop after integ tests"
+        required: true
+        default: "full"
+        type: choice
+        options:
+          - full
+          - integ-only
+
+permissions:
+  id-token: write
+  contents: read
+
+# One unified deploy at a time per branch; newer pushes wait for the current run to finish.
+concurrency:
+  group: deploy-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  AWS_REGION: eu-west-1
+
+jobs:
+  gate:
+    name: CI gate
+    runs-on: ubuntu-latest
+    outputs:
+      should_deploy: ${{ steps.pick.outputs.should_deploy }}
+      checkout_sha: ${{ steps.pick.outputs.checkout_sha }}
+    steps:
+      - id: pick
+        run: |
+          set -euo pipefail
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "should_deploy=true" >> "$GITHUB_OUTPUT"
+            echo "checkout_sha=${{ github.sha }}" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if [ "${{ github.event.workflow_run.conclusion }}" != "success" ]; then
+            echo "should_deploy=false" >> "$GITHUB_OUTPUT"
+            echo "checkout_sha=${{ github.event.workflow_run.head_sha }}" >> "$GITHUB_OUTPUT"
+            echo "Skipping deploy: CI workflow result was ${{ github.event.workflow_run.conclusion }}"
+            exit 0
+          fi
+          if [ "${{ github.event.workflow_run.event }}" != "push" ]; then
+            echo "should_deploy=false" >> "$GITHUB_OUTPUT"
+            echo "checkout_sha=${{ github.event.workflow_run.head_sha }}" >> "$GITHUB_OUTPUT"
+            echo "Skipping deploy: CI was not triggered by push (event=${{ github.event.workflow_run.event }})"
+            exit 0
+          fi
+          if [ "${{ github.event.workflow_run.head_branch }}" != "main" ]; then
+            echo "should_deploy=false" >> "$GITHUB_OUTPUT"
+            echo "checkout_sha=${{ github.event.workflow_run.head_sha }}" >> "$GITHUB_OUTPUT"
+            echo "Skipping deploy: CI head branch is not main (${{ github.event.workflow_run.head_branch }})"
+            exit 0
+          fi
+          echo "should_deploy=true" >> "$GITHUB_OUTPUT"
+          echo "checkout_sha=${{ github.event.workflow_run.head_sha }}" >> "$GITHUB_OUTPUT"
+
+  # --- Stage 1: integ -----------------------------------------------------------------
+  deploy-backend-integ:
+    name: Backend (integ) — Video + API
+    runs-on: ubuntu-latest
+    environment: dev
+    needs: gate
+    if: needs.gate.outputs.should_deploy == 'true'
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.gate.outputs.checkout_sha }}
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Deploy integ
+        run: |
+          chmod +x scripts/deploy-backend.sh
+          ./scripts/deploy-backend.sh integ
+
+      - name: Summary
+        if: success()
+        run: |
+          echo "## Backend integ" >> "$GITHUB_STEP_SUMMARY"
+          echo "Video stack + API stack for **integ** deployed (or no-op changeset)." >> "$GITHUB_STEP_SUMMARY"
+
+  # --- Stage 2: integ tests -----------------------------------------------------------
+  integ-tests:
+    name: Integ tests — pytest against deployed integ API
+    runs-on: ubuntu-latest
+    environment: dev
+    needs: [gate, deploy-backend-integ]
+    permissions:
+      id-token: write
+      contents: read
+    if: needs.gate.outputs.should_deploy == 'true' && needs.deploy-backend-integ.result == 'success'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.gate.outputs.checkout_sha }}
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+
+      - name: Install test dependencies
+        run: pip install -r tests/integration/requirements.txt
+
+      - name: Resolve integ stack outputs
+        id: outputs
+        run: |
+          API_BASE_URL="$(aws cloudformation describe-stacks \
+            --stack-name StreamMyCourse-Api-integ \
+            --region "${{ env.AWS_REGION }}" \
+            --query "Stacks[0].Outputs[?OutputKey=='ApiEndpoint'].OutputValue" \
+            --output text)"
+          VIDEO_BUCKET="$(aws cloudformation describe-stacks \
+            --stack-name StreamMyCourse-Video-integ \
+            --region "${{ env.AWS_REGION }}" \
+            --query "Stacks[0].Outputs[?OutputKey=='BucketName'].OutputValue" \
+            --output text)"
+          if [[ -z "$API_BASE_URL" || -z "$VIDEO_BUCKET" ]]; then
+            echo "Failed to resolve integ stack outputs (ApiEndpoint / BucketName)" >&2
+            exit 1
+          fi
+          {
+            echo "INTEG_API_BASE_URL=$API_BASE_URL"
+            echo "INTEG_TABLE_NAME=StreamMyCourse-Catalog-integ"
+            echo "INTEG_VIDEO_BUCKET=$VIDEO_BUCKET"
+            echo "INTEG_REGION=${{ env.AWS_REGION }}"
+          } >> "$GITHUB_ENV"
+          echo "Resolved integ API: $API_BASE_URL"
+          echo "Resolved integ bucket: $VIDEO_BUCKET"
+
+      - name: Run pytest
+        id: pytest
+        working-directory: tests/integration
+        run: pytest -q --junitxml=results.xml
+
+      - name: Summary
+        if: always()
+        run: |
+          if [[ "${{ steps.pytest.outcome }}" == "success" ]]; then
+            echo "## Integ tests: PASSED" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "## Integ tests: FAILED" >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Upload pytest results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: integ-test-results
+          path: tests/integration/results.xml
+          if-no-files-found: warn
+
+  # --- Stage 3: dev (edge infra then backend + web in parallel) -----------------------
+  deploy-edge-dev:
+    name: Edge (dev) — ACM cert + student + teacher web CF
+    runs-on: ubuntu-latest
+    environment: dev
+    needs: [gate, integ-tests]
+    permissions:
+      id-token: write
+      contents: read
+    if: |
+      always() && needs.gate.outputs.should_deploy == 'true' && needs.integ-tests.result == 'success' &&
+      (github.event_name == 'workflow_run' || (github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'full'))
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.gate.outputs.checkout_sha }}
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Deploy unified edge hosting (us-east-1)
+        env:
+          ROUTE53_HOSTED_ZONE_ID: ${{ vars.ROUTE53_HOSTED_ZONE_ID }}
+          STUDENT_WEB_DOMAIN: ${{ vars.STUDENT_WEB_DOMAIN }}
+          TEACHER_WEB_DOMAIN: ${{ vars.TEACHER_WEB_DOMAIN }}
+          WEB_CERT_DOMAIN: ${{ vars.WEB_CERT_DOMAIN }}
+          WEB_CERT_SANS: ${{ vars.WEB_CERT_SANS }}
+        run: |
+          chmod +x scripts/deploy-edge.sh
+          ./scripts/deploy-edge.sh dev
+
+      - name: Summary
+        if: success()
+        run: |
+          echo "## Edge (dev)" >> "$GITHUB_STEP_SUMMARY"
+          echo "**ACM + S3 + CloudFront** in **us-east-1** (StreamMyCourse-EdgeHosting-dev) deployed or no-op changeset." >> "$GITHUB_STEP_SUMMARY"
+
+  # Deploys the RDS PostgreSQL stack (1-AZ VPC + private db.t4g.micro + Secrets Manager
+  # + VPC endpoints) and the in-VPC schema-applier Lambda (S3 zip uploaded in this job).
+  # apply-schema-dev invokes that Lambda so the runner never needs TCP 5432 to RDS.
+  deploy-rds-dev:
+    name: RDS Stack (dev) — PostgreSQL + VPC
+    runs-on: ubuntu-latest
+    environment: dev
+    needs: [gate, integ-tests]
+    permissions:
+      id-token: write
+      contents: read
+    if: |
+      always() && needs.gate.outputs.should_deploy == 'true' && needs.integ-tests.result == 'success' &&
+      (github.event_name == 'workflow_run' || (github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'full'))
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.gate.outputs.checkout_sha }}
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+
+      - name: Package and upload schema-applier Lambda (psycopg2 + bundled SQL)
+        id: schema_pkg
+        env:
+          CHECKOUT_SHA: ${{ needs.gate.outputs.checkout_sha }}
+        run: |
+          set -euo pipefail
+          REGION="${{ env.AWS_REGION }}"
+          ACCOUNT="$(aws sts get-caller-identity --query Account --output text --region "$REGION")"
+          BUCKET="streammycourse-artifacts-${ACCOUNT}-${REGION}"
+          SHA="${CHECKOUT_SHA:?missing gate checkout_sha}"
+          SHORT="${SHA:0:12}"
+          KEY="rds-schema-apply-dev-${SHORT}.zip"
+          STAGE="$(mktemp -d)"
+          PKG="${STAGE}/pkg"
+          mkdir -p "$PKG"
+          cp "${{ github.workspace }}/infrastructure/lambda/rds_schema_apply/index.py" "$PKG/"
+          cp "${{ github.workspace }}/infrastructure/database/migrations/001_initial_schema.sql" "$PKG/schema.sql"
+          pip install psycopg2-binary==2.9.9 \
+            --quiet \
+            --platform manylinux2014_x86_64 \
+            --only-binary=:all: \
+            --python-version 3.11 \
+            --implementation cp \
+            -t "$PKG"
+          (cd "$PKG" && zip -rq "${STAGE}/bundle.zip" .)
+          aws s3 cp "${STAGE}/bundle.zip" "s3://${BUCKET}/${KEY}" --region "$REGION"
+          echo "bucket=${BUCKET}" >> "$GITHUB_OUTPUT"
+          echo "key=${KEY}" >> "$GITHUB_OUTPUT"
+          echo "Uploaded schema-applier s3://${BUCKET}/${KEY}"
+
+      - name: Deploy RDS stack (dev)
+        run: |
+          set -euo pipefail
+          BUCKET="${{ steps.schema_pkg.outputs.bucket }}"
+          KEY="${{ steps.schema_pkg.outputs.key }}"
+          aws cloudformation validate-template \
+            --template-body "file://${{ github.workspace }}/infrastructure/templates/rds-stack.yaml" \
+            --region "${{ env.AWS_REGION }}"
+          aws cloudformation deploy \
+            --template-file "${{ github.workspace }}/infrastructure/templates/rds-stack.yaml" \
+            --stack-name StreamMyCourse-Rds-dev \
+            --capabilities CAPABILITY_IAM CAPABILITY_NAMED_IAM \
+            --region "${{ env.AWS_REGION }}" \
+            --no-fail-on-empty-changeset \
+            --parameter-overrides \
+              "Environment=dev" \
+              "SchemaApplierCodeS3Bucket=${BUCKET}" \
+              "SchemaApplierCodeS3Key=${KEY}"
+
+      - name: Wait for RDS instance available
+        run: |
+          set -euo pipefail
+          aws rds wait db-instance-available \
+            --db-instance-identifier streammycourse-dev \
+            --region "${{ env.AWS_REGION }}"
+
+      - name: Summary
+        if: success()
+        run: |
+          echo "## RDS Stack (dev)" >> "$GITHUB_STEP_SUMMARY"
+          echo "StreamMyCourse-Rds-dev deployed (VPC + private RDS + Secrets Manager + VPC endpoints + schema-applier Lambda zip from CI)." >> "$GITHUB_STEP_SUMMARY"
+
+  # Invokes the VPC schema-applier Lambda (see rds-stack.yaml) — no psql from the runner.
+  apply-schema-dev:
+    name: Apply PostgreSQL schema (dev)
+    runs-on: ubuntu-latest
+    environment: dev
+    needs: [gate, deploy-rds-dev]
+    permissions:
+      id-token: write
+      contents: read
+    if: |
+      always() && needs.gate.outputs.should_deploy == 'true' &&
+      needs.deploy-rds-dev.result == 'success' &&
+      (github.event_name == 'workflow_run' || (github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'full'))
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.gate.outputs.checkout_sha }}
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Invoke schema-applier Lambda
+        run: |
+          set -euo pipefail
+          FN="$(aws cloudformation describe-stacks \
+            --stack-name StreamMyCourse-Rds-dev \
+            --region "${{ env.AWS_REGION }}" \
+            --query "Stacks[0].Outputs[?OutputKey=='SchemaApplierFunctionName'].OutputValue" \
+            --output text)"
+          if [[ -z "$FN" || "$FN" == "None" ]]; then
+            echo "Missing CloudFormation output SchemaApplierFunctionName. Deploy RDS with SchemaApplierCodeS3Bucket/Key." >&2
+            exit 1
+          fi
+          OUT=/tmp/schema-invoke.json
+          aws lambda invoke \
+            --region "${{ env.AWS_REGION }}" \
+            --function-name "$FN" \
+            --cli-binary-format raw-in-base64-out \
+            --payload '{}' \
+            "$OUT"
+          # Sync invoke: outfile is the Lambda payload only. Unhandled errors use errorMessage (no .ok).
+          if jq -e 'has("errorMessage")' "$OUT" >/dev/null 2>&1; then
+            echo "Schema applier Lambda raised (FunctionError)" >&2
+            jq -c '{errorMessage, errorType}' "$OUT" >&2
+            exit 1
+          fi
+          if ! jq -e '.ok == true' "$OUT" >/dev/null 2>&1; then
+            echo "Schema applier returned non-success payload:" >&2
+            jq -c '{ok, error}' "$OUT" >&2 || cat "$OUT" >&2
+            exit 1
+          fi
+
+      - name: Summary
+        if: success()
+        run: |
+          echo "## PostgreSQL schema (dev)" >> "$GITHUB_STEP_SUMMARY"
+          echo "Invoked **StreamMyCourse-RdsSchemaApplier-dev** (001_initial_schema.sql via VPC Lambda)." >> "$GITHUB_STEP_SUMMARY"
+
+  deploy-backend-dev:
+    name: Backend (dev) — Video + API
+    runs-on: ubuntu-latest
+    environment: dev
+    needs: [gate, integ-tests, deploy-edge-dev, deploy-rds-dev, apply-schema-dev]
+    permissions:
+      id-token: write
+      contents: read
+    if: |
+      always() && needs.gate.outputs.should_deploy == 'true' && needs.integ-tests.result == 'success' &&
+      needs.deploy-edge-dev.result == 'success' &&
+      needs.deploy-rds-dev.result == 'success' &&
+      needs.apply-schema-dev.result == 'success' &&
+      (github.event_name == 'workflow_run' || (github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'full'))
+    env:
+      # Wire the catalog Lambda to RDS in dev. Flip USE_RDS=false and redeploy
+      # (or unset RDS_STACK_NAME) to roll back to DynamoDB.
+      RDS_STACK_NAME: StreamMyCourse-Rds-dev
+      USE_RDS: "true"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.gate.outputs.checkout_sha }}
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Require Cognito configuration
+        env:
+          COGNITO_DOMAIN_PREFIX: ${{ vars.COGNITO_DOMAIN_PREFIX }}
+        run: |
+          set -euo pipefail
+          if [[ -z "${COGNITO_DOMAIN_PREFIX}" ]]; then
+            echo "GitHub Environment variable COGNITO_DOMAIN_PREFIX must be set for full deploy (auth stack is required)." >&2
+            exit 1
+          fi
+
+      - name: Require Google OAuth
+        env:
+          GOOGLE_OAUTH_CLIENT_ID: ${{ secrets.GOOGLE_OAUTH_CLIENT_ID }}
+          GOOGLE_OAUTH_CLIENT_SECRET: ${{ secrets.GOOGLE_OAUTH_CLIENT_SECRET }}
+        run: |
+          set -euo pipefail
+          if [[ -z "${GOOGLE_OAUTH_CLIENT_ID}" || -z "${GOOGLE_OAUTH_CLIENT_SECRET}" ]]; then
+            echo "GitHub Environment secrets GOOGLE_OAUTH_CLIENT_ID and GOOGLE_OAUTH_CLIENT_SECRET must be set for full deploy (Google-federation-only auth stack)." >&2
+            exit 1
+          fi
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+
+      - name: Package and upload Cognito user profile sync Lambda (dev)
+        id: cognito_sync_pkg
+        env:
+          CHECKOUT_SHA: ${{ needs.gate.outputs.checkout_sha }}
+        run: |
+          set -euo pipefail
+          REGION="${{ env.AWS_REGION }}"
+          ACCOUNT="$(aws sts get-caller-identity --query Account --output text --region "$REGION")"
+          BUCKET="streammycourse-artifacts-${ACCOUNT}-${REGION}"
+          SHA="${CHECKOUT_SHA:?missing gate checkout_sha}"
+          SHORT="${SHA:0:12}"
+          KEY="cognito-user-profile-sync-dev-${SHORT}.zip"
+          STAGE="$(mktemp -d)"
+          PKG="$STAGE/pkg"
+          mkdir -p "$PKG"
+          WS="${{ github.workspace }}"
+          cp "$WS/infrastructure/lambda/cognito_user_profile_sync/_vendor_bootstrap.py" "$PKG/"
+          cp "$WS/infrastructure/lambda/cognito_user_profile_sync/handler.py" "$PKG/"
+          cp "$WS/infrastructure/lambda/cognito_user_profile_sync/sync_config.py" "$PKG/"
+          cp "$WS/infrastructure/lambda/cognito_user_profile_sync/repo.py" "$PKG/"
+          pip install psycopg2-binary==2.9.9 \
+            --quiet \
+            --platform manylinux2014_x86_64 \
+            --only-binary=:all: \
+            --python-version 3.11 \
+            --implementation cp \
+            -t "$PKG/_vendor"
+          (cd "$PKG" && zip -rq "$STAGE/bundle.zip" .)
+          aws s3 cp "$STAGE/bundle.zip" "s3://${BUCKET}/${KEY}" --region "$REGION"
+          echo "bucket=${BUCKET}" >> "$GITHUB_OUTPUT"
+          echo "key=${KEY}" >> "$GITHUB_OUTPUT"
+          echo "Uploaded Cognito profile sync s3://${BUCKET}/${KEY}"
+
+      - name: Deploy auth (dev) — Cognito
+        run: |
+          set -euo pipefail
+          STACK="StreamMyCourse-Auth-dev"
+          aws cloudformation validate-template \
+            --template-body "file://${{ github.workspace }}/infrastructure/templates/auth-stack.yaml" \
+            --region "${{ env.AWS_REGION }}"
+          aws cloudformation deploy \
+            --template-file "${{ github.workspace }}/infrastructure/templates/auth-stack.yaml" \
+            --stack-name "$STACK" \
+            --capabilities CAPABILITY_IAM CAPABILITY_NAMED_IAM \
+            --region "${{ env.AWS_REGION }}" \
+            --no-fail-on-empty-changeset \
+            --parameter-overrides \
+              "Environment=dev" \
+              "CognitoDomainPrefix=${{ vars.COGNITO_DOMAIN_PREFIX }}" \
+              ${STUDENT_COGNITO_CALLBACK_URLS:+StudentCallbackUrls=${STUDENT_COGNITO_CALLBACK_URLS}} \
+              ${STUDENT_COGNITO_LOGOUT_URLS:+StudentLogoutUrls=${STUDENT_COGNITO_LOGOUT_URLS}} \
+              ${TEACHER_COGNITO_CALLBACK_URLS:+TeacherCallbackUrls=${TEACHER_COGNITO_CALLBACK_URLS}} \
+              ${TEACHER_COGNITO_LOGOUT_URLS:+TeacherLogoutUrls=${TEACHER_COGNITO_LOGOUT_URLS}} \
+              "GoogleClientId=${GOOGLE_OAUTH_CLIENT_ID}" \
+              "GoogleClientSecret=${GOOGLE_OAUTH_CLIENT_SECRET}" \
+              "RdsStackName=StreamMyCourse-Rds-dev" \
+              "EnableUserProfileSync=true" \
+              "CognitoUserProfileSyncCodeS3Bucket=${{ steps.cognito_sync_pkg.outputs.bucket }}" \
+              "CognitoUserProfileSyncCodeS3Key=${{ steps.cognito_sync_pkg.outputs.key }}"
+
+          USER_POOL_ARN="$(aws cloudformation describe-stacks \
+            --stack-name "$STACK" \
+            --region "${{ env.AWS_REGION }}" \
+            --query "Stacks[0].Outputs[?OutputKey=='UserPoolArn'].OutputValue" \
+            --output text)"
+          if [[ -z "$USER_POOL_ARN" ]]; then
+            echo "Failed to resolve UserPoolArn output from $STACK" >&2
+            exit 1
+          fi
+          echo "COGNITO_USER_POOL_ARN=$USER_POOL_ARN" >> "$GITHUB_ENV"
+        env:
+          STUDENT_COGNITO_CALLBACK_URLS: ${{ vars.STUDENT_COGNITO_CALLBACK_URLS }}
+          STUDENT_COGNITO_LOGOUT_URLS: ${{ vars.STUDENT_COGNITO_LOGOUT_URLS }}
+          TEACHER_COGNITO_CALLBACK_URLS: ${{ vars.TEACHER_COGNITO_CALLBACK_URLS }}
+          TEACHER_COGNITO_LOGOUT_URLS: ${{ vars.TEACHER_COGNITO_LOGOUT_URLS }}
+          GOOGLE_OAUTH_CLIENT_ID: ${{ secrets.GOOGLE_OAUTH_CLIENT_ID }}
+          GOOGLE_OAUTH_CLIENT_SECRET: ${{ secrets.GOOGLE_OAUTH_CLIENT_SECRET }}
+
+      - name: Deploy dev
+        run: |
+          chmod +x scripts/deploy-backend.sh
+          ./scripts/deploy-backend.sh dev
+
+      - name: Summary
+        if: success()
+        run: |
+          echo "## Backend dev" >> "$GITHUB_STEP_SUMMARY"
+          echo "Video stack + API stack for **dev** deployed (or no-op changeset)." >> "$GITHUB_STEP_SUMMARY"
+
+  deploy-web-dev:
+    name: Web (dev)
+    needs: [gate, integ-tests, deploy-edge-dev]
+    if: |
+      always() && needs.gate.outputs.should_deploy == 'true' && needs.integ-tests.result == 'success' &&
+      needs.deploy-edge-dev.result == 'success' &&
+      (github.event_name == 'workflow_run' || (github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'full'))
+    uses: ./.github/workflows/deploy-web-reusable.yml
+    secrets:
+      AWS_DEPLOY_ROLE_ARN: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+      VITE_API_BASE_URL: ${{ secrets.VITE_API_BASE_URL }}
+      VITE_COGNITO_USER_POOL_ID: ${{ secrets.VITE_COGNITO_USER_POOL_ID }}
+      VITE_COGNITO_STUDENT_CLIENT_ID: ${{ secrets.VITE_COGNITO_STUDENT_CLIENT_ID }}
+      VITE_COGNITO_DOMAIN: ${{ secrets.VITE_COGNITO_DOMAIN }}
+    with:
+      target_environment: dev
+      checkout_ref: ${{ needs.gate.outputs.checkout_sha }}
+
+  deploy-teacher-web-dev:
+    name: Teacher Web (dev)
+    needs: [gate, integ-tests, deploy-edge-dev]
+    if: |
+      always() && needs.gate.outputs.should_deploy == 'true' && needs.integ-tests.result == 'success' &&
+      needs.deploy-edge-dev.result == 'success' &&
+      (github.event_name == 'workflow_run' || (github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'full'))
+    uses: ./.github/workflows/deploy-teacher-web-reusable.yml
+    secrets:
+      AWS_DEPLOY_ROLE_ARN: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+      VITE_API_BASE_URL: ${{ secrets.VITE_API_BASE_URL }}
+      VITE_COGNITO_USER_POOL_ID: ${{ secrets.VITE_COGNITO_USER_POOL_ID }}
+      VITE_COGNITO_TEACHER_CLIENT_ID: ${{ secrets.VITE_COGNITO_TEACHER_CLIENT_ID }}
+      VITE_COGNITO_DOMAIN: ${{ secrets.VITE_COGNITO_DOMAIN }}
+    with:
+      target_environment: dev
+      checkout_ref: ${{ needs.gate.outputs.checkout_sha }}
+
+  # Runs the RDS-specific integration tests against the deployed dev API. These tests
+  # skip unless USE_RDS=true is set, so this job is the RDS smoke check: if the API
+  # is wired to RDS end-to-end, a course create + read round-trips through PostgreSQL.
+  # Dev-only CloudFormation inputs; Cognito/AWS creds come from GitHub Environment "dev" inside verify-rds-reusable.yml.
+  verify-dev-rds:
+    name: Verify dev RDS (integration tests)
+    uses: ./.github/workflows/verify-rds-reusable.yml
+    secrets:
+      # Repository secrets (job cannot set `environment` when using only `uses:`). Copy values from Environment "dev" secrets of the same name into repo Actions secrets.
+      COGNITO_RDS_VERIFY_TEST_PASSWORD: ${{ secrets.COGNITO_RDS_VERIFY_TEST_PASSWORD }}
+      COGNITO_RDS_VERIFY_JWT: ${{ secrets.COGNITO_RDS_VERIFY_JWT }}
+    needs: [gate, deploy-backend-dev]
+    if: |
+      always() && needs.gate.outputs.should_deploy == 'true' &&
+      needs.deploy-backend-dev.result == 'success' &&
+      (github.event_name == 'workflow_run' || (github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'full'))
+    with:
+      github_environment: dev
+      checkout_ref: ${{ needs.gate.outputs.checkout_sha }}
+      aws_deploy_role_arn: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+      # Must match workflow env.AWS_REGION (not available in workflow_call `with` context).
+      aws_region: eu-west-1
+      # dev API stack uses legacy lowercase name; see scripts/deploy-backend.sh.
+      api_stack_name: streammycourse-api
+      video_stack_name: StreamMyCourse-Video-dev
+      auth_stack_name: StreamMyCourse-Auth-dev
+      catalog_table_name: StreamMyCourse-Catalog-dev
+      target_label: dev
+      api_endpoint_description: streammycourse-api (dev)
+
+  # --- Stage 4: prod (prod edge in parallel with dev backend + SPAs; then prod app deploys) ---
+  deploy-edge-prod:
+    name: Edge (prod) — ACM cert + student + teacher web CF
+    runs-on: ubuntu-latest
+    environment: prod
+    needs: [gate, integ-tests, deploy-edge-dev]
+    permissions:
+      id-token: write
+      contents: read
+    if: |
+      always() &&
+      needs.gate.outputs.should_deploy == 'true' &&
+      needs.integ-tests.result == 'success' &&
+      needs.deploy-edge-dev.result == 'success' &&
+      (github.event_name == 'workflow_run' || (github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'full'))
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.gate.outputs.checkout_sha }}
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Deploy unified edge hosting (us-east-1)
+        env:
+          ROUTE53_HOSTED_ZONE_ID: ${{ vars.ROUTE53_HOSTED_ZONE_ID }}
+          STUDENT_WEB_DOMAIN: ${{ vars.STUDENT_WEB_DOMAIN }}
+          TEACHER_WEB_DOMAIN: ${{ vars.TEACHER_WEB_DOMAIN }}
+          WEB_CERT_DOMAIN: ${{ vars.WEB_CERT_DOMAIN }}
+          WEB_CERT_SANS: ${{ vars.WEB_CERT_SANS }}
+        run: |
+          chmod +x scripts/deploy-edge.sh
+          ./scripts/deploy-edge.sh prod
+
+      - name: Summary
+        if: success()
+        run: |
+          echo "## Edge (prod)" >> "$GITHUB_STEP_SUMMARY"
+          echo "**ACM + S3 + CloudFront** in **us-east-1** (StreamMyCourse-EdgeHosting-prod) deployed or no-op changeset." >> "$GITHUB_STEP_SUMMARY"
+
+  deploy-rds-prod:
+    name: RDS Stack (prod) — PostgreSQL + VPC
+    runs-on: ubuntu-latest
+    environment: prod
+    needs: [gate, integ-tests, deploy-edge-dev]
+    permissions:
+      id-token: write
+      contents: read
+    if: |
+      always() && needs.gate.outputs.should_deploy == 'true' && needs.integ-tests.result == 'success' &&
+      needs.deploy-edge-dev.result == 'success' &&
+      (github.event_name == 'workflow_run' || (github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'full'))
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.gate.outputs.checkout_sha }}
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+
+      - name: Package and upload schema-applier Lambda (psycopg2 + bundled SQL)
+        id: schema_pkg_prod
+        env:
+          CHECKOUT_SHA: ${{ needs.gate.outputs.checkout_sha }}
+        run: |
+          set -euo pipefail
+          REGION="${{ env.AWS_REGION }}"
+          ACCOUNT="$(aws sts get-caller-identity --query Account --output text --region "$REGION")"
+          BUCKET="streammycourse-artifacts-${ACCOUNT}-${REGION}"
+          SHA="${CHECKOUT_SHA:?missing gate checkout_sha}"
+          SHORT="${SHA:0:12}"
+          KEY="rds-schema-apply-prod-${SHORT}.zip"
+          STAGE="$(mktemp -d)"
+          PKG="${STAGE}/pkg"
+          mkdir -p "$PKG"
+          cp "${{ github.workspace }}/infrastructure/lambda/rds_schema_apply/index.py" "$PKG/"
+          cp "${{ github.workspace }}/infrastructure/database/migrations/001_initial_schema.sql" "$PKG/schema.sql"
+          pip install psycopg2-binary==2.9.9 \
+            --quiet \
+            --platform manylinux2014_x86_64 \
+            --only-binary=:all: \
+            --python-version 3.11 \
+            --implementation cp \
+            -t "$PKG"
+          (cd "$PKG" && zip -rq "${STAGE}/bundle.zip" .)
+          aws s3 cp "${STAGE}/bundle.zip" "s3://${BUCKET}/${KEY}" --region "$REGION"
+          echo "bucket=${BUCKET}" >> "$GITHUB_OUTPUT"
+          echo "key=${KEY}" >> "$GITHUB_OUTPUT"
+          echo "Uploaded schema-applier s3://${BUCKET}/${KEY}"
+
+      - name: Deploy RDS stack (prod)
+        run: |
+          set -euo pipefail
+          BUCKET="${{ steps.schema_pkg_prod.outputs.bucket }}"
+          KEY="${{ steps.schema_pkg_prod.outputs.key }}"
+          aws cloudformation validate-template \
+            --template-body "file://${{ github.workspace }}/infrastructure/templates/rds-stack.yaml" \
+            --region "${{ env.AWS_REGION }}"
+          aws cloudformation deploy \
+            --template-file "${{ github.workspace }}/infrastructure/templates/rds-stack.yaml" \
+            --stack-name StreamMyCourse-Rds-prod \
+            --capabilities CAPABILITY_IAM CAPABILITY_NAMED_IAM \
+            --region "${{ env.AWS_REGION }}" \
+            --no-fail-on-empty-changeset \
+            --parameter-overrides \
+              "Environment=prod" \
+              "SchemaApplierCodeS3Bucket=${BUCKET}" \
+              "SchemaApplierCodeS3Key=${KEY}"
+
+      - name: Wait for RDS instance available
+        run: |
+          set -euo pipefail
+          aws rds wait db-instance-available \
+            --db-instance-identifier streammycourse-prod \
+            --region "${{ env.AWS_REGION }}"
+
+      - name: Summary
+        if: success()
+        run: |
+          echo "## RDS Stack (prod)" >> "$GITHUB_STEP_SUMMARY"
+          echo "StreamMyCourse-Rds-prod deployed (VPC + private RDS + Secrets Manager + VPC endpoints + schema-applier Lambda zip from CI)." >> "$GITHUB_STEP_SUMMARY"
+
+  apply-schema-prod:
+    name: Apply PostgreSQL schema (prod)
+    runs-on: ubuntu-latest
+    environment: prod
+    needs: [gate, deploy-rds-prod]
+    permissions:
+      id-token: write
+      contents: read
+    if: |
+      always() && needs.gate.outputs.should_deploy == 'true' &&
+      needs.deploy-rds-prod.result == 'success' &&
+      (github.event_name == 'workflow_run' || (github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'full'))
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.gate.outputs.checkout_sha }}
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Invoke schema-applier Lambda
+        run: |
+          set -euo pipefail
+          FN="$(aws cloudformation describe-stacks \
+            --stack-name StreamMyCourse-Rds-prod \
+            --region "${{ env.AWS_REGION }}" \
+            --query "Stacks[0].Outputs[?OutputKey=='SchemaApplierFunctionName'].OutputValue" \
+            --output text)"
+          if [[ -z "$FN" || "$FN" == "None" ]]; then
+            echo "Missing CloudFormation output SchemaApplierFunctionName. Deploy RDS with SchemaApplierCodeS3Bucket/Key." >&2
+            exit 1
+          fi
+          OUT=/tmp/schema-invoke-prod.json
+          aws lambda invoke \
+            --region "${{ env.AWS_REGION }}" \
+            --function-name "$FN" \
+            --cli-binary-format raw-in-base64-out \
+            --payload '{}' \
+            "$OUT"
+          if jq -e 'has("errorMessage")' "$OUT" >/dev/null 2>&1; then
+            echo "Schema applier Lambda raised (FunctionError)" >&2
+            jq -c '{errorMessage, errorType}' "$OUT" >&2
+            exit 1
+          fi
+          if ! jq -e '.ok == true' "$OUT" >/dev/null 2>&1; then
+            echo "Schema applier returned non-success payload:" >&2
+            jq -c '{ok, error}' "$OUT" >&2 || cat "$OUT" >&2
+            exit 1
+          fi
+
+      - name: Summary
+        if: success()
+        run: |
+          echo "## PostgreSQL schema (prod)" >> "$GITHUB_STEP_SUMMARY"
+          echo "Invoked **StreamMyCourse-RdsSchemaApplier-prod** (001_initial_schema.sql via VPC Lambda)." >> "$GITHUB_STEP_SUMMARY"
+
+  deploy-backend-prod:
+    name: Backend (prod) — Video + API
+    runs-on: ubuntu-latest
+    environment: prod
+    needs:
+      - gate
+      - deploy-backend-integ
+      - integ-tests
+      - deploy-edge-dev
+      - deploy-backend-dev
+      - deploy-web-dev
+      - deploy-teacher-web-dev
+      - deploy-edge-prod
+      - deploy-rds-prod
+      - apply-schema-prod
+    permissions:
+      id-token: write
+      contents: read
+    if: |
+      always() &&
+      needs.gate.outputs.should_deploy == 'true' &&
+      needs.deploy-backend-integ.result == 'success' &&
+      needs.integ-tests.result == 'success' &&
+      needs.deploy-edge-dev.result == 'success' &&
+      needs.deploy-backend-dev.result == 'success' &&
+      needs.deploy-web-dev.result == 'success' &&
+      needs.deploy-teacher-web-dev.result == 'success' &&
+      needs.deploy-edge-prod.result == 'success' &&
+      needs.deploy-rds-prod.result == 'success' &&
+      needs.apply-schema-prod.result == 'success' &&
+      (github.event_name == 'workflow_run' || (github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'full'))
+    env:
+      RDS_STACK_NAME: StreamMyCourse-Rds-prod
+      USE_RDS: "true"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.gate.outputs.checkout_sha }}
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Require Cognito configuration
+        env:
+          COGNITO_DOMAIN_PREFIX: ${{ vars.COGNITO_DOMAIN_PREFIX }}
+        run: |
+          set -euo pipefail
+          if [[ -z "${COGNITO_DOMAIN_PREFIX}" ]]; then
+            echo "GitHub Environment variable COGNITO_DOMAIN_PREFIX must be set for full deploy (auth stack is required)." >&2
+            exit 1
+          fi
+
+      - name: Require Google OAuth
+        env:
+          GOOGLE_OAUTH_CLIENT_ID: ${{ secrets.GOOGLE_OAUTH_CLIENT_ID }}
+          GOOGLE_OAUTH_CLIENT_SECRET: ${{ secrets.GOOGLE_OAUTH_CLIENT_SECRET }}
+        run: |
+          set -euo pipefail
+          if [[ -z "${GOOGLE_OAUTH_CLIENT_ID}" || -z "${GOOGLE_OAUTH_CLIENT_SECRET}" ]]; then
+            echo "GitHub Environment secrets GOOGLE_OAUTH_CLIENT_ID and GOOGLE_OAUTH_CLIENT_SECRET must be set for full deploy (Google-federation-only auth stack)." >&2
+            exit 1
+          fi
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+
+      - name: Package and upload Cognito user profile sync Lambda (prod)
+        id: cognito_sync_pkg_prod
+        env:
+          CHECKOUT_SHA: ${{ needs.gate.outputs.checkout_sha }}
+        run: |
+          set -euo pipefail
+          REGION="${{ env.AWS_REGION }}"
+          ACCOUNT="$(aws sts get-caller-identity --query Account --output text --region "$REGION")"
+          BUCKET="streammycourse-artifacts-${ACCOUNT}-${REGION}"
+          SHA="${CHECKOUT_SHA:?missing gate checkout_sha}"
+          SHORT="${SHA:0:12}"
+          KEY="cognito-user-profile-sync-prod-${SHORT}.zip"
+          STAGE="$(mktemp -d)"
+          PKG="$STAGE/pkg"
+          mkdir -p "$PKG"
+          WS="${{ github.workspace }}"
+          cp "$WS/infrastructure/lambda/cognito_user_profile_sync/_vendor_bootstrap.py" "$PKG/"
+          cp "$WS/infrastructure/lambda/cognito_user_profile_sync/handler.py" "$PKG/"
+          cp "$WS/infrastructure/lambda/cognito_user_profile_sync/sync_config.py" "$PKG/"
+          cp "$WS/infrastructure/lambda/cognito_user_profile_sync/repo.py" "$PKG/"
+          pip install psycopg2-binary==2.9.9 \
+            --quiet \
+            --platform manylinux2014_x86_64 \
+            --only-binary=:all: \
+            --python-version 3.11 \
+            --implementation cp \
+            -t "$PKG/_vendor"
+          (cd "$PKG" && zip -rq "$STAGE/bundle.zip" .)
+          aws s3 cp "$STAGE/bundle.zip" "s3://${BUCKET}/${KEY}" --region "$REGION"
+          echo "bucket=${BUCKET}" >> "$GITHUB_OUTPUT"
+          echo "key=${KEY}" >> "$GITHUB_OUTPUT"
+          echo "Uploaded Cognito profile sync s3://${BUCKET}/${KEY}"
+
+      - name: Deploy auth (prod) — Cognito
+        run: |
+          set -euo pipefail
+          STACK="StreamMyCourse-Auth-prod"
+          aws cloudformation validate-template \
+            --template-body "file://${{ github.workspace }}/infrastructure/templates/auth-stack.yaml" \
+            --region "${{ env.AWS_REGION }}"
+          aws cloudformation deploy \
+            --template-file "${{ github.workspace }}/infrastructure/templates/auth-stack.yaml" \
+            --stack-name "$STACK" \
+            --capabilities CAPABILITY_IAM CAPABILITY_NAMED_IAM \
+            --region "${{ env.AWS_REGION }}" \
+            --no-fail-on-empty-changeset \
+            --parameter-overrides \
+              "Environment=prod" \
+              "CognitoDomainPrefix=${{ vars.COGNITO_DOMAIN_PREFIX }}" \
+              ${STUDENT_COGNITO_CALLBACK_URLS:+StudentCallbackUrls=${STUDENT_COGNITO_CALLBACK_URLS}} \
+              ${STUDENT_COGNITO_LOGOUT_URLS:+StudentLogoutUrls=${STUDENT_COGNITO_LOGOUT_URLS}} \
+              ${TEACHER_COGNITO_CALLBACK_URLS:+TeacherCallbackUrls=${TEACHER_COGNITO_CALLBACK_URLS}} \
+              ${TEACHER_COGNITO_LOGOUT_URLS:+TeacherLogoutUrls=${TEACHER_COGNITO_LOGOUT_URLS}} \
+              "GoogleClientId=${GOOGLE_OAUTH_CLIENT_ID}" \
+              "GoogleClientSecret=${GOOGLE_OAUTH_CLIENT_SECRET}" \
+              "RdsStackName=StreamMyCourse-Rds-prod" \
+              "EnableUserProfileSync=true" \
+              "CognitoUserProfileSyncCodeS3Bucket=${{ steps.cognito_sync_pkg_prod.outputs.bucket }}" \
+              "CognitoUserProfileSyncCodeS3Key=${{ steps.cognito_sync_pkg_prod.outputs.key }}"
+
+          USER_POOL_ARN="$(aws cloudformation describe-stacks \
+            --stack-name "$STACK" \
+            --region "${{ env.AWS_REGION }}" \
+            --query "Stacks[0].Outputs[?OutputKey=='UserPoolArn'].OutputValue" \
+            --output text)"
+          if [[ -z "$USER_POOL_ARN" ]]; then
+            echo "Failed to resolve UserPoolArn output from $STACK" >&2
+            exit 1
+          fi
+          echo "COGNITO_USER_POOL_ARN=$USER_POOL_ARN" >> "$GITHUB_ENV"
+        env:
+          STUDENT_COGNITO_CALLBACK_URLS: ${{ vars.STUDENT_COGNITO_CALLBACK_URLS }}
+          STUDENT_COGNITO_LOGOUT_URLS: ${{ vars.STUDENT_COGNITO_LOGOUT_URLS }}
+          TEACHER_COGNITO_CALLBACK_URLS: ${{ vars.TEACHER_COGNITO_CALLBACK_URLS }}
+          TEACHER_COGNITO_LOGOUT_URLS: ${{ vars.TEACHER_COGNITO_LOGOUT_URLS }}
+          GOOGLE_OAUTH_CLIENT_ID: ${{ secrets.GOOGLE_OAUTH_CLIENT_ID }}
+          GOOGLE_OAUTH_CLIENT_SECRET: ${{ secrets.GOOGLE_OAUTH_CLIENT_SECRET }}
+
+      - name: Deploy prod
+        run: |
+          chmod +x scripts/deploy-backend.sh
+          ./scripts/deploy-backend.sh prod
+
+      - name: Summary
+        if: success()
+        run: |
+          echo "## Backend prod" >> "$GITHUB_STEP_SUMMARY"
+          echo "Video stack + API stack for **prod** deployed (or no-op changeset)." >> "$GITHUB_STEP_SUMMARY"
+
+  # Prod-only CloudFormation inputs; creds from GitHub Environment "prod" inside verify-rds-reusable.yml.
+  verify-prod-rds:
+    name: Verify prod RDS (integration tests)
+    uses: ./.github/workflows/verify-rds-reusable.yml
+    secrets:
+      COGNITO_RDS_VERIFY_TEST_PASSWORD: ${{ secrets.COGNITO_RDS_VERIFY_TEST_PASSWORD }}
+      COGNITO_RDS_VERIFY_JWT: ${{ secrets.COGNITO_RDS_VERIFY_JWT }}
+    needs: [gate, deploy-backend-prod]
+    if: |
+      always() && needs.gate.outputs.should_deploy == 'true' &&
+      needs.deploy-backend-prod.result == 'success' &&
+      (github.event_name == 'workflow_run' || (github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'full'))
+    with:
+      github_environment: prod
+      checkout_ref: ${{ needs.gate.outputs.checkout_sha }}
+      aws_deploy_role_arn: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+      aws_region: eu-west-1
+      api_stack_name: StreamMyCourse-Api-prod
+      video_stack_name: StreamMyCourse-Video-prod
+      auth_stack_name: StreamMyCourse-Auth-prod
+      catalog_table_name: StreamMyCourse-Catalog-prod
+      target_label: prod
+      api_endpoint_description: StreamMyCourse-Api-prod
+
+  deploy-web-prod:
+    name: Web (prod)
+    needs:
+      - gate
+      - deploy-backend-integ
+      - integ-tests
+      - deploy-edge-dev
+      - deploy-backend-dev
+      - deploy-web-dev
+      - deploy-teacher-web-dev
+      - deploy-edge-prod
+    if: |
+      always() &&
+      needs.gate.outputs.should_deploy == 'true' &&
+      needs.deploy-backend-integ.result == 'success' &&
+      needs.integ-tests.result == 'success' &&
+      needs.deploy-edge-dev.result == 'success' &&
+      needs.deploy-backend-dev.result == 'success' &&
+      needs.deploy-web-dev.result == 'success' &&
+      needs.deploy-teacher-web-dev.result == 'success' &&
+      needs.deploy-edge-prod.result == 'success' &&
+      (github.event_name == 'workflow_run' || (github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'full'))
+    uses: ./.github/workflows/deploy-web-reusable.yml
+    secrets:
+      AWS_DEPLOY_ROLE_ARN: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+      VITE_API_BASE_URL: ${{ secrets.VITE_API_BASE_URL }}
+      VITE_COGNITO_USER_POOL_ID: ${{ secrets.VITE_COGNITO_USER_POOL_ID }}
+      VITE_COGNITO_STUDENT_CLIENT_ID: ${{ secrets.VITE_COGNITO_STUDENT_CLIENT_ID }}
+      VITE_COGNITO_DOMAIN: ${{ secrets.VITE_COGNITO_DOMAIN }}
+    with:
+      target_environment: prod
+      checkout_ref: ${{ needs.gate.outputs.checkout_sha }}
+
+  deploy-teacher-web-prod:
+    name: Teacher Web (prod)
+    needs:
+      - gate
+      - deploy-backend-integ
+      - integ-tests
+      - deploy-edge-dev
+      - deploy-backend-dev
+      - deploy-web-dev
+      - deploy-teacher-web-dev
+      - deploy-edge-prod
+    if: |
+      always() &&
+      needs.gate.outputs.should_deploy == 'true' &&
+      needs.deploy-backend-integ.result == 'success' &&
+      needs.integ-tests.result == 'success' &&
+      needs.deploy-edge-dev.result == 'success' &&
+      needs.deploy-backend-dev.result == 'success' &&
+      needs.deploy-web-dev.result == 'success' &&
+      needs.deploy-teacher-web-dev.result == 'success' &&
+      needs.deploy-edge-prod.result == 'success' &&
+      (github.event_name == 'workflow_run' || (github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'full'))
+    uses: ./.github/workflows/deploy-teacher-web-reusable.yml
+    secrets:
+      AWS_DEPLOY_ROLE_ARN: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+      VITE_API_BASE_URL: ${{ secrets.VITE_API_BASE_URL }}
+      VITE_COGNITO_USER_POOL_ID: ${{ secrets.VITE_COGNITO_USER_POOL_ID }}
+      VITE_COGNITO_TEACHER_CLIENT_ID: ${{ secrets.VITE_COGNITO_TEACHER_CLIENT_ID }}
+      VITE_COGNITO_DOMAIN: ${{ secrets.VITE_COGNITO_DOMAIN }}
+    with:
+      target_environment: prod
+      checkout_ref: ${{ needs.gate.outputs.checkout_sha }}

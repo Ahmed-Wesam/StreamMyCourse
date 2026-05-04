@@ -1,0 +1,461 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'StreamMyCourse - RDS PostgreSQL Stack (1-AZ VPC, private RDS, Secrets Manager, VPC endpoints)'
+
+# Layout (single AZ for MVP cost):
+#   VPC 10.0.0.0/16
+#     Public subnet  10.0.1.0/24  (reserved for future bastion / NAT; currently no resources)
+#     Private subnet 10.0.2.0/24  (Lambda ENIs, RDS instance)
+# RDS is not publicly accessible. Lambda reaches AWS services via:
+#   - VPC Interface Endpoints: Secrets Manager, CloudWatch Logs (~$7.20/mo each)
+#   - VPC Gateway Endpoints:   S3, DynamoDB (free; S3 for presign, DynamoDB for rollback)
+
+Parameters:
+  Environment:
+    Type: String
+    Default: dev
+    AllowedValues:
+      - dev
+      - integ
+      - staging
+      - prod
+    Description: Deployment environment
+
+  DbName:
+    Type: String
+    Default: streammycourse
+    AllowedPattern: '^[A-Za-z][A-Za-z0-9_]{0,62}$'
+    Description: Initial PostgreSQL database name
+    MinLength: 1
+    MaxLength: 63
+
+  DbMasterUsername:
+    Type: String
+    Default: smc_app
+    AllowedPattern: '^[A-Za-z][A-Za-z0-9_]{0,62}$'
+    Description: RDS master username (stored in Secrets Manager alongside the generated password)
+    MinLength: 1
+    MaxLength: 63
+
+  DbInstanceClass:
+    Type: String
+    Default: db.t4g.micro
+    AllowedValues:
+      - db.t4g.micro
+      - db.t4g.small
+    Description: RDS instance class (t4g.micro is Graviton/ARM, cheapest; bump to small when load demands)
+
+  DbAllocatedStorage:
+    Type: Number
+    Default: 20
+    MinValue: 20
+    MaxValue: 100
+    Description: RDS allocated storage (GB). 20 GB is the minimum; free tier covers 20 GB for the first year.
+
+  DbEngineVersion:
+    Type: String
+    Default: '16.13'
+    Description: PostgreSQL major.minor version for the RDS instance (must exist in the target region)
+
+  SchemaApplierCodeS3Bucket:
+    Type: String
+    Default: ''
+    Description: >-
+      S3 bucket for the schema-applier Lambda deployment package (CI uploads a zip
+      before deploy). Leave both bucket and key empty to omit the Lambda (operator
+      applies schema via bastion/psql instead).
+
+  SchemaApplierCodeS3Key:
+    Type: String
+    Default: ''
+    Description: S3 object key for the schema-applier Lambda zip (must be set with SchemaApplierCodeS3Bucket for CI)
+
+Conditions:
+  IsProd: !Equals [!Ref Environment, prod]
+  HasSchemaApplierCode: !And
+    - !Not [!Equals [!Ref SchemaApplierCodeS3Bucket, '']]
+    - !Not [!Equals [!Ref SchemaApplierCodeS3Key, '']]
+
+Resources:
+  # -------------------------- Network --------------------------
+  Vpc:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: 10.0.0.0/16
+      # DNS hostnames + DNS resolution are required for VPC interface endpoints'
+      # private DNS overrides (e.g., *.secretsmanager.<region>.amazonaws.com) to resolve
+      # to the endpoint inside the VPC.
+      EnableDnsSupport: true
+      EnableDnsHostnames: true
+      Tags:
+        - Key: Name
+          Value: !Sub 'StreamMyCourse-Vpc-${Environment}'
+        - Key: Project
+          Value: StreamMyCourse
+        - Key: Environment
+          Value: !Ref Environment
+
+  PublicSubnet:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref Vpc
+      CidrBlock: 10.0.1.0/24
+      AvailabilityZone: !Select [0, !GetAZs '']
+      MapPublicIpOnLaunch: false
+      Tags:
+        - Key: Name
+          Value: !Sub 'StreamMyCourse-Public-${Environment}'
+
+  PrivateSubnet:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref Vpc
+      CidrBlock: 10.0.2.0/24
+      AvailabilityZone: !Select [0, !GetAZs '']
+      MapPublicIpOnLaunch: false
+      Tags:
+        - Key: Name
+          Value: !Sub 'StreamMyCourse-Private-${Environment}'
+
+  # Route table for the private subnet. No 0.0.0.0/0 route — egress to AWS services
+  # is handled by VPC endpoints below. This keeps us off NAT Gateway billing ($32+/mo).
+  PrivateRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref Vpc
+      Tags:
+        - Key: Name
+          Value: !Sub 'StreamMyCourse-PrivateRT-${Environment}'
+
+  PrivateSubnetRouteAssoc:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref PrivateRouteTable
+      SubnetId: !Ref PrivateSubnet
+
+  # -------------------------- Security Groups --------------------------
+  LambdaSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: 'Catalog Lambda ENIs (egress to RDS and VPC endpoints only)'
+      VpcId: !Ref Vpc
+      # No inbound rules — Lambda ENIs never accept inbound traffic.
+      SecurityGroupEgress:
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          # HTTPS egress for VPC interface endpoints (Secrets Manager, CloudWatch Logs)
+          # and S3/DynamoDB gateway endpoints. CidrIp is restricted to the VPC itself
+          # for interface endpoints; AWS prefix lists handle gateway endpoints.
+          CidrIp: 10.0.0.0/16
+        - IpProtocol: tcp
+          FromPort: 5432
+          ToPort: 5432
+          CidrIp: 10.0.0.0/16
+      Tags:
+        - Key: Name
+          Value: !Sub 'StreamMyCourse-LambdaSG-${Environment}'
+
+  RdsSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: 'RDS PostgreSQL (ingress from Lambda SG on 5432 only)'
+      VpcId: !Ref Vpc
+      Tags:
+        - Key: Name
+          Value: !Sub 'StreamMyCourse-RdsSG-${Environment}'
+
+  RdsIngressFromLambda:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      GroupId: !Ref RdsSecurityGroup
+      IpProtocol: tcp
+      FromPort: 5432
+      ToPort: 5432
+      SourceSecurityGroupId: !Ref LambdaSecurityGroup
+
+  # Interface endpoints live in a dedicated SG so only Lambda (and future admin
+  # resources) can reach them on 443. Tying them to the Lambda SG directly also
+  # works, but a separate SG is easier to audit.
+  EndpointSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: 'VPC interface endpoints (ingress from Lambda SG on 443)'
+      VpcId: !Ref Vpc
+      Tags:
+        - Key: Name
+          Value: !Sub 'StreamMyCourse-EndpointSG-${Environment}'
+
+  EndpointIngressFromLambda:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      GroupId: !Ref EndpointSecurityGroup
+      IpProtocol: tcp
+      FromPort: 443
+      ToPort: 443
+      SourceSecurityGroupId: !Ref LambdaSecurityGroup
+
+  # -------------------------- Secrets Manager --------------------------
+  # Auto-generate an RDS password and attach it to the instance (SecretTargetAttachment).
+  # Lambda reads the JSON secret at init time and builds the psycopg2 connection string.
+  DbSecret:
+    Type: AWS::SecretsManager::Secret
+    Properties:
+      Name: !Sub 'streammycourse/${Environment}/rds-credentials'
+      Description: !Sub 'RDS PostgreSQL credentials for ${Environment}'
+      GenerateSecretString:
+        SecretStringTemplate: !Sub '{"username":"${DbMasterUsername}"}'
+        GenerateStringKey: password
+        PasswordLength: 32
+        # RDS-reserved chars excluded to avoid connection-string quoting headaches.
+        ExcludeCharacters: '"@/\ '
+      Tags:
+        - Key: Project
+          Value: StreamMyCourse
+        - Key: Environment
+          Value: !Ref Environment
+
+  DbSecretAttachment:
+    Type: AWS::SecretsManager::SecretTargetAttachment
+    Properties:
+      SecretId: !Ref DbSecret
+      TargetId: !Ref DbInstance
+      TargetType: AWS::RDS::DBInstance
+
+  # -------------------------- RDS --------------------------
+  DbSubnetGroup:
+    Type: AWS::RDS::DBSubnetGroup
+    Properties:
+      DBSubnetGroupDescription: !Sub 'StreamMyCourse ${Environment} RDS subnets (1-AZ)'
+      # AWS requires 2+ subnets in distinct AZs for a subnet group, even for single-AZ instances.
+      # Allocate a second /24 for the AZ-b slot so the subnet group is valid.
+      # The RDS instance will only launch into PrivateSubnet (AZ-a).
+      SubnetIds:
+        - !Ref PrivateSubnet
+        - !Ref PrivateSubnetB
+      Tags:
+        - Key: Project
+          Value: StreamMyCourse
+
+  # Second private subnet purely to satisfy DBSubnetGroup's multi-AZ requirement.
+  # No resources are placed here; zero cost.
+  PrivateSubnetB:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref Vpc
+      CidrBlock: 10.0.3.0/24
+      AvailabilityZone: !Select [1, !GetAZs '']
+      MapPublicIpOnLaunch: false
+      Tags:
+        - Key: Name
+          Value: !Sub 'StreamMyCourse-PrivateB-${Environment}'
+
+  PrivateSubnetBRouteAssoc:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref PrivateRouteTable
+      SubnetId: !Ref PrivateSubnetB
+
+  DbInstance:
+    Type: AWS::RDS::DBInstance
+    # Snapshot on delete so accidental stack deletes do not nuke data.
+    DeletionPolicy: Snapshot
+    UpdateReplacePolicy: Snapshot
+    Properties:
+      DBInstanceIdentifier: !Sub 'streammycourse-${Environment}'
+      Engine: postgres
+      EngineVersion: !Ref DbEngineVersion
+      DBInstanceClass: !Ref DbInstanceClass
+      AllocatedStorage: !Ref DbAllocatedStorage
+      StorageType: gp3
+      StorageEncrypted: true
+      PubliclyAccessible: false
+      MultiAZ: false
+      # Credentials come from Secrets Manager via dynamic reference.
+      MasterUsername: !Sub '{{resolve:secretsmanager:${DbSecret}:SecretString:username}}'
+      MasterUserPassword: !Sub '{{resolve:secretsmanager:${DbSecret}:SecretString:password}}'
+      DBName: !Ref DbName
+      Port: 5432
+      VPCSecurityGroups:
+        - !Ref RdsSecurityGroup
+      DBSubnetGroupName: !Ref DbSubnetGroup
+      BackupRetentionPeriod: !If [IsProd, 7, 1]
+      CopyTagsToSnapshot: true
+      DeletionProtection: !If [IsProd, true, false]
+      EnableIAMDatabaseAuthentication: false
+      Tags:
+        - Key: Project
+          Value: StreamMyCourse
+        - Key: Environment
+          Value: !Ref Environment
+
+  # -------------------------- VPC Endpoints --------------------------
+  # Interface endpoints (~$7.20/mo each in 1 AZ). Private DNS = true lets Lambda
+  # use the standard AWS SDK/CLI hostnames unchanged.
+  SecretsManagerEndpoint:
+    Type: AWS::EC2::VPCEndpoint
+    Properties:
+      VpcId: !Ref Vpc
+      ServiceName: !Sub 'com.amazonaws.${AWS::Region}.secretsmanager'
+      VpcEndpointType: Interface
+      PrivateDnsEnabled: true
+      SubnetIds:
+        - !Ref PrivateSubnet
+      SecurityGroupIds:
+        - !Ref EndpointSecurityGroup
+
+  LogsEndpoint:
+    Type: AWS::EC2::VPCEndpoint
+    Properties:
+      VpcId: !Ref Vpc
+      ServiceName: !Sub 'com.amazonaws.${AWS::Region}.logs'
+      VpcEndpointType: Interface
+      PrivateDnsEnabled: true
+      SubnetIds:
+        - !Ref PrivateSubnet
+      SecurityGroupIds:
+        - !Ref EndpointSecurityGroup
+
+  # Gateway endpoints are free. They attach to a route table and intercept traffic
+  # to the service's public IPs, keeping egress inside AWS backbone.
+  S3GatewayEndpoint:
+    Type: AWS::EC2::VPCEndpoint
+    Properties:
+      VpcId: !Ref Vpc
+      ServiceName: !Sub 'com.amazonaws.${AWS::Region}.s3'
+      VpcEndpointType: Gateway
+      RouteTableIds:
+        - !Ref PrivateRouteTable
+
+  DynamoDbGatewayEndpoint:
+    Type: AWS::EC2::VPCEndpoint
+    Properties:
+      VpcId: !Ref Vpc
+      ServiceName: !Sub 'com.amazonaws.${AWS::Region}.dynamodb'
+      VpcEndpointType: Gateway
+      RouteTableIds:
+        - !Ref PrivateRouteTable
+
+  # One-shot / idempotent schema apply from inside the VPC (GitHub runners cannot
+  # reach private RDS on 5432). CI uploads a zip (handler + schema.sql + psycopg2)
+  # then passes bucket/key parameters on deploy.
+  SchemaApplierLambdaRole:
+    Type: AWS::IAM::Role
+    Condition: HasSchemaApplierCode
+    Properties:
+      RoleName: !Sub 'StreamMyCourse-RdsSchemaApplierExecRole-${Environment}'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaVPCAccessExecutionRole
+      Policies:
+        - PolicyName: SchemaApplierSecretsAndLogs
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Sid: ReadRdsSecret
+                Effect: Allow
+                Action: secretsmanager:GetSecretValue
+                Resource: !Ref DbSecret
+              - Sid: WriteOwnLogs
+                Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource:
+                  # CreateLogGroup targets the log-group ARN; streams use the :* suffix.
+                  - !Sub 'arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/StreamMyCourse-RdsSchemaApplier-${Environment}'
+                  - !Sub 'arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/StreamMyCourse-RdsSchemaApplier-${Environment}:*'
+      Tags:
+        - Key: Project
+          Value: StreamMyCourse
+        - Key: Environment
+          Value: !Ref Environment
+
+  SchemaApplierLambda:
+    Type: AWS::Lambda::Function
+    Condition: HasSchemaApplierCode
+    DependsOn:
+      - DbSecretAttachment
+      - DbInstance
+    Properties:
+      FunctionName: !Sub 'StreamMyCourse-RdsSchemaApplier-${Environment}'
+      Description: !Sub 'Apply 001_initial_schema.sql to RDS (${Environment})'
+      Runtime: python3.11
+      Handler: index.handler
+      Role: !GetAtt SchemaApplierLambdaRole.Arn
+      Timeout: 120
+      MemorySize: 256
+      Architectures:
+        - x86_64
+      VpcConfig:
+        SubnetIds:
+          - !Ref PrivateSubnet
+        SecurityGroupIds:
+          - !Ref LambdaSecurityGroup
+      Environment:
+        Variables:
+          SECRET_ARN: !Ref DbSecret
+      Code:
+        S3Bucket: !Ref SchemaApplierCodeS3Bucket
+        S3Key: !Ref SchemaApplierCodeS3Key
+      Tags:
+        - Key: Project
+          Value: StreamMyCourse
+        - Key: Environment
+          Value: !Ref Environment
+
+Outputs:
+  VpcId:
+    Description: VPC ID
+    Value: !Ref Vpc
+    Export:
+      Name: !Sub '${AWS::StackName}-VpcId'
+
+  PrivateSubnetId:
+    Description: Private subnet ID (AZ-a) where Lambda ENIs and RDS attach
+    Value: !Ref PrivateSubnet
+    Export:
+      Name: !Sub '${AWS::StackName}-PrivateSubnetId'
+
+  LambdaSecurityGroupId:
+    Description: Security group ID to attach to the catalog Lambda function
+    Value: !Ref LambdaSecurityGroup
+    Export:
+      Name: !Sub '${AWS::StackName}-LambdaSecurityGroupId'
+
+  DbSecretArn:
+    Description: ARN of the Secrets Manager secret holding RDS credentials
+    Value: !Ref DbSecret
+    Export:
+      Name: !Sub '${AWS::StackName}-DbSecretArn'
+
+  DbHost:
+    Description: RDS endpoint address (hostname)
+    Value: !GetAtt DbInstance.Endpoint.Address
+    Export:
+      Name: !Sub '${AWS::StackName}-DbHost'
+
+  DbPort:
+    Description: RDS endpoint port
+    Value: !GetAtt DbInstance.Endpoint.Port
+    Export:
+      Name: !Sub '${AWS::StackName}-DbPort'
+
+  DbName:
+    Description: Initial database name inside the RDS instance
+    Value: !Ref DbName
+    Export:
+      Name: !Sub '${AWS::StackName}-DbName'
+
+  SchemaApplierFunctionName:
+    Condition: HasSchemaApplierCode
+    Description: Invoke this function (payload {}) from CI to apply 001_initial_schema.sql
+    Value: !Ref SchemaApplierLambda
+    Export:
+      Name: !Sub '${AWS::StackName}-SchemaApplierFunctionName'

@@ -1,0 +1,50 @@
+---
+description: Repo layout and where to place new code (frontend, Lambda, infra, tests)
+alwaysApply: true
+---
+
+# Project structure (StreamMyCourse)
+
+Align new work with the **MVP contract** in `design.md` and the **code anchors** in `AGENTS.md`. Prefer **feature/domain grouping** over “all components in one bucket” when a natural home exists.
+
+## Principles
+
+- **Separation of concerns:** `frontend/` (SPA), `infrastructure/lambda/catalog/` (API Lambda), `infrastructure/templates/` (CloudFormation), `scripts/` (deploy/CI helpers), `tests/` (Python tests). Do not mix UI into the Lambda tree or vice versa.
+- **Match existing naming:** stack templates use `*-stack.yaml` / descriptive names; Python modules use `snake_case` files; React uses `PascalCase` components.
+- **Shallow when reasonable:** avoid new deep trees unless they mirror an existing pattern (e.g. `services/<context>/` on the backend).
+- **Bounded contexts on the backend:** one folder per domain area under `services/`; see `plans/architecture/module-map.md` (may be slightly ahead/behind the tree—verify in repo).
+
+## Canonical layout (this repository)
+
+```text
+project-root/
+├── frontend/                 # Vite + React
+│   └── src/
+│       ├── pages/            # Route-level screens
+│       ├── components/       # Reusable UI (group by area: auth/, course/, layout/)
+│       ├── lib/              # Clients, env, auth wiring (no JSX)
+│       ├── student-app/      # Student shell (routes + header)
+│       ├── teacher-app/      # Instructor shell
+│       ├── App.tsx           # Default app routes
+│       └── *-main.tsx        # Entry points per build target
+├── infrastructure/
+│   ├── lambda/catalog/       # Python API Lambda package
+│   └── templates/            # CloudFormation (api, auth, video, web, edge-hosting, …)
+├── scripts/                  # parse/lint checks, deploy helpers, boundary checks
+└── tests/
+    ├── unit/                 # Lambda-focused unit tests
+    └── integration/          # Heavier / AWS-oriented tests
+```
+
+## Backend (Lambda) layering
+
+File placement and **controller → service → repo** rules are defined in `.cursor/rules/clean-architecture-boundaries.mdc` and enforced by `scripts/check_lambda_boundaries.py`. **Composition and wiring** live at the package root (`index.py`, `bootstrap.py`, `config.py`), not inside individual `services/<context>/` folders.
+
+## Infrastructure and config paths
+
+- **IaC** belongs in `infrastructure/templates/` and related `infrastructure/*.ps1` / `scripts/deploy-*.sh` patterns already in the repo—not ad-hoc one-off YAML at the root.
+- **Avoid hardcoded machine-specific paths.** Prefer paths relative to the repo, existing env-driven config (`config.py` / frontend env), or `pathlib` from a known anchor (e.g. script location). Do not introduce a separate “global path module” unless the team extends an existing pattern.
+
+## When in doubt
+
+Read `plans/architecture/module-map.md` for Lambda public surface, and `AGENTS.md` for stack and workflow entry points before adding new top-level directories.

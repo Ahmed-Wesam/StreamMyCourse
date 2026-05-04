@@ -1,0 +1,48 @@
+---
+description: Python style for Lambda catalog, scripts, and tests (PEP8, types, layers)
+globs: "**/*.py"
+alwaysApply: false
+---
+
+# Python standards (StreamMyCourse)
+
+Primary code lives under **`infrastructure/lambda/catalog/`**; **`tests/unit`**, **`tests/integration`**, and **`scripts/`** follow the same habits. **`AGENTS.md`** and **`.cursor/rules/clean-architecture-boundaries.mdc`** define layering and CI checks (**`scripts/check_lambda_boundaries.py`**).
+
+## Environment and tooling
+
+- **CI parity** (`AGENTS.md`, `/commit`): **`pip`** + `requirements.txt` where scripted (e.g. `tests/unit/requirements.txt`). Locally you may use **`uv`** (`uv pip`, `uv run`) if it installs the **same dependency set** CI expects—never assume only `uv` without updating docs/CI together.
+- Target **Python 3.11+** (matches CI).
+- There is **no** repo-root `pyproject.toml`/`config_path.py`; do not cite template paths under `src/shared/`.
+
+## Style and readability
+
+- **English** identifiers and comments; **PEP 8** layout; prefer **explicit type hints** on public functions and non-obvious locals.
+- **Imports:** standard library → third party → local; keep cycles out (controllers ↔ services boundaries already constrain this).
+- **Paths:** Prefer **`pathlib.Path`** where paths are manipulated; **`os.environ`** via **`config.load_config()`** in the Lambda package for runtime config—not hardcoded `/home/...` or Windows-only literals in shared code.
+
+## Lambda domain and validation
+
+- **Domain types:** Prefer **`dataclass`** (`frozen=True` where it helps), as in **`services/*/models.py`**—not Pydantic unless the team adopts it repo-wide.
+- **HTTP JSON shapes:** **`contracts.py` (TypedDict)** and **`services/common/validation.py`** at the edge; **`HttpError`** / **`services/common/errors.py`** for typed failures—not ad-hoc `dict` juggling in services.
+- **Configuration:** **`bootstrap.py`** / **`config.py`** wire dependencies; repos/storage take **narrow parameters** (table name, bucket) rather than importing “the world.”
+
+## Architecture (do not reinvent)
+
+- **Controllers / services / repos / ports:** See **`plans/architecture/module-map.md`** and **`clean-architecture-boundaries.mdc`**.
+- **`boto3` and DynamoDB/S3 SDK calls** belong in **`repo.py`** / **`storage.py`** only.
+- Thin **Protocols** in **`ports.py`** where swapping or testing needs a seam; avoid deep inheritance trees—**composition + small modules** beats pattern soup.
+
+## Functions and exceptions
+
+- Keep functions **focused**; split large handlers into private helpers **without** changing boundary ownership (still no `boto3` in controllers).
+- Prefer **purpose-specific** exceptions (existing **`HttpError`** hierarchy) **or** `ValueError`/stdlib where appropriate—do not litter bare `except:`.
+
+## Tests and scripts
+
+- **`pytest`** under **`tests/unit`** and **`tests/integration`** (see **`tests/*/requirements.txt`**).
+- Scripts under **`scripts/`** stay **thin**: parse args, call helpers; use **`pathlib`** for repo-relative discovery when appropriate (avoid brittle `..\..\` chains).
+
+## Documentation
+
+- **Docstrings:** Public modules/functions that are non-obvious; explain **why** or invariants—not a restatement of the code.
+- **Material doc updates** (`design.md`, ADRs): follow **`ADR` rule** under `plans/architecture/` and **`ImplementationHistory.md`** when behavior ships.

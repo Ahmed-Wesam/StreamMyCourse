@@ -1,0 +1,10 @@
+{
+  "$schema": "https://unpkg.com/knip@6/schema.json",
+  "vite": false,
+  "project": ["src/**/*.{ts,tsx}"],
+  "entry": [
+    "src/student-main.tsx",
+    "src/teacher-main.tsx"
+  ],
+  "ignoreDependencies": ["@emnapi/core", "@emnapi/runtime"]
+}
