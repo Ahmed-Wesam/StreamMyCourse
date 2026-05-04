@@ -1,0 +1,244 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "CloudFormationValidateTemplate",
+      "Effect": "Allow",
+      "Action": "cloudformation:ValidateTemplate",
+      "Resource": "*"
+    },
+    {
+      "Sid": "CloudFormationListStacks",
+      "Effect": "Allow",
+      "Action": "cloudformation:ListStacks",
+      "Resource": "*"
+    },
+    {
+      "Sid": "CloudFormationStreamMyCourseStacks",
+      "Effect": "Allow",
+      "Action": "cloudformation:*",
+      "Resource": [
+        "arn:aws:cloudformation:eu-west-1:YOUR_AWS_ACCOUNT_ID:stack/StreamMyCourse-*/*",
+        "arn:aws:cloudformation:eu-west-1:YOUR_AWS_ACCOUNT_ID:stack/streammycourse-*/*",
+        "arn:aws:cloudformation:us-east-1:YOUR_AWS_ACCOUNT_ID:stack/StreamMyCourse-*/*",
+        "arn:aws:cloudformation:us-east-1:YOUR_AWS_ACCOUNT_ID:stack/streammycourse-*/*"
+      ]
+    },
+    {
+      "Sid": "LambdaStreamMyCourse",
+      "Effect": "Allow",
+      "Action": "lambda:*",
+      "Resource": "arn:aws:lambda:eu-west-1:YOUR_AWS_ACCOUNT_ID:function:StreamMyCourse-*"
+    },
+    {
+      "Sid": "ApiGatewayEuWest1",
+      "Effect": "Allow",
+      "Action": ["apigateway:*", "execute-api:*"],
+      "Resource": "*",
+      "Condition": {
+        "StringEquals": {
+          "aws:RequestedRegion": "eu-west-1"
+        }
+      }
+    },
+    {
+      "Sid": "DynamoDBStreamMyCourse",
+      "Effect": "Allow",
+      "Action": "dynamodb:*",
+      "Resource": [
+        "arn:aws:dynamodb:eu-west-1:YOUR_AWS_ACCOUNT_ID:table/StreamMyCourse-*",
+        "arn:aws:dynamodb:eu-west-1:YOUR_AWS_ACCOUNT_ID:table/StreamMyCourse-*/index/*"
+      ]
+    },
+    {
+      "Sid": "LogsStreamMyCourseLambda",
+      "Effect": "Allow",
+      "Action": "logs:*",
+      "Resource": [
+        "arn:aws:logs:eu-west-1:YOUR_AWS_ACCOUNT_ID:log-group:/aws/lambda/StreamMyCourse-*",
+        "arn:aws:logs:eu-west-1:YOUR_AWS_ACCOUNT_ID:log-group:/aws/lambda/StreamMyCourse-*:*"
+      ]
+    },
+    {
+      "Sid": "CognitoIdpEuWest1",
+      "Effect": "Allow",
+      "Action": "cognito-idp:*",
+      "Resource": "*",
+      "Condition": {
+        "StringEquals": {
+          "aws:RequestedRegion": "eu-west-1"
+        }
+      }
+    },
+    {
+      "Sid": "AcmUsEast1ForCertStack",
+      "Effect": "Allow",
+      "Action": "acm:*",
+      "Resource": "*",
+      "Condition": {
+        "StringEquals": {
+          "aws:RequestedRegion": "us-east-1"
+        }
+      }
+    },
+    {
+      "Sid": "Route53ForAcmAndAliases",
+      "Effect": "Allow",
+      "Action": [
+        "route53:GetChange",
+        "route53:ChangeResourceRecordSets",
+        "route53:ListResourceRecordSets",
+        "route53:GetHostedZone",
+        "route53:ListHostedZones"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Sid": "CloudFrontForWebStacks",
+      "Effect": "Allow",
+      "Action": "cloudfront:*",
+      "Resource": "*"
+    },
+    {
+      "Sid": "S3InThisAccount",
+      "Effect": "Allow",
+      "Action": "s3:*",
+      "Resource": "*",
+      "Condition": {
+        "StringEquals": {
+          "aws:PrincipalAccount": "YOUR_AWS_ACCOUNT_ID"
+        }
+      }
+    },
+    {
+      "Sid": "IAMStreamMyCourseRoles",
+      "Effect": "Allow",
+      "Action": [
+        "iam:CreateRole",
+        "iam:DeleteRole",
+        "iam:GetRole",
+        "iam:PassRole",
+        "iam:PutRolePolicy",
+        "iam:DeleteRolePolicy",
+        "iam:GetRolePolicy",
+        "iam:AttachRolePolicy",
+        "iam:DetachRolePolicy",
+        "iam:ListRolePolicies",
+        "iam:ListAttachedRolePolicies",
+        "iam:TagRole",
+        "iam:UntagRole",
+        "iam:UpdateAssumeRolePolicy"
+      ],
+      "Resource": "arn:aws:iam::YOUR_AWS_ACCOUNT_ID:role/StreamMyCourse-*"
+    },
+    {
+      "Sid": "IamRdsServiceLinkedRole",
+      "Effect": "Allow",
+      "Action": "iam:CreateServiceLinkedRole",
+      "Resource": "*",
+      "Condition": {
+        "StringEquals": {
+          "iam:AWSServiceName": "rds.amazonaws.com"
+        }
+      }
+    },
+    {
+      "Sid": "RdsStackManage",
+      "Effect": "Allow",
+      "Action": [
+        "rds:CreateDBInstance",
+        "rds:DeleteDBInstance",
+        "rds:ModifyDBInstance",
+        "rds:DescribeDBInstances",
+        "rds:CreateDBSubnetGroup",
+        "rds:DeleteDBSubnetGroup",
+        "rds:DescribeDBSubnetGroups",
+        "rds:ModifyDBSubnetGroup",
+        "rds:AddTagsToResource",
+        "rds:RemoveTagsFromResource",
+        "rds:ListTagsForResource",
+        "rds:DescribeDBEngineVersions"
+      ],
+      "Resource": "*",
+      "Condition": {
+        "StringEquals": {
+          "aws:RequestedRegion": "eu-west-1"
+        }
+      }
+    },
+    {
+      "Sid": "Ec2VpcStackManage",
+      "Effect": "Allow",
+      "Action": [
+        "ec2:CreateVpc",
+        "ec2:DeleteVpc",
+        "ec2:DescribeVpcs",
+        "ec2:ModifyVpcAttribute",
+        "ec2:CreateSubnet",
+        "ec2:DeleteSubnet",
+        "ec2:DescribeSubnets",
+        "ec2:CreateRouteTable",
+        "ec2:DeleteRouteTable",
+        "ec2:DescribeRouteTables",
+        "ec2:AssociateRouteTable",
+        "ec2:DisassociateRouteTable",
+        "ec2:CreateSecurityGroup",
+        "ec2:DeleteSecurityGroup",
+        "ec2:DescribeSecurityGroups",
+        "ec2:AuthorizeSecurityGroupEgress",
+        "ec2:AuthorizeSecurityGroupIngress",
+        "ec2:RevokeSecurityGroupEgress",
+        "ec2:RevokeSecurityGroupIngress",
+        "ec2:UpdateSecurityGroupRuleDescriptionsEgress",
+        "ec2:UpdateSecurityGroupRuleDescriptionsIngress",
+        "ec2:CreateVpcEndpoint",
+        "ec2:DeleteVpcEndpoints",
+        "ec2:DescribeVpcEndpoints",
+        "ec2:ModifyVpcEndpoint",
+        "ec2:DescribePrefixLists",
+        "ec2:DescribeAvailabilityZones",
+        "ec2:CreateTags",
+        "ec2:DeleteTags",
+        "ec2:DescribeTags"
+      ],
+      "Resource": "*",
+      "Condition": {
+        "StringEquals": {
+          "aws:RequestedRegion": "eu-west-1"
+        }
+      }
+    },
+    {
+      "Sid": "SecretsManagerRdsCredentials",
+      "Effect": "Allow",
+      "Action": [
+        "secretsmanager:CreateSecret",
+        "secretsmanager:DeleteSecret",
+        "secretsmanager:DescribeSecret",
+        "secretsmanager:GetSecretValue",
+        "secretsmanager:TagResource",
+        "secretsmanager:UntagResource",
+        "secretsmanager:UpdateSecret",
+        "secretsmanager:PutSecretValue"
+      ],
+      "Resource": [
+        "arn:aws:secretsmanager:eu-west-1:YOUR_AWS_ACCOUNT_ID:secret:streammycourse/*",
+        "arn:aws:secretsmanager:eu-west-1:YOUR_AWS_ACCOUNT_ID:secret:rds-db-credentials/*"
+      ]
+    },
+    {
+      "Sid": "SecretsManagerRotationAndList",
+      "Effect": "Allow",
+      "Action": [
+        "secretsmanager:ListSecrets",
+        "secretsmanager:GetRandomPassword"
+      ],
+      "Resource": "*",
+      "Condition": {
+        "StringEquals": {
+          "aws:RequestedRegion": "eu-west-1"
+        }
+      }
+    }
+  ]
+}

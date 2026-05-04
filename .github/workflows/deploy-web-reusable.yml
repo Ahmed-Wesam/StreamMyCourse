@@ -1,0 +1,146 @@
+# Called by deploy-backend.yml — one student SPA deploy to dev or prod (GitHub Environment + secrets).
+name: Deploy Web (reusable)
+
+on:
+  workflow_call:
+    inputs:
+      target_environment:
+        description: "GitHub Environment name (dev or prod)"
+        required: true
+        type: string
+      checkout_ref:
+        description: "Git SHA to checkout (empty = default ref for this workflow run)"
+        required: false
+        type: string
+        default: ""
+    secrets:
+      AWS_DEPLOY_ROLE_ARN:
+        required: true
+      VITE_API_BASE_URL:
+        required: true
+      VITE_COGNITO_USER_POOL_ID:
+        required: true
+      VITE_COGNITO_STUDENT_CLIENT_ID:
+        required: true
+      VITE_COGNITO_DOMAIN:
+        required: true
+
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  # Unified edge-hosting stack (S3 + CloudFront outputs) lives in us-east-1
+  AWS_REGION: us-east-1
+  NODE_VERSION: "20"
+
+jobs:
+  deploy:
+    name: Build and Deploy SPA (${{ inputs.target_environment }})
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.target_environment }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.checkout_ref != '' && inputs.checkout_ref || github.sha }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Get stack outputs
+        id: stack
+        env:
+          TARGET_ENV: ${{ inputs.target_environment }}
+        run: |
+          STACK_NAME="StreamMyCourse-EdgeHosting-${TARGET_ENV}"
+          BUCKET_NAME=$(aws cloudformation describe-stacks \
+            --stack-name "$STACK_NAME" \
+            --query "Stacks[0].Outputs[?OutputKey=='StudentBucketName'].OutputValue" \
+            --output text \
+            --region "${{ env.AWS_REGION }}")
+          DISTRIBUTION_ID=$(aws cloudformation describe-stacks \
+            --stack-name "$STACK_NAME" \
+            --query "Stacks[0].Outputs[?OutputKey=='StudentDistributionId'].OutputValue" \
+            --output text \
+            --region "${{ env.AWS_REGION }}")
+          echo "bucket_name=$BUCKET_NAME" >> "$GITHUB_OUTPUT"
+          echo "distribution_id=$DISTRIBUTION_ID" >> "$GITHUB_OUTPUT"
+          echo "Bucket: $BUCKET_NAME"
+          echo "Distribution: $DISTRIBUTION_ID"
+
+      - name: Install dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Build student SPA
+        working-directory: frontend
+        env:
+          VITE_API_BASE_URL: ${{ secrets.VITE_API_BASE_URL }}
+          VITE_COGNITO_USER_POOL_ID: ${{ secrets.VITE_COGNITO_USER_POOL_ID }}
+          VITE_COGNITO_USER_POOL_CLIENT_ID: ${{ secrets.VITE_COGNITO_STUDENT_CLIENT_ID }}
+          VITE_COGNITO_DOMAIN: ${{ secrets.VITE_COGNITO_DOMAIN }}
+        run: npm run build:student
+
+      - name: Sync to S3 (assets with long cache)
+        run: |
+          aws s3 sync frontend/dist/student/assets "s3://${{ steps.stack.outputs.bucket_name }}/assets" \
+            --delete \
+            --cache-control "public,max-age=31536000,immutable" \
+            --region "${{ env.AWS_REGION }}"
+
+      - name: Sync to S3 (index.html no-cache)
+        run: |
+          aws s3 cp frontend/dist/student/index.html "s3://${{ steps.stack.outputs.bucket_name }}/index.html" \
+            --cache-control "no-cache" \
+            --region "${{ env.AWS_REGION }}"
+
+      - name: Sync to S3 (other root files)
+        run: |
+          for file in frontend/dist/student/*; do
+            if [ -f "$file" ] && [ "$(basename "$file")" != "index.html" ]; then
+              aws s3 cp "$file" "s3://${{ steps.stack.outputs.bucket_name }}/$(basename "$file")" \
+                --cache-control "public,max-age=3600" \
+                --region "${{ env.AWS_REGION }}"
+            fi
+          done
+
+      - name: Invalidate CloudFront
+        run: |
+          aws cloudfront create-invalidation \
+            --distribution-id "${{ steps.stack.outputs.distribution_id }}" \
+            --paths "/*" \
+            --region "${{ env.AWS_REGION }}"
+
+      - name: Get site URL
+        id: site
+        env:
+          TARGET_ENV: ${{ inputs.target_environment }}
+        run: |
+          STACK_NAME="StreamMyCourse-EdgeHosting-${TARGET_ENV}"
+          SITE_URL=$(aws cloudformation describe-stacks \
+            --stack-name "$STACK_NAME" \
+            --query "Stacks[0].Outputs[?OutputKey=='StudentSiteUrl'].OutputValue" \
+            --output text \
+            --region "${{ env.AWS_REGION }}")
+          echo "url=$SITE_URL" >> "$GITHUB_OUTPUT"
+
+      - name: Summary
+        run: |
+          {
+            echo "## Deploy Web (${{ inputs.target_environment }})"
+            echo ""
+            echo "- **Bucket**: ${{ steps.stack.outputs.bucket_name }}"
+            echo "- **Distribution**: ${{ steps.stack.outputs.distribution_id }}"
+            echo "- **Site URL**: ${{ steps.site.outputs.url }}"
+          } >> "$GITHUB_STEP_SUMMARY"

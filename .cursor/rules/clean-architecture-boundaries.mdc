@@ -1,0 +1,40 @@
+---
+description: Enforce controller→service→repo boundaries (backend)
+globs: infrastructure/lambda/**/*.py
+alwaysApply: false
+---
+
+# Clean Architecture Boundaries (Python Lambda)
+
+## Layering
+
+- **Controller**: handles HTTP/event I/O (API Gateway event), parses/validates requests, maps errors to responses.
+- **Service (domain)**: owns business rules/invariants and domain types.
+- **Repository (data access)**: owns persistence access patterns and PK/SK mapping; talks to DynamoDB/S3 SDKs.
+
+## Hard rules (do not cross)
+
+- **Controller must not** import boto3 or access DynamoDB/S3 directly.
+- **Repository must not** accept/return API Gateway event objects or HTTP response dicts.
+- **Service must not** depend on HTTP constructs (headers/status codes) or DynamoDB item shapes.
+
+## Allowed objects per boundary
+
+- **Controller ↔ Service**: domain commands/results (domain-friendly types). No DynamoDB keys or item dicts.
+- **Service ↔ Repo**: domain identifiers + repository interfaces. No raw DynamoDB items.
+- **Repo ↔ DB**: DynamoDB/S3 SDK types and persistence DTOs only.
+
+## Naming & placement conventions
+
+- Put controllers under `services/<service_name>/controller.py`
+- Put services under `services/<service_name>/service.py`
+- Put repositories under `services/<service_name>/repo.py`
+- Put storage adapters under `services/<service_name>/storage.py`
+- Shared cross-cutting utilities go in `services/common/` (errors/http/validation)
+
+## Quick checks during changes
+
+- If a change requires `boto3`, it belongs in a `repo.py`/`storage.py`, not a controller/service.
+- If a change touches request parsing or status codes, it belongs in a controller.
+- If a change is “a rule” (publish gating, readiness, authorization decisions), it belongs in a service.
+

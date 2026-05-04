@@ -1,0 +1,70 @@
+---
+description: StreamMyCourse SPA layout, Tailwind UX/a11y, Amplify auth, Vitest — frontend only
+globs: frontend/**/*
+alwaysApply: false
+---
+
+# Frontend UI standards (StreamMyCourse)
+
+Applies under `frontend/`. Align with **`design.md`**, **`AGENTS.md`**, and **`.cursor/rules/project-structure.mdc`**.
+
+## Stack (as shipped)
+
+- **React 19**, **TypeScript** (strict), **Vite**, **Tailwind**, **React Router**, **Amplify v6** + **Amplify UI** (`@aws-amplify/ui-react`).
+- **Vitest** + Testing Library (`npm run test`) — **no** bundled Playwright E2E; browser debugging may use optional **Chrome DevTools MCP** (`.cursor/mcp.json`).
+- **No TanStack Query** — server calls go through **`src/lib/api.ts`** (tokens via `fetchAuthSession`); do **not** add React Query without an ADR and deps.
+- **Do not require Zod/CVA/Material 3/PWA/service workers** unless the team adds them; prefer patterns already in the tree.
+
+## Layout and placement
+
+- **`pages/`** — route screens; **`components/<area>/`** — reusable UI (auth, course, layout); **`lib/`** — API client, Amplify config, env helpers (**no JSX**).
+- **`student-app/`**, **`teacher-app/`** — shells and entry-specific chrome; mirror existing splits instead of inventing parallel trees (`hooks/`, `modules/` at repo root are **not** today's convention unless introduced deliberately).
+
+## API and data
+
+- Use **`src/lib/api.ts`** for HTTP; surface **`ApiError`** and typed JSON helpers consistently.
+- Prefer **narrow TypeScript types** (`interface`/`type`) for payloads; runtime validation only where mistrust boundaries warrant it (no blanket Zod layer).
+
+## Auth and security
+
+- Follow **Amplify** session/token flows already wired in `lib/auth.ts` / API helpers; **do not** stash tokens in bespoke `localStorage` wrappers if Amplify manages them.
+- Protect routes with existing patterns (`ProtectedRoute`, role gates, hosted UI env checks). Do not weaken CORS or bypass API auth for convenience in local dev without documenting risk.
+
+## UX, responsive, accessibility
+
+- **Mobile-first** layouts; touch targets **≥ 44px** where practical; sufficient spacing between controls.
+- Aim for **WCAG 2.1 AA** awareness: keyboard access, focus order, meaningful labels (`aria-*` / visible text), contrast for text and controls.
+- Loading: prefer **skeletons** or inline status (match existing course cards / players) over mystery spinners where it fits the screen.
+- Apply common **usability heuristics** (feedback, error recovery, consistency) without pasting long textbook lists into code.
+
+## Components and style
+
+- Use **Tailwind** utility-first; global styles in `style.css`. Keep class strings readable; extract small subcomponents instead of giant JSX blobs.
+- Match **existing** export style (many pages use `export default`); do not mass-convert to named exports.
+- Split files when they become hard to navigate; treat **~300 lines** as a soft nudge to extract, not a hard CI rule.
+
+## TypeScript and lint
+
+- Respect **ESLint** (`npm run lint`) and **`knip`** — no `any` without justification; prefer `unknown` + narrowing.
+- **`npm run build:all`** must stay green for student + teacher targets when env is set (see `frontend/.env.example`).
+
+## Testing
+
+- Cover non-trivial UI and `lib` behavior with **Vitest**; isolate network with mocks/fakes at the `fetch` or API wrapper level.
+- For “E2E-like” checks, use MCP browser tools only when configured; do not assume a Playwright suite in CI.
+
+## Logging and errors
+
+- Avoid noisy `console.log` in production paths; use targeted logging only when debugging (see **`.cursor/rules/debugging-root-cause.mdc`**).
+- Surface user-visible errors with **clear copy**; map `ApiError` / HTTP status where appropriate.
+
+## Out of scope unless product requests
+
+- **Connected TV / spatial navigation** (D-pad stacks, focus wrappers) — not the default course web UX.
+- Full **PWA** (manifest SW, offline cache) — adopt only with explicit scope in `design.md` / roadmap.
+
+## Quick checklist (before merge)
+
+- [ ] Lint + unit tests + dual build (`AGENTS.md`) for touched areas
+- [ ] Keyboard + basic screen-reader sanity on new interactive UI
+- [ ] API changes go through `lib/api.ts`; env vars documented in `.env.example` if new

@@ -1,0 +1,164 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: >
+  Artifact Janitor Lambda - scheduled cleanup of old Lambda deployment artifacts.
+  Keeps only the most recent N artifacts per environment and type.
+
+Parameters:
+  Environment:
+    Type: String
+    Default: dev
+    AllowedValues: [dev, integ, prod]
+    Description: Deployment environment (affects naming only)
+
+  ArtifactBucketName:
+    Type: String
+    Description: Name of the S3 bucket containing Lambda artifacts to clean up
+
+  KeepCount:
+    Type: Number
+    Default: 2
+    MinValue: 1
+    MaxValue: 10
+    Description: Number of most recent artifacts to keep per group (type + environment)
+
+  ScheduleExpression:
+    Type: String
+    Default: 'rate(1 day)'
+    Description: EventBridge schedule expression (e.g., 'rate(1 day)', 'cron(0 3 * * ? *)')
+
+  DryRun:
+    Type: String
+    Default: 'false'
+    AllowedValues: ['true', 'false']
+    Description: If true, only logs what would be deleted without actually deleting
+
+Conditions:
+  IsProd: !Equals [!Ref Environment, 'prod']
+
+Resources:
+  # Lambda function
+  JanitorFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub 'StreamMyCourse-ArtifactJanitor-${Environment}'
+      Runtime: python3.11
+      Handler: index.lambda_handler
+      Timeout: 300  # 5 minutes - listing many S3 objects can take time
+      MemorySize: 256
+      # Note: No ReservedConcurrentExecutions to avoid account limits
+      # EventBridge schedule ensures single execution anyway
+      Environment:
+        Variables:
+          ARTIFACT_BUCKET: !Ref ArtifactBucketName
+          KEEP_COUNT: !Ref KeepCount
+          DRY_RUN: !Ref DryRun
+      Code:
+        ZipFile: |
+          # Placeholder - actual code uploaded via CI/CD or aws lambda update-function-code
+          # This stack expects the code to be deployed separately or via the deployment script
+          def lambda_handler(event, context):
+              raise Exception("Code not deployed - run scripts/deploy-janitor.sh")
+      Role: !GetAtt JanitorRole.Arn
+      Tags:
+        - Key: Project
+          Value: StreamMyCourse
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: ManagedBy
+          Value: CloudFormation
+
+  # IAM Role for Lambda
+  JanitorRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub 'StreamMyCourse-ArtifactJanitor-${Environment}-Role'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: S3ArtifactAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Sid: ListBucket
+                Effect: Allow
+                Action:
+                  - s3:ListBucket
+                  - s3:GetBucketLocation
+                Resource: !Sub 'arn:aws:s3:::${ArtifactBucketName}'
+              - Sid: DeleteObjects
+                Effect: Allow
+                Action:
+                  - s3:DeleteObject
+                  - s3:GetObject  # For metadata before delete (optional)
+                Resource: !Sub 'arn:aws:s3:::${ArtifactBucketName}/*'
+      Tags:
+        - Key: Project
+          Value: StreamMyCourse
+        - Key: Environment
+          Value: !Ref Environment
+
+  # CloudWatch Logs group with retention
+  JanitorLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/aws/lambda/StreamMyCourse-ArtifactJanitor-${Environment}'
+      RetentionInDays: !If [IsProd, 30, 7]
+
+  # EventBridge rule for scheduled execution
+  JanitorScheduleRule:
+    Type: AWS::Events::Rule
+    Properties:
+      Name: !Sub 'StreamMyCourse-ArtifactJanitor-${Environment}-Schedule'
+      Description: Daily trigger for artifact cleanup
+      ScheduleExpression: !Ref ScheduleExpression
+      State: ENABLED
+      Targets:
+        - Id: JanitorLambdaTarget
+          Arn: !GetAtt JanitorFunction.Arn
+
+  # Permission for EventBridge to invoke Lambda
+  JanitorSchedulePermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref JanitorFunction
+      Action: lambda:InvokeFunction
+      Principal: events.amazonaws.com
+      SourceArn: !GetAtt JanitorScheduleRule.Arn
+
+  # CloudWatch Alarm for janitor failures
+  JanitorErrorAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub 'StreamMyCourse-ArtifactJanitor-${Environment}-Errors'
+      AlarmDescription: Alerts when artifact janitor Lambda fails
+      MetricName: Errors
+      Namespace: AWS/Lambda
+      Statistic: Sum
+      Period: 86400  # 1 day
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      Dimensions:
+        - Name: FunctionName
+          Value: !Ref JanitorFunction
+      TreatMissingData: notBreaching
+
+Outputs:
+  JanitorFunctionArn:
+    Description: ARN of the artifact janitor Lambda function
+    Value: !GetAtt JanitorFunction.Arn
+
+  JanitorFunctionName:
+    Description: Name of the artifact janitor Lambda function
+    Value: !Ref JanitorFunction
+
+  ScheduleExpression:
+    Description: EventBridge schedule expression
+    Value: !Ref ScheduleExpression

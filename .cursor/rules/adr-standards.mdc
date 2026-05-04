@@ -1,0 +1,40 @@
+---
+description: How to write architecture decision records under plans/architecture
+globs: plans/architecture/**/*.md
+alwaysApply: false
+---
+
+# ADR standards (StreamMyCourse)
+
+**Purpose:** Record **durable architectural choices** for this product (MVP and beyond): context, decision, tradeoffs, and pointers to code or follow-up ADRs. Keep **`design.md`** as the living MVP contract; use ADRs for decisions that deserve a focused narrative or history.
+
+## Location and naming
+
+- **Directory:** `plans/architecture/` at the repo root (not `docs/adr/`).
+- **Numbered ADRs:** `adr-NNNN-short-title-in-hyphens.md` with **four digits** and sequential numbers (e.g. `adr-0007-web-hosting.md`). Pick the **next free** number after the highest existing `adr-NNNN-*` in that folder.
+- **Exception:** Legacy or topic-named files may exist (e.g. `adr-enrollment-course-access.md`); prefer numbered files for **new** decisions unless extending that file is clearly one decision thread.
+
+## Recommended sections
+
+Use a short, scannable shape consistent with existing ADRs:
+
+1. **Title** — `# ADR NNNN — …` (readable one-liner).
+2. **Status** — e.g. Proposed, Accepted, Accepted (MVP), Deprecated, Superseded by ADR NNNN.
+3. **Context** — Problem, constraints, and what forced a decision (product, security, ops, cost at a high level).
+4. **Decision** — What we chose; link to **specific** areas: stacks (`infrastructure/templates/…`), Lambda layout (`plans/architecture/module-map.md`), relevant `design.md` sections when useful.
+5. **Consequences** — Pros/cons, operational or coupling implications.
+6. **Alternatives considered** (when helpful) — What was rejected and why; keep brief.
+7. **Follow-ups** — Optional; link related ADRs or backlog items—no duplicate spec of `design.md` unless the ADR *is* the source of truth for that slice.
+
+## Practices
+
+- **Project-specific is correct** here: name StreamMyCourse stacks, services, and trust boundaries; do not “genericize away” the decision.
+- **No large code dumps** in ADRs; short snippets, IDs, key shapes, or pseudocode are fine. Implementation lives in the repo; the ADR explains *why*.
+- **Link related ADRs** (supersedes / related / follow-up) for traceability.
+- **Prefer small, targeted edits** when updating an ADR (clear status changes, add follow-up links) so git history stays readable.
+- **Mermaid** only when a diagram clarifies a flow or boundary; keep diagrams short.
+- **Facts only**—do not invent shipped behavior; verify against code, templates, and `design.md`.
+
+## When not to add an ADR
+
+Trivial or ephemeral choices, pure bug fixes, or routine feature work usually belong in **`ImplementationHistory.md`** and/or PR description, not a new ADR.

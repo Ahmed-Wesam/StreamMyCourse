@@ -1,0 +1,13 @@
+---
+description: Load project intent from AGENTS.md before substantive work
+alwaysApply: true
+---
+
+# Project context (StreamMyCourse)
+
+Before **planning or implementing** non-trivial changes in this repository (features, APIs, infra, or cross-cutting refactors):
+
+1. Read **`AGENTS.md`** at the repository root.
+2. Load the documents it points to as needed for the task—at minimum **`design.md`** (MVP contract and APIs) and **`roadmap.md`** when scope touches post-MVP or priorities; use **`ImplementationHistory.md`** and **`plans/architecture/`** when behavior or past decisions matter.
+
+If the user explicitly limits scope (“doc-only”, “typo in X”), skip full context. For ambiguous requests, prefer loading **`design.md`** first so work stays aligned with the MVP.

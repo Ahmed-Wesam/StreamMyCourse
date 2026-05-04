@@ -1,0 +1,215 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'StreamMyCourse - Video Hosting Stack (S3 + CloudFront CDN)'
+
+Parameters:
+  Environment:
+    Type: String
+    Default: dev
+    AllowedValues:
+      - dev
+      - integ
+      - staging
+      - prod
+    Description: Deployment environment
+
+  CorsAllowedOrigins:
+    Type: String
+    Description: >-
+      Comma-separated browser origins allowed for S3 CORS (PUT/GET). No wildcards.
+    Default: 'https://app.streammycourse.click,https://dev.streammycourse.click,https://teach.streammycourse.click,https://teach.dev.streammycourse.click,http://localhost:5173,http://127.0.0.1:5173,http://localhost:5174,http://127.0.0.1:5174'
+
+  InvalidationLambdaCodeS3Bucket:
+    Type: String
+    Description: Artifacts bucket containing the CloudFront invalidation Lambda zip.
+
+  InvalidationLambdaCodeS3Key:
+    Type: String
+    Description: S3 key for the CloudFront invalidation Lambda deployment package (index.py only).
+
+Resources:
+  VideoBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      CorsConfiguration:
+        CorsRules:
+          - AllowedMethods:
+              - GET
+              - HEAD
+              - PUT
+            AllowedOrigins: !Split [',', !Ref CorsAllowedOrigins]
+            AllowedHeaders:
+              - Content-Type
+              - Authorization
+              - x-amz-content-sha256
+              - x-amz-date
+              - x-amz-security-token
+              # Cross-origin <video> uses Range (non-simple header); without this, browsers may
+              # not issue byte-range GETs and can buffer until a large sequential read completes.
+              - Range
+              - If-Range
+            ExposedHeaders:
+              - ETag
+              - Accept-Ranges
+              - Content-Length
+              - Content-Range
+            MaxAge: 300
+      Tags:
+        - Key: Project
+          Value: StreamMyCourse
+        - Key: Environment
+          Value: !Ref Environment
+
+  VideoOriginAccessControl:
+    Type: AWS::CloudFront::OriginAccessControl
+    Properties:
+      OriginAccessControlConfig:
+        Name: !Sub 'StreamMyCourse-video-oac-${Environment}'
+        Description: !Sub 'OAC for private video bucket (${Environment})'
+        OriginAccessControlOriginType: s3
+        SigningBehavior: always
+        SigningProtocol: sigv4
+
+  CloudFrontDistribution:
+    Type: AWS::CloudFront::Distribution
+    Properties:
+      DistributionConfig:
+        Comment: !Sub 'StreamMyCourse Video CDN (${Environment})'
+        Enabled: true
+        HttpVersion: http2and3
+        PriceClass: PriceClass_200
+        ViewerCertificate:
+          CloudFrontDefaultCertificate: true
+        DefaultCacheBehavior:
+          TargetOriginId: S3VideoBucket
+          ViewerProtocolPolicy: redirect-to-https
+          AllowedMethods:
+            - GET
+            - HEAD
+            - OPTIONS
+          CachedMethods:
+            - GET
+            - HEAD
+          ForwardedValues:
+            QueryString: true
+            Headers:
+              - Origin
+              - Access-Control-Request-Headers
+              - Access-Control-Request-Method
+              - Range
+              - If-Range
+          MinTTL: 0
+          DefaultTTL: 31536000
+          MaxTTL: 31536000
+        Origins:
+          - Id: S3VideoBucket
+            DomainName: !GetAtt VideoBucket.RegionalDomainName
+            OriginAccessControlId: !Ref VideoOriginAccessControl
+            S3OriginConfig: {}
+
+  VideoBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    DependsOn: CloudFrontDistribution
+    Properties:
+      Bucket: !Ref VideoBucket
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: AllowCloudFrontReadViaOAC
+            Effect: Allow
+            Principal:
+              Service: cloudfront.amazonaws.com
+            Action: 's3:GetObject'
+            Resource: !Sub '${VideoBucket.Arn}/*'
+            Condition:
+              StringEquals:
+                'AWS:SourceArn': !Sub 'arn:aws:cloudfront::${AWS::AccountId}:distribution/${CloudFrontDistribution}'
+
+  CloudFrontInvalidationLambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub 'StreamMyCourse-CfInvalidateRole-${Environment}'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: CloudFrontInvalidateAndLogs
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Sid: InvalidateThisDistribution
+                Effect: Allow
+                Action: cloudfront:CreateInvalidation
+                Resource: !Sub 'arn:aws:cloudfront::${AWS::AccountId}:distribution/${CloudFrontDistribution}'
+              - Sid: WriteOwnLogs
+                Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource:
+                  - !Sub 'arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/StreamMyCourse-CfInvalidate-${Environment}'
+                  - !Sub 'arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/StreamMyCourse-CfInvalidate-${Environment}:*'
+      Tags:
+        - Key: Project
+          Value: StreamMyCourse
+        - Key: Environment
+          Value: !Ref Environment
+
+  CloudFrontInvalidationLambda:
+    Type: AWS::Lambda::Function
+    DependsOn: CloudFrontDistribution
+    Properties:
+      FunctionName: !Sub 'StreamMyCourse-CfInvalidate-${Environment}'
+      Description: !Sub 'CreateInvalidation for video CloudFront (${Environment}); invoke-only'
+      Runtime: python3.11
+      Handler: index.lambda_handler
+      Role: !GetAtt CloudFrontInvalidationLambdaRole.Arn
+      Timeout: 60
+      MemorySize: 128
+      Architectures:
+        - x86_64
+      Environment:
+        Variables:
+          DISTRIBUTION_ID: !Ref CloudFrontDistribution
+      Code:
+        S3Bucket: !Ref InvalidationLambdaCodeS3Bucket
+        S3Key: !Ref InvalidationLambdaCodeS3Key
+      Tags:
+        - Key: Project
+          Value: StreamMyCourse
+        - Key: Environment
+          Value: !Ref Environment
+
+Outputs:
+  BucketName:
+    Description: S3 bucket name
+    Value: !Ref VideoBucket
+
+  BucketURL:
+    Description: S3 bucket URL
+    Value: !Sub 'https://${VideoBucket}.s3.${AWS::Region}.amazonaws.com'
+
+  CloudFrontDomain:
+    Description: CloudFront distribution domain name
+    Value: !GetAtt CloudFrontDistribution.DomainName
+
+  CloudFrontDistributionId:
+    Description: CloudFront distribution ID
+    Value: !Ref CloudFrontDistribution
+
+  CloudFrontInvalidationLambdaName:
+    Description: Invoke with aws lambda invoke to invalidate cache paths
+    Value: !Ref CloudFrontInvalidationLambda

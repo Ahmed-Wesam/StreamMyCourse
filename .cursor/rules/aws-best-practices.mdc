@@ -1,0 +1,40 @@
+---
+description: AWS CLI ergonomics, CloudFormation/IAM, Lambda on AWS boundaries, Dynamo/S3 posture
+globs: infrastructure/**/*
+alwaysApply: false
+---
+
+# AWS practices (StreamMyCourse)
+
+Infrastructure is **CloudFormation** YAML under **`infrastructure/templates/`** (not CDK). The API runs as **one Python Lambda package** under **`infrastructure/lambda/catalog/`**. Cross-link **`.cursor/rules/clean-architecture-boundaries.mdc`**, **`architecture-standards.mdc`**, **`python-lambda-standards.mdc`**, and **`plans/architecture/adr-0001-single-table-dynamodb.md`** for layering and DynamoDB modeling.
+
+## AWS CLI
+
+- Prefer **non-interactive** CLI: **`--output json|text`**, **`--query`** (JMESPath). Use **`AWS_PAGER=`** environment variable **or `--no-cli-pager`** so long output does not stall agents.
+- On Windows, resolve **`aws.exe`** as in **`.cursor/skills/aws-cli/SKILL.md`**; use **`.cursor/skills/use-cli/SKILL.md`** for routine stack/output discovery instead of guessing ARNs.
+
+## IaC and changes
+
+- **Templates** (`api-stack.yaml`, `auth-stack.yaml`, `video-stack.yaml`, hosting stacks, **`github-deploy-role-stack.yaml`**, **`billing-alarm.yaml`**) must remain **parsable**: run **`scripts/parse_cloudformation_yaml.py`** (see **`AGENTS.md`** / CI) after substantive edits.
+- **Least privilege**: IAM roles/policies and GitHub OIDC policies should grant only what **`design.md`** and the workloads need; follow **`infrastructure/README.md`** when altering deploy-role JSON or **`github-deploy-role-stack.yaml`**.
+- **Commits that add workflow permissions**: apply **`deploy-github-iam-stack`** / **`apply-github-deploy-role-policies`** locally **before push** (`AGENTS.md` / **`/commit`**).
+
+## Lambda on AWS
+
+- **Thin handler**: **`index.py`** delegates to **`bootstrap.py`** wiring; HTTP shapes stay in **`controller.py`**; **no direct `boto3`** outside **`repo.py` / `storage.py`**.
+- **Cold start**: keep handler import path lean; reuse clients where safe inside the Lambda process; prefer **simple synchronous boto3 calls** consistent with existing code unless there is a clear need for async.
+- **Errors**: Map to consistent JSON + status via **`HttpError`** (`services/common/errors.py`) and **`services/common/http.py`**; rely on **`check_lambda_boundaries.py`** discipline instead of scattering SDK exceptions to API responses.
+
+## Data (DynamoDB / S3)
+
+- **Single-table** access patterns align with ADR **0001**; evolution (GSI / Scan tradeoffs) with **ADR 0006**.
+- Prefer **encryption and TLS by default** as configured in stacks (SSE-S3/SSE-KMS expectations per **`design.md`**); do **not** disable encryption or widen bucket policies casually.
+- **Input validation**: at API boundary in Lambda (`validation.py` / controllers), consistent with **`python-lambda-standards`**.
+
+## Documentation and tooling
+
+For **official AWS docs, API behavior, quotas, or troubleshooting**, prefer **fetched documentation**—for example MCP servers declared in **`.cursor/mcp.json`** (e.g. AWS documentation / IaC helpers)—**when resolving behavior questions**, rather than guessing. Do not pretend a stack exists in AWS without verifying via CLI/scripts.
+
+## Out of scope (unless explicitly added)
+
+- **Step Functions orchestration**, **EventBridge-heavy** architectures, CDK **`src/stacks`**, and template **`src/functions/*` / Pydantic-in-Lambda** patterns from generic AWS samples are **not** this repo’s baseline—defer to ADRs before introducing them.

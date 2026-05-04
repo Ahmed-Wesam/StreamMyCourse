@@ -1,0 +1,127 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: >-
+  StreamMyCourse - in-VPC operator Lambda for read SQL, gated mutating SQL, and
+  optional catalog wipe. Invoke only via aws lambda invoke (no API Gateway).
+
+Parameters:
+  Environment:
+    Type: String
+    AllowedValues:
+      - dev
+      - integ
+      - staging
+      - prod
+    Description: Must match the RDS stack environment; echoed in EXPECTED_ENVIRONMENT for invoke guard.
+
+  RdsStackName:
+    Type: String
+    Description: >-
+      Name of the deployed RDS stack (e.g. StreamMyCourse-Rds-dev). Imports subnet,
+      Lambda SG, and DB secret from its exports.
+
+  QueryLambdaCodeS3Bucket:
+    Type: String
+    Description: S3 bucket for the query Lambda zip (same artifacts bucket pattern as schema applier).
+
+  QueryLambdaCodeS3Key:
+    Type: String
+    Description: S3 object key for the query Lambda zip.
+
+  AllowCatalogWipe:
+    Type: String
+    Default: 'false'
+    AllowedValues:
+      - 'true'
+      - 'false'
+    Description: >-
+      When true, Lambda accepts wipe_catalog invocations. Keep false except during
+      a controlled maintenance window.
+
+  AllowMutatingSql:
+    Type: String
+    Default: 'false'
+    AllowedValues:
+      - 'true'
+      - 'false'
+    Description: >-
+      When true, Lambda accepts mutating sql with allow_mutating_sql in the payload.
+      Keep false except during exceptional maintenance.
+
+Resources:
+  QueryLambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub 'StreamMyCourse-RdsQueryExecRole-${Environment}'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaVPCAccessExecutionRole
+      Policies:
+        - PolicyName: QuerySecretsAndLogs
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Sid: ReadRdsSecret
+                Effect: Allow
+                Action: secretsmanager:GetSecretValue
+                Resource: !ImportValue
+                  'Fn::Sub': '${RdsStackName}-DbSecretArn'
+              - Sid: WriteOwnLogs
+                Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource:
+                  - !Sub 'arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/StreamMyCourse-RdsQuery-${Environment}'
+                  - !Sub 'arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/StreamMyCourse-RdsQuery-${Environment}:*'
+      Tags:
+        - Key: Project
+          Value: StreamMyCourse
+        - Key: Environment
+          Value: !Ref Environment
+
+  QueryLambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub 'StreamMyCourse-RdsQuery-${Environment}'
+      Description: !Sub 'Operator RDS query / wipe (${Environment}); invoke-only, no HTTP'
+      Runtime: python3.11
+      Handler: index.handler
+      Role: !GetAtt QueryLambdaRole.Arn
+      Timeout: 120
+      MemorySize: 512
+      Architectures:
+        - x86_64
+      VpcConfig:
+        SubnetIds:
+          - !ImportValue
+            'Fn::Sub': '${RdsStackName}-PrivateSubnetId'
+        SecurityGroupIds:
+          - !ImportValue
+            'Fn::Sub': '${RdsStackName}-LambdaSecurityGroupId'
+      Environment:
+        Variables:
+          SECRET_ARN: !ImportValue
+            'Fn::Sub': '${RdsStackName}-DbSecretArn'
+          EXPECTED_ENVIRONMENT: !Ref Environment
+          ALLOW_MUTATING_SQL: !Ref AllowMutatingSql
+          ALLOW_CATALOG_WIPE: !Ref AllowCatalogWipe
+      Code:
+        S3Bucket: !Ref QueryLambdaCodeS3Bucket
+        S3Key: !Ref QueryLambdaCodeS3Key
+      Tags:
+        - Key: Project
+          Value: StreamMyCourse
+        - Key: Environment
+          Value: !Ref Environment
+
+Outputs:
+  QueryLambdaFunctionName:
+    Description: Invoke with aws lambda invoke after deploy
+    Value: !Ref QueryLambda
