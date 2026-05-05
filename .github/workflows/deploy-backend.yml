@@ -1,8 +1,8 @@
 # After CI succeeds on a push to main: deploy integ -> integ tests -> dev edge -> dev (backend +
 # student + teacher web in parallel) with prod edge in parallel to those three (prod edge only
 # needs integ + dev edge, not dev backend/SPA success). Prod RDS: deploy-rds-prod + apply-schema-prod
-# run after integ tests and successful dev edge (parallel with dev RDS). Prod backend waits for prod edge, prod RDS,
-# schema apply, dev column, then deploys with USE_RDS=true; verify-prod-rds runs after prod backend.
+# run after integ tests and successful dev edge (parallel with dev RDS). Prod backend waits for verify-dev-rds (dev RDS
+# API smoke), prod edge, prod RDS, schema apply, dev column, then deploys with USE_RDS=true; verify-prod-rds runs after prod backend.
 # verify-dev-rds / verify-prod-rds call verify-rds-reusable.yml with environment-specific inputs + secret mapping only.
 # Prod SPAs run after prod edge (unchanged). Never prod-only on edge.
 # Manual dispatch: full or integ-only without waiting for CI (operator responsibility).
@@ -793,6 +793,7 @@ jobs:
       - deploy-backend-dev
       - deploy-web-dev
       - deploy-teacher-web-dev
+      - verify-dev-rds
       - deploy-edge-prod
       - deploy-rds-prod
       - apply-schema-prod
@@ -808,6 +809,7 @@ jobs:
       needs.deploy-backend-dev.result == 'success' &&
       needs.deploy-web-dev.result == 'success' &&
       needs.deploy-teacher-web-dev.result == 'success' &&
+      needs.verify-dev-rds.result == 'success' &&
       needs.deploy-edge-prod.result == 'success' &&
       needs.deploy-rds-prod.result == 'success' &&
       needs.apply-schema-prod.result == 'success' &&
