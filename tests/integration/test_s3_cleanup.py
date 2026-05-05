@@ -84,4 +84,4 @@ def test_delete_lesson_removes_uploaded_video(
     deleted = api.delete_lesson(course.course_id, lesson.lesson_id)
     assert deleted.status_code == 200
 
-    assert not s3_object_exists(video_bucket, video_key, region=aws_region)
+    _wait_until_object_absent(video_bucket, video_key, region=aws_region)
