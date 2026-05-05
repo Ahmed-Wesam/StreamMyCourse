@@ -404,8 +404,9 @@ class CourseManagementService:
         except Conflict:
             self._storage.delete_objects([presign.videoKey])
             raise
-        if expected_key:
-            self._delete_media_keys([expected_key])
+        # Do not delete `expected_key` here: a second presign can race with a client
+        # still uploading to the first URL. Orphan prior objects are acceptable for MVP;
+        # cleanup can be lifecycle or a later sweeper keyed off DB.
         return {"uploadUrl": presign.uploadUrl, "videoKey": presign.videoKey}
 
     def get_thumbnail_upload_url(
