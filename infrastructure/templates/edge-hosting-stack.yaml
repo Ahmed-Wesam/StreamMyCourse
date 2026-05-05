@@ -87,6 +87,10 @@ Resources:
 
   SiteBucket:
     Type: AWS::S3::Bucket
+    # Retain SPA hosting bucket on stack delete/replace. Contents are rebuildable from source,
+    # but retention prevents downtime and preserves CloudFront origin while the stack churns.
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
     Properties:
       BucketName: !Sub 'streammycourse-site-${Environment}-${AWS::Region}-${AWS::AccountId}'
       BucketEncryption:
@@ -238,6 +242,9 @@ Resources:
 
   TeacherSiteBucket:
     Type: AWS::S3::Bucket
+    # Retain teacher SPA hosting bucket on stack delete/replace (same rationale as SiteBucket).
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
     Properties:
       BucketName: !Sub 'streammycourse-teacher-${Environment}-${AWS::Region}-${AWS::AccountId}'
       BucketEncryption:

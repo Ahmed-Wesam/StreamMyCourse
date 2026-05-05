@@ -28,6 +28,10 @@ Parameters:
 Resources:
   VideoBucket:
     Type: AWS::S3::Bucket
+    # Retain bucket and contents on stack deletion or property-driven replacement.
+    # Without these policies, a CFN replacement (or stack delete) destroys all uploaded course/lesson media.
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
     Properties:
       PublicAccessBlockConfiguration:
         BlockPublicAcls: true
