@@ -82,7 +82,9 @@ jobs:
   deploy-backend-integ:
     name: Backend (integ) — Video + API
     runs-on: ubuntu-latest
-    environment: dev
+    # No GitHub Environment: `vars.AWS_DEPLOY_ROLE_ARN` must be the repo-level variable (backend OIDC
+    # role). Attaching `environment: dev` would let an Environment variable of the same name override
+    # the repo value (e.g. a web-only role ARN) and break SQS/Lambda deploy for integ.
     needs: gate
     if: needs.gate.outputs.should_deploy == 'true'
     permissions:
@@ -114,7 +116,7 @@ jobs:
   integ-tests:
     name: Integ tests — pytest against deployed integ API
     runs-on: ubuntu-latest
-    environment: dev
+    # No GitHub Environment — same OIDC variable shadowing issue as deploy-backend-integ.
     needs: [gate, deploy-backend-integ]
     permissions:
       id-token: write

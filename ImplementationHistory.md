@@ -8,7 +8,7 @@
 
 ### Completed
 
-- [x] **GitHub Actions** — [`.github/workflows/deploy-backend.yml`](.github/workflows/deploy-backend.yml) — `configure-aws-credentials` `role-to-assume` and reusable-workflow `AWS_DEPLOY_ROLE_ARN` inputs now use **`${{ vars.AWS_DEPLOY_ROLE_ARN }}`** (not **`secrets.AWS_DEPLOY_ROLE_ARN`**), aligned with [`AGENTS.md`](AGENTS.md) and the **verify-rds** callers. Avoids a **dev** / **prod** environment **secret** shadowing the value with a **web-only** role ARN (which caused **`sqs:CreateQueue` AccessDenied** on `StreamMyCourse-MediaCleanup-integ`).
+- [x] **GitHub Actions** — [`.github/workflows/deploy-backend.yml`](.github/workflows/deploy-backend.yml) — `configure-aws-credentials` `role-to-assume` and reusable-workflow `AWS_DEPLOY_ROLE_ARN` inputs now use **`${{ vars.AWS_DEPLOY_ROLE_ARN }}`** (not **`secrets.AWS_DEPLOY_ROLE_ARN`**), aligned with [`AGENTS.md`](AGENTS.md) and the **verify-rds** callers. **`deploy-backend-integ`** and **`integ-tests`** no longer attach **`environment: dev`**, because a GitHub **Environment** variable with the same name would still override the repository variable and could point at a **web-only** role (same **`sqs:CreateQueue` AccessDenied** symptom).
 - [x] **Contract test** — [`tests/unit/test_deploy_backend_workflow_contract.py`](tests/unit/test_deploy_backend_workflow_contract.py) — asserts the workflow contains no `secrets.AWS_DEPLOY_ROLE_ARN` and that **deploy-backend-integ** uses the variable for OIDC.
 
 ### Ops
