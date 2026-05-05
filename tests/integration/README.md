@@ -1,6 +1,8 @@
 # Integration tests
 
-HTTPS-driven tests that exercise the deployed `integ` backend (API Gateway + Lambda + DynamoDB + S3) end-to-end.
+HTTPS-driven tests that exercise a deployed backend (API Gateway + Lambda + PostgreSQL catalog + S3) end-to-end.
+
+**CI targets the dev stack** (`streammycourse-api`, `StreamMyCourse-Video-dev`, region `eu-west-1`). The job uses GitHub Environment `dev` so Cognito JWT minting reuses the same secrets/variables as **Verify dev RDS** (`COGNITO_RDS_VERIFY_*`, `COGNITO_RDS_VERIFY_TEST_USERNAME` — see below).
 
 ## What gets tested
 
@@ -10,36 +12,35 @@ See [`integration_testing_strategy_e5a09a54.plan.md`](../../.cursor/plans/integr
 
 ## Running locally
 
-The tests need a deployed `integ` stack (`StreamMyCourse-Api-integ` + `StreamMyCourse-Video-integ`). Deploy it once with:
+Deploy **dev** (matches CI):
 
 ```powershell
 # from repo root
-.\infrastructure\deploy-environment.ps1 -Environment integ
+.\infrastructure\deploy-environment.ps1 -Environment dev
 ```
 
-or, on bash / WSL / CI:
+Or, on bash / WSL / CI:
 
 ```bash
-./scripts/deploy-backend.sh integ
+./scripts/deploy-backend.sh dev
 ```
 
 Then export the resource locations and run pytest:
 
 ```bash
-export INTEG_API_BASE_URL="$(aws cloudformation describe-stacks \
-  --stack-name StreamMyCourse-Api-integ \
+export INTEGRATION_API_BASE_URL="$(aws cloudformation describe-stacks \
+  --stack-name streammycourse-api \
   --query 'Stacks[0].Outputs[?OutputKey==`ApiEndpoint`].OutputValue' \
   --output text)"
-export INTEG_TABLE_NAME=StreamMyCourse-Catalog-integ
-export INTEG_VIDEO_BUCKET="$(aws cloudformation describe-stacks \
-  --stack-name StreamMyCourse-Video-integ \
+export INTEGRATION_VIDEO_BUCKET="$(aws cloudformation describe-stacks \
+  --stack-name StreamMyCourse-Video-dev \
   --query 'Stacks[0].Outputs[?OutputKey==`BucketName`].OutputValue' \
   --output text)"
-export INTEG_REGION=eu-west-1
+export INTEGRATION_AWS_REGION=eu-west-1
 
-# Optional: JWT from your Cognito app client (hosted UI sign-in → copy id/access token).
-# Enables `test_users_me_with_bearer_returns_profile_when_enforced` when the pool authorizer is on.
-# export INTEG_COGNITO_JWT='eyJ...'
+# Required when the pool authorizer protects mutating routes:
+# Mint an IdToken (teacher client) or use a static JWT from your Cognito setup.
+# export INTEGRATION_COGNITO_JWT='eyJ...'
 
 pip install -r tests/integration/requirements.txt
 python -m pytest tests/integration -q
@@ -48,30 +49,55 @@ python -m pytest tests/integration -q
 PowerShell equivalent:
 
 ```powershell
-$env:INTEG_API_BASE_URL = (aws cloudformation describe-stacks --stack-name StreamMyCourse-Api-integ --query 'Stacks[0].Outputs[?OutputKey==`ApiEndpoint`].OutputValue' --output text)
-$env:INTEG_TABLE_NAME = 'StreamMyCourse-Catalog-integ'
-$env:INTEG_VIDEO_BUCKET = (aws cloudformation describe-stacks --stack-name StreamMyCourse-Video-integ --query 'Stacks[0].Outputs[?OutputKey==`BucketName`].OutputValue' --output text)
-$env:INTEG_REGION = 'eu-west-1'
+$env:INTEGRATION_API_BASE_URL = (aws cloudformation describe-stacks --stack-name streammycourse-api --query 'Stacks[0].Outputs[?OutputKey==`ApiEndpoint`].OutputValue' --output text)
+$env:INTEGRATION_VIDEO_BUCKET = (aws cloudformation describe-stacks --stack-name StreamMyCourse-Video-dev --query 'Stacks[0].Outputs[?OutputKey==`BucketName`].OutputValue' --output text)
+$env:INTEGRATION_AWS_REGION = 'eu-west-1'
 
 pip install -r tests\integration\requirements.txt
 python -m pytest tests\integration -q
 ```
 
-Or use the helper script (deploys first by default, then runs tests):
+Helper (deploys dev by default, then resolves stacks and runs pytest):
 
 ```powershell
-.\scripts\run-integ.ps1
+.\scripts\run-integration-tests.ps1
 ```
+
+Optional **`prod`** against your own stacks: `.\scripts\run-integration-tests.ps1 -Environment prod` (ensure you understand blast radius).
 
 ## AWS permissions for local runs
 
 Your AWS profile needs:
 
-- `cloudformation:DescribeStacks` on `StreamMyCourse-Api-integ` and `StreamMyCourse-Video-integ` (to read endpoint + bucket name)
-- `dynamodb:Scan`, `dynamodb:Query`, `dynamodb:DeleteItem`, `dynamodb:BatchWriteItem` on the integ table (safety-net cleanup)
-- `s3:ListBucket`, `s3:DeleteObject` on the integ video bucket (safety-net cleanup)
+- `cloudformation:DescribeStacks` on **streammycourse-api** and **StreamMyCourse-Video-dev**
+- `s3:ListBucket`, `s3:DeleteObject` on that environment's video bucket (safety-net cleanup)
+- Permissions to mint `admin-initiate-auth` if you script JWT locally (`cognito-idp:AdminInitiateAuth`).
 
-The HTTP test calls themselves do not need AWS credentials -- they go through API Gateway. AWS credentials are only used by the safety-net cleanup at session end.
+The HTTP test calls themselves only need **`INTEGRATION_COGNITO_JWT`** when routes require auth — they do not otherwise need AWS credentials. AWS credentials power the safety-net cleanup at session end.
+
+## Cognito credentials (CI vs local)
+
+GitHub Deploy workflow **Integration HTTP tests** attaches **`environment: dev`**. Resolve stack outputs against **streammycourse-api** and **StreamMyCourse-Video-dev**, then mint **`INTEGRATION_COGNITO_JWT`** exactly like **`verify-rds-reusable.yml`**: **`StreamMyCourse-Auth-dev`** outputs, **`ADMIN_USER_PASSWORD_AUTH`**, **`TeacherUserPoolClientId`**.
+
+**On GitHub Environment `dev`** (reuse for both Integration HTTP tests and Verify dev RDS):
+
+- **Secret** `COGNITO_RDS_VERIFY_TEST_PASSWORD`
+- **Variable** `COGNITO_RDS_VERIFY_TEST_USERNAME` (optional; defaults to `ci-rds-verify@noreply.local`)
+- **Secret** `COGNITO_RDS_VERIFY_JWT` (optional fallback if minting fails)
+
+**OIDC:** The Configure AWS Credentials step assumes the **repository** IAM role via job output **`resolve-oidc-deploy-role`** (pins **`vars.AWS_DEPLOY_ROLE_ARN`** in a job without `environment:`) so **`environment: dev`** does not shadow the deploy-role variable.
+
+## Smoke tests (`test_rds_path.py`)
+
+Focused checks for catalog round-trips (create/read/update, lesson FK). Same fixtures as the rest of the suite.
+
+**Dev CI/CD:** [`.github/workflows/deploy-backend.yml`](../../.github/workflows/deploy-backend.yml) deploys RDS, applies schema via VPC Lambda, deploys **`deploy-backend-dev`**, runs **Integration HTTP tests**, then **Verify dev RDS** runs `test_rds_path.py` again via **`verify-rds-reusable.yml`**.
+
+**GitHub Actions variable:** Set **`AWS_DEPLOY_ROLE_ARN`** at repo scope (IAM role ARN from **`github-deploy-role-stack.yaml`** output **`GitHubDeployRoleArn`**).
+
+**Bootstrap the CI Cognito user** (operator workstation): see **`scripts/ensure-ci-rds-verify-cognito-user.sh`** and **`COGNITO_RDS_VERIFY_TEST_PASSWORD`** on **`dev`** (and **`prod`** for prod verify).
+
+**Local RDS** (advanced): [`scripts/deploy-rds-stack.sh`](../../scripts/deploy-rds-stack.sh) targets **`dev`** or **`prod`**; integration tests normally follow **`dev`** in CI.
 
 ## Test layout
 
@@ -81,113 +107,18 @@ tests/integration/
   helpers/
     api.py               -- ApiClient wrapping httpx.Client with one method per route
     factories.py         -- course/lesson factory builders + TEST_TITLE_PREFIX
-    cleanup.py           -- boto3-based safety-net cleanup utilities
+    cleanup.py           -- HTTP + S3 safety-net cleanup utilities
   test_auth_gateway.py   -- `/users/me`, CORS preflight, POST /courses vs Cognito (optional JWT)
   test_*.py              -- one module per scenario group (S1-S5 in the plan)
 ```
 
-## Smoke testing the RDS PostgreSQL migration
-
-When the Lambda is deployed with `USE_RDS=true`, the existing integration suite
-doubles as the RDS smoke test -- every scenario round-trips through the
-PostgreSQL adapter instead of DynamoDB. The public API contract is unchanged,
-so no test source edits are required.
-
-**Local preflight (optional):** From the repo root, [`scripts/deploy-rds-stack.sh`](../../scripts/deploy-rds-stack.sh) mirrors the CI packaging + `aws cloudformation deploy` + `aws rds wait` for **`dev`**, **`integ`**, or **`prod`** (set `AWS_REGION`, e.g. `eu-west-1`). On Windows, use **Git Bash**; if `zip` is missing, the script falls back to Python to build the Lambda zip. **`SKIP_SCHEMA_APPLIER=1`** deploys VPC + RDS only (empty schema-applier S3 parameters).
-
-**Dev CI/CD:** On pushes to `main`, [`.github/workflows/deploy-backend.yml`](../../.github/workflows/deploy-backend.yml) builds a small zip under `infrastructure/lambda/rds_schema_apply/`, uploads it to the artifacts bucket, deploys [`rds-stack.yaml`](../../infrastructure/templates/rds-stack.yaml) with `SchemaApplierCodeS3Bucket` / `SchemaApplierCodeS3Key`, then **`apply-schema-dev`** invokes **`StreamMyCourse-RdsSchemaApplier-dev`** so schema DDL runs from inside the VPC (no `psql` from GitHub-hosted runners to private RDS).
-
-The **Verify dev RDS** and **Verify prod RDS** jobs both call [`.github/workflows/verify-rds-reusable.yml`](../../.github/workflows/verify-rds-reusable.yml): one shared procedure (resolve stacks from **inputs**, mint JWT or use fallback, run `test_rds_path.py`). The workflow passes **`vars.AWS_DEPLOY_ROLE_ARN`** into the reusable workflow (`workflow_call` does not allow `secrets`/`env` in `with:`); set a **repository Actions variable** `AWS_DEPLOY_ROLE_ARN` to the IAM role ARN from [`github-deploy-role-stack.yaml`](../../infrastructure/templates/github-deploy-role-stack.yaml) output **`GitHubDeployRoleArn`** (same value as used on **dev**/**prod** environments for other Deploy jobs). **`deploy-backend.yml` only passes `github_environment` (`dev` | `prod`) and stack names** — it does not thread secrets between environments. The reusable job sets **`environment: ${{ inputs.github_environment }}`**, so GitHub resolves credentials **only** from that environment’s store.
-
-**GitHub Environment keys (same names on dev and prod; values differ per environment):**
-
-- **Secret** `COGNITO_RDS_VERIFY_TEST_PASSWORD` — permanent password for the dedicated teacher test user `ci-rds-verify@noreply.local` in that environment’s Cognito pool.
-- **Variable** `COGNITO_RDS_VERIFY_TEST_USERNAME` — optional; workflow defaults to `ci-rds-verify@noreply.local` if unset.
-- **Secret** `COGNITO_RDS_VERIFY_JWT` — optional static token if minting fails (Actions emits a `::warning::` when used after a mint failure).
-
-The reusable workflow mints an **IdToken** with `aws cognito-idp admin-initiate-auth` (`ADMIN_USER_PASSWORD_AUTH` against the **teacher** client from the **auth stack name passed as input** — `StreamMyCourse-Auth-dev` vs `StreamMyCourse-Auth-prod` — only in `deploy-backend.yml`). It sets runtime **`INTEG_COGNITO_JWT`** for pytest; `conftest.py` sends `Authorization: Bearer …`. (`INTEG_COGNITO_JWT` is not a GitHub secret name.)
-
-**Cutover / cleanup:** Add the unified keys on **dev** and **prod** before merging (or expect one failed Verify until they exist). GitHub never returns secret values after set — copy from your vault before deleting old names. With [GitHub CLI](https://cli.github.com/) (Windows builds may lack `--body-file`; pipe the password in instead of `-b` when it contains shell metacharacters):
-
-```powershell
-# dev environment
-gh secret set COGNITO_RDS_VERIFY_TEST_PASSWORD -e dev -b"<password>"
-gh secret set COGNITO_RDS_VERIFY_JWT -e dev -b"<optional-static-jwt>"
-gh variable set COGNITO_RDS_VERIFY_TEST_USERNAME -e dev -b"ci-rds-verify@noreply.local"
-
-# prod environment
-gh secret set COGNITO_RDS_VERIFY_TEST_PASSWORD -e prod -b"<password>"
-gh secret set COGNITO_RDS_VERIFY_JWT -e prod -b"<optional>"
-gh variable set COGNITO_RDS_VERIFY_TEST_USERNAME -e prod -b"ci-rds-verify@noreply.local"
-```
-
-```powershell
-# After green Deploy — remove superseded suffixed names (skip missing)
-gh secret delete COGNITO_RDS_VERIFY_DEV_TEST_PASSWORD -e dev 2>$null
-gh secret delete COGNITO_RDS_VERIFY_DEV_JWT -e dev 2>$null
-gh variable delete COGNITO_RDS_VERIFY_DEV_TEST_USERNAME -e dev 2>$null
-gh secret delete COGNITO_RDS_VERIFY_PROD_TEST_PASSWORD -e prod 2>$null
-gh secret delete COGNITO_RDS_VERIFY_PROD_JWT -e prod 2>$null
-gh variable delete COGNITO_RDS_VERIFY_PROD_TEST_USERNAME -e prod 2>$null
-
-# Legacy integ-style keys
-gh secret delete INTEG_DEV_COGNITO_TEST_PASSWORD -e dev 2>$null
-gh secret delete INTEG_DEV_COGNITO_JWT -e dev 2>$null
-gh variable delete INTEG_DEV_COGNITO_TEST_USERNAME -e dev 2>$null
-gh secret delete INTEG_PROD_COGNITO_TEST_PASSWORD -e prod 2>$null
-gh secret delete INTEG_PROD_COGNITO_JWT -e prod 2>$null
-gh variable delete INTEG_PROD_COGNITO_TEST_USERNAME -e prod 2>$null
-```
-
-**Bootstrap the CI user once** (operator workstation with admin Cognito access):
-
-```bash
-CI_RDS_VERIFY_PASSWORD='choose-a-strong-password' ./scripts/ensure-ci-rds-verify-cognito-user.sh
-```
-
-For **dev**, set **`COGNITO_RDS_VERIFY_TEST_PASSWORD`** on the **dev** GitHub Environment to the same value. For **prod**, run with `CI_RDS_VERIFY_AUTH_STACK=StreamMyCourse-Auth-prod` and set **`COGNITO_RDS_VERIFY_TEST_PASSWORD`** on the **prod** environment.
-
-For local runs of the same tests, mint a token or `export INTEG_COGNITO_JWT='eyJ…'` (see optional JWT note above).
-
-Recommended cutover verification sequence:
-
-```bash
-# 1. Deploy the RDS stack (one-time per environment).
-aws cloudformation deploy \
-  --template-file infrastructure/templates/rds-stack.yaml \
-  --stack-name StreamMyCourse-Rds-integ \
-  --parameter-overrides "Environment=integ" \
-  --capabilities CAPABILITY_IAM \
-  --region eu-west-1
-
-# 2. Apply the schema (from an operator workstation via SSM port forwarding
-#    or bastion; see scripts/migrate-dynamodb-to-rds.py for the companion
-#    data migration).
-psql "$CONNECTION_STRING" < infrastructure/database/migrations/001_initial_schema.sql
-
-# 3. Redeploy the API stack wired to the RDS stack + USE_RDS=true.
-RDS_STACK_NAME=StreamMyCourse-Rds-integ USE_RDS=true \
-  ./scripts/deploy-backend.sh integ
-
-# 4. Run the full integration suite against the RDS-backed API. Passing suite
-#    = list/create/enroll/playback round-trip verified on PostgreSQL.
-python -m pytest tests/integration -q
-```
-
-Rollback (if the smoke test fails):
-
-```bash
-# Flip the flag; no redeploy of the RDS stack needed.
-USE_RDS=false ./scripts/deploy-backend.sh integ
-```
-
-Subsequent runs without the environment overrides leave the feature flag at
-its current state (CloudFormation does not reset unset parameter values).
-
 ## Cleanup contract
 
 - **Per-test cleanup** is the primary path. The `course_factory` fixture registers a finalizer that calls `DELETE /courses/{id}` for every course it created. Lessons are deleted transitively.
-- **Session-end safety net** runs in `pytest_sessionfinish`. It scans the integ DDB table for any course rows whose title still starts with `integ-test-` and deletes them, and empties **all objects** in the integ S3 video bucket (course-scoped keys). Findings are written to stderr and `$GITHUB_STEP_SUMMARY` (in CI) but **never fail** the test job.
+- **Session-end safety net** runs in `pytest_sessionfinish`.
+  - **Courses:** lists the CI user's courses with `GET /courses/mine` (requires `INTEGRATION_COGNITO_JWT`) and `DELETE`s any whose title still starts with `integration-test-`. No direct Postgres from the runner.
+  - **S3:** empties **all objects** in the configured **non-prod dev** video bucket only (see **`helpers.cleanup.empty_entire_bucket`**). Prod is always refused.
+  - Findings go to stderr and `$GITHUB_STEP_SUMMARY` when present but **never fail** CI.
 
 ## Writing new tests
 

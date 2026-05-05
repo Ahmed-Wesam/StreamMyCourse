@@ -24,6 +24,10 @@ class ApiClient:
     def list_courses(self, *, headers: Optional[Dict[str, str]] = None) -> httpx.Response:
         return self._client.get("/courses", headers=headers or {})
 
+    def list_my_courses(self, *, headers: Optional[Dict[str, str]] = None) -> httpx.Response:
+        """Instructor dashboard list (draft + published), scoped to the authenticated user."""
+        return self._client.get("/courses/mine", headers=headers or {})
+
     def create_course(self, *, title: str, description: str = "") -> httpx.Response:
         return self._client.post("/courses", json={"title": title, "description": description})
 

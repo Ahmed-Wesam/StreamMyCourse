@@ -1,11 +1,10 @@
-"""Pytest fixtures and session hooks for the integ test suite.
+"""Pytest fixtures and session hooks for the HTTP integration test suite.
 
 Required environment variables (set by CI; for local runs see README.md):
 
-- INTEG_API_BASE_URL  -- e.g. https://abc123.execute-api.eu-west-1.amazonaws.com/integ
-- INTEG_TABLE_NAME    -- e.g. StreamMyCourse-Catalog-integ
-- INTEG_VIDEO_BUCKET  -- e.g. streammycourse-video-integ-...
-- INTEG_REGION        -- defaults to eu-west-1
+- INTEGRATION_API_BASE_URL  -- API Gateway base URL (no trailing slash)
+- INTEGRATION_VIDEO_BUCKET  -- S3 bucket for lesson/thumbnail uploads
+- INTEGRATION_AWS_REGION    -- defaults to eu-west-1
 """
 
 from __future__ import annotations
@@ -42,22 +41,17 @@ def _required_env(name: str) -> str:
 
 @pytest.fixture(scope="session")
 def api_base_url() -> str:
-    return _required_env("INTEG_API_BASE_URL").rstrip("/")
+    return _required_env("INTEGRATION_API_BASE_URL").rstrip("/")
 
 
 @pytest.fixture(scope="session")
-def integ_table_name() -> str:
-    return _required_env("INTEG_TABLE_NAME")
+def video_bucket() -> str:
+    return _required_env("INTEGRATION_VIDEO_BUCKET")
 
 
 @pytest.fixture(scope="session")
-def integ_video_bucket() -> str:
-    return _required_env("INTEG_VIDEO_BUCKET")
-
-
-@pytest.fixture(scope="session")
-def integ_region() -> str:
-    return os.environ.get("INTEG_REGION", "eu-west-1")
+def aws_region() -> str:
+    return os.environ.get("INTEGRATION_AWS_REGION", "eu-west-1")
 
 
 # --- HTTP client ----------------------------------------------------------------
@@ -65,11 +59,11 @@ def integ_region() -> str:
 
 @pytest.fixture(scope="session")
 def http_client(api_base_url: str) -> Iterator[httpx.Client]:
-    # Dev (and some prod) stacks enforce Cognito on mutating routes. CI sets
-    # INTEG_COGNITO_JWT set by verify-rds-reusable (minted or COGNITO_RDS_VERIFY_JWT); local runs
-    # can export the same variable after signing in via the hosted UI.
+    # Dev (and prod) stacks enforce Cognito on mutating routes.
+    # CI: `.github/workflows/deploy-backend.yml` `integration-http-tests` mints
+    # `INTEGRATION_COGNITO_JWT` (same flow as `verify-rds-reusable.yml`).
     default_headers: dict[str, str] = {}
-    token = os.environ.get("INTEG_COGNITO_JWT", "").strip()
+    token = os.environ.get("INTEGRATION_COGNITO_JWT", "").strip()
     if token:
         default_headers["Authorization"] = f"Bearer {token}"
     with httpx.Client(
@@ -120,23 +114,24 @@ def lesson_factory(api: ApiClient):
 
 
 def pytest_sessionfinish(session: pytest.Session, exitstatus: int) -> None:
-    """Sweep any test-prefixed leftovers in DDB and the integ video S3 bucket.
-    Logs to stdout and to GITHUB_STEP_SUMMARY when present. Never fails CI."""
-    table_name = os.environ.get("INTEG_TABLE_NAME", "").strip()
-    bucket = os.environ.get("INTEG_VIDEO_BUCKET", "").strip()
-    region = os.environ.get("INTEG_REGION", "eu-west-1")
-    if not table_name or not bucket:
-        return  # nothing to do
+    """Sweep test-prefixed leftover courses (HTTP) and objects in the video bucket.
+
+    Courses: ``GET /courses/mine`` + ``DELETE /courses/{id}`` when
+    ``INTEGRATION_API_BASE_URL`` and ``INTEGRATION_COGNITO_JWT`` are set.
+    S3: full-bucket sweep for the configured dev video bucket only. Never fails CI."""
+    bucket = os.environ.get("INTEGRATION_VIDEO_BUCKET", "").strip()
+    region = os.environ.get("INTEGRATION_AWS_REGION", "eu-west-1")
+    if not bucket:
+        return
 
     try:
         report = run_safety_net(
-            table_name=table_name,
             bucket=bucket,
             region=region,
             title_prefix=TEST_TITLE_PREFIX,
         )
     except Exception as e:  # broad: never let cleanup raise from a session hook
-        sys.stderr.write(f"[integ] safety-net cleanup raised: {e}\n")
+        sys.stderr.write(f"[integration] safety-net cleanup raised: {e}\n")
         return
 
     summary = report.render_summary()

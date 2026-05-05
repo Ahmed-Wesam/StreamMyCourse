@@ -37,21 +37,24 @@ def test_deploy_backend_uses_repository_variable_for_oidc_role_not_environment_s
     text = _workflow_text()
     assert "secrets.AWS_DEPLOY_ROLE_ARN" not in text
     assert text.count("vars.AWS_DEPLOY_ROLE_ARN") >= 10
-    integ = _job_block(text, "deploy-backend-integ", "\n  # --- Stage 2:")
-    assert "role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}" in integ
+    pin = _job_block(text, "resolve-oidc-deploy-role", "\n  # --- Integration tests")
+    assert "vars.AWS_DEPLOY_ROLE_ARN" in pin
 
 
-def test_integ_jobs_have_no_github_environment_so_oidc_role_var_is_not_shadowed() -> None:
-    """Environment-level `AWS_DEPLOY_ROLE_ARN` would override the repo variable and can be web-only."""
+def test_integration_http_tests_use_dev_environment_and_pinned_oidc_role_output() -> None:
+    """integration-http-tests attach `environment: dev` for Cognito secrets but assume OIDC role from a no-env job."""
     text = _workflow_text()
-    integ_deploy = _job_block(text, "deploy-backend-integ", "\n  # --- Stage 2:")
-    integ_tests = _job_block(text, "integ-tests", "\n  # --- Stage 3:")
-    env_dev_line = re.compile(r"^\s+environment:\s*dev\s*$", re.M)
-    assert env_dev_line.search(integ_deploy) is None
-    assert env_dev_line.search(integ_tests) is None
+    http_tests = _job_block(text, "integration-http-tests", "\n  # --- Dev:")
+    assert re.search(r"^\s+environment:\s*dev\s*$", http_tests, re.M)
+    assert "needs.resolve-oidc-deploy-role.outputs.aws_deploy_role_arn" in http_tests
+    assert (
+        "role-to-assume: ${{ needs.resolve-oidc-deploy-role.outputs.aws_deploy_role_arn }}"
+        in http_tests
+    )
+    assert "deploy-backend-integ" not in text
 
 
-def test_deploy_backend_prod_depends_on_rds_and_schema_and_uses_rds_env() -> None:
+def test_deploy_backend_prod_depends_on_rds_and_schema_and_wires_rds_stack() -> None:
     text = _workflow_text()
     start = text.index("  deploy-backend-prod:")
     end = text.index("    steps:", start)
@@ -61,7 +64,19 @@ def test_deploy_backend_prod_depends_on_rds_and_schema_and_uses_rds_env() -> Non
     assert "needs.deploy-rds-prod.result == 'success'" in block
     assert "needs.apply-schema-prod.result == 'success'" in block
     assert "RDS_STACK_NAME: StreamMyCourse-Rds-prod" in block
-    assert 'USE_RDS: "true"' in block
+
+
+def test_deploy_backend_dev_depends_on_rds_and_schema_and_wires_rds_stack() -> None:
+    text = _workflow_text()
+    start = text.index("  deploy-backend-dev:")
+    end = text.index("    steps:", start)
+    block = text[start:end]
+    # needs may be array format: [gate, deploy-rds-dev, apply-schema-dev]
+    assert "deploy-rds-dev" in block
+    assert "apply-schema-dev" in block
+    assert "needs.deploy-rds-dev.result == 'success'" in block
+    assert "needs.apply-schema-dev.result == 'success'" in block
+    assert "RDS_STACK_NAME: StreamMyCourse-Rds-dev" in block
 
 
 def _job_block(text: str, job_id: str, next_marker: str) -> str:
@@ -73,6 +88,7 @@ def _job_block(text: str, job_id: str, next_marker: str) -> str:
 def test_verify_dev_rds_wires_only_dev_stacks_and_reusable_environment_dev() -> None:
     text = _workflow_text()
     block = _job_block(text, "verify-dev-rds", "\n  # --- Stage 4:")
+    assert "integration-http-tests" in block
     assert "uses: ./.github/workflows/verify-rds-reusable.yml" in block
     # Job cannot use `environment:` with `uses:` (actionlint). `github_environment` input is different.
     assert re.search(r"^    environment:\s*dev\s*$", block, re.M) is None
@@ -100,7 +116,6 @@ def test_verify_prod_rds_wires_only_prod_stacks_and_reusable_environment_prod() 
     assert "api_stack_name: StreamMyCourse-Api-prod" in block
     assert "video_stack_name: StreamMyCourse-Video-prod" in block
     assert "auth_stack_name: StreamMyCourse-Auth-prod" in block
-    assert "catalog_table_name: StreamMyCourse-Catalog-prod" in block
     assert "aws_deploy_role_arn: ${{ vars.AWS_DEPLOY_ROLE_ARN }}" in block
     assert "secrets.INTEG_PROD_COGNITO_" not in block
     assert "vars.INTEG_PROD_COGNITO_" not in block

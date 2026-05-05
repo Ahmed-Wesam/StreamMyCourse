@@ -23,9 +23,9 @@ class TestApigwRoutingPath:
         evt = {
             "requestContext": {
                 "resourcePath": "/courses/{courseId}",
-                "stage": "integ",
+                "stage": "staging",
             },
-            "path": "/integ/courses/abc-123",
+            "path": "/staging/courses/abc-123",
         }
         assert apigw_routing_path(evt) == "/courses/abc-123"
 
@@ -35,23 +35,23 @@ class TestApigwRoutingPath:
 
     def test_strips_stage_from_path_when_no_resource_path(self) -> None:
         evt = {
-            "requestContext": {"stage": "integ"},
-            "path": "/integ/courses",
+            "requestContext": {"stage": "staging"},
+            "path": "/staging/courses",
         }
         assert apigw_routing_path(evt) == "/courses"
 
     def test_prefers_literal_path_over_template_rawpath(self) -> None:
         evt = {
-            "requestContext": {"stage": "integ", "resourcePath": "/courses/{courseId}"},
+            "requestContext": {"stage": "staging", "resourcePath": "/courses/{courseId}"},
             "rawPath": "/courses/{courseId}",
-            "path": "/integ/courses/abc-123",
+            "path": "/staging/courses/abc-123",
         }
         assert apigw_routing_path(evt) == "/courses/abc-123"
 
     def test_heuristic_strips_stage_when_context_stage_missing(self) -> None:
         evt = {
             "requestContext": {},
-            "path": "/integ/courses/xyz",
+            "path": "/staging/courses/xyz",
         }
         assert apigw_routing_path(evt) == "/courses/xyz"
 

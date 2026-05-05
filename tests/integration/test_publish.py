@@ -137,8 +137,8 @@ def test_full_publish_flow_appears_in_catalog(
 
 
 @pytest.mark.skipif(
-    not os.environ.get("INTEG_COGNITO_JWT", "").strip(),
-    reason="Set INTEG_COGNITO_JWT to test draft course visibility (requires auth to distinguish anonymous users)",
+    not os.environ.get("INTEGRATION_COGNITO_JWT", "").strip(),
+    reason="Set INTEGRATION_COGNITO_JWT to test draft course visibility (requires auth to distinguish anonymous users)",
 )
 def test_anonymous_get_draft_course_returns_404(api: ApiClient, course_factory):
     course = course_factory()

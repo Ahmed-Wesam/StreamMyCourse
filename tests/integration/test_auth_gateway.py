@@ -42,11 +42,11 @@ def test_users_me_contract_matches_auth_deployment(api: ApiClient) -> None:
 
 
 @pytest.mark.skipif(
-    not os.environ.get("INTEG_COGNITO_JWT", "").strip(),
-    reason="Set INTEG_COGNITO_JWT to an ID or access JWT for Cognito-backed environments.",
+    not os.environ.get("INTEGRATION_COGNITO_JWT", "").strip(),
+    reason="Set INTEGRATION_COGNITO_JWT to an ID or access JWT for Cognito-backed environments.",
 )
 def test_users_me_with_bearer_returns_profile_when_enforced(api: ApiClient) -> None:
-    token = os.environ["INTEG_COGNITO_JWT"].strip()
+    token = os.environ["INTEGRATION_COGNITO_JWT"].strip()
     resp = api.get_users_me(headers={"Authorization": f"Bearer {token}"})
     assert resp.status_code == 200, resp.text
     data = resp.json()

@@ -1,44 +1,22 @@
-"""RDS PostgreSQL path smoke tests.
+"""Catalog persistence smoke tests (PostgreSQL in managed dev/prod).
 
-These tests only run when `USE_RDS=true` in the environment -- they assert that
-the deployed API can round-trip writes and reads when the Lambda is wired to
-RDS instead of DynamoDB. The rest of the integration suite also exercises the
-RDS path transparently when the flag is on; this module adds a dedicated,
-self-describing smoke so CI can flag RDS-specific breakage quickly.
+These tests assert that the deployed API can round-trip writes and reads when
+the catalog is backed by PostgreSQL. The rest of the integration suite exercises
+the same contract; this module adds a focused smoke for FK and metadata paths.
 
 The tests assume:
-- `USE_RDS` env var is truthy (set by verify-dev-rds / verify-prod-rds via verify-rds-reusable.yml)
-- `INTEG_API_BASE_URL` points at the API deployed with `USE_RDS=true`
+- `INTEGRATION_API_BASE_URL` points at the deployed API
 - The PostgreSQL schema (001_initial_schema.sql) has been applied
 
 See `.cursor/plans/rds_dev_rollout_ci_cd_39a30e0b.plan.md` for rollout details."""
 
 from __future__ import annotations
 
-import os
-
-import pytest
-
 from helpers.api import ApiClient
 
 
-def _use_rds_enabled() -> bool:
-    value = os.environ.get("USE_RDS", "").strip().lower()
-    return value in {"1", "true", "yes", "on"}
-
-
-pytestmark = pytest.mark.skipif(
-    not _use_rds_enabled(),
-    reason="USE_RDS not enabled; skipping RDS-specific smoke tests",
-)
-
-
-def test_create_and_read_course_round_trips_via_rds(api: ApiClient, course_factory):
-    """POST /courses followed by GET /courses/{id} must succeed against RDS.
-
-    Failure here means either the Lambda is not actually wired to RDS, the
-    schema is missing/stale, or the VPC/SG/Secrets Manager plumbing is broken.
-    """
+def test_create_and_read_course_round_trips(api: ApiClient, course_factory):
+    """POST /courses followed by GET /courses/{id} must succeed."""
     course = course_factory(description="rds-smoke")
 
     got = api.get_course(course.course_id)
@@ -53,7 +31,7 @@ def test_create_and_read_course_round_trips_via_rds(api: ApiClient, course_facto
     assert body["status"] == "DRAFT"
 
 
-def test_update_course_persists_via_rds(api: ApiClient, course_factory):
+def test_update_course_persists(api: ApiClient, course_factory):
     """PUT /courses/{id} must update metadata and be observable on the next GET."""
     course = course_factory(description="before")
     upd = api.update_course(
@@ -69,10 +47,10 @@ def test_update_course_persists_via_rds(api: ApiClient, course_factory):
     assert got.json()["description"] == "after"
 
 
-def test_lesson_create_under_course_via_rds(
+def test_lesson_create_under_course(
     api: ApiClient, course_factory, lesson_factory
 ):
-    """Creating a lesson must succeed (FK: lessons.course_id -> courses.id) on RDS."""
+    """Creating a lesson must succeed (FK: lessons.course_id -> courses.id)."""
     course = course_factory()
     lesson = lesson_factory(course.course_id)
 
