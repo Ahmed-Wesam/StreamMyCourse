@@ -138,11 +138,11 @@ Optional **`deploy.ps1`** API parameters: `-VideoUrl`, `-DefaultMp4Url` (passed 
 
 **Every push to `main`** runs **integ backend** → **integ tests** → **dev edge** → then **in parallel**: **dev backend + student web + teacher web** and **prod edge** (prod edge does **not** wait for dev Lambda or SPA deploys—only integ tests + dev edge). **Prod** backend and both prod SPAs run only after **prod edge** **and** the full dev column (integ stack, integ tests, dev edge, dev backend, both dev SPAs) succeed. **`cancel-in-progress: false`**: rapid commits **queue**. CloudFormation uses **`--no-fail-on-empty-changeset`**. Lambda code is uploaded as **`catalog-{env}-{gitSha12}.zip`** so **`LambdaCodeS3Key`** changes every commit.
 
-### Secrets (both workflows)
+### Secrets and variables (deploy workflows)
 
-| Secret | What it is | Where to get it |
-|--------|------------|-----------------|
-| **`AWS_DEPLOY_ROLE_ARN`** | IAM role ARN GitHub assumes via OIDC | Prefer creating/updating the role with [`templates/github-deploy-role-stack.yaml`](templates/github-deploy-role-stack.yaml) (see **GitHub OIDC deploy role** below). Same role for web + backend. Store as a **repository** secret or duplicate under GitHub Environments **`dev`** / **`prod`**. Backend jobs use **`environment: dev`** for OIDC; ensure the ARN is available there or at repo level. |
+| Name | Kind | What it is | Where to get it |
+|--------|------|------------|-----------------|
+| **`AWS_DEPLOY_ROLE_ARN`** | **Repository Actions variable** (required) | IAM role ARN for OIDC in [`deploy-backend.yml`](../.github/workflows/deploy-backend.yml), **verify-rds**, and (via caller mapping) reusable web deploys | [`templates/github-deploy-role-stack.yaml`](templates/github-deploy-role-stack.yaml) output **`GitHubDeployRoleArn`**. Use the role that has **backend** permissions (SQS, Lambda, CFN, …); a unified role can cover web + backend. Repo jobs use **`vars.AWS_DEPLOY_ROLE_ARN`** so a **dev**/**prod** environment **secret** cannot override this with a web-only role ARN. |
 | **`VITE_API_BASE_URL`** | API base URL **no trailing slash** | Set on GitHub Environment **`dev`** and **`prod`** separately (`streammycourse-api` vs `StreamMyCourse-Api-prod` **ApiEndpoint** outputs). |
 
 ### GitHub Environment variables (backend / edge deploy)
