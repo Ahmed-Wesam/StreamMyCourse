@@ -72,16 +72,16 @@ def check_file(path: str) -> List[Violation]:
     # RDS credentials from Secrets Manager via boto3 before building the repos).
     allowed_boto3_files = {
         _norm_path(os.path.join(ROOT, "infrastructure/lambda/catalog/bootstrap.py")),
-        _norm_path(os.path.join(ROOT, "infrastructure/lambda/catalog/services/course_management/repo.py")),
         _norm_path(os.path.join(ROOT, "infrastructure/lambda/catalog/services/course_management/storage.py")),
         _norm_path(os.path.join(ROOT, "infrastructure/lambda/catalog/services/common/sqs_client.py")),
-        _norm_path(os.path.join(ROOT, "infrastructure/lambda/catalog/services/auth/repo.py")),
-        _norm_path(os.path.join(ROOT, "infrastructure/lambda/catalog/services/enrollment/repo.py")),
         _norm_path(os.path.join(ROOT, "infrastructure/lambda/cognito_user_profile_sync/repo.py")),
     }
     if "boto3" in roots and _norm_path(path) not in allowed_boto3_files:
         violations.append(
-            Violation(rel, "boto3 may only be imported in bootstrap.py, repo.py, storage.py, or sqs_client.py")
+            Violation(
+                rel,
+                "boto3 may only be imported in bootstrap.py, storage.py, sqs_client.py, or cognito_user_profile_sync/repo.py",
+            )
         )
 
     # Global: psycopg2 only in the RDS adapters + the composition root
@@ -131,15 +131,11 @@ def check_file(path: str) -> List[Violation]:
     if rel.endswith("/services/progress/controller.py") and "boto3" in roots:
         violations.append(Violation(rel, "progress controller must not import boto3"))
 
-    # Repo/storage must not import HTTP helpers (covers both DynamoDB repos and
-    # the new PostgreSQL rds_repo.py adapters).
+    # Repo/storage must not import HTTP helpers (PostgreSQL rds_repo adapters + S3).
     is_persistence_adapter = (
-        rel.endswith("/services/course_management/repo.py")
-        or rel.endswith("/services/course_management/storage.py")
+        rel.endswith("/services/course_management/storage.py")
         or rel.endswith("/services/course_management/rds_repo.py")
-        or rel.endswith("/services/auth/repo.py")
         or rel.endswith("/services/auth/rds_repo.py")
-        or rel.endswith("/services/enrollment/repo.py")
         or rel.endswith("/services/enrollment/rds_repo.py")
         or rel.endswith("/services/progress/rds_repo.py")
     )

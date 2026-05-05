@@ -2,7 +2,8 @@
 """One-shot DynamoDB -> RDS PostgreSQL data migration.
 
 Run this **after** the rds-stack is deployed and the initial SQL schema has
-been applied, and **before** flipping ``USE_RDS=true`` on the Lambda. Designed
+been applied, and **before** (or during) cutover to the RDS-only catalog Lambda.
+Designed
 to be idempotent via ``ON CONFLICT DO NOTHING`` -- re-running it is safe and
 acts as a catch-up pass for any DynamoDB rows that were created between the
 first run and the cutover.

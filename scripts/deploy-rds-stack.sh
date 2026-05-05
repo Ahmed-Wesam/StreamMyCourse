@@ -2,7 +2,7 @@
 # Deploy StreamMyCourse-Rds-<env> from your workstation (same steps as CI deploy-rds-* jobs).
 #
 # Usage:
-#   ./scripts/deploy-rds-stack.sh <dev|integ|prod>
+#   ./scripts/deploy-rds-stack.sh <dev|prod>
 #   SKIP_SCHEMA_APPLIER=1 ./scripts/deploy-rds-stack.sh prod   # VPC + RDS only (no applier Lambda)
 #
 # Requires: aws CLI, zip, python3 + pip, bash. Build uses Linux manylinux wheels for Lambda (same
@@ -12,11 +12,11 @@
 
 set -euo pipefail
 
-ENV="${1:?Usage: deploy-rds-stack.sh <dev|integ|prod>}"
+ENV="${1:?Usage: deploy-rds-stack.sh <dev|prod>}"
 case "$ENV" in
-  dev | integ | prod) ;;
+  dev | prod) ;;
   *)
-    echo "Environment must be dev, integ, or prod, got: $ENV" >&2
+    echo "Environment must be dev or prod, got: $ENV" >&2
     exit 1
     ;;
 esac

@@ -2,7 +2,7 @@
 # Deploy StreamMyCourse-RdsQuery-<env> (invoke-only operator Lambda for SQL / wipe).
 #
 # Usage:
-#   ./scripts/deploy-rds-query-stack.sh <dev|integ|prod>
+#   ./scripts/deploy-rds-query-stack.sh <dev|prod>
 #
 # Requires: aws CLI, zip, python3 + pip, bash. Build uses Linux manylinux wheels
 # for Lambda (same artifact pattern as deploy-rds-stack / schema applier).
@@ -15,11 +15,11 @@
 
 set -euo pipefail
 
-ENV="${1:?Usage: deploy-rds-query-stack.sh <dev|integ|prod>}"
+ENV="${1:?Usage: deploy-rds-query-stack.sh <dev|prod>}"
 case "$ENV" in
-  dev | integ | prod) ;;
+  dev | prod) ;;
   *)
-    echo "Environment must be dev, integ, or prod, got: $ENV" >&2
+    echo "Environment must be dev or prod, got: $ENV" >&2
     exit 1
     ;;
 esac
