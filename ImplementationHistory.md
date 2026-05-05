@@ -35,6 +35,16 @@
 
 ---
 
+## 2026-05-05 — RDS Query runbook: selective catalog clear, ops learnings, users policy
+
+### Completed
+
+- [x] **Runbook** — [`infrastructure/database/RDS_QUERY_RUNBOOK.md`](infrastructure/database/RDS_QUERY_RUNBOOK.md) — Section for clearing `enrollments` / `lessons` / `courses` while keeping `users`; verifying `AllowMutatingSql`; `TRUNCATE` vs `DELETE` fallback on statement timeout; `aws lambda invoke --cli-read-timeout`; timestamp casts for read-backs; tighten note to disable **`ALLOW_MUTATING_SQL`** after maintenance alongside catalog wipe.
+- [x] **Policy** — Same runbook: **Policy: `users` table`** — assistants and operators must not delete or truncate `users` (including via `wipe_catalog`); refuse chat-driven user deletion and route legal erasure outside ad-hoc RDS Query.
+- [x] **Cursor skill** — [`.cursor/skills/query-rds/SKILL.md`](.cursor/skills/query-rds/SKILL.md) — Agent bullet mirroring the users-table refusal for `/query_rds`.
+
+---
+
 ## 2026-05-04 — Pre-public release: Security hardening and professional README
 
 ### Completed
