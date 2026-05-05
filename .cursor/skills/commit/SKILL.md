@@ -1,6 +1,6 @@
 ---
 name: commit
-description: Commit local changes in small logical groupings with conventional commit messages. Use when the user asks to commit changes, save work, or create commits from modified files. Before committing, run CI-parity checks from ci.yml (frontend, lambda, cloudformation, actionlint, lambda unit tests) except integ-tests-static. After committing, follow /update-docs (design.md, roadmap.md, ImplementationHistory.md) when the session warrants it. Does not push unless the user explicitly asks to push.
+description: Commit local changes in small logical groupings with conventional commit messages. Use when the user asks to commit changes, save work, or create commits from modified files. Before committing, run CI-parity checks from ci.yml (frontend, lambda, cloudformation, actionlint, lambda unit tests) except integration-tests-static. After committing, follow /update-docs (design.md, roadmap.md, ImplementationHistory.md) when the session warrants it. Does not push unless the user explicitly asks to push.
 disable-model-invocation: true
 ---
 
@@ -13,7 +13,7 @@ Commit unstaged and staged changes as small, logical commits using conventional 
 ## Workflow
 
 1. **Analyze changes** - Check git status and diff to understand what changed
-2. **Run pre-deploy checks (CI parity)** - Run the same gates as GitHub Actions **CI** (see [`.github/workflows/ci.yml`](../../../.github/workflows/ci.yml)) for every job **except** **`integ-tests-static`** (the integration test tree: install integ deps, `py_compile` on `tests/integration/**/*.py`, and `pytest --collect-only` under `tests/integration`). That means: **frontend**, **lambda**, **cloudformation**, **workflow-lint** (actionlint on `.github/workflows`), and **lambda-unit-tests**. Fix failures before committing. Skip individual commands that clearly do not apply to the touched files only when it saves time and risk is low (e.g. skip frontend installs if the diff is doc-only); otherwise run the full set.
+2. **Run pre-deploy checks (CI parity)** - Run the same gates as GitHub Actions **CI** (see [`.github/workflows/ci.yml`](../../../.github/workflows/ci.yml)) for every job **except** **`integration-tests-static`** (the integration test tree: install integration test deps, `py_compile` on `tests/integration/**/*.py`, and `pytest --collect-only` under `tests/integration`). That means: **frontend**, **lambda**, **cloudformation**, **workflow-lint** (actionlint on `.github/workflows`), and **lambda-unit-tests**. Fix failures before committing. Skip individual commands that clearly do not apply to the touched files only when it saves time and risk is low (e.g. skip frontend installs if the diff is doc-only); otherwise run the full set.
 3. **Group logically** - Organize files into related groups (by feature, module, or change type)
 4. **Stage and commit each group** - Create focused commits with conventional commit messages
 5. **Update project docs (`/update-docs`)** - After commits, follow [`.cursor/skills/update-docs/SKILL.md`](../update-docs/SKILL.md): refresh `design.md`, `roadmap.md`, and `ImplementationHistory.md` when the session’s changes warrant it (features, APIs, infra, CI/CD, security, shipped behavior). If you edit those files, commit them (e.g. `docs: sync project docs` or a scoped `docs(...)`). Skip when nothing material changed (e.g. typo-only or the three files were already the only commits).
@@ -33,7 +33,7 @@ git diff HEAD
 
 ### Step 2: Pre-deploy checks (matches CI, excluding integration test static job only)
 
-Run from the **repository root** unless noted. Mirrors [`.github/workflows/ci.yml`](../../../.github/workflows/ci.yml) jobs **`frontend`**, **`lambda`**, **`cloudformation`**, **`workflow-lint`**, and **`lambda-unit-tests`**. The only CI job **not** run here is **`integ-tests-static`** (integration test package install, compile, and collect-only).
+Run from the **repository root** unless noted. Mirrors [`.github/workflows/ci.yml`](../../../.github/workflows/ci.yml) jobs **`frontend`**, **`lambda`**, **`cloudformation`**, **`workflow-lint`**, and **`lambda-unit-tests`**. The only CI job **not** run here is **`integration-tests-static`** (integration test package install, compile, and collect-only).
 
 **Prerequisites:** Node 20+, Python 3.11+, `pip` available, **bash** (for actionlint install script; Git Bash on Windows is fine).
 
@@ -102,7 +102,7 @@ coverage run -m pytest tests/unit -q --junitxml=tests/unit/results.xml
 coverage report --include="infrastructure/lambda/catalog/**" -m
 ```
 
-**Excluded — entire CI job `integ-tests-static` (do not run for /commit):**
+**Excluded — entire CI job `integration-tests-static` (do not run for /commit):**
 
 - `pip install -r tests/integration/requirements.txt`
 - `py_compile` on `tests/integration/**/*.py`
