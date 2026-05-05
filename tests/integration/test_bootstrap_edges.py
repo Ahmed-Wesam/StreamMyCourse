@@ -3,7 +3,14 @@
 
 from __future__ import annotations
 
+import os
+
 from helpers.api import ApiClient
+
+
+def _expected_first_allowlisted_origin() -> str:
+    v = os.environ.get("INTEGRATION_EXPECTED_CORS_ORIGIN", "").strip()
+    return v if v else "http://localhost:5173"
 
 
 # --- OPTIONS preflight ---------------------------------------------------------
@@ -20,17 +27,19 @@ def test_options_returns_cors_preflight(api: ApiClient):
 
 def test_options_unknown_origin_gets_first_allowlisted_origin(api: ApiClient):
     """Integ uses an explicit origin allowlist; unknown Origins get the first allowlisted value."""
+    expected = _expected_first_allowlisted_origin()
     resp = api.options("/courses", origin="http://example.test")
     assert resp.status_code == 204
     headers = {k.lower(): v for k, v in resp.headers.items()}
-    assert headers.get("access-control-allow-origin") == "http://localhost:5173"
+    assert headers.get("access-control-allow-origin") == expected
 
 
 def test_options_without_origin_returns_default_allowlist_origin(api: ApiClient):
+    expected = _expected_first_allowlisted_origin()
     resp = api.options("/courses", origin=None)
     assert resp.status_code == 204
     headers = {k.lower(): v for k, v in resp.headers.items()}
-    assert headers.get("access-control-allow-origin") == "http://localhost:5173"
+    assert headers.get("access-control-allow-origin") == expected
 
 
 # --- Unknown route / method (handled by API Gateway, not the Lambda) ----------

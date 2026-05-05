@@ -133,6 +133,17 @@ jobs:
             --region "$REGION" \
             --query "Stacks[0].Outputs[?OutputKey=='BucketName'].OutputValue" \
             --output text)"
+          CORS_CSV="$(aws cloudformation describe-stacks \
+            --stack-name "$API_STACK" \
+            --region "$REGION" \
+            --query "Stacks[0].Parameters[?ParameterKey=='CorsAllowOrigin'].ParameterValue" \
+            --output text)"
+          FIRST_CORS_ORIGIN="${CORS_CSV%%,*}"
+          FIRST_CORS_ORIGIN="${FIRST_CORS_ORIGIN#"${FIRST_CORS_ORIGIN%%[![:space:]]*}"}"
+          FIRST_CORS_ORIGIN="${FIRST_CORS_ORIGIN%"${FIRST_CORS_ORIGIN##*[![:space:]]}"}"
+          if [[ -z "$FIRST_CORS_ORIGIN" || "$FIRST_CORS_ORIGIN" == "None" ]]; then
+            FIRST_CORS_ORIGIN="http://localhost:5173"
+          fi
           if [[ -z "$API_BASE_URL" || -z "$VIDEO_BUCKET" ]]; then
             echo "Failed to resolve dev stack outputs (ApiEndpoint / BucketName)" >&2
             exit 1
@@ -141,6 +152,7 @@ jobs:
             echo "INTEGRATION_API_BASE_URL=$API_BASE_URL"
             echo "INTEGRATION_VIDEO_BUCKET=$VIDEO_BUCKET"
             echo "INTEGRATION_AWS_REGION=$REGION"
+            echo "INTEGRATION_EXPECTED_CORS_ORIGIN=$FIRST_CORS_ORIGIN"
           } >> "$GITHUB_ENV"
           echo "Resolved dev API: $API_BASE_URL"
           echo "Resolved dev bucket: $VIDEO_BUCKET"

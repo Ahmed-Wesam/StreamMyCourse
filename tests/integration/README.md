@@ -46,6 +46,8 @@ pip install -r tests/integration/requirements.txt
 python -m pytest tests/integration -q
 ```
 
+**CORS-related assertions:** Lambda OPTIONS uses the API stack’s `CorsAllowOrigin` allowlist; unknown or missing `Origin` echoes the **first** CSV entry. Tests default to `http://localhost:5173` when the variable is unset. **`run-local-integration-tests.sh`** sets `INTEGRATION_EXPECTED_CORS_ORIGIN` from the API stack parameter when it is not already in the environment. For manual pytest, export it to the first allowlisted origin if that is not localhost (CI sets it from CloudFormation in **Deploy** → Integration HTTP tests).
+
 PowerShell equivalent:
 
 ```powershell
@@ -65,13 +67,83 @@ Helper (deploys dev by default, then resolves stacks and runs pytest):
 
 Optional **`prod`** against your own stacks: `.\scripts\run-integration-tests.ps1 -Environment prod` (ensure you understand blast radius).
 
+## Quick Local Run (no deploy)
+
+If the dev stacks are already deployed and you want to run tests without redeploying:
+
+### One-time setup: Create the CI Cognito user
+
+You need a dedicated test user in the Cognito pool with a known password:
+
+```bash
+# Set a strong password for the CI test user
+export CI_RDS_VERIFY_PASSWORD='YourStrongPassword123!'
+./scripts/ensure-ci-rds-verify-cognito-user.sh
+```
+
+Store the same password in GitHub secret `COGNITO_RDS_VERIFY_TEST_PASSWORD` on the `dev` environment if you want CI to use the same credentials.
+
+### Run tests
+
+**With .env.local file (recommended):**
+
+```bash
+# Copy the example file and add your password
+cp .env.local.example .env.local
+# Edit .env.local and set LOCAL_COGNITO_PASSWORD
+
+# Run tests
+./scripts/run-local-integration-tests.sh
+```
+
+**With environment variable (for one-off runs):**
+
+```bash
+LOCAL_COGNITO_PASSWORD='your-password' ./scripts/run-local-integration-tests.sh
+```
+
+With custom pytest arguments:
+
+```bash
+./scripts/run-local-integration-tests.sh -k test_publish -v
+```
+
+Run without JWT (public endpoints only; auth tests will skip):
+
+```bash
+SKIP_JWT=1 ./scripts/run-local-integration-tests.sh
+```
+
+### Environment variables
+
+| Variable | Default | Required | Description |
+|----------|---------|----------|-------------|
+| `LOCAL_COGNITO_PASSWORD` | — | Yes (unless `SKIP_JWT=1`) | Password for the CI test user |
+| `LOCAL_COGNITO_USERNAME` | `ci-rds-verify@noreply.local` | No | Username for the CI test user |
+| `AWS_REGION` | `eu-west-1` | No | AWS region for all API calls |
+| `SKIP_JWT` | — | No | Set to `1` to skip JWT minting (auth tests skip) |
+
+### What the script does
+
+1. Resolves stack outputs from `streammycourse-api`, `StreamMyCourse-Video-dev`, and `StreamMyCourse-Auth-dev`
+2. Mints a fresh Cognito JWT via `aws cognito-idp admin-initiate-auth` (using `TeacherUserPoolClientId`)
+3. Exports required environment variables (`INTEGRATION_API_BASE_URL`, `INTEGRATION_VIDEO_BUCKET`, `INTEGRATION_AWS_REGION`, `INTEGRATION_COGNITO_JWT`)
+4. Installs test dependencies if missing
+5. Runs `pytest tests/integration`
+
+### Security note
+
+- `.local-cognito-password` is in `.gitignore` - it will never be committed
+- `.env.local` is in `.gitignore` - it will never be committed  
+- Use `.env.local.example` as a template for what variables are available
+
 ## AWS permissions for local runs
 
 Your AWS profile needs:
 
-- `cloudformation:DescribeStacks` on **streammycourse-api** and **StreamMyCourse-Video-dev**
+- `cloudformation:DescribeStacks` on **streammycourse-api**, **StreamMyCourse-Video-dev**, and **StreamMyCourse-Auth-dev**
 - `s3:ListBucket`, `s3:DeleteObject` on that environment's video bucket (safety-net cleanup)
-- Permissions to mint `admin-initiate-auth` if you script JWT locally (`cognito-idp:AdminInitiateAuth`).
+- `cognito-idp:AdminInitiateAuth` on the dev user pool (for JWT minting via `run-local-integration-tests.sh`).
 
 The HTTP test calls themselves only need **`INTEGRATION_COGNITO_JWT`** when routes require auth — they do not otherwise need AWS credentials. AWS credentials power the safety-net cleanup at session end.
 
