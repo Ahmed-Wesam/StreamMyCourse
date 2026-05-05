@@ -80,8 +80,6 @@ def _route(method: str, path: str) -> Tuple[str, Dict[str, str]]:
         return "list_courses", {}
     if method == "POST" and parts == ["courses"]:
         return "create_course", {}
-    if method == "GET" and len(parts) == 3 and parts[0] == "courses" and parts[2] == "preview":
-        return "get_course_preview", {"courseId": parts[1]}
     if method == "POST" and len(parts) == 3 and parts[0] == "courses" and parts[2] == "enroll":
         return "enroll_course", {"courseId": parts[1]}
     if method == "GET" and len(parts) == 2 and parts[0] == "courses" and parts[1] == "mine":
@@ -151,9 +149,6 @@ def handle(
                 created_by=_actor_sub(claims) if auth_enforced else "",
             )  # type: ignore[assignment]
             return json_response(201, created, origin)
-        if action == "get_course_preview":
-            preview_body = svc.get_course_preview(params["courseId"])
-            return json_response(200, preview_body, origin)
         if action == "enroll_course":
             _require_authenticated(auth_enforced, claims)
             sub = _actor_sub(claims)
@@ -191,7 +186,6 @@ def handle(
             )
             return json_response(200, dto.as_course_list(mine), origin)
         if action == "get_course":
-            _require_authenticated(auth_enforced, claims)
             detail = svc.get_course_detail_with_enrollment(
                 params["courseId"],
                 cognito_sub=_actor_sub(claims),
@@ -231,14 +225,13 @@ def handle(
             _audit_event("course.delete", params["courseId"], claims)
             return json_response(200, deleted, origin)
         if action == "list_lessons":
-            _require_authenticated(auth_enforced, claims)
-            svc.ensure_can_view_lessons_and_playback(
+            rows = svc.list_lessons_public(
                 params["courseId"],
                 cognito_sub=_actor_sub(claims),
                 role=_actor_role(claims),
                 auth_enforced=auth_enforced,
             )
-            return json_response(200, dto.as_lesson_list(svc.list_lessons(params["courseId"])), origin)
+            return json_response(200, dto.as_lesson_list(rows), origin)
         if action == "create_lesson":
             svc.ensure_can_modify_course(
                 params["courseId"],

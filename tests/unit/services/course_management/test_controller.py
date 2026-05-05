@@ -35,7 +35,6 @@ class TestRouteTable:
             ("GET", "/courses", "list_courses", {}),
             ("GET", "/courses/mine", "list_instructor_courses", {}),
             ("POST", "/courses", "create_course", {}),
-            ("GET", "/courses/abc-123/preview", "get_course_preview", {"courseId": "abc-123"}),
             ("POST", "/courses/abc-123/enroll", "enroll_course", {"courseId": "abc-123"}),
             ("GET", "/courses/abc-123", "get_course", {"courseId": "abc-123"}),
             ("PUT", "/courses/abc-123", "update_course", {"courseId": "abc-123"}),
@@ -115,6 +114,7 @@ class TestRouteTable:
             ("PUT", "/courses/abc/lessons/lid/typo"),
             ("GET", "/playback"),
             ("GET", "/playback/onlycourse"),
+            ("GET", "/courses/abc-123/preview"),
             ("POST", "/upload-url/extra"),
             ("GET", ""),  # empty path
             ("", "/courses"),  # empty method
@@ -473,7 +473,7 @@ class TestHandleDispatchPerAction:
         assert resp["statusCode"] == 404
 
     def test_list_lessons_200(self, svc: MagicMock, make_lambda_event) -> None:
-        svc.list_lessons.return_value = [
+        svc.list_lessons_public.return_value = [
             {"id": "lid", "title": "T", "order": 1, "videoStatus": "pending"}
         ]
         evt = make_lambda_event(method="GET", path="/courses/c1/lessons")
@@ -481,7 +481,7 @@ class TestHandleDispatchPerAction:
         assert resp["statusCode"] == 200
         body = json.loads(resp["body"])
         assert body[0]["id"] == "lid"
-        svc.ensure_can_view_lessons_and_playback.assert_called_once_with(
+        svc.list_lessons_public.assert_called_once_with(
             "c1",
             cognito_sub="",
             role="student",
@@ -552,18 +552,75 @@ class TestHandleDispatchPerAction:
             "c1", "lid", video_bucket="my-bucket"
         )
 
-    def test_get_course_preview_200(self, svc: MagicMock, make_lambda_event) -> None:
-        svc.get_course_preview.return_value = {
+    def test_get_course_200_auth_enforced_without_claims(
+        self, svc: MagicMock, make_lambda_event
+    ) -> None:
+        svc.get_course_detail_with_enrollment.return_value = {
             "id": "c1",
             "title": "T",
             "description": "D",
             "status": "PUBLISHED",
-            "lessonsPreview": [{"id": "l1", "title": "L", "order": 1}],
+            "enrolled": False,
         }
-        evt = make_lambda_event(method="GET", path="/courses/c1/preview")
-        resp = handle(evt, origin="*", svc=svc, video_bucket="b", auth_svc=MagicMock())
+        evt = make_lambda_event(method="GET", path="/courses/c1")
+        resp = handle(
+            evt,
+            origin="https://app.example",
+            svc=svc,
+            video_bucket="b",
+            auth_svc=MagicMock(),
+            auth_enforced=True,
+        )
         assert resp["statusCode"] == 200
-        svc.get_course_preview.assert_called_once_with("c1")
+        assert resp["headers"]["Access-Control-Allow-Origin"] == "https://app.example"
+        svc.get_course_detail_with_enrollment.assert_called_once_with(
+            "c1",
+            cognito_sub="",
+            role="student",
+            auth_enforced=True,
+        )
+
+    def test_list_lessons_200_auth_enforced_without_claims_includes_cors(
+        self, svc: MagicMock, make_lambda_event
+    ) -> None:
+        svc.list_lessons_public.return_value = [
+            {"id": "lid", "title": "L", "order": 1, "videoStatus": "ready"}
+        ]
+        evt = make_lambda_event(method="GET", path="/courses/c1/lessons")
+        resp = handle(
+            evt,
+            origin="https://app.example",
+            svc=svc,
+            video_bucket="b",
+            auth_svc=MagicMock(),
+            auth_enforced=True,
+        )
+        assert resp["statusCode"] == 200
+        assert resp["headers"]["Access-Control-Allow-Origin"] == "https://app.example"
+        svc.list_lessons_public.assert_called_once_with(
+            "c1",
+            cognito_sub="",
+            role="student",
+            auth_enforced=True,
+        )
+
+    def test_get_playback_401_when_auth_enforced_and_no_claims(
+        self, svc: MagicMock, make_lambda_event
+    ) -> None:
+        evt = make_lambda_event(method="GET", path="/playback/c1/lid")
+        resp = handle(
+            evt,
+            origin="*",
+            svc=svc,
+            video_bucket="b",
+            auth_svc=MagicMock(),
+            auth_enforced=True,
+        )
+        assert resp["statusCode"] == 401
+        body = json.loads(resp["body"])
+        assert body["code"] == "unauthorized"
+        svc.ensure_can_view_lessons_and_playback.assert_not_called()
+        svc.get_playback_url.assert_not_called()
 
     def test_enroll_course_200(self, svc: MagicMock, make_lambda_event) -> None:
         auth = MagicMock()

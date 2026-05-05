@@ -985,28 +985,117 @@ class TestPublicCourseThumbnailUrl:
 # --- enrollment / view access -------------------------------------------------
 
 
-class TestGetCoursePreview:
-    def test_published_includes_lessons_preview(
+class TestGetCourseDetailPublicCatalog:
+    """GET /courses/{id} is public for PUBLISHED; DRAFT hidden from non-managers."""
+
+    def test_anonymous_published_has_enrolled_false(
         self, service: CourseManagementService, repo: MagicMock
     ) -> None:
         repo.get_course.return_value = _course(id_="c1", status="PUBLISHED")
-        repo.list_lessons.return_value = [
-            _lesson(id_="a", order=2, title="Second"),
-            _lesson(id_="b", order=1, title="First"),
-        ]
-        out = service.get_course_preview("c1")
+        repo.list_lessons.return_value = []
+        out = service.get_course_detail_with_enrollment(
+            "c1", cognito_sub="", role="", auth_enforced=True
+        )
         assert out["id"] == "c1"
-        assert out["lessonsPreview"] == [
-            {"id": "b", "title": "First", "order": 1},
-            {"id": "a", "title": "Second", "order": 2},
-        ]
+        assert out["status"] == "PUBLISHED"
+        assert out["enrolled"] is False
 
-    def test_draft_raises_not_found(
+    def test_anonymous_draft_raises_not_found(
         self, service: CourseManagementService, repo: MagicMock
     ) -> None:
         repo.get_course.return_value = _course(id_="c1", status="DRAFT")
         with pytest.raises(NotFound):
-            service.get_course_preview("c1")
+            service.get_course_detail_with_enrollment(
+                "c1", cognito_sub="", role="", auth_enforced=True
+            )
+
+    def test_owner_teacher_sees_draft_detail(
+        self, service: CourseManagementService, repo: MagicMock
+    ) -> None:
+        repo.get_course.return_value = Course(
+            id="c1",
+            title="T",
+            description="D",
+            status="DRAFT",
+            createdBy="owner-sub",
+        )
+        repo.list_lessons.return_value = []
+        out = service.get_course_detail_with_enrollment(
+            "c1", cognito_sub="owner-sub", role="teacher", auth_enforced=True
+        )
+        assert out["id"] == "c1"
+        assert out["status"] == "DRAFT"
+
+
+class TestListLessonsPublic:
+    def test_anonymous_published_returns_sorted_rows_without_video_key(
+        self, service: CourseManagementService, repo: MagicMock, storage: MagicMock
+    ) -> None:
+        repo.get_course.return_value = _course(id_="c1", status="PUBLISHED")
+        k = _lesson_thumb_key("c1", "lid", "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa")
+        repo.list_lessons.return_value = [
+            _lesson(id_="a", order=2, thumbnail_key=""),
+            _lesson(id_="b", order=1, thumbnail_key=k),
+        ]
+        storage.presign_get.return_value = "https://signed-thumb"
+        out = service.list_lessons_public(
+            "c1", cognito_sub="", role="student", auth_enforced=True
+        )
+        assert [r["id"] for r in out] == ["b", "a"]
+        assert out[0].get("thumbnailUrl") == "https://signed-thumb"
+        assert "thumbnailUrl" not in out[1]
+        assert all("videoKey" not in r for r in out)
+
+    def test_anonymous_draft_raises_not_found(
+        self, service: CourseManagementService, repo: MagicMock
+    ) -> None:
+        repo.get_course.return_value = _course(id_="c1", status="DRAFT")
+        with pytest.raises(NotFound):
+            service.list_lessons_public(
+                "c1", cognito_sub="", role="student", auth_enforced=True
+            )
+
+    def test_anonymous_draft_does_not_query_lessons(
+        self, service: CourseManagementService, repo: MagicMock
+    ) -> None:
+        repo.get_course.return_value = _course(id_="c1", status="DRAFT")
+        with pytest.raises(NotFound):
+            service.list_lessons_public(
+                "c1", cognito_sub="", role="student", auth_enforced=True
+            )
+        repo.get_course.assert_called_once_with("c1")
+        repo.list_lessons.assert_not_called()
+
+    def test_owner_teacher_draft_lists_lessons(
+        self, service: CourseManagementService, repo: MagicMock
+    ) -> None:
+        repo.get_course.return_value = Course(
+            id="c1",
+            title="T",
+            description="D",
+            status="DRAFT",
+            createdBy="owner-sub",
+        )
+        repo.list_lessons.return_value = [_lesson(id_="l1", order=1)]
+        out = service.list_lessons_public(
+            "c1", cognito_sub="owner-sub", role="teacher", auth_enforced=True
+        )
+        assert len(out) == 1
+        repo.list_lessons.assert_called_once_with("c1")
+
+    def test_presign_failure_omits_thumbnail_url(
+        self, service: CourseManagementService, repo: MagicMock, storage: MagicMock
+    ) -> None:
+        repo.get_course.return_value = _course(id_="c1", status="PUBLISHED")
+        k = _lesson_thumb_key("c1", "lid")
+        repo.list_lessons.return_value = [_lesson(id_="lid", order=1, thumbnail_key=k)]
+        storage.presign_get.side_effect = RuntimeError("network")
+        out = service.list_lessons_public(
+            "c1", cognito_sub="", role="student", auth_enforced=True
+        )
+        assert out[0]["id"] == "lid"
+        assert "thumbnailUrl" not in out[0]
+        assert "videoKey" not in out[0]
 
 
 class TestEnsureCanViewLessonsAndPlayback:
