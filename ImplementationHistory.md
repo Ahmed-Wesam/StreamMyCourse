@@ -4,6 +4,26 @@
 
 ---
 
+## 2026-05-05 — DynamoDB Catalog Fully Removed (RDS-Only)
+
+### Completed
+
+- [x] **Infrastructure** — Removed `CatalogTable` from `api-stack.yaml`; RDS is now the only persistence path
+- [x] **Parameters** — Removed `UseRds` parameter and `USE_RDS` env var from Lambda
+- [x] **Repositories** — Deleted DynamoDB repo implementations (`services/*/repo.py`); only `rds_repo.py` implementations remain
+- [x] **Bootstrap** — Catalog Lambda now requires `RdsStackName` (RDS stack must exist); returns 503 `catalog_unconfigured` when unavailable
+- [x] **Deploy script** — Added pre-flight validation for RDS stack existence in `deploy-backend.sh`
+- [x] **Tests** — Added progress endpoint 503 test; added dev backend job contract test
+- [x] **Code quality** — Removed dangerous `assert progress_service is not None` from production handler
+
+### Operational Note
+
+Existing stacks may have orphaned DynamoDB tables from previous deployments (retained by `DeletionPolicy: Retain`). After confirming RDS migration is stable, manually delete these tables in the AWS console:
+- `StreamMyCourse-Catalog-dev`
+- `StreamMyCourse-Catalog-prod`
+
+---
+
 ## 2026-05-05 — Lesson Progress Tracking (RDS)
 
 ### Completed
@@ -49,7 +69,7 @@ Added `SqsEndpoint` Interface VPC endpoint to [`infrastructure/templates/rds-sta
 
 ### Verification
 - CloudFormation template validation: `YAML_OK`
-- After CI/CD deploy to dev/integ/prod: Catalog Lambda can successfully `sqs:SendMessage` to the media cleanup queue
+- After CI/CD deploy to dev/prod: Catalog Lambda can successfully `sqs:SendMessage` to the media cleanup queue
 - Media cleanup worker receives and processes deletion messages
 
 ### Cost Impact
@@ -79,7 +99,7 @@ Investigation of recurring "all S3 data deleted on deploy" reports identified th
 ### Ops / Rollout
 
 - Next deploy via [`scripts/deploy-backend.sh`](scripts/deploy-backend.sh) / [`scripts/deploy-edge.sh`](scripts/deploy-edge.sh) attaches the new policies to the live stacks (no resource replacement; CFN treats DeletionPolicy as metadata).
-- Existing dev/integ/prod video buckets continue to hold their data; the new policies guard them against the next incident.
+- Existing dev/prod video buckets continue to hold their data; the new policies guard them against the next incident.
 - **Convention going forward:** any new `AWS::S3::Bucket`, `AWS::DynamoDB::Table`, `AWS::RDS::DBInstance`, `AWS::SQS::Queue`, or `AWS::SNS::Topic` resource MUST set `DeletionPolicy: Retain` (or `Snapshot` for RDS) unless it provably holds only ephemeral state.
 
 ---
@@ -96,8 +116,8 @@ Investigation of recurring "all S3 data deleted on deploy" reports identified th
 
 ### Completed
 
-- [x] **GitHub Actions** — [`.github/workflows/deploy-backend.yml`](.github/workflows/deploy-backend.yml) — `configure-aws-credentials` `role-to-assume` and reusable-workflow `AWS_DEPLOY_ROLE_ARN` inputs now use **`${{ vars.AWS_DEPLOY_ROLE_ARN }}`** (not **`secrets.AWS_DEPLOY_ROLE_ARN`**), aligned with [`AGENTS.md`](AGENTS.md) and the **verify-rds** callers. **`deploy-backend-integ`** and **`integ-tests`** no longer attach **`environment: dev`**, because a GitHub **Environment** variable with the same name would still override the repository variable and could point at a **web-only** role (same **`sqs:CreateQueue` AccessDenied** symptom).
-- [x] **Contract test** — [`tests/unit/test_deploy_backend_workflow_contract.py`](tests/unit/test_deploy_backend_workflow_contract.py) — asserts the workflow contains no `secrets.AWS_DEPLOY_ROLE_ARN` and that **deploy-backend-integ** uses the variable for OIDC.
+- [x] **GitHub Actions** — [`.github/workflows/deploy-backend.yml`](.github/workflows/deploy-backend.yml) — `configure-aws-credentials` `role-to-assume` and reusable-workflow `AWS_DEPLOY_ROLE_ARN` inputs now use **`${{ vars.AWS_DEPLOY_ROLE_ARN }}`** (not **`secrets.AWS_DEPLOY_ROLE_ARN`**), aligned with [`AGENTS.md`](AGENTS.md) and the **verify-rds** callers. Jobs that need Cognito secrets still use **`environment: dev`**, while **`resolve-oidc-deploy-role`** pins the backend OIDC role from the **repository** variable so Environment-scoped secrets cannot shadow **`AWS_DEPLOY_ROLE_ARN`** with a web-only role (same **`sqs:CreateQueue` AccessDenied** symptom when misconfigured).
+- [x] **Contract test** — [`tests/unit/test_deploy_backend_workflow_contract.py`](tests/unit/test_deploy_backend_workflow_contract.py) — asserts the workflow contains no `secrets.AWS_DEPLOY_ROLE_ARN` and that **`integration-http-tests`** assumes the role output from **`resolve-oidc-deploy-role`**.
 
 ### Ops
 
@@ -115,7 +135,7 @@ Investigation of recurring "all S3 data deleted on deploy" reports identified th
 - [x] **Config / bootstrap** — [`infrastructure/lambda/catalog/config.py`](infrastructure/lambda/catalog/config.py), [`infrastructure/lambda/catalog/bootstrap.py`](infrastructure/lambda/catalog/bootstrap.py) — `MEDIA_CLEANUP_QUEUE_URL` env wiring.
 - [x] **Worker Lambda** — [`infrastructure/lambda/media_cleanup/worker.py`](infrastructure/lambda/media_cleanup/worker.py) — SQS batch handler, `delete_objects` in chunks of 1000, `ReportBatchItemFailures` on errors; if `VIDEO_BUCKET` is unset, returns **per-record** `batchItemFailures` for every `messageId` so messages are not silently acknowledged.
 - [x] **CloudFormation** — [`infrastructure/templates/media-cleanup-stack.yaml`](infrastructure/templates/media-cleanup-stack.yaml); **API stack** — [`infrastructure/templates/api-stack.yaml`](infrastructure/templates/api-stack.yaml) — optional `MediaCleanupQueueUrl` / `MediaCleanupQueueArn` + `sqs:SendMessage` when ARN set + `MEDIA_CLEANUP_QUEUE_URL` on catalog Lambda.
-- [x] **Deploy** — [`scripts/deploy-media-cleanup.sh`](scripts/deploy-media-cleanup.sh); [`scripts/deploy-backend.sh`](scripts/deploy-backend.sh) — deploys media-cleanup stack after the video stack for **dev**, **integ**, and **prod**, then passes queue URL/ARN into the API deploy.
+- [x] **Deploy** — [`scripts/deploy-media-cleanup.sh`](scripts/deploy-media-cleanup.sh); [`scripts/deploy-backend.sh`](scripts/deploy-backend.sh) — deploys media-cleanup stack after the video stack for **dev** and **prod**, then passes queue URL/ARN into the API deploy.
 - [x] **Tests** — [`tests/unit/test_sqs_client.py`](tests/unit/test_sqs_client.py), [`tests/unit/test_media_cleanup.py`](tests/unit/test_media_cleanup.py), service tests in [`tests/unit/services/course_management/test_service.py`](tests/unit/services/course_management/test_service.py); [`tests/unit/test_config.py`](tests/unit/test_config.py) for `MEDIA_CLEANUP_QUEUE_URL`; [`tests/integration/test_s3_cleanup.py`](tests/integration/test_s3_cleanup.py) polls S3 until async cleanup removes the object after course delete.
 - [x] **CI** — [`.github/workflows/ci.yml`](.github/workflows/ci.yml) parses `media-cleanup-stack.yaml`; [`scripts/check_lambda_boundaries.py`](scripts/check_lambda_boundaries.py) allows boto3 in `sqs_client.py`.
 - [x] **Docs** — [`design.md`](design.md) §10 backend note; [`plans/architecture/module-map.md`](plans/architecture/module-map.md) lists `sqs_client.py`.
@@ -123,7 +143,7 @@ Investigation of recurring "all S3 data deleted on deploy" reports identified th
 ### Ops / IAM
 
 - **GitHub deploy role:** [`infrastructure/iam-policy-github-deploy-backend.json`](infrastructure/iam-policy-github-deploy-backend.json) — **`SqsStreamMyCourseQueues`** plus **`lambda:*`** on both **`function:StreamMyCourse-*`** and **`event-source-mapping:*`** (SQS + worker deploy). [`infrastructure/templates/github-deploy-role-stack.yaml`](infrastructure/templates/github-deploy-role-stack.yaml) mirrors the same statements with **`!Sub`**. JSON files keep **`YOUR_AWS_ACCOUNT_ID`**; [`scripts/apply-github-deploy-role-policies.sh`](scripts/apply-github-deploy-role-policies.sh) / [`.ps1`](scripts/apply-github-deploy-role-policies.ps1) substitute it from **`sts get-caller-identity`** before **`put-role-policy`**. Sync the live role or redeploy the IAM stack if deploy fails with SQS/Lambda mapping access denied.
-- **Manual verification:** Deploy via pipeline or `./scripts/deploy-backend.sh <dev|integ|prod>`; delete a course with uploaded media; API returns 200 only after enqueue succeeds; S3 objects disappear once the worker runs. **Rollback:** redeploy a catalog build that restores prior behavior, or fix queue permissions / worker; there is **no** silent sync-delete fallback for course delete when keys exist.
+- **Manual verification:** Deploy via pipeline or `./scripts/deploy-backend.sh <dev|prod>`; delete a course with uploaded media; API returns 200 only after enqueue succeeds; S3 objects disappear once the worker runs. **Rollback:** redeploy a catalog build that restores prior behavior, or fix queue permissions / worker; there is **no** silent sync-delete fallback for course delete when keys exist.
 
 ---
 
@@ -268,7 +288,7 @@ Investigation of recurring "all S3 data deleted on deploy" reports identified th
 ### Deploy
 
 - Local dev deploy validated CloudFront distribution creation (10-15 min propagation)
-- CI/CD [`deploy-backend.yml`](.github/workflows/deploy-backend.yml) deployed to integ → dev → prod
+- CI/CD [`deploy-backend.yml`](.github/workflows/deploy-backend.yml) progressed through backend deploy phases for non-prod then prod stacks (historical ordering — see live workflow **`needs`** graph)
 - All environments now serve video through CloudFront CDN
 
 ---
@@ -292,7 +312,7 @@ Investigation of recurring "all S3 data deleted on deploy" reports identified th
 - [x] **S3 object keys** — [`infrastructure/lambda/catalog/services/course_management/storage.py`](infrastructure/lambda/catalog/services/course_management/storage.py) — lesson video `{courseId}/lessons/{lessonId}/video/{uuid}.{ext}`, lesson thumbnail `.../thumbnail/{uuid}.{ext}`, course cover `{courseId}/thumbnail/{uuid}.{ext}`; strict **`presign_get`** full-key patterns (UUID segments); [`service.py`](infrastructure/lambda/catalog/services/course_management/service.py) validator prefixes; [`ports.py`](infrastructure/lambda/catalog/services/course_management/ports.py) `presign_put` gains `course_id` / `lesson_id`.
 - [x] **Catalog IAM** — [`infrastructure/templates/api-stack.yaml`](infrastructure/templates/api-stack.yaml) — `S3PresignedUrl` resource ARN widened from `${bucket}/uploads/*` to **`${bucket}/*`** so presigned PUT/GET/DELETE work for the new prefixes (mitigated by Lambda-side key validation).
 - [x] **Operator wipe tooling** (superseded by **RDS query Lambda** entry same day) — was a dedicated `rds_wipe` stack + **`RDS_WIPE_RUNBOOK`**; catalog TRUNCATE now runs via **`rds_query`** with **`wipe_catalog`** (see [**RDS_QUERY_RUNBOOK.md**](infrastructure/database/RDS_QUERY_RUNBOOK.md)).
-- [x] **Integ cleanup** — [`tests/integration/helpers/cleanup.py`](tests/integration/helpers/cleanup.py) — session safety net empties the **whole** integ video bucket (not only `uploads/`).
+- [x] **Integration cleanup** — [`tests/integration/helpers/cleanup.py`](tests/integration/helpers/cleanup.py) — session safety net empties the **whole** configured non-prod video bucket (not only legacy `uploads/` prefixes).
 
 ### Ops
 
@@ -618,12 +638,12 @@ Investigation of recurring "all S3 data deleted on deploy" reports identified th
 ### Completed
 
 - [x] **CI validation** — [`.github/workflows/ci.yml`](.github/workflows/ci.yml) — added [`infrastructure/templates/rds-stack.yaml`](infrastructure/templates/rds-stack.yaml) to the CloudFormation parse step so RDS template breakage is caught pre-merge.
-- [x] **Deploy pipeline (dev)** — [`.github/workflows/deploy-backend.yml`](.github/workflows/deploy-backend.yml) — three new jobs chain after `integ-tests`:
+- [x] **Deploy pipeline (dev)** — [`.github/workflows/deploy-backend.yml`](.github/workflows/deploy-backend.yml) — three RDS-focused jobs added alongside existing backend + HTTPS pytest gates:
   - **`deploy-rds-dev`** — builds a **schema-applier** zip (`infrastructure/lambda/rds_schema_apply/index.py` + vendored **`psycopg2-binary`** + copied **`001_initial_schema.sql`** as `schema.sql`), uploads to **`streammycourse-artifacts-<account>-<region>`**, then `aws cloudformation deploy` for `StreamMyCourse-Rds-dev` with **`SchemaApplierCodeS3Bucket`** / **`SchemaApplierCodeS3Key`**, then `aws rds wait db-instance-available` on `streammycourse-dev`.
   - **`apply-schema-dev`** — resolves **`SchemaApplierFunctionName`** from stack outputs and runs **`aws lambda invoke`** (payload `{}`); the Lambda runs in the **private subnet** with the catalog **Lambda SG**, reads **`SECRET_ARN`** from env, fetches JSON from Secrets Manager, and executes the bundled DDL with **`psycopg2`** + **`sslmode=require`** (no credentials on the GitHub runner, no TCP 5432 from the runner).
-  - **`verify-dev-rds`** — calls **`verify-rds-reusable.yml`** with **`github_environment: dev`** and dev stack inputs; exports **`INTEG_*`** + **`INTEG_COGNITO_JWT`**, then runs **`test_rds_path.py`** with **`USE_RDS=true`**.
+  - **`verify-dev-rds`** — calls **`verify-rds-reusable.yml`** with **`github_environment: dev`** and dev stack inputs; exports **`INTEGRATION_*`** pytest env vars + **`INTEGRATION_COGNITO_JWT`**, then runs **`test_rds_path.py`**.
 - [x] **Dev backend wiring** — [`deploy-backend-dev`](.github/workflows/deploy-backend.yml) job now sets **`RDS_STACK_NAME=StreamMyCourse-Rds-dev`** + **`USE_RDS=true`** as job-level env vars and depends on `deploy-rds-dev` + `apply-schema-dev`. [`scripts/deploy-backend.sh`](scripts/deploy-backend.sh) already forwards both to `aws cloudformation deploy` as `RdsStackName` / `UseRds` parameter overrides (no script change needed).
-- [x] **Integration smoke tests** — [`tests/integration/test_rds_path.py`](tests/integration/test_rds_path.py) — RDS-only coverage using the existing `api` / `course_factory` / `lesson_factory` fixtures. `pytestmark = pytest.mark.skipif(not USE_RDS)` so local and non-RDS CI runs skip cleanly; tests assert POST/GET round-trip, PUT persistence, and lesson FK insertion against whichever backend is wired.
+- [x] **Integration smoke tests** — [`tests/integration/test_rds_path.py`](tests/integration/test_rds_path.py) — catalog smoke using the existing `api` / `course_factory` / `lesson_factory` fixtures (POST/GET round-trip, PUT persistence, lesson FK).
 
 ### Infra follow-up (manual / non-CI deploys)
 
@@ -660,7 +680,7 @@ Investigation of recurring "all S3 data deleted on deploy" reports identified th
 - [x] **IAM (GitHub deploy role)** — [`infrastructure/iam-policy-github-deploy-backend.json`](infrastructure/iam-policy-github-deploy-backend.json) + [`infrastructure/templates/github-deploy-role-stack.yaml`](infrastructure/templates/github-deploy-role-stack.yaml) — added **`RdsStackManage`**, **`Ec2VpcStackManage`**, **`SecretsManagerRdsCredentials`**, **`SecretsManagerRotationAndList`** statements so CI can deploy `StreamMyCourse-Rds-*`.
 - [x] **Boundary check** — [`scripts/check_lambda_boundaries.py`](scripts/check_lambda_boundaries.py) — `bootstrap.py` added to `allowed_boto3_files`; new `allowed_psycopg2_files` (`bootstrap.py` + the three `rds_repo.py`); HTTP-import guard extended to all `rds_repo.py`. CI parity: **28 files pass**.
 - [x] **Tests (TDD)** — [`tests/unit/test_config.py`](tests/unit/test_config.py) (new `TestRdsFields`), [`tests/unit/test_rds_repos.py`](tests/unit/test_rds_repos.py) (54 assertions across the three RDS adapters with a `FakeCursor`/`FakeConn` driver mock), [`tests/unit/test_bootstrap.py`](tests/unit/test_bootstrap.py) (`TestBuildAwsDepsWithRds` + `TestRdsConnectionFactory` covering Secrets Manager failure modes and `sslmode=require`). Full suite: **311 passed**, **vulture min-confidence 61 clean**.
-- [x] **Docs** — new ADR [`plans/architecture/adr-0008-dynamodb-to-rds-migration.md`](plans/architecture/adr-0008-dynamodb-to-rds-migration.md); [`plans/architecture/module-map.md`](plans/architecture/module-map.md) updated for the new adapters + psycopg2/boto3 boundaries; [`tests/integration/README.md`](tests/integration/README.md) gained an **RDS cutover runbook** (deploy `rds-stack` → apply schema → run migrator dry-run/live → redeploy api stack with `UseRds=true` → integ suite → rollback by flipping `UseRds=false` and redeploying).
+- [x] **Docs** — new ADR [`plans/architecture/adr-0008-dynamodb-to-rds-migration.md`](plans/architecture/adr-0008-dynamodb-to-rds-migration.md); [`plans/architecture/module-map.md`](plans/architecture/module-map.md) updated for the new adapters + psycopg2/boto3 boundaries; [`tests/integration/README.md`](tests/integration/README.md) gained an **RDS cutover runbook** (deploy `rds-stack` → apply schema → run migrator dry-run/live → redeploy api stack with `UseRds=true` → HTTPS integration suite → rollback by flipping `UseRds=false` and redeploying).
 
 ### Decisions (see [ADR-0008](plans/architecture/adr-0008-dynamodb-to-rds-migration.md))
 
@@ -676,7 +696,7 @@ Investigation of recurring "all S3 data deleted on deploy" reports identified th
 
 ---
 
-## 2026-05-03 — Security hardening (infra, IAM, CI, integ)
+## 2026-05-03 — Security hardening (infra, IAM, CI, HTTPS integration smoke)
 
 ### Completed
 
@@ -684,8 +704,8 @@ Investigation of recurring "all S3 data deleted on deploy" reports identified th
 - [x] **GitHub Actions** — [`deploy-web-reusable.yml`](.github/workflows/deploy-web-reusable.yml) / [`deploy-teacher-web-reusable.yml`](.github/workflows/deploy-teacher-web-reusable.yml) declare **`workflow_call.secrets`**; [`deploy-backend.yml`](.github/workflows/deploy-backend.yml) passes explicit **`secrets:`** maps (no **`secrets: inherit`** on those calls).
 - [x] **GitHub deploy role (backend policy)** — [`github-deploy-role-stack.yaml`](infrastructure/templates/github-deploy-role-stack.yaml) + [`iam-policy-github-deploy-backend.json`](infrastructure/iam-policy-github-deploy-backend.json) — CloudFormation scoped to **`StreamMyCourse-*`** stacks (eu-west-1 + us-east-1) with **`ValidateTemplate`** / **`ListStacks`** on **`*`**; Lambda / DynamoDB / log groups scoped to **`StreamMyCourse-*`**; API Gateway + Cognito remain regional with conditions where applicable; S3 still account-scoped for artifact + dynamic bucket names.
 - [x] **Dev env docs** — [`frontend/.env.example`](frontend/.env.example) — **`VITE_API_PROXY_TARGET`** documented as required for Vite dev when using **`/api`** proxy.
-- [x] **Tests** — [`tests/unit/services/course_management/test_service.py`](tests/unit/services/course_management/test_service.py) (**`set_lesson_video_if_video_key_matches`**), [`test_storage.py`](tests/unit/services/course_management/test_storage.py) (sanitized filenames); integ: [`tests/integration/test_playback_upload.py`](tests/integration/test_playback_upload.py) (**invalid video / image content types** → **400**).
-- [x] **Follow-up (presign + integ)** — [`storage.py`](infrastructure/lambda/catalog/services/course_management/storage.py): removed invalid **`Conditions=`** kwargs from **`generate_presigned_url`** (boto3 does not support them; caused **500** on **`POST /upload-url`** in integ). [`test_bootstrap_edges.py`](tests/integration/test_bootstrap_edges.py): OPTIONS / GatewayResponse expectations aligned with explicit integ **`GatewayResponseAllowOrigin`** (**`http://localhost:5173`**).
+- [x] **Tests** — [`tests/unit/services/course_management/test_service.py`](tests/unit/services/course_management/test_service.py) (**`set_lesson_video_if_video_key_matches`**), [`test_storage.py`](tests/unit/services/course_management/test_storage.py) (sanitized filenames); [`tests/integration/test_playback_upload.py`](tests/integration/test_playback_upload.py) (**invalid video / image content types** → **400**).
+- [x] **Follow-up (presign + Gateway CORS)** — [`storage.py`](infrastructure/lambda/catalog/services/course_management/storage.py): removed invalid **`Conditions=`** kwargs from **`generate_presigned_url`** (boto3 does not support them; caused **500** on **`POST /upload-url`** against deployed stacks). [`test_bootstrap_edges.py`](tests/integration/test_bootstrap_edges.py): OPTIONS / GatewayResponse expectations aligned with explicit **`GatewayResponseAllowOrigin`** (**`http://localhost:5173`**).
 
 ---
 
@@ -770,7 +790,7 @@ Investigation of recurring "all S3 data deleted on deploy" reports identified th
 - [x] **[`infrastructure/templates/github-deploy-role-stack.yaml`](infrastructure/templates/github-deploy-role-stack.yaml)** — CloudFormation bootstrap for GitHub OIDC deploy role + inline policies (manual `deploy-github-iam-stack` scripts; **not** wired into CI/CD). JSON policy files remain mirrors for review / `apply-github-deploy-role-policies` path.
 - [x] **[`infrastructure/templates/edge-hosting-stack.yaml`](infrastructure/templates/edge-hosting-stack.yaml)** — Single **`us-east-1`** stack: ACM + student + teacher S3/OAC/CloudFront/Route 53; both distributions **`!Ref Certificate`**.
 - [x] **[`scripts/deploy-edge.sh`](scripts/deploy-edge.sh)** — One **`aws cloudformation deploy`** for **`StreamMyCourse-EdgeHosting-{env}`**; env **`ROUTE53_HOSTED_ZONE_ID`**, **`STUDENT_WEB_DOMAIN`**, **`TEACHER_WEB_DOMAIN`**, optional **`WEB_CERT_DOMAIN`** / **`WEB_CERT_SANS`**.
-- [x] **[`.github/workflows/deploy-backend.yml`](.github/workflows/deploy-backend.yml)** — **`deploy-edge-*`** job graph; edge steps run unified script. Dev **`deploy-backend-*`** / **`deploy-web-*`** / **`deploy-teacher-web-*`** **`needs`** **`deploy-edge-dev`** after integ tests; **prod** app jobs **`needs`** full dev column + **`deploy-edge-prod`**; **auth** fail-fast if **`COGNITO_DOMAIN_PREFIX`** unset.
+- [x] **[`.github/workflows/deploy-backend.yml`](.github/workflows/deploy-backend.yml)** — **`deploy-edge-*`** job graph; edge steps run unified script. Dev **`deploy-backend-*`** gates on **`deploy-edge-dev`** (plus RDS/schema); student/teacher SPA jobs gate on **`integration-http-tests`** among other **`needs`** (see live YAML); **prod** app jobs **`needs`** **`deploy-edge-prod`** and the full predecessor graph; **auth** fail-fast if **`COGNITO_DOMAIN_PREFIX`** unset.
 - [x] **[`.github/workflows/deploy-web-reusable.yml`](.github/workflows/deploy-web-reusable.yml)** / **[`deploy-teacher-web-reusable.yml`](.github/workflows/deploy-teacher-web-reusable.yml)** — **`AWS_REGION: us-east-1`**; stack **`StreamMyCourse-EdgeHosting-${env}`**; outputs **`StudentBucketName`**, **`StudentDistributionId`**, **`StudentSiteUrl`** / teacher equivalents.
 - [x] **[`infrastructure/iam-policy-github-deploy-web.json`](infrastructure/iam-policy-github-deploy-web.json)** — **`DescribeStacks`** ARNs for **`StreamMyCourse-EdgeHosting-*`** (**`us-east-1`**).
 - [x] **[`infrastructure/iam-policy-github-deploy-backend.json`](infrastructure/iam-policy-github-deploy-backend.json)** — *(unchanged this session; already had ACM / Route53 / CloudFront for edge.)*
@@ -778,7 +798,7 @@ Investigation of recurring "all S3 data deleted on deploy" reports identified th
 - [x] **[`.github/workflows/ci.yml`](.github/workflows/ci.yml)** — Parse **`edge-hosting-stack.yaml`**; **`workflow-lint`** unchanged.
 - [x] **[`tests/unit/test_deploy_edge_script.py`](tests/unit/test_deploy_edge_script.py)** — **`bash -n`** + single-stack **`us-east-1`** contract.
 - [x] Docs: [`infrastructure/docs/edge-hosting-migration.md`](infrastructure/docs/edge-hosting-migration.md), [`plans/architecture/adr-0007-web-hosting.md`](plans/architecture/adr-0007-web-hosting.md) addendum, [`design.md`](design.md), [`roadmap.md`](roadmap.md), [`AGENTS.md`](AGENTS.md), [`infrastructure/README.md`](infrastructure/README.md), [`admin-auth-runbook.md`](infrastructure/docs/admin-auth-runbook.md).
-- [x] **Prod app deploy gate** — **`deploy-backend-prod`**, **`deploy-web-prod`**, **`deploy-teacher-web-prod`** **`needs`** **`deploy-backend-integ`**, **`integ-tests`**, **`deploy-edge-dev`**, **`deploy-backend-dev`**, **`deploy-web-dev`**, **`deploy-teacher-web-dev`**, and **`deploy-edge-prod`** so prod never ships on prod edge alone. **`deploy-edge-prod`** unchanged: after **`integ-tests`** + **`deploy-edge-dev`** only.
+- [x] **Prod app deploy gate** — **`deploy-backend-prod`**, **`deploy-web-prod`**, **`deploy-teacher-web-prod`** **`needs`** **`integration-http-tests`** (HTTPS pytest gate), **`verify-dev-rds`**, **`deploy-edge-dev`**, **`deploy-backend-dev`**, **`deploy-web-dev`**, **`deploy-teacher-web-dev`**, **`deploy-edge-prod`**, and related RDS predecessors so prod never ships early. (**Historical note:** predecessor pipelines sometimes modeled an extra standalone backend deploy stage before SPA work.)
 - [x] **OIDC CloudFormation type** — [`github-deploy-role-stack.yaml`](infrastructure/templates/github-deploy-role-stack.yaml) uses **`AWS::IAM::OIDCProvider`** (not `OIDCIdentityProvider`). **[`scripts/deploy-github-iam-stack`](scripts/deploy-github-iam-stack.sh)** / [`.ps1`](scripts/deploy-github-iam-stack.ps1) exit non-zero when **`aws cloudformation deploy`** fails.
 - [x] **README (GitHub OIDC)** — documents **one** `token.actions.githubusercontent.com` provider per account, **`ExistingGithubOidcProviderArn`** for brownfield, and that **stack delete** does not remove a pre-existing OIDC registration.
 - [x] **[`.cursor/skills/watch-ci-after-push/SKILL.md`](.cursor/skills/watch-ci-after-push/SKILL.md)** — after a green **CI** run on `main`, resolve and **`gh run watch`** the **Deploy** workflow run matching **`headSha`** ([`deploy-backend.yml`](.github/workflows/deploy-backend.yml)).
@@ -1047,7 +1067,7 @@ Cognito / API Gateway authorizer; implement `services/auth` boundary per ADR.
 - [x] Student + teacher auth UI / route gating: `frontend/src/components/auth/*`, [`frontend/src/pages/StudentLoginPage.tsx`](frontend/src/pages/StudentLoginPage.tsx), student/teacher headers.
 
 #### Local dev + integration testing
-- [x] Added PowerShell runner [`scripts/run-integ.ps1`](scripts/run-integ.ps1) to deploy integ backend, export `INTEG_*` env vars, and run `python -m pytest tests/integration`.
+- [x] Added PowerShell runner [`scripts/run-integration-tests.ps1`](scripts/run-integration-tests.ps1) to deploy **dev**/**prod** backends, export **`INTEGRATION_*`** pytest env vars, and run `python -m pytest tests/integration`.
 - [x] Added auth probes integration tests: [`tests/integration/test_auth_gateway.py`](tests/integration/test_auth_gateway.py).
 - [x] Deployment correctness: `infrastructure/deploy.ps1` now strips `__pycache__`/`*.pyc` and includes a zip content hash in the Lambda artifact key so CloudFormation updates code even without a new git commit.
 - [x] Fixed public header “Log In” routing to `/login` and ensured the dev entrypoint supports `/login` without redirect loops.
@@ -1083,17 +1103,14 @@ Cognito / API Gateway authorizer; implement `services/auth` boundary per ADR.
 - [x] **API surface change:** `update_lesson_title`, `delete_lesson`, `set_lesson_video`, `set_lesson_video_status` now key by `lesson_id` instead of `order`.
 - [x] **New repo method** `set_lesson_orders(course_id, orders)` for bulk reorder; aliases reserved word `order` via `ExpressionAttributeNames`. Not yet wired through controller.
 
-### Integration test environment ('integ' as a third backend stack)
-- [x] **Decision:** dedicated integ AWS environment (full backend stack with its own DDB + S3) deployed on every push; pytest hits the integ API over HTTPS; prod gates on tests passing.
-- [x] **Infra wiring:** `Environment=integ` added to [`api-stack.yaml`](infrastructure/templates/api-stack.yaml) and [`video-stack.yaml`](infrastructure/templates/video-stack.yaml) `AllowedValues`; [`scripts/deploy-backend.sh`](scripts/deploy-backend.sh) and [`infrastructure/deploy-environment.ps1`](infrastructure/deploy-environment.ps1) accept `integ` and provision `StreamMyCourse-Api-integ` + `StreamMyCourse-Video-integ` with wildcard CORS.
-- [x] **CI flow** in [`.github/workflows/deploy-backend.yml`](.github/workflows/deploy-backend.yml): **integ → integ-tests → dev → prod**, each step gated on the prior. Dispatch input `full` (default) or `integ-only`.
-- [x] **integ-tests job:** sets up Python 3.11, installs `tests/integration/requirements.txt`, resolves `INTEG_API_BASE_URL` / `INTEG_VIDEO_BUCKET` from CFN outputs, runs `pytest --junitxml=results.xml`, uploads the JUnit XML as an artifact, writes pass/fail to `$GITHUB_STEP_SUMMARY`.
+### Third-backend integration experiment (removed)
+- Historical note: StreamMyCourse briefly modeled a dedicated extra backend stack deployed before dev/prod SPA work so HTTPS pytest could target it. **Managed CI now targets dev stacks only** (`streammycourse-api`, `StreamMyCourse-Video-dev`, RDS-backed catalog); integration pytest env vars live under **`INTEGRATION_*`**; see [`tests/integration/README.md`](tests/integration/README.md) + **`.github/workflows/deploy-backend.yml`**.
 
 ### Test harness (HTTP via httpx + pytest)
 - [x] **Layout:** [`tests/integration/`](tests/integration/) at repo root (outside the Lambda zip; not scanned by `check_lambda_boundaries.py` or vulture).
 - [x] **Fixtures** in [`conftest.py`](tests/integration/conftest.py): `api_base_url`, `http_client`, `api`, `course_factory`, `lesson_factory`. Course teardown deletes via `DELETE /courses/{id}`; lesson cleanup is implicit (course delete cascades).
-- [x] **Helpers:** [`api.py`](tests/integration/helpers/api.py) (typed httpx wrapper per endpoint), [`factories.py`](tests/integration/helpers/factories.py) (UUID-prefixed titles), [`cleanup.py`](tests/integration/helpers/cleanup.py) (boto3 truncate + S3 sweep).
-- [x] **Session-end safety net:** `pytest_sessionfinish` scans the integ DDB for test-prefixed leftovers and empties **all objects** in the integ video bucket; logs to `$GITHUB_STEP_SUMMARY` but **never fails** the job.
+- [x] **Helpers:** [`api.py`](tests/integration/helpers/api.py) (typed httpx wrapper per endpoint), [`factories.py`](tests/integration/helpers/factories.py) (UUID-prefixed titles), [`cleanup.py`](tests/integration/helpers/cleanup.py) (HTTPS `GET /courses/mine` + `DELETE` for prefixed titles, plus dev-only S3 sweep).
+- [x] **Session-end safety net:** `pytest_sessionfinish` calls [`cleanup.run_safety_net`](tests/integration/helpers/cleanup.py) — API course cleanup when `INTEGRATION_API_BASE_URL` and `INTEGRATION_COGNITO_JWT` are set, then empties the allowed **dev** video bucket pattern via boto3; logs to `$GITHUB_STEP_SUMMARY` but **never fails** the job.
 
 ### Test scenarios (28 collected)
 - [x] **Smoke** ([`test_smoke.py`](tests/integration/test_smoke.py)) — harness wiring + cleanup proof.
@@ -1104,7 +1121,7 @@ Cognito / API Gateway authorizer; implement `services/auth` boundary per ADR.
 - [x] **S5 lesson ordering regression** ([`test_lesson_ordering.py`](tests/integration/test_lesson_ordering.py)) — delete-middle-then-create no longer collides; `list_lessons` returns sorted by `order`.
 
 ### Static-check coverage in PR/push CI
-- [x] [`/.github/workflows/ci.yml`](.github/workflows/ci.yml): new `integ-tests-static` job — installs test deps, py-compiles `tests/integration/**/*.py`, and runs `pytest --collect-only` to surface import errors before they hit a real deploy. `cloudformation` job now also parses `video-stack.yaml`.
+- [x] [`/.github/workflows/ci.yml`](.github/workflows/ci.yml): new `integration-tests-static` job — installs test deps, py-compiles `tests/integration/**/*.py`, and runs `pytest --collect-only` to surface import errors before they hit a real deploy. `cloudformation` job now also parses `video-stack.yaml`.
 
 ---
 
