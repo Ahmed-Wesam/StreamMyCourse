@@ -140,7 +140,7 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
       - name: Upload JUnit results
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: lambda-unit-test-results
           path: tests/unit/results.xml
