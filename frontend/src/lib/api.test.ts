@@ -21,7 +21,7 @@ describe('catalog GET without signed-in session', () => {
   beforeEach(() => {
     vi.stubGlobal(
       'fetch',
-      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      vi.fn(async (input: RequestInfo | URL) => {
         const url = typeof input === 'string' ? input : input.toString()
         const body = url.includes('/lessons') ? [] : { id: 'x', title: 'T', description: 'D', status: 'PUBLISHED' }
         return new Response(JSON.stringify(body), {
