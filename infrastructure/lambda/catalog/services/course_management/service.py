@@ -338,8 +338,14 @@ class CourseManagementService:
             media_keys.append(lesson.videoKey.strip())
         if lesson.thumbnailKey.strip():
             media_keys.append(lesson.thumbnailKey.strip())
-        self._delete_media_keys(media_keys)
+        deduped = list(dict.fromkeys(k.strip() for k in media_keys if k and k.strip()))
+        if deduped and not self._media_cleanup_queue_url:
+            raise ServiceUnavailable(
+                "Media cleanup queue is not configured (MEDIA_CLEANUP_QUEUE_URL is empty)"
+            )
         self._repo.delete_lesson(course_id=course_id, lesson_id=lesson_id)
+        if deduped:
+            send_media_cleanup_job(self._media_cleanup_queue_url, course_id, deduped)
         # Compact remaining orders to 1..N so display has no gaps.
         remaining = sorted(self._repo.list_lessons(course_id), key=lambda l: l.order)
         mapping = {l.id: i + 1 for i, l in enumerate(remaining) if l.id}
