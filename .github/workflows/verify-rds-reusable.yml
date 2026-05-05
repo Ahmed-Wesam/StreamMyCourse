@@ -33,9 +33,6 @@ on:
       auth_stack_name:
         required: true
         type: string
-      catalog_table_name:
-        required: true
-        type: string
       target_label:
         required: true
         type: string
@@ -58,7 +55,6 @@ jobs:
     runs-on: ubuntu-latest
     environment: ${{ inputs.github_environment }}
     env:
-      USE_RDS: "true"
       AWS_REGION: ${{ inputs.aws_region }}
     permissions:
       id-token: write
@@ -85,7 +81,6 @@ jobs:
         env:
           API_STACK: ${{ inputs.api_stack_name }}
           VIDEO_STACK: ${{ inputs.video_stack_name }}
-          CATALOG_TABLE: ${{ inputs.catalog_table_name }}
         run: |
           set -euo pipefail
           API_BASE_URL="$(aws cloudformation describe-stacks \
@@ -103,10 +98,9 @@ jobs:
             exit 1
           fi
           {
-            echo "INTEG_API_BASE_URL=$API_BASE_URL"
-            echo "INTEG_TABLE_NAME=$CATALOG_TABLE"
-            echo "INTEG_VIDEO_BUCKET=$VIDEO_BUCKET"
-            echo "INTEG_REGION=${AWS_REGION}"
+            echo "INTEGRATION_API_BASE_URL=$API_BASE_URL"
+            echo "INTEGRATION_VIDEO_BUCKET=$VIDEO_BUCKET"
+            echo "INTEGRATION_AWS_REGION=${AWS_REGION}"
           } >> "$GITHUB_ENV"
 
       - name: Require Cognito credentials for RDS verify
@@ -168,7 +162,7 @@ jobs:
 
           if [[ -n "${TOKEN:-}" && "$TOKEN" != "None" ]]; then
             echo "::add-mask::$TOKEN"
-            echo "INTEG_COGNITO_JWT=$TOKEN" >> "$GITHUB_ENV"
+            echo "INTEGRATION_COGNITO_JWT=$TOKEN" >> "$GITHUB_ENV"
             echo "Minted Cognito IdToken for RDS verify (${{ inputs.target_label }}; user: $USERNAME)"
           elif [[ -n "${LEGACY_JWT:-}" ]]; then
             if [[ -n "${COGNITO_TEST_PASSWORD:-}" ]]; then
@@ -177,7 +171,7 @@ jobs:
               echo "Using static JWT fallback (COGNITO_RDS_VERIFY_TEST_PASSWORD unset on this environment)"
             fi
             echo "::add-mask::$LEGACY_JWT"
-            echo "INTEG_COGNITO_JWT=$LEGACY_JWT" >> "$GITHUB_ENV"
+            echo "INTEGRATION_COGNITO_JWT=$LEGACY_JWT" >> "$GITHUB_ENV"
           else
             echo "::error::Could not mint Cognito IdToken and COGNITO_RDS_VERIFY_JWT is not set on this environment"
             exit 1
@@ -191,4 +185,4 @@ jobs:
         if: always()
         run: |
           echo "## Verify ${{ inputs.target_label }} RDS" >> "$GITHUB_STEP_SUMMARY"
-          echo "Ran RDS-specific integration tests against ${{ inputs.api_endpoint_description }} (USE_RDS=true)." >> "$GITHUB_STEP_SUMMARY"
+          echo "Ran catalog smoke tests (test_rds_path.py) against ${{ inputs.api_endpoint_description }}." >> "$GITHUB_STEP_SUMMARY"

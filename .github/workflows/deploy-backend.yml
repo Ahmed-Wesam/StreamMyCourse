@@ -1,15 +1,15 @@
-# After CI succeeds on a push to main: deploy integ -> integ tests -> dev edge -> dev (backend +
-# student + teacher web in parallel) with prod edge in parallel to those three (prod edge only
-# needs integ + dev edge, not dev backend/SPA success). Prod RDS: deploy-rds-prod + apply-schema-prod
-# run after integ tests and successful dev edge (parallel with dev RDS). Prod backend waits for verify-dev-rds (dev RDS
-# API smoke), prod edge, prod RDS, schema apply, dev column, then deploys with USE_RDS=true; verify-prod-rds runs after prod backend.
+# After CI succeeds on a push to main: CI gate → dev edge + dev RDS (parallel) → apply-schema-dev →
+# deploy-backend-dev → integration-http-tests (pytest against dev API + Cognito JWT from dev Environment) →
+# verify-dev-rds → dev SPAs (+ prod edge + prod RDS branches in parallel with later stages).
+# Prod backend waits for verify-dev-rds (dev RDS API smoke), prod edge, prod RDS, schema apply, dev SPA
+# deploys, then prod backend (RDS-backed API); verify-prod-rds runs after prod backend.
 # verify-dev-rds / verify-prod-rds call verify-rds-reusable.yml with environment-specific inputs + secret mapping only.
 # Prod SPAs run after prod edge (unchanged). Never prod-only on edge.
-# Manual dispatch: full or integ-only without waiting for CI (operator responsibility).
+# Manual dispatch: runs full pipeline without waiting for upstream CI (operator responsibility).
 #
 # Lambda zip is uploaded to catalog-{env}-{gitSha}.zip so LambdaCodeS3Key changes every commit
 # (CFN updates the function).
-# For dev, integ, and prod, scripts/deploy-backend.sh deploys StreamMyCourse-MediaCleanup-{env} (SQS + worker)
+# For dev and prod, scripts/deploy-backend.sh deploys StreamMyCourse-MediaCleanup-{env} (SQS + worker)
 # before the API stack and passes queue URL/ARN into api-stack.yaml for async course media deletes.
 name: Deploy
 
@@ -19,15 +19,6 @@ on:
     types:
       - completed
   workflow_dispatch:
-    inputs:
-      environment:
-        description: "full = integ -> tests -> dev edge -> dev+prod edge (parallel) -> prod apps; integ-only = stop after integ tests"
-        required: true
-        default: "full"
-        type: choice
-        options:
-          - full
-          - integ-only
 
 permissions:
   id-token: write
@@ -78,50 +69,35 @@ jobs:
           echo "should_deploy=true" >> "$GITHUB_OUTPUT"
           echo "checkout_sha=${{ github.event.workflow_run.head_sha }}" >> "$GITHUB_OUTPUT"
 
-  # --- Stage 1: integ -----------------------------------------------------------------
-  deploy-backend-integ:
-    name: Backend (integ) — Video + API
+  # Pin repo-level OIDC role ARN here (no `environment:`) so jobs that use `environment: dev` for
+  # Cognito secrets can still assume the backend deploy role without Environment var shadowing.
+  resolve-oidc-deploy-role:
+    name: Resolve repo OIDC deploy role ARN
     runs-on: ubuntu-latest
-    # No GitHub Environment: `vars.AWS_DEPLOY_ROLE_ARN` must be the repo-level variable (backend OIDC
-    # role). Attaching `environment: dev` would let an Environment variable of the same name override
-    # the repo value (e.g. a web-only role ARN) and break SQS/Lambda deploy for integ.
     needs: gate
     if: needs.gate.outputs.should_deploy == 'true'
-    permissions:
-      id-token: write
-      contents: read
+    outputs:
+      aws_deploy_role_arn: ${{ steps.pin.outputs.arn }}
     steps:
-      - uses: actions/checkout@v6
-        with:
-          ref: ${{ needs.gate.outputs.checkout_sha }}
-
-      - name: Configure AWS credentials (OIDC)
-        uses: aws-actions/configure-aws-credentials@v6
-        with:
-          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
-          aws-region: ${{ env.AWS_REGION }}
-
-      - name: Deploy integ
+      - id: pin
         run: |
-          chmod +x scripts/deploy-backend.sh
-          ./scripts/deploy-backend.sh integ
+          echo "arn=${{ vars.AWS_DEPLOY_ROLE_ARN }}" >> "$GITHUB_OUTPUT"
 
-      - name: Summary
-        if: success()
-        run: |
-          echo "## Backend integ" >> "$GITHUB_STEP_SUMMARY"
-          echo "Video stack + API stack for **integ** deployed (or no-op changeset)." >> "$GITHUB_STEP_SUMMARY"
-
-  # --- Stage 2: integ tests -----------------------------------------------------------
-  integ-tests:
-    name: Integ tests — pytest against deployed integ API
+  # --- Integration tests (HTTP suite against deployed dev API) ------------------------
+  integration-http-tests:
+    name: Integration HTTP tests — pytest against deployed dev API
     runs-on: ubuntu-latest
-    # No GitHub Environment — same OIDC variable shadowing issue as deploy-backend-integ.
-    needs: [gate, deploy-backend-integ]
+    environment: dev
+    needs: [gate, deploy-backend-dev, resolve-oidc-deploy-role]
     permissions:
       id-token: write
       contents: read
-    if: needs.gate.outputs.should_deploy == 'true' && needs.deploy-backend-integ.result == 'success'
+    if: |
+      always() &&
+      needs.gate.outputs.should_deploy == 'true' &&
+      needs.resolve-oidc-deploy-role.result == 'success' &&
+      needs.deploy-backend-dev.result == 'success' &&
+      (github.event_name == 'workflow_run' || github.event_name == 'workflow_dispatch')
     steps:
       - uses: actions/checkout@v6
         with:
@@ -130,7 +106,7 @@ jobs:
       - name: Configure AWS credentials (OIDC)
         uses: aws-actions/configure-aws-credentials@v6
         with:
-          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          role-to-assume: ${{ needs.resolve-oidc-deploy-role.outputs.aws_deploy_role_arn }}
           aws-region: ${{ env.AWS_REGION }}
 
       - uses: actions/setup-python@v6
@@ -140,31 +116,108 @@ jobs:
       - name: Install test dependencies
         run: pip install -r tests/integration/requirements.txt
 
-      - name: Resolve integ stack outputs
-        id: outputs
+      - name: Resolve dev stack outputs
+        env:
+          API_STACK: streammycourse-api
+          VIDEO_STACK: StreamMyCourse-Video-dev
         run: |
+          set -euo pipefail
+          REGION="${{ env.AWS_REGION }}"
           API_BASE_URL="$(aws cloudformation describe-stacks \
-            --stack-name StreamMyCourse-Api-integ \
-            --region "${{ env.AWS_REGION }}" \
+            --stack-name "$API_STACK" \
+            --region "$REGION" \
             --query "Stacks[0].Outputs[?OutputKey=='ApiEndpoint'].OutputValue" \
             --output text)"
           VIDEO_BUCKET="$(aws cloudformation describe-stacks \
-            --stack-name StreamMyCourse-Video-integ \
-            --region "${{ env.AWS_REGION }}" \
+            --stack-name "$VIDEO_STACK" \
+            --region "$REGION" \
             --query "Stacks[0].Outputs[?OutputKey=='BucketName'].OutputValue" \
             --output text)"
           if [[ -z "$API_BASE_URL" || -z "$VIDEO_BUCKET" ]]; then
-            echo "Failed to resolve integ stack outputs (ApiEndpoint / BucketName)" >&2
+            echo "Failed to resolve dev stack outputs (ApiEndpoint / BucketName)" >&2
             exit 1
           fi
           {
-            echo "INTEG_API_BASE_URL=$API_BASE_URL"
-            echo "INTEG_TABLE_NAME=StreamMyCourse-Catalog-integ"
-            echo "INTEG_VIDEO_BUCKET=$VIDEO_BUCKET"
-            echo "INTEG_REGION=${{ env.AWS_REGION }}"
+            echo "INTEGRATION_API_BASE_URL=$API_BASE_URL"
+            echo "INTEGRATION_VIDEO_BUCKET=$VIDEO_BUCKET"
+            echo "INTEGRATION_AWS_REGION=$REGION"
           } >> "$GITHUB_ENV"
-          echo "Resolved integ API: $API_BASE_URL"
-          echo "Resolved integ bucket: $VIDEO_BUCKET"
+          echo "Resolved dev API: $API_BASE_URL"
+          echo "Resolved dev bucket: $VIDEO_BUCKET"
+
+      - name: Require Cognito credentials for integration HTTP tests
+        env:
+          COGNITO_TEST_PASSWORD: ${{ secrets.COGNITO_RDS_VERIFY_TEST_PASSWORD }}
+          COGNITO_TEST_USERNAME: ${{ vars.COGNITO_RDS_VERIFY_TEST_USERNAME }}
+          LEGACY_JWT: ${{ secrets.COGNITO_RDS_VERIFY_JWT }}
+        run: |
+          set -euo pipefail
+          if [[ -z "${COGNITO_TEST_PASSWORD:-}" ]] && [[ -z "${LEGACY_JWT:-}" ]]; then
+            echo "::error::On GitHub Environment \"dev\" set secret COGNITO_RDS_VERIFY_TEST_PASSWORD and optional variable COGNITO_RDS_VERIFY_TEST_USERNAME (default ci-rds-verify@noreply.local), or secret COGNITO_RDS_VERIFY_JWT as fallback. See tests/integration/README.md."
+            exit 1
+          fi
+
+      - name: Mint Cognito JWT (or static JWT fallback)
+        env:
+          COGNITO_TEST_PASSWORD: ${{ secrets.COGNITO_RDS_VERIFY_TEST_PASSWORD }}
+          COGNITO_TEST_USERNAME: ${{ vars.COGNITO_RDS_VERIFY_TEST_USERNAME }}
+          LEGACY_JWT: ${{ secrets.COGNITO_RDS_VERIFY_JWT }}
+          AUTH_STACK: StreamMyCourse-Auth-dev
+        run: |
+          set -euo pipefail
+          REGION="${{ env.AWS_REGION }}"
+          USERNAME="${COGNITO_TEST_USERNAME:-ci-rds-verify@noreply.local}"
+          TOKEN=""
+
+          if [[ -n "${COGNITO_TEST_PASSWORD:-}" ]]; then
+            pool="$(aws cloudformation describe-stacks \
+              --stack-name "$AUTH_STACK" \
+              --region "$REGION" \
+              --query "Stacks[0].Outputs[?OutputKey=='UserPoolId'].OutputValue" \
+              --output text)"
+            client="$(aws cloudformation describe-stacks \
+              --stack-name "$AUTH_STACK" \
+              --region "$REGION" \
+              --query "Stacks[0].Outputs[?OutputKey=='TeacherUserPoolClientId'].OutputValue" \
+              --output text)"
+            if [[ -n "$pool" && "$pool" != "None" && -n "$client" && "$client" != "None" ]]; then
+              tmp_json="$(mktemp)"
+              jq -n \
+                --arg pool "$pool" \
+                --arg client "$client" \
+                --arg user "$USERNAME" \
+                --arg pass "$COGNITO_TEST_PASSWORD" \
+                '{UserPoolId:$pool,ClientId:$client,AuthFlow:"ADMIN_USER_PASSWORD_AUTH",AuthParameters:{USERNAME:$user,PASSWORD:$pass}}' \
+                >"$tmp_json"
+              if TOKEN="$(aws cognito-idp admin-initiate-auth \
+                --cli-input-json "file://$tmp_json" \
+                --region "$REGION" \
+                --query 'AuthenticationResult.IdToken' \
+                --output text 2>/dev/null)"; then
+                :
+              else
+                TOKEN=""
+              fi
+              rm -f "$tmp_json"
+            fi
+          fi
+
+          if [[ -n "${TOKEN:-}" && "$TOKEN" != "None" ]]; then
+            echo "::add-mask::$TOKEN"
+            echo "INTEGRATION_COGNITO_JWT=$TOKEN" >> "$GITHUB_ENV"
+            echo "Minted Cognito IdToken for integration HTTP tests (dev; user: $USERNAME)"
+          elif [[ -n "${LEGACY_JWT:-}" ]]; then
+            if [[ -n "${COGNITO_TEST_PASSWORD:-}" ]]; then
+              echo "::warning::Cognito token minting failed - using static JWT fallback"
+            else
+              echo "Using static JWT fallback (COGNITO_RDS_VERIFY_TEST_PASSWORD unset on this environment)"
+            fi
+            echo "::add-mask::$LEGACY_JWT"
+            echo "INTEGRATION_COGNITO_JWT=$LEGACY_JWT" >> "$GITHUB_ENV"
+          else
+            echo "::error::Could not mint Cognito IdToken and COGNITO_RDS_VERIFY_JWT is not set on this environment"
+            exit 1
+          fi
 
       - name: Run pytest
         id: pytest
@@ -175,31 +228,31 @@ jobs:
         if: always()
         run: |
           if [[ "${{ steps.pytest.outcome }}" == "success" ]]; then
-            echo "## Integ tests: PASSED" >> "$GITHUB_STEP_SUMMARY"
+            echo "## Integration HTTP tests: PASSED" >> "$GITHUB_STEP_SUMMARY"
           else
-            echo "## Integ tests: FAILED" >> "$GITHUB_STEP_SUMMARY"
+            echo "## Integration HTTP tests: FAILED" >> "$GITHUB_STEP_SUMMARY"
           fi
 
       - name: Upload pytest results
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: integ-test-results
+          name: integration-http-test-results
           path: tests/integration/results.xml
           if-no-files-found: warn
 
-  # --- Stage 3: dev (edge infra then backend + web in parallel) -----------------------
+  # --- Dev: edge infra then backend + web in parallel) --------------------------------
   deploy-edge-dev:
     name: Edge (dev) — ACM cert + student + teacher web CF
     runs-on: ubuntu-latest
     environment: dev
-    needs: [gate, integ-tests]
+    needs: [gate]
     permissions:
       id-token: write
       contents: read
     if: |
-      always() && needs.gate.outputs.should_deploy == 'true' && needs.integ-tests.result == 'success' &&
-      (github.event_name == 'workflow_run' || (github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'full'))
+      always() && needs.gate.outputs.should_deploy == 'true' &&
+      (github.event_name == 'workflow_run' || github.event_name == 'workflow_dispatch')
     steps:
       - uses: actions/checkout@v6
         with:
@@ -235,13 +288,13 @@ jobs:
     name: RDS Stack (dev) — PostgreSQL + VPC
     runs-on: ubuntu-latest
     environment: dev
-    needs: [gate, integ-tests]
+    needs: [gate]
     permissions:
       id-token: write
       contents: read
     if: |
-      always() && needs.gate.outputs.should_deploy == 'true' && needs.integ-tests.result == 'success' &&
-      (github.event_name == 'workflow_run' || (github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'full'))
+      always() && needs.gate.outputs.should_deploy == 'true' &&
+      (github.event_name == 'workflow_run' || github.event_name == 'workflow_dispatch')
     steps:
       - uses: actions/checkout@v6
         with:
@@ -331,7 +384,7 @@ jobs:
     if: |
       always() && needs.gate.outputs.should_deploy == 'true' &&
       needs.deploy-rds-dev.result == 'success' &&
-      (github.event_name == 'workflow_run' || (github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'full'))
+      (github.event_name == 'workflow_run' || github.event_name == 'workflow_dispatch')
     steps:
       - uses: actions/checkout@v6
         with:
@@ -384,21 +437,18 @@ jobs:
     name: Backend (dev) — Video + API
     runs-on: ubuntu-latest
     environment: dev
-    needs: [gate, integ-tests, deploy-edge-dev, deploy-rds-dev, apply-schema-dev]
+    needs: [gate, deploy-edge-dev, deploy-rds-dev, apply-schema-dev]
     permissions:
       id-token: write
       contents: read
     if: |
-      always() && needs.gate.outputs.should_deploy == 'true' && needs.integ-tests.result == 'success' &&
+      always() && needs.gate.outputs.should_deploy == 'true' &&
       needs.deploy-edge-dev.result == 'success' &&
       needs.deploy-rds-dev.result == 'success' &&
       needs.apply-schema-dev.result == 'success' &&
-      (github.event_name == 'workflow_run' || (github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'full'))
+      (github.event_name == 'workflow_run' || github.event_name == 'workflow_dispatch')
     env:
-      # Wire the catalog Lambda to RDS in dev. Flip USE_RDS=false and redeploy
-      # (or unset RDS_STACK_NAME) to roll back to DynamoDB.
       RDS_STACK_NAME: StreamMyCourse-Rds-dev
-      USE_RDS: "true"
     steps:
       - uses: actions/checkout@v6
         with:
@@ -526,11 +576,13 @@ jobs:
 
   deploy-web-dev:
     name: Web (dev)
-    needs: [gate, integ-tests, deploy-edge-dev]
+    needs: [gate, deploy-edge-dev, deploy-backend-dev, integration-http-tests]
     if: |
-      always() && needs.gate.outputs.should_deploy == 'true' && needs.integ-tests.result == 'success' &&
+      always() && needs.gate.outputs.should_deploy == 'true' &&
       needs.deploy-edge-dev.result == 'success' &&
-      (github.event_name == 'workflow_run' || (github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'full'))
+      needs.deploy-backend-dev.result == 'success' &&
+      needs.integration-http-tests.result == 'success' &&
+      (github.event_name == 'workflow_run' || github.event_name == 'workflow_dispatch')
     uses: ./.github/workflows/deploy-web-reusable.yml
     secrets:
       AWS_DEPLOY_ROLE_ARN: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
@@ -544,11 +596,13 @@ jobs:
 
   deploy-teacher-web-dev:
     name: Teacher Web (dev)
-    needs: [gate, integ-tests, deploy-edge-dev]
+    needs: [gate, deploy-edge-dev, deploy-backend-dev, integration-http-tests]
     if: |
-      always() && needs.gate.outputs.should_deploy == 'true' && needs.integ-tests.result == 'success' &&
+      always() && needs.gate.outputs.should_deploy == 'true' &&
       needs.deploy-edge-dev.result == 'success' &&
-      (github.event_name == 'workflow_run' || (github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'full'))
+      needs.deploy-backend-dev.result == 'success' &&
+      needs.integration-http-tests.result == 'success' &&
+      (github.event_name == 'workflow_run' || github.event_name == 'workflow_dispatch')
     uses: ./.github/workflows/deploy-teacher-web-reusable.yml
     secrets:
       AWS_DEPLOY_ROLE_ARN: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
@@ -560,9 +614,7 @@ jobs:
       target_environment: dev
       checkout_ref: ${{ needs.gate.outputs.checkout_sha }}
 
-  # Runs the RDS-specific integration tests against the deployed dev API. These tests
-  # skip unless USE_RDS=true is set, so this job is the RDS smoke check: if the API
-  # is wired to RDS end-to-end, a course create + read round-trips through PostgreSQL.
+  # Runs catalog smoke tests (test_rds_path.py) against the deployed dev API.
   # Dev-only CloudFormation inputs; Cognito/AWS creds come from GitHub Environment "dev" inside verify-rds-reusable.yml.
   verify-dev-rds:
     name: Verify dev RDS (integration tests)
@@ -571,11 +623,12 @@ jobs:
       # Repository secrets (job cannot set `environment` when using only `uses:`). Copy values from Environment "dev" secrets of the same name into repo Actions secrets.
       COGNITO_RDS_VERIFY_TEST_PASSWORD: ${{ secrets.COGNITO_RDS_VERIFY_TEST_PASSWORD }}
       COGNITO_RDS_VERIFY_JWT: ${{ secrets.COGNITO_RDS_VERIFY_JWT }}
-    needs: [gate, deploy-backend-dev]
+    needs: [gate, deploy-backend-dev, integration-http-tests]
     if: |
       always() && needs.gate.outputs.should_deploy == 'true' &&
       needs.deploy-backend-dev.result == 'success' &&
-      (github.event_name == 'workflow_run' || (github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'full'))
+      needs.integration-http-tests.result == 'success' &&
+      (github.event_name == 'workflow_run' || github.event_name == 'workflow_dispatch')
     with:
       github_environment: dev
       checkout_ref: ${{ needs.gate.outputs.checkout_sha }}
@@ -586,7 +639,6 @@ jobs:
       api_stack_name: streammycourse-api
       video_stack_name: StreamMyCourse-Video-dev
       auth_stack_name: StreamMyCourse-Auth-dev
-      catalog_table_name: StreamMyCourse-Catalog-dev
       target_label: dev
       api_endpoint_description: streammycourse-api (dev)
 
@@ -595,16 +647,17 @@ jobs:
     name: Edge (prod) — ACM cert + student + teacher web CF
     runs-on: ubuntu-latest
     environment: prod
-    needs: [gate, integ-tests, deploy-edge-dev]
+    needs: [gate, deploy-edge-dev, deploy-backend-dev, integration-http-tests]
     permissions:
       id-token: write
       contents: read
     if: |
       always() &&
       needs.gate.outputs.should_deploy == 'true' &&
-      needs.integ-tests.result == 'success' &&
       needs.deploy-edge-dev.result == 'success' &&
-      (github.event_name == 'workflow_run' || (github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'full'))
+      needs.deploy-backend-dev.result == 'success' &&
+      needs.integration-http-tests.result == 'success' &&
+      (github.event_name == 'workflow_run' || github.event_name == 'workflow_dispatch')
     steps:
       - uses: actions/checkout@v6
         with:
@@ -637,14 +690,16 @@ jobs:
     name: RDS Stack (prod) — PostgreSQL + VPC
     runs-on: ubuntu-latest
     environment: prod
-    needs: [gate, integ-tests, deploy-edge-dev]
+    needs: [gate, deploy-edge-dev, deploy-backend-dev, integration-http-tests]
     permissions:
       id-token: write
       contents: read
     if: |
-      always() && needs.gate.outputs.should_deploy == 'true' && needs.integ-tests.result == 'success' &&
+      always() && needs.gate.outputs.should_deploy == 'true' &&
       needs.deploy-edge-dev.result == 'success' &&
-      (github.event_name == 'workflow_run' || (github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'full'))
+      needs.deploy-backend-dev.result == 'success' &&
+      needs.integration-http-tests.result == 'success' &&
+      (github.event_name == 'workflow_run' || github.event_name == 'workflow_dispatch')
     steps:
       - uses: actions/checkout@v6
         with:
@@ -733,7 +788,7 @@ jobs:
     if: |
       always() && needs.gate.outputs.should_deploy == 'true' &&
       needs.deploy-rds-prod.result == 'success' &&
-      (github.event_name == 'workflow_run' || (github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'full'))
+      (github.event_name == 'workflow_run' || github.event_name == 'workflow_dispatch')
     steps:
       - uses: actions/checkout@v6
         with:
@@ -787,10 +842,9 @@ jobs:
     environment: prod
     needs:
       - gate
-      - deploy-backend-integ
-      - integ-tests
       - deploy-edge-dev
       - deploy-backend-dev
+      - integration-http-tests
       - deploy-web-dev
       - deploy-teacher-web-dev
       - verify-dev-rds
@@ -803,20 +857,18 @@ jobs:
     if: |
       always() &&
       needs.gate.outputs.should_deploy == 'true' &&
-      needs.deploy-backend-integ.result == 'success' &&
-      needs.integ-tests.result == 'success' &&
       needs.deploy-edge-dev.result == 'success' &&
       needs.deploy-backend-dev.result == 'success' &&
+      needs.integration-http-tests.result == 'success' &&
       needs.deploy-web-dev.result == 'success' &&
       needs.deploy-teacher-web-dev.result == 'success' &&
       needs.verify-dev-rds.result == 'success' &&
       needs.deploy-edge-prod.result == 'success' &&
       needs.deploy-rds-prod.result == 'success' &&
       needs.apply-schema-prod.result == 'success' &&
-      (github.event_name == 'workflow_run' || (github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'full'))
+      (github.event_name == 'workflow_run' || github.event_name == 'workflow_dispatch')
     env:
       RDS_STACK_NAME: StreamMyCourse-Rds-prod
-      USE_RDS: "true"
     steps:
       - uses: actions/checkout@v6
         with:
@@ -953,7 +1005,7 @@ jobs:
     if: |
       always() && needs.gate.outputs.should_deploy == 'true' &&
       needs.deploy-backend-prod.result == 'success' &&
-      (github.event_name == 'workflow_run' || (github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'full'))
+      (github.event_name == 'workflow_run' || github.event_name == 'workflow_dispatch')
     with:
       github_environment: prod
       checkout_ref: ${{ needs.gate.outputs.checkout_sha }}
@@ -962,7 +1014,6 @@ jobs:
       api_stack_name: StreamMyCourse-Api-prod
       video_stack_name: StreamMyCourse-Video-prod
       auth_stack_name: StreamMyCourse-Auth-prod
-      catalog_table_name: StreamMyCourse-Catalog-prod
       target_label: prod
       api_endpoint_description: StreamMyCourse-Api-prod
 
@@ -970,8 +1021,7 @@ jobs:
     name: Web (prod)
     needs:
       - gate
-      - deploy-backend-integ
-      - integ-tests
+      - integration-http-tests
       - deploy-edge-dev
       - deploy-backend-dev
       - deploy-web-dev
@@ -980,14 +1030,13 @@ jobs:
     if: |
       always() &&
       needs.gate.outputs.should_deploy == 'true' &&
-      needs.deploy-backend-integ.result == 'success' &&
-      needs.integ-tests.result == 'success' &&
+      needs.integration-http-tests.result == 'success' &&
       needs.deploy-edge-dev.result == 'success' &&
       needs.deploy-backend-dev.result == 'success' &&
       needs.deploy-web-dev.result == 'success' &&
       needs.deploy-teacher-web-dev.result == 'success' &&
       needs.deploy-edge-prod.result == 'success' &&
-      (github.event_name == 'workflow_run' || (github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'full'))
+      (github.event_name == 'workflow_run' || github.event_name == 'workflow_dispatch')
     uses: ./.github/workflows/deploy-web-reusable.yml
     secrets:
       AWS_DEPLOY_ROLE_ARN: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
@@ -1003,8 +1052,7 @@ jobs:
     name: Teacher Web (prod)
     needs:
       - gate
-      - deploy-backend-integ
-      - integ-tests
+      - integration-http-tests
       - deploy-edge-dev
       - deploy-backend-dev
       - deploy-web-dev
@@ -1013,14 +1061,13 @@ jobs:
     if: |
       always() &&
       needs.gate.outputs.should_deploy == 'true' &&
-      needs.deploy-backend-integ.result == 'success' &&
-      needs.integ-tests.result == 'success' &&
+      needs.integration-http-tests.result == 'success' &&
       needs.deploy-edge-dev.result == 'success' &&
       needs.deploy-backend-dev.result == 'success' &&
       needs.deploy-web-dev.result == 'success' &&
       needs.deploy-teacher-web-dev.result == 'success' &&
       needs.deploy-edge-prod.result == 'success' &&
-      (github.event_name == 'workflow_run' || (github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'full'))
+      (github.event_name == 'workflow_run' || github.event_name == 'workflow_dispatch')
     uses: ./.github/workflows/deploy-teacher-web-reusable.yml
     secrets:
       AWS_DEPLOY_ROLE_ARN: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
