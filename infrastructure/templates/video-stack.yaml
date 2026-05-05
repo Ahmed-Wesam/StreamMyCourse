@@ -7,7 +7,6 @@ Parameters:
     Default: dev
     AllowedValues:
       - dev
-      - integ
       - prod
     Description: Deployment environment
 
