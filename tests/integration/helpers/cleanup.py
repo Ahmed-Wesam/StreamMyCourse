@@ -110,9 +110,37 @@ def empty_entire_bucket(bucket: str, *, region: str) -> List[str]:
 
     Integ has no real users so a full-bucket sweep is safe after course-scoped
     S3 keys (`{courseId}/lessons/...`, `{courseId}/thumbnail/...`).
+
+    SAFETY: Only empties buckets that strictly match the integ naming pattern.
+    This is a fail-safe to prevent accidental deletion in dev/prod environments.
     """
     if not bucket:
         return []
+
+    # STRICT SAFETY CHECK: Only allow exact integ bucket pattern
+    # Bucket name format: streammycourse-video-integ-videobucket-<random>
+    # Explicitly reject dev/prod buckets and any bucket not matching integ pattern
+    import re
+
+    # Must start with "streammycourse-video-integ-" and contain "videobucket"
+    integ_pattern = re.compile(r"^streammycourse-video-integ-.*videobucket")
+
+    # Explicitly block dev and prod patterns
+    if "-dev-" in bucket or "-prod-" in bucket:
+        raise RuntimeError(
+            f"REFUSING to empty bucket '{bucket}': "
+            "This appears to be a dev or prod bucket. "
+            "Integ cleanup must only run against integ environment."
+        )
+
+    if not integ_pattern.match(bucket):
+        raise RuntimeError(
+            f"REFUSING to empty bucket '{bucket}': "
+            "Bucket does not match integ pattern 'streammycourse-video-integ-*'. "
+            "Full-bucket cleanup is only safe for integ environment."
+        )
+
+    logger.info("Confirmed integ bucket pattern. Proceeding with cleanup: %s", bucket)
     s3 = boto3.client("s3", region_name=region)
     deleted_keys: List[str] = []
     continuation: str | None = None
