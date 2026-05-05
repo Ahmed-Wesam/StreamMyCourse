@@ -23,11 +23,14 @@ def _bootstrap_returning(
     cfg: AppConfig,
     service: Optional[CourseManagementService],
     auth_service: Optional[Any] = None,
+    progress_service: Optional[Any] = None,
 ):
     """Factory: returns a `lambda_bootstrap` stand-in yielding fixed values."""
 
-    def _stub() -> Tuple[AppConfig, Optional[CourseManagementService], Optional[Any]]:
-        return cfg, service, auth_service
+    def _stub() -> Tuple[
+        AppConfig, Optional[CourseManagementService], Optional[Any], Optional[Any]
+    ]:
+        return cfg, service, auth_service, progress_service
 
     return _stub
 
@@ -78,7 +81,9 @@ class TestServiceUnconfigured:
         make_lambda_event,
     ) -> None:
         monkeypatch.setattr(
-            index_mod, "lambda_bootstrap", _bootstrap_returning(cfg_wildcard, None, None)
+            index_mod,
+            "lambda_bootstrap",
+            _bootstrap_returning(cfg_wildcard, None, None, None),
         )
         evt = make_lambda_event(method="GET", path="/courses")
 
@@ -100,7 +105,9 @@ class TestServiceUnconfigured:
         make_lambda_event,
     ) -> None:
         monkeypatch.setattr(
-            index_mod, "lambda_bootstrap", _bootstrap_returning(cfg_wildcard, None, None)
+            index_mod,
+            "lambda_bootstrap",
+            _bootstrap_returning(cfg_wildcard, None, None, None),
         )
         evt = make_lambda_event(
             method="OPTIONS",
@@ -127,7 +134,9 @@ class TestServiceUnconfigured:
         # API Gateway normalizes header casing inconsistently between v1/v2,
         # so the handler reads both `origin` and `Origin`.
         monkeypatch.setattr(
-            index_mod, "lambda_bootstrap", _bootstrap_returning(cfg_wildcard, None, None)
+            index_mod,
+            "lambda_bootstrap",
+            _bootstrap_returning(cfg_wildcard, None, None, None),
         )
         evt = make_lambda_event(
             method="GET",
@@ -155,7 +164,7 @@ class TestServiceUnconfigured:
             cognito_auth_enabled=False,
         )
         monkeypatch.setattr(
-            index_mod, "lambda_bootstrap", _bootstrap_returning(cfg, None, None)
+            index_mod, "lambda_bootstrap", _bootstrap_returning(cfg, None, None, None)
         )
         evt = make_lambda_event(
             method="GET", path="/courses", headers={"origin": "https://evil.com"}
@@ -181,11 +190,12 @@ class TestServiceConfigured:
         mock_service = MagicMock(spec=CourseManagementService)
         mock_service.list_published_courses.return_value = []
         mock_auth = MagicMock()
+        mock_progress = MagicMock()
 
         monkeypatch.setattr(
             index_mod,
             "lambda_bootstrap",
-            _bootstrap_returning(cfg_wildcard, mock_service, mock_auth),
+            _bootstrap_returning(cfg_wildcard, mock_service, mock_auth, mock_progress),
         )
 
         evt = make_lambda_event(method="GET", path="/courses")
@@ -201,9 +211,170 @@ class TestServiceConfigured:
         cfg_wildcard: AppConfig,
     ) -> None:
         monkeypatch.setattr(
-            index_mod, "lambda_bootstrap", _bootstrap_returning(cfg_wildcard, None, None)
+            index_mod,
+            "lambda_bootstrap",
+            _bootstrap_returning(cfg_wildcard, None, None, None),
         )
         # API Gateway v1-style: `httpMethod` instead of `requestContext.http.method`.
         evt: Dict[str, Any] = {"httpMethod": "OPTIONS", "headers": {}}
         resp = index_mod.lambda_handler(evt, None)
+        assert resp["statusCode"] == 204
+
+
+class TestProgressRouting:
+    """Test routing for progress endpoints (GET /courses/{id}/progress, PUT /courses/{id}/lessons/{id}/progress)."""
+
+    def test_get_course_progress_returns_503_when_rds_disabled(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        cfg_wildcard: AppConfig,
+        make_lambda_event,
+    ) -> None:
+        """Progress tracking requires RDS; should return 503 when USE_RDS=false."""
+        mock_service = MagicMock(spec=CourseManagementService)
+        mock_auth = MagicMock()
+        # progress_service is None when RDS is disabled
+
+        monkeypatch.setattr(
+            index_mod,
+            "lambda_bootstrap",
+            _bootstrap_returning(cfg_wildcard, mock_service, mock_auth, None),
+        )
+
+        evt = make_lambda_event(method="GET", path="/courses/course-123/progress")
+        resp = index_mod.lambda_handler(evt, None)
+
+        assert resp["statusCode"] == 503
+        body = json.loads(resp["body"])
+        assert body["code"] == "progress_requires_rds"
+        assert "PostgreSQL" in body["message"]
+
+    def test_put_lesson_progress_returns_503_when_rds_disabled(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        cfg_wildcard: AppConfig,
+        make_lambda_event,
+    ) -> None:
+        """Progress tracking requires RDS; should return 503 when USE_RDS=false."""
+        mock_service = MagicMock(spec=CourseManagementService)
+        mock_auth = MagicMock()
+
+        monkeypatch.setattr(
+            index_mod,
+            "lambda_bootstrap",
+            _bootstrap_returning(cfg_wildcard, mock_service, mock_auth, None),
+        )
+
+        evt = make_lambda_event(
+            method="PUT",
+            path="/courses/course-123/lessons/lesson-456/progress",
+            body={"position": 60, "duration": 120},
+        )
+        resp = index_mod.lambda_handler(evt, None)
+
+        assert resp["statusCode"] == 503
+        body = json.loads(resp["body"])
+        assert body["code"] == "progress_requires_rds"
+
+    def test_get_course_progress_routes_to_controller_when_rds_enabled(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        cfg_wildcard: AppConfig,
+        make_lambda_event,
+    ) -> None:
+        """When RDS is enabled, GET /courses/{id}/progress should route to progress controller."""
+        mock_service = MagicMock(spec=CourseManagementService)
+        mock_auth = MagicMock()
+        mock_progress = MagicMock()
+        mock_progress.get_course_progress.return_value = {
+            "courseId": "course-123",
+            "totalReadyLessons": 5,
+            "completedCount": 2,
+            "percentComplete": 40.0,
+            "lessons": [],
+        }
+
+        # Patch the progress controller to capture the call
+        with patch.object(index_mod, "handle_progress_request") as mock_handle:
+            mock_handle.return_value = {
+                "statusCode": 200,
+                "body": '{"courseId": "course-123", "completedCount": 2}',
+                "headers": {"Content-Type": "application/json"},
+            }
+
+            monkeypatch.setattr(
+                index_mod,
+                "lambda_bootstrap",
+                _bootstrap_returning(cfg_wildcard, mock_service, mock_auth, mock_progress),
+            )
+
+            evt = make_lambda_event(method="GET", path="/courses/course-123/progress")
+            resp = index_mod.lambda_handler(evt, None)
+
+            # Verify the progress controller was called
+            mock_handle.assert_called_once()
+            call_kwargs = mock_handle.call_args[1]
+            assert call_kwargs["origin"] is not None
+            assert call_kwargs["progress_svc"] is mock_progress
+
+    def test_put_lesson_progress_routes_to_controller_when_rds_enabled(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        cfg_wildcard: AppConfig,
+        make_lambda_event,
+    ) -> None:
+        """When RDS is enabled, PUT /courses/{id}/lessons/{id}/progress should route to progress controller."""
+        mock_service = MagicMock(spec=CourseManagementService)
+        mock_auth = MagicMock()
+        mock_progress = MagicMock()
+
+        with patch.object(index_mod, "handle_progress_request") as mock_handle:
+            mock_handle.return_value = {
+                "statusCode": 200,
+                "body": '{"ok": true, "lessonProgress": {"lessonId": "lesson-456", "completed": true}}',
+                "headers": {"Content-Type": "application/json"},
+            }
+
+            monkeypatch.setattr(
+                index_mod,
+                "lambda_bootstrap",
+                _bootstrap_returning(cfg_wildcard, mock_service, mock_auth, mock_progress),
+            )
+
+            evt = make_lambda_event(
+                method="PUT",
+                path="/courses/course-123/lessons/lesson-456/progress",
+                body={"position": 60, "duration": 120},
+            )
+            resp = index_mod.lambda_handler(evt, None)
+
+            assert resp["statusCode"] == 200
+            mock_handle.assert_called_once()
+            call_kwargs = mock_handle.call_args[1]
+            assert call_kwargs["progress_svc"] is mock_progress
+
+    def test_progress_options_preflight_returns_204(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        cfg_wildcard: AppConfig,
+        make_lambda_event,
+    ) -> None:
+        """OPTIONS requests to progress endpoints should return 204 preflight."""
+        mock_service = MagicMock(spec=CourseManagementService)
+        mock_auth = MagicMock()
+        mock_progress = MagicMock()
+
+        monkeypatch.setattr(
+            index_mod,
+            "lambda_bootstrap",
+            _bootstrap_returning(cfg_wildcard, mock_service, mock_auth, mock_progress),
+        )
+
+        evt = make_lambda_event(
+            method="OPTIONS",
+            path="/courses/course-123/progress",
+            headers={"origin": "http://localhost:5173"},
+        )
+        resp = index_mod.lambda_handler(evt, None)
+
         assert resp["statusCode"] == 204

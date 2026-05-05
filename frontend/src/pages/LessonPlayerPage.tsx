@@ -1,13 +1,18 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import {
   enrollInCourse,
   getCourse,
+  getCourseProgress,
   getPlaybackUrl,
   isEnrollmentRequiredError,
   isPlaybackAuthRequiredError,
+  isProgressAuthNotConfiguredError,
+  isProgressRdsUnavailableError,
   listLessons,
+  updateLessonProgress,
   type Course,
+  type CourseProgress,
   type Lesson,
 } from '../lib/api'
 
@@ -17,12 +22,14 @@ function LessonItem({
   active,
   index,
   linkDisabled,
+  completed,
 }: {
   lesson: Lesson
   courseId: string
   active: boolean
   index: number
   linkDisabled: boolean
+  completed?: boolean
 }) {
   const rowClass = `group flex items-center px-4 py-3 transition-colors ${
     active
@@ -62,6 +69,9 @@ function LessonItem({
       {linkDisabled && (
         <div className="text-xs font-medium text-amber-700">Locked</div>
       )}
+      {!active && completed && (
+        <div className="text-xs font-medium text-emerald-600">Done</div>
+      )}
     </>
   )
   if (linkDisabled) {
@@ -95,8 +105,18 @@ export default function LessonPlayerPage() {
   const [needsEnrollment, setNeedsEnrollment] = useState(false)
   const [needsSignIn, setNeedsSignIn] = useState(false)
   const [enrolling, setEnrolling] = useState(false)
+  const [courseProgress, setCourseProgress] = useState<CourseProgress | null>(null)
+  const lastProgressUpdateRef = useRef<number>(0)
+  const inFlightProgressRef = useRef<Promise<unknown> | null>(null)
+  const isUnmountedRef = useRef<boolean>(false)
 
   const playbackNavLocked = needsEnrollment || needsSignIn
+
+  useEffect(() => {
+    return () => {
+      isUnmountedRef.current = true
+    }
+  }, [])
 
   useEffect(() => {
     let cancelled = false
@@ -116,6 +136,14 @@ export default function LessonPlayerPage() {
           const pb = await getPlaybackUrl(courseId, lessonId)
           if (cancelled) return
           setSrc(pb.url)
+          try {
+            const prog = await getCourseProgress(courseId)
+            if (!cancelled) setCourseProgress(prog)
+          } catch (e) {
+            if (!isProgressRdsUnavailableError(e) && !isProgressAuthNotConfiguredError(e)) {
+              console.warn('Failed to load progress:', e)
+            }
+          }
         } catch (inner) {
           if (cancelled) return
           if (isEnrollmentRequiredError(inner)) {
@@ -167,6 +195,71 @@ export default function LessonPlayerPage() {
     }
     return null
   }, [lessons, activeLessonIndex])
+
+  const isLessonCompleted = useMemo(() => {
+    const lessonProgress = courseProgress?.lessons.find((l) => l.lessonId === lessonId)
+    return lessonProgress?.completed ?? false
+  }, [courseProgress, lessonId])
+
+  const coursePercentComplete = useMemo(() => {
+    return courseProgress?.percentComplete ?? 0
+  }, [courseProgress])
+
+  const handleTimeUpdate = (e: React.SyntheticEvent<HTMLVideoElement>) => {
+    const video = e.currentTarget
+    const now = Date.now()
+    if (now - lastProgressUpdateRef.current < 12000) return
+    // Skip if already have in-flight request
+    if (inFlightProgressRef.current) return
+    const lessonProgress = courseProgress?.lessons.find((l) => l.lessonId === lessonId)
+    if (lessonProgress?.completed) return
+
+    const promise = updateLessonProgress(courseId, lessonId, {
+      lastPositionSec: Math.floor(video.currentTime),
+    })
+    inFlightProgressRef.current = promise
+    promise
+      .then(() => {
+        if (!isUnmountedRef.current) {
+          lastProgressUpdateRef.current = Date.now()
+        }
+      })
+      .catch(console.warn)
+      .finally(() => {
+        inFlightProgressRef.current = null
+      })
+  }
+
+  const handleVideoEnded = async () => {
+    const activeLesson = lessons.find((l) => l.id === lessonId)
+    if (!activeLesson) return
+    // Wait for any in-flight progress update
+    if (inFlightProgressRef.current) {
+      await inFlightProgressRef.current.catch(() => {}) // Ignore errors
+    }
+    try {
+      await updateLessonProgress(courseId, lessonId, {
+        lastPositionSec: activeLesson.duration || 0,
+        markComplete: true,
+      })
+      const prog = await getCourseProgress(courseId)
+      if (!isUnmountedRef.current) {
+        setCourseProgress(prog)
+      }
+    } catch (err) {
+      console.error(err)
+    }
+  }
+
+  const handleMarkIncomplete = () => {
+    updateLessonProgress(courseId, lessonId, {
+      lastPositionSec: 0,
+      markIncomplete: true,
+    })
+      .then(() => getCourseProgress(courseId))
+      .then((prog) => setCourseProgress(prog))
+      .catch(console.error)
+  }
 
   return (
     <div>
@@ -299,16 +392,59 @@ export default function LessonPlayerPage() {
                   crossOrigin="anonymous"
                   className="w-full aspect-video"
                   src={src || undefined}
+                  onTimeUpdate={handleTimeUpdate}
+                  onEnded={handleVideoEnded}
                 />
               </div>
             )}
 
             {/* Lesson Info */}
             <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
-              <h1 className="text-2xl font-bold text-gray-900">{activeLessonTitle}</h1>
+              <div className="flex items-center justify-between mb-2">
+                <h1 className="text-2xl font-bold text-gray-900">{activeLessonTitle}</h1>
+                {isLessonCompleted && (
+                  <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-emerald-100 text-emerald-800">
+                    Completed
+                  </span>
+                )}
+              </div>
+
+              {/* Course progress bar */}
+              {courseProgress && (
+                <div className="mb-4">
+                  <div className="flex items-center justify-between text-sm text-gray-600 mb-1">
+                    <span>Course Progress</span>
+                    <span>{coursePercentComplete}%</span>
+                  </div>
+                  <div className="w-full bg-gray-200 rounded-full h-2">
+                    <div
+                      className="bg-emerald-500 h-2 rounded-full transition-all duration-300"
+                      style={{ width: `${coursePercentComplete}%` }}
+                      role="progressbar"
+                      aria-valuenow={coursePercentComplete}
+                      aria-valuemin={0}
+                      aria-valuemax={100}
+                    />
+                  </div>
+                </div>
+              )}
+
               <p className="mt-2 text-gray-600">
                 {course?.description}
               </p>
+
+              {/* Mark as not done button */}
+              {isLessonCompleted && (
+                <div className="mt-4 pt-4 border-t border-gray-100">
+                  <button
+                    type="button"
+                    onClick={handleMarkIncomplete}
+                    className="inline-flex items-center px-3 py-2 border border-gray-300 shadow-sm text-sm leading-4 font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+                  >
+                    Mark as not done
+                  </button>
+                </div>
+              )}
 
               {/* Navigation Buttons */}
               <div className="mt-6 flex items-center justify-between">
@@ -386,16 +522,20 @@ export default function LessonPlayerPage() {
                 </p>
               </div>
               <div className="divide-y divide-gray-100 max-h-[calc(100vh-300px)] overflow-y-auto">
-                {lessons.map((lesson, index) => (
-                  <LessonItem
-                    key={lesson.id}
-                    lesson={lesson}
-                    courseId={courseId}
-                    active={lesson.id === lessonId}
-                    index={index}
-                    linkDisabled={playbackNavLocked}
-                  />
-                ))}
+                {lessons.map((lesson, index) => {
+                  const lessonProgress = courseProgress?.lessons.find((l) => l.lessonId === lesson.id)
+                  return (
+                    <LessonItem
+                      key={lesson.id}
+                      lesson={lesson}
+                      courseId={courseId}
+                      active={lesson.id === lessonId}
+                      index={index}
+                      linkDisabled={playbackNavLocked}
+                      completed={lessonProgress?.completed}
+                    />
+                  )
+                })}
               </div>
             </div>
           </aside>

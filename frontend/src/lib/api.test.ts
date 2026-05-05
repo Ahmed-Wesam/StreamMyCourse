@@ -93,3 +93,111 @@ describe('isPlaybackAuthRequiredError', () => {
     expect(isPlaybackAuthRequiredError(new Error('fail'))).toBe(false)
   })
 })
+
+import {
+  getCourseProgress,
+  updateLessonProgress,
+  isProgressRdsUnavailableError,
+  isProgressAuthNotConfiguredError,
+} from './api'
+
+describe('getCourseProgress', () => {
+  beforeEach(() => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => {
+        return new Response(
+          JSON.stringify({
+            courseId: 'course-1',
+            totalReadyLessons: 3,
+            completedCount: 1,
+            percentComplete: 33,
+            lessons: [
+              { lessonId: 'l1', completed: true, lastPositionSec: 120, completedAt: '2024-01-01T00:00:00Z' },
+              { lessonId: 'l2', completed: false, lastPositionSec: 30 },
+              { lessonId: 'l3', completed: false, lastPositionSec: 0 },
+            ],
+          }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } },
+        )
+      }),
+    )
+  })
+
+  afterEach(() => {
+    vi.unstubAllGlobals()
+  })
+
+  it('calls correct endpoint /courses/{id}/progress', async () => {
+    await getCourseProgress('course-1')
+    expect(fetch).toHaveBeenCalledTimes(1)
+    const [url] = vi.mocked(fetch).mock.calls[0]
+    expect(url).toContain('/courses/course-1/progress')
+  })
+})
+
+describe('updateLessonProgress', () => {
+  beforeEach(() => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => {
+        return new Response(
+          JSON.stringify({ ok: true, lessonProgress: { lessonId: 'l1', completed: true, lastPositionSec: 100 } }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } },
+        )
+      }),
+    )
+  })
+
+  afterEach(() => {
+    vi.unstubAllGlobals()
+  })
+
+  it('calls correct endpoint with PUT', async () => {
+    await updateLessonProgress('course-1', 'lesson-1', { lastPositionSec: 100, markComplete: true })
+    expect(fetch).toHaveBeenCalledTimes(1)
+    const [url, init] = vi.mocked(fetch).mock.calls[0]
+    expect(url).toContain('/courses/course-1/lessons/lesson-1/progress')
+    expect(init?.method).toBe('PUT')
+  })
+})
+
+describe('isProgressRdsUnavailableError', () => {
+  it('returns true for 503 with code progress_requires_rds', () => {
+    expect(isProgressRdsUnavailableError(new ApiError('RDS unavailable', 503, 'progress_requires_rds'))).toBe(true)
+  })
+
+  it('returns false for other codes', () => {
+    expect(isProgressRdsUnavailableError(new ApiError('Other error', 503, 'other_code'))).toBe(false)
+    expect(isProgressRdsUnavailableError(new ApiError('No code', 503))).toBe(false)
+  })
+
+  it('returns false for non-503 errors even with correct code', () => {
+    expect(isProgressRdsUnavailableError(new ApiError('Not 503', 500, 'progress_requires_rds'))).toBe(false)
+  })
+
+  it('returns false for non-ApiError', () => {
+    expect(isProgressRdsUnavailableError(new Error('fail'))).toBe(false)
+  })
+})
+
+describe('isProgressAuthNotConfiguredError', () => {
+  it('returns true for 503 with code auth_not_configured', () => {
+    expect(isProgressAuthNotConfiguredError(new ApiError('Auth not configured', 503, 'auth_not_configured'))).toBe(
+      true,
+    )
+  })
+
+  it('returns false for other codes', () => {
+    expect(isProgressAuthNotConfiguredError(new ApiError('Other error', 503, 'other_code'))).toBe(false)
+    expect(isProgressAuthNotConfiguredError(new ApiError('No code', 503))).toBe(false)
+  })
+
+  it('returns false for non-503 errors even with correct code', () => {
+    expect(isProgressAuthNotConfiguredError(new ApiError('Not 503', 500, 'auth_not_configured'))).toBe(false)
+  })
+
+  it('returns false for non-ApiError', () => {
+    expect(isProgressAuthNotConfiguredError(new Error('fail'))).toBe(false)
+  })
+})

@@ -41,6 +41,26 @@ export function isEnrollmentRequiredError(e: unknown): boolean {
 }
 
 /**
+ * True when progress tracking is unavailable because RDS is not configured.
+ * The API returns 503 with code `progress_requires_rds`.
+ */
+export function isProgressRdsUnavailableError(e: unknown): boolean {
+  if (!(e instanceof ApiError)) return false
+  if (e.status === 503 && e.code === 'progress_requires_rds') return true
+  return false
+}
+
+/**
+ * True when progress tracking requires authentication that is not configured.
+ * The API returns 503 with code `auth_not_configured`.
+ */
+export function isProgressAuthNotConfiguredError(e: unknown): boolean {
+  if (!(e instanceof ApiError)) return false
+  if (e.status === 503 && e.code === 'auth_not_configured') return true
+  return false
+}
+
+/**
  * True when playback was denied because the caller is not authenticated
  * (missing or rejected token at the gateway, or Lambda `unauthorized`).
  */
@@ -155,6 +175,32 @@ type CreateLessonInput = {
 
 type Playback = {
   url: string
+}
+
+export type LessonProgressItem = {
+  lessonId: string
+  completed: boolean
+  completedAt?: string
+  lastPositionSec: number
+}
+
+export type CourseProgress = {
+  courseId: string
+  totalReadyLessons: number
+  completedCount: number
+  percentComplete: number
+  lessons: LessonProgressItem[]
+}
+
+export type UpdateLessonProgressBody = {
+  lastPositionSec: number
+  markComplete?: boolean
+  markIncomplete?: boolean
+}
+
+export type UpdateProgressResponse = {
+  ok: true
+  lessonProgress?: LessonProgressItem
 }
 
 /** Presigned PUT target: lesson video, course thumbnail, or lesson thumbnail image. */
@@ -303,6 +349,20 @@ export async function markCourseThumbnailReady(
   return httpPut<{ id: string; thumbnailReady: boolean }>(`/courses/${courseId}/thumbnail-ready`, {
     thumbnailKey,
   })
+}
+
+/** Get the viewer's progress for a course. */
+export async function getCourseProgress(courseId: string): Promise<CourseProgress> {
+  return httpGet<CourseProgress>(`/courses/${courseId}/progress`)
+}
+
+/** Update progress for a specific lesson (position, completion). */
+export async function updateLessonProgress(
+  courseId: string,
+  lessonId: string,
+  body: UpdateLessonProgressBody,
+): Promise<UpdateProgressResponse> {
+  return httpPut<UpdateProgressResponse>(`/courses/${courseId}/lessons/${lessonId}/progress`, body)
 }
 
 /**

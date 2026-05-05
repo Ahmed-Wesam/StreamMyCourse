@@ -92,6 +92,7 @@ def check_file(path: str) -> List[Violation]:
         _norm_path(os.path.join(ROOT, "infrastructure/lambda/catalog/services/course_management/rds_repo.py")),
         _norm_path(os.path.join(ROOT, "infrastructure/lambda/catalog/services/auth/rds_repo.py")),
         _norm_path(os.path.join(ROOT, "infrastructure/lambda/catalog/services/enrollment/rds_repo.py")),
+        _norm_path(os.path.join(ROOT, "infrastructure/lambda/catalog/services/progress/rds_repo.py")),
         _norm_path(os.path.join(ROOT, "infrastructure/lambda/cognito_user_profile_sync/repo.py")),
     }
     if "psycopg2" in roots and _norm_path(path) not in allowed_psycopg2_files:
@@ -127,6 +128,9 @@ def check_file(path: str) -> List[Violation]:
     if rel.endswith("/services/auth/controller.py") and "boto3" in roots:
         violations.append(Violation(rel, "auth controller must not import boto3"))
 
+    if rel.endswith("/services/progress/controller.py") and "boto3" in roots:
+        violations.append(Violation(rel, "progress controller must not import boto3"))
+
     # Repo/storage must not import HTTP helpers (covers both DynamoDB repos and
     # the new PostgreSQL rds_repo.py adapters).
     is_persistence_adapter = (
@@ -137,6 +141,7 @@ def check_file(path: str) -> List[Violation]:
         or rel.endswith("/services/auth/rds_repo.py")
         or rel.endswith("/services/enrollment/repo.py")
         or rel.endswith("/services/enrollment/rds_repo.py")
+        or rel.endswith("/services/progress/rds_repo.py")
     )
     if is_persistence_adapter and "services.common.http" in roots:
         violations.append(Violation(rel, "repo/storage must not import services.common.http"))

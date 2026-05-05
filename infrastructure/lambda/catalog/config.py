@@ -31,6 +31,9 @@ class AppConfig:
     cognito_user_pool_id: str = ""
     cognito_client_ids: List[str] = None  # type: ignore
     cognito_region: str = ""
+    # Progress tracking configuration (lesson completion thresholds)
+    progress_complete_ratio: float = 0.92
+    progress_position_slack_sec: int = 30
 
     def __post_init__(self):
         # Ensure cognito_client_ids is a list (frozen dataclass workaround)
@@ -59,6 +62,30 @@ def _parse_db_port(raw: str) -> int:
         return int(s)
     except ValueError:
         return _DEFAULT_DB_PORT
+
+
+def _parse_float(val: str, default: float) -> float:
+    """Parse a float value, falling back to default on invalid input.
+
+    Used for configuration values that should have sensible defaults
+    rather than failing at cold start.
+    """
+    try:
+        return float(val)
+    except (ValueError, TypeError):
+        return default
+
+
+def _parse_int(val: str, default: int) -> int:
+    """Parse an int value, falling back to default on invalid input.
+
+    Used for configuration values that should have sensible defaults
+    rather than failing at cold start.
+    """
+    try:
+        return int(val)
+    except (ValueError, TypeError):
+        return default
 
 
 def _parse_cognito_pool_arn(arn: str) -> tuple[str, str]:
@@ -120,6 +147,14 @@ def load_config() -> AppConfig:
     # For audience validation, we accept any valid client from the pool
     cognito_client_ids = _split_csv(os.environ.get("COGNITO_CLIENT_ID", ""))
 
+    # Progress tracking configuration
+    progress_complete_ratio = _parse_float(
+        os.environ.get("PROGRESS_COMPLETE_RATIO", "0.92"), 0.92
+    )
+    progress_position_slack_sec = _parse_int(
+        os.environ.get("PROGRESS_POSITION_SLACK_SEC", "30"), 30
+    )
+
     return AppConfig(
         table_name=table_name,
         video_bucket=video_bucket,
@@ -137,4 +172,6 @@ def load_config() -> AppConfig:
         cognito_user_pool_id=cognito_user_pool_id,
         cognito_client_ids=cognito_client_ids,
         cognito_region=cognito_region,
+        progress_complete_ratio=progress_complete_ratio,
+        progress_position_slack_sec=progress_position_slack_sec,
     )

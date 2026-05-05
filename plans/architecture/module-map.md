@@ -47,6 +47,18 @@ This document is the “public surface” map for the Python Lambda under `infra
 | `repo.py` | Persistence adapter (DynamoDB) | |
 | `rds_repo.py` | Persistence adapter (PostgreSQL) | Idempotent upserts via `ON CONFLICT DO NOTHING` |
 
+### `services/progress/` (implemented)
+
+| File | Layer | Notes |
+|------|-------|------|
+| `controller.py` | HTTP adapter | `GET /courses/{id}/progress`, `PUT /courses/{id}/lessons/{id}/progress` |
+| `service.py` | Domain/application | Authorization, auto-complete ratio, position validation |
+| `rds_repo.py` | Persistence adapter (PostgreSQL) | psycopg2-based; ON CONFLICT UPDATE upserts |
+| `ports.py` | Contracts | `LessonProgressRepositoryPort` |
+| `contracts.py` | API DTOs | `CourseProgressResponse`, `LessonProgressItem` |
+
+**Cross-context rule:** `progress` imports `enrollment` (for auth checks) but not `course_management` directly (uses repository port).
+
 ### `services/common/` (shared kernel)
 
 Cross-cutting utilities shared by multiple contexts:

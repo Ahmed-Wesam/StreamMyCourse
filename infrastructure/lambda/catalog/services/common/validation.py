@@ -48,3 +48,33 @@ def optional_str(body: Dict[str, Any], key: str, default: str = "") -> str:
     val = body.get(key)
     return val.strip() if isinstance(val, str) else default
 
+
+def require_int(body: Dict[str, Any], key: str) -> int:
+    """Extract and validate required integer field from body.
+
+    Args:
+        body: Parsed JSON body
+        key: Field name
+
+    Returns:
+        Integer value
+
+    Raises:
+        BadRequest: If field is missing or not a valid integer
+    """
+    val = body.get(key)
+    if val is None:
+        raise BadRequest(f"'{key}' is required")
+    if isinstance(val, bool):
+        raise BadRequest(f"'{key}' must be a number, not a boolean")
+    if isinstance(val, int):
+        return val
+    if isinstance(val, float):
+        return int(val)
+    if isinstance(val, str):
+        try:
+            return int(val)
+        except ValueError:
+            raise BadRequest(f"'{key}' must be a valid integer")
+    raise BadRequest(f"'{key}' must be a number")
+
