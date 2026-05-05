@@ -96,9 +96,9 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                     len(parts) == 3
                     and parts[0] == "courses"
                     and parts[2] == "progress"
-                    and method == "GET"
+                    and method in ("GET", "OPTIONS")
                 ):
-                    if progress_service is None:
+                    if progress_service is None and method != "OPTIONS":
                         response = json_response(
                             503,
                             {
@@ -120,9 +120,9 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                     and parts[0] == "courses"
                     and parts[2] == "lessons"
                     and parts[4] == "progress"
-                    and method == "PUT"
+                    and method in ("PUT", "OPTIONS")
                 ):
-                    if progress_service is None:
+                    if progress_service is None and method != "OPTIONS":
                         response = json_response(
                             503,
                             {
