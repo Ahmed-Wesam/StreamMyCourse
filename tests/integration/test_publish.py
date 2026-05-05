@@ -56,7 +56,9 @@ def test_video_ready_for_unknown_lesson_returns_404(
     api: ApiClient, course_factory
 ):
     course = course_factory()
-    resp = api.mark_video_ready(course.course_id, "lesson-does-not-exist")
+    # Use a valid UUID that does not exist in the database
+    unknown_lesson_id = "00000000-0000-0000-0000-000000000003"
+    resp = api.mark_video_ready(course.course_id, unknown_lesson_id)
     assert resp.status_code == 404
     assert resp.json().get("code") == "not_found"
 
