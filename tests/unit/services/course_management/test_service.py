@@ -11,7 +11,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from services.common.errors import BadRequest, Forbidden, NotFound
+from services.common.errors import BadRequest, Conflict, Forbidden, NotFound
 from services.course_management.models import Course, Lesson, PresignResult
 from services.course_management.service import CourseManagementService
 
@@ -668,14 +668,20 @@ class TestGetUploadUrl:
             "videoKey": _video_key("c1", "lid", "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"),
         }
 
-    def test_reupload_deletes_previous_video_key_from_s3(
+    def test_second_presign_does_not_delete_previous_video_key_in_s3(
         self, service: CourseManagementService, repo: MagicMock, storage: MagicMock
     ) -> None:
+        """Regression: a second lesson-video presign must not remove the prior object.
+
+        The client may still PUT to the first URL; deleting `prev` on presign caused
+        DB to point at a new key while S3 lost the first upload.
+        """
         prev = _video_key("c1", "lid", "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb")
         repo.get_lesson_by_id.return_value = _lesson(id_="lid", video_key=prev)
+        new_key = _video_key("c1", "lid", "cccccccc-cccc-4ccc-8ccc-cccccccccccc")
         storage.presign_put.return_value = PresignResult(
             uploadUrl="https://signed.example/put?sig=abc",
-            videoKey=_video_key("c1", "lid", "cccccccc-cccc-4ccc-8ccc-cccccccccccc"),
+            videoKey=new_key,
         )
         service.get_upload_url(
             course_id="c1",
@@ -683,7 +689,29 @@ class TestGetUploadUrl:
             filename="x.mp4",
             content_type="video/mp4",
         )
-        storage.delete_objects.assert_called_once_with([prev])
+        storage.delete_objects.assert_not_called()
+
+    def test_conflict_deletes_only_new_presigned_key_not_previous(
+        self, service: CourseManagementService, repo: MagicMock, storage: MagicMock
+    ) -> None:
+        prev = _video_key("c1", "lid", "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb")
+        repo.get_lesson_by_id.return_value = _lesson(id_="lid", video_key=prev)
+        new_key = _video_key("c1", "lid", "cccccccc-cccc-4ccc-8ccc-cccccccccccc")
+        storage.presign_put.return_value = PresignResult(
+            uploadUrl="https://signed.example/put?sig=abc",
+            videoKey=new_key,
+        )
+        repo.set_lesson_video_if_video_key_matches.side_effect = Conflict(
+            "Another upload started for this lesson; retry."
+        )
+        with pytest.raises(Conflict):
+            service.get_upload_url(
+                course_id="c1",
+                lesson_id="lid",
+                filename="x.mp4",
+                content_type="video/mp4",
+            )
+        storage.delete_objects.assert_called_once_with([new_key])
 
 
 # --- get_thumbnail_upload_url / mark_course_thumbnail_ready -------------------
