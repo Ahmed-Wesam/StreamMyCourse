@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Deploy the Artifact Janitor Lambda for scheduled S3 cleanup.
-# Usage: deploy-janitor.sh [dev|integ|prod] [keep-count] [dry-run]
+# Usage: deploy-janitor.sh [dev|prod] [keep-count] [dry-run]
 set -euo pipefail
 
 ENV="${1:-dev}"

@@ -1,5 +1,5 @@
 # Deploy the Artifact Janitor Lambda for scheduled S3 cleanup.
-# Usage: deploy-janitor.ps1 [dev|integ|prod] [keepCount] [dryRun]
+# Usage: deploy-janitor.ps1 [dev|prod] [keepCount] [dryRun]
 param(
     [string]$Environment = "dev",
     [int]$KeepCount = 2,

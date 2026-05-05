@@ -1,17 +1,17 @@
 #!/usr/bin/env bash
 # Deploy StreamMyCourse-MediaCleanup-{env}: SQS + DLQ + Lambda worker for async S3 deletes.
-# Deploy for dev, integ, or prod (same video stack naming as deploy-backend.sh).
+# Deploy for dev or prod (same video stack naming as deploy-backend.sh).
 set -euo pipefail
 
-ENV="${1:?Usage: deploy-media-cleanup.sh <dev|integ|prod> <region> <artifact_bucket> <suffix>}"
+ENV="${1:?Usage: deploy-media-cleanup.sh <dev|prod> <region> <artifact_bucket> <suffix>}"
 REGION="${2:?region}"
 ARTIFACT_BUCKET="${3:?artifact bucket}"
 SUFFIX="${4:?suffix}"
 
 case "$ENV" in
-dev | integ | prod) ;;
+dev | prod) ;;
 *)
-  echo "Environment must be dev, integ, or prod, got: $ENV" >&2
+  echo "Environment must be dev or prod, got: $ENV" >&2
   exit 1
   ;;
 esac
