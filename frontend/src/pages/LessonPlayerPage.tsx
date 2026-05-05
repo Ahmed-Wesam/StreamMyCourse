@@ -1,12 +1,11 @@
-import { useEffect, useMemo, useState, useRef } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import {
   enrollInCourse,
   getCourse,
-  getCoursePreview,
   getPlaybackUrl,
   isEnrollmentRequiredError,
-  lessonPreviewsToStubLessons,
+  isPlaybackAuthRequiredError,
   listLessons,
   type Course,
   type Lesson,
@@ -94,44 +93,46 @@ export default function LessonPlayerPage() {
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [needsEnrollment, setNeedsEnrollment] = useState(false)
+  const [needsSignIn, setNeedsSignIn] = useState(false)
   const [enrolling, setEnrolling] = useState(false)
-  const videoRef = useRef<HTMLVideoElement>(null)
+
+  const playbackNavLocked = needsEnrollment || needsSignIn
 
   useEffect(() => {
     let cancelled = false
 
     async function run() {
       setNeedsEnrollment(false)
+      setNeedsSignIn(false)
       setSrc(null)
       try {
         const c = await getCourse(courseId)
         if (cancelled) return
         setCourse(c)
-        const [l, pb] = await Promise.all([
-          listLessons(courseId),
-          getPlaybackUrl(courseId, lessonId),
-        ])
+        const l = await listLessons(courseId)
         if (cancelled) return
         setLessons([...l].sort((a, b) => a.order - b.order))
-        setSrc(pb.url)
+        try {
+          const pb = await getPlaybackUrl(courseId, lessonId)
+          if (cancelled) return
+          setSrc(pb.url)
+        } catch (inner) {
+          if (cancelled) return
+          if (isEnrollmentRequiredError(inner)) {
+            setNeedsEnrollment(true)
+            setSrc(null)
+            setError(null)
+          } else if (isPlaybackAuthRequiredError(inner)) {
+            setNeedsSignIn(true)
+            setSrc(null)
+            setError(null)
+          } else {
+            setError(inner instanceof Error ? inner.message : 'Failed to load')
+          }
+        }
       } catch (e) {
         if (cancelled) return
-        if (isEnrollmentRequiredError(e)) {
-          setNeedsEnrollment(true)
-          setError(null)
-          try {
-            const p = await getCoursePreview(courseId)
-            if (!cancelled) {
-              const { lessonsPreview: lp, ...courseFromPreview } = p
-              setLessons(lessonPreviewsToStubLessons(lp))
-              setCourse((prev) => prev ?? courseFromPreview)
-            }
-          } catch {
-            if (!cancelled) setLessons([])
-          }
-        } else {
-          setError(e instanceof Error ? e.message : 'Failed to load')
-        }
+        setError(e instanceof Error ? e.message : 'Failed to load')
       } finally {
         if (!cancelled) setLoading(false)
       }
@@ -186,6 +187,29 @@ export default function LessonPlayerPage() {
 
       {/* Main Content */}
       <main className="py-6">
+        {needsSignIn && (
+          <div className="mb-6 rounded-lg border border-sky-200 bg-sky-50 p-4">
+            <h3 className="text-sm font-medium text-sky-900">Sign in to watch</h3>
+            <p className="mt-1 text-sm text-sky-800">
+              Sign in to your account to play this lesson and track your progress.
+            </p>
+            <div className="mt-4 flex flex-wrap gap-3">
+              <Link
+                to="/login"
+                className="inline-flex items-center rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
+              >
+                Sign in
+              </Link>
+              <Link
+                to={`/courses/${courseId}`}
+                className="inline-flex items-center rounded-lg border border-sky-300 bg-white px-4 py-2 text-sm font-medium text-sky-900 hover:bg-sky-100"
+              >
+                Course page
+              </Link>
+            </div>
+          </div>
+        )}
+
         {needsEnrollment && (
           <div className="mb-6 rounded-lg border border-amber-200 bg-amber-50 p-4">
             <h3 className="text-sm font-medium text-amber-900">Enroll to watch</h3>
@@ -202,6 +226,7 @@ export default function LessonPlayerPage() {
                     try {
                       await enrollInCourse(courseId)
                       setNeedsEnrollment(false)
+                      setNeedsSignIn(false)
                       setLoading(true)
                       setError(null)
                       const c = await getCourse(courseId)
@@ -213,7 +238,19 @@ export default function LessonPlayerPage() {
                       setLessons([...l].sort((a, b) => a.order - b.order))
                       setSrc(pb.url)
                     } catch (err) {
-                      setError(err instanceof Error ? err.message : 'Failed after enroll')
+                      if (isPlaybackAuthRequiredError(err)) {
+                        setNeedsSignIn(true)
+                        setNeedsEnrollment(false)
+                        setSrc(null)
+                        setError(null)
+                      } else if (isEnrollmentRequiredError(err)) {
+                        setNeedsEnrollment(true)
+                        setNeedsSignIn(false)
+                        setSrc(null)
+                        setError(null)
+                      } else {
+                        setError(err instanceof Error ? err.message : 'Failed after enroll')
+                      }
                     } finally {
                       setEnrolling(false)
                       setLoading(false)
@@ -255,10 +292,10 @@ export default function LessonPlayerPage() {
               <VideoSkeleton />
             ) : (
               <div className="rounded-xl overflow-hidden shadow-lg bg-black">
-                <video 
-                  ref={videoRef}
-                  controls 
-                  className="w-full aspect-video" 
+                <video
+                  controls
+                  playsInline
+                  className="w-full aspect-video"
                   src={src || undefined}
                 />
               </div>
@@ -274,7 +311,7 @@ export default function LessonPlayerPage() {
               {/* Navigation Buttons */}
               <div className="mt-6 flex items-center justify-between">
                 {prevLesson ? (
-                  needsEnrollment ? (
+                  playbackNavLocked ? (
                     <span className="inline-flex cursor-not-allowed items-center rounded-lg bg-gray-100 px-4 py-2 text-sm font-medium text-gray-400 opacity-60">
                       <svg className="mr-2 h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
@@ -297,7 +334,7 @@ export default function LessonPlayerPage() {
                 )}
 
                 {nextLesson ? (
-                  needsEnrollment ? (
+                  playbackNavLocked ? (
                     <span className="inline-flex cursor-not-allowed items-center rounded-lg bg-blue-400 px-4 py-2 text-sm font-medium text-white opacity-60">
                       Next
                       <svg className="ml-2 h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -315,7 +352,7 @@ export default function LessonPlayerPage() {
                       </svg>
                     </Link>
                   )
-                ) : !needsEnrollment ? (
+                ) : !playbackNavLocked ? (
                   <Link
                     to={`/courses/${courseId}`}
                     className="inline-flex items-center px-4 py-2 text-sm font-medium text-white bg-green-600 rounded-lg hover:bg-green-700 transition-colors"
@@ -354,7 +391,7 @@ export default function LessonPlayerPage() {
                     courseId={courseId}
                     active={lesson.id === lessonId}
                     index={index}
-                    linkDisabled={needsEnrollment}
+                    linkDisabled={playbackNavLocked}
                   />
                 ))}
               </div>

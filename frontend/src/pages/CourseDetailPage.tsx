@@ -3,10 +3,7 @@ import { Link, useParams } from 'react-router-dom'
 import {
   enrollInCourse,
   getCourse,
-  getCoursePreview,
   hasSignedInIdToken,
-  isEnrollmentRequiredError,
-  lessonPreviewsToStubLessons,
   listLessons,
   type Course,
   type Lesson,
@@ -285,36 +282,16 @@ export default function CourseDetailPage() {
   const loadCourseData = useCallback(async () => {
     setError(null)
     setLoading(true)
-    setPreviewOnly(false)
-    setNeedsEnrollment(false)
     const signedIn = await hasSignedInIdToken()
+    setPreviewOnly(!signedIn)
+    setNeedsEnrollment(false)
     try {
-      if (!signedIn) {
-        const p = await getCoursePreview(courseId)
-        const { lessonsPreview: lp, ...rest } = p
-        setCourse(rest)
-        setLessons(lessonPreviewsToStubLessons(lp))
-        setPreviewOnly(true)
-        return
-      }
       const c = await getCourse(courseId)
       setCourse(c)
-      try {
-        const l = await listLessons(courseId)
-        setLessons([...l].sort((a, b) => a.order - b.order))
-        setNeedsEnrollment(false)
-      } catch (inner) {
-        if (isEnrollmentRequiredError(inner)) {
-          try {
-            const p = await getCoursePreview(courseId)
-            setLessons(lessonPreviewsToStubLessons(p.lessonsPreview))
-          } catch {
-            setLessons([])
-          }
-          setNeedsEnrollment(true)
-        } else {
-          throw inner
-        }
+      const l = await listLessons(courseId)
+      setLessons([...l].sort((a, b) => a.order - b.order))
+      if (signedIn) {
+        setNeedsEnrollment(c.enrolled === false)
       }
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to load')
