@@ -155,7 +155,7 @@ The backend job passes **`UserPoolArn`** into the API stack automatically on the
 
    Verify: `gh secret list --env dev`
 
-3. **Redeploy via CI/CD (default):** push to **`main`**. [`.github/workflows/deploy-backend.yml`](../../.github/workflows/deploy-backend.yml) runs integ → dev backend → **student + teacher web** → prod when gates pass.
+3. **Redeploy via CI/CD (default):** push to **`main`**. [`.github/workflows/deploy-backend.yml`](../../.github/workflows/deploy-backend.yml) runs **dev backend** → **integration HTTP tests** → **student + teacher web** → prod phases when gates pass (see workflow **`needs`** for full graph).
 
 4. **Local dev:** paste printed `.env` lines into [`frontend/.env`](../../frontend/.env) (never commit). Restart Vite after changes.
 
