@@ -314,6 +314,20 @@ Resources:
       SecurityGroupIds:
         - !Ref EndpointSecurityGroup
 
+  # SQS Interface endpoint for Catalog Lambda (in private subnet) to send messages
+  # to the media cleanup queue without requiring NAT Gateway.
+  SqsEndpoint:
+    Type: AWS::EC2::VPCEndpoint
+    Properties:
+      VpcId: !Ref Vpc
+      ServiceName: !Sub 'com.amazonaws.${AWS::Region}.sqs'
+      VpcEndpointType: Interface
+      PrivateDnsEnabled: true
+      SubnetIds:
+        - !Ref PrivateSubnet
+      SecurityGroupIds:
+        - !Ref EndpointSecurityGroup
+
   # Gateway endpoints are free. They attach to a route table and intercept traffic
   # to the service's public IPs, keeping egress inside AWS backbone.
   S3GatewayEndpoint:
