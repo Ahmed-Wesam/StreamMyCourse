@@ -48,12 +48,12 @@ export function CourseCard({ course }: CourseCardProps) {
           </span>
         </div>
       </div>
-      <div className="flex flex-1 flex-col p-5">
+      <div className="flex flex-1 flex-col px-6 py-5">
         <h3 className="line-clamp-2 text-lg font-bold text-slate-900 transition-colors group-hover:text-slate-700">
           {course.title}
         </h3>
         <p className="mt-2 line-clamp-2 flex-1 text-sm text-gray-600">
-          {course.description || 'Explore this course on StreamMyCourse.'}
+          {course.description || 'Explore this course on Stream My Course.'}
         </p>
         <div className="mt-4 flex items-end justify-between gap-3 border-t border-gray-100 pt-4">
           <span className="text-base font-bold text-slate-900">Free</span>

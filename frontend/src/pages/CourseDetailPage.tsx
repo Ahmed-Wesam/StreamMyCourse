@@ -46,7 +46,7 @@ function CourseDetailHero({
           Back to all courses
         </Link>
         <div className="grid items-center gap-10 lg:grid-cols-2 lg:gap-x-14">
-          <div>
+          <div className="pl-5">
             <h1 className="text-3xl font-bold sm:text-4xl">{loading ? 'Loading…' : course?.title}</h1>
             <p className="mt-4 max-w-2xl text-lg text-slate-300">
               {loading ? '' : course?.description}

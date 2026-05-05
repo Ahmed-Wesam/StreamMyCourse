@@ -46,8 +46,8 @@ export function SignIn({ children }: SignInProps) {
         />
         <div className="relative flex flex-col items-stretch gap-5">
           <div className="text-center">
-            <p className="text-xs font-semibold uppercase tracking-wide text-emerald-700">StreamMyCourse</p>
-            <h1 className="mt-1 text-2xl font-semibold tracking-tight text-slate-900">Welcome back</h1>
+            <p className="text-xs font-semibold uppercase tracking-wide text-emerald-700">Stream My Course</p>
+            <h1 className="mt-1 text-2xl font-semibold tracking-tight text-slate-900">Welcome!</h1>
             <p className="mt-2 text-sm text-slate-600">Sign in with Google to continue.</p>
           </div>
           <button
