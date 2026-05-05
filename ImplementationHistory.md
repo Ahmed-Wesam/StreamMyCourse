@@ -4,6 +4,21 @@
 
 ---
 
+## 2026-05-04 — Lesson video upload: second presign no longer deletes prior S3 object
+
+### Completed
+
+- [x] **`get_upload_url` behavior** — [`infrastructure/lambda/catalog/services/course_management/service.py`](infrastructure/lambda/catalog/services/course_management/service.py) — After a successful conditional DB update to a new lesson `videoKey`, the service **no longer** deletes the previous S3 key on presign. A second presign could race with a client still `PUT`ting the first URL, which made the first object disappear while the DB pointed at the new key.
+- [x] **Conflict path unchanged** — On `Conflict` from `set_lesson_video_if_video_key_matches`, the service still deletes **only** the newly presigned key (unused by DB) and re-raises.
+- [x] **Tests** — [`tests/unit/services/course_management/test_service.py`](tests/unit/services/course_management/test_service.py) — `test_second_presign_does_not_delete_previous_video_key_in_s3`; `test_conflict_deletes_only_new_presigned_key_not_previous`.
+
+### Tradeoffs / ops
+
+- **Orphan objects:** Abandoned lesson-video keys under `{courseId}/lessons/{lessonId}/video/` may remain in the private bucket until a future lifecycle rule or sweeper; accepted for MVP.
+- **Rollback:** Reverting the service commit restores eager deletion of the prior key (only if that tradeoff is preferable operationally).
+
+---
+
 ## 2026-05-05 — Catalog Lambda: API Gateway fields in structured logs
 
 ### Completed
