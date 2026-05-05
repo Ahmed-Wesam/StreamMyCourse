@@ -11,7 +11,7 @@ from config import load_config
 from services.auth.controller import handle_users_me
 from services.common.http import apigw_routing_path, json_response, options_response, pick_origin
 from services.common.logging_setup import configure_logging
-from services.common.runtime_context import bind_from_lambda_event, clear_request_context
+from services.common.runtime_context import bind_from_lambda_event, clear_request_context, set_request_path
 from services.course_management.controller import handle as course_management_handle
 
 logger = logging.getLogger(__name__)
@@ -37,6 +37,7 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         )
 
         raw_path = apigw_routing_path(event)
+        set_request_path(raw_path)
 
         cors_cfg = load_config()
         if not cors_cfg.allowed_origins:

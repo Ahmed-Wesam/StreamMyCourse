@@ -269,3 +269,75 @@ class TestEdgeCases:
 
         request_id = runtime_context.extract_lambda_request_id(None)
         assert request_id is None or request_id == ""
+
+
+class TestExtractApigwPublicFields:
+    """API Gateway v2 (HTTP API) and REST shapes for observability."""
+
+    def test_http_api_extracts_stage_domain_route_ip_ua(self):
+        from services.common import runtime_context
+
+        event: Dict[str, Any] = {
+            "requestContext": {
+                "stage": "dev",
+                "domainName": "abc.execute-api.eu-west-1.amazonaws.com",
+                "routeKey": "POST /upload-url",
+                "http": {
+                    "method": "POST",
+                    "path": "/dev/upload-url",
+                    "sourceIp": "198.51.100.2",
+                    "userAgent": "Mozilla/5.0" + ("x" * 300),
+                },
+            },
+            "rawPath": "/dev/upload-url",
+        }
+        fields = runtime_context.extract_apigw_public_fields(event)
+        assert fields["api_stage"] == "dev"
+        assert fields["api_domain"] == "abc.execute-api.eu-west-1.amazonaws.com"
+        assert fields["route_key"] == "POST /upload-url"
+        assert fields["client_ip"] == "198.51.100.2"
+        assert fields["user_agent_snippet"].startswith("Mozilla/5.0")
+        assert len(fields["user_agent_snippet"]) <= 200
+
+    def test_rest_api_extracts_route_key_and_ip(self):
+        from services.common import runtime_context
+
+        event: Dict[str, Any] = {
+            "requestContext": {
+                "stage": "prod",
+                "domainName": "api.example.com",
+                "resourcePath": "/courses/{courseId}",
+                "identity": {"sourceIp": "203.0.113.1"},
+            },
+            "httpMethod": "GET",
+        }
+        fields = runtime_context.extract_apigw_public_fields(event)
+        assert fields["api_stage"] == "prod"
+        assert fields["route_key"] == "GET /courses/{courseId}"
+        assert fields["client_ip"] == "203.0.113.1"
+
+
+class TestUploadKindAndRequestPath:
+    def test_set_request_path_and_upload_kind_in_context(self):
+        from services.common import runtime_context
+
+        runtime_context.bind_request_context(lambda_request_id="l1", api_request_id="a1")
+        try:
+            runtime_context.set_request_path("/courses/x/lessons/y")
+            runtime_context.set_upload_kind("lessonVideo")
+            ctx = runtime_context.get_request_context()
+            assert ctx["request_path"] == "/courses/x/lessons/y"
+            assert ctx["upload_kind"] == "lessonVideo"
+        finally:
+            runtime_context.clear_request_context()
+
+    def test_clear_clears_gateway_extensions(self):
+        from services.common import runtime_context
+
+        runtime_context.bind_request_context(lambda_request_id="l1")
+        runtime_context.set_request_path("/upload-url")
+        runtime_context.set_upload_kind("lessonThumbnail")
+        runtime_context.clear_request_context()
+        ctx = runtime_context.get_request_context()
+        assert ctx.get("request_path") is None
+        assert ctx.get("upload_kind") is None
