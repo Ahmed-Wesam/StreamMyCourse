@@ -3,7 +3,10 @@
 from __future__ import annotations
 
 import base64
+import os
+
 import httpx
+import pytest
 
 from helpers.api import ApiClient
 
@@ -133,6 +136,10 @@ def test_full_publish_flow_appears_in_catalog(
         assert "X-Amz-Signature" in url
 
 
+@pytest.mark.skipif(
+    not os.environ.get("INTEG_COGNITO_JWT", "").strip(),
+    reason="Set INTEG_COGNITO_JWT to test draft course visibility (requires auth to distinguish anonymous users)",
+)
 def test_anonymous_get_draft_course_returns_404(api: ApiClient, course_factory):
     course = course_factory()
     base = str(api.raw.base_url).rstrip("/")
