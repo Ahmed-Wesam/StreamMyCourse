@@ -54,11 +54,12 @@ Cross-cutting utilities shared by multiple contexts:
 - `errors.py` — typed HTTP errors (`HttpError` hierarchy)
 - `http.py` — CORS + JSON response helpers
 - `validation.py` — strict JSON parsing + simple validators
+- `sqs_client.py` — enqueue async media-cleanup jobs to SQS (boto3 SQS; used after course delete)
 
 ## What other modules may import
 
 - Controllers may import `services/common/*` and their own `contracts.py`.
-- Services may import `ports.py`, `models.py`, and `services/common/errors.py` (not HTTP helpers).
+- Services may import `ports.py`, `models.py`, and `services/common/errors.py` (not HTTP helpers). They may call `sqs_client.send_media_cleanup_job` for the async delete path (no HTTP imports).
 - Repos/storage may import `boto3` and Dynamo/S3 specifics.
 - `rds_repo.py` modules may import `psycopg2`; no other module may (enforced in CI).
 - `bootstrap.py` may import both `boto3` (Secrets Manager) and `psycopg2` (connection) -- it is the composition root.

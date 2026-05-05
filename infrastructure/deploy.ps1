@@ -221,7 +221,7 @@ if ($Template -eq "api") {
     Get-ChildItem -Path $lambdaSourceDir -Recurse -Include *.pyc -File -Force -ErrorAction SilentlyContinue |
         ForEach-Object { Remove-Item -Path $_.FullName -Force -ErrorAction SilentlyContinue }
 
-    # Vendor runtime deps (psycopg2-binary) into a build-staging dir so
+    # Vendor runtime deps (psycopg2-binary) into a temp build dir so
     # Compress-Archive picks them up alongside the source tree. Avoids
     # polluting the checkout with _vendor/ between runs.
     $buildDir = Join-Path $env:TEMP "catalog-build-$Environment-$([System.Guid]::NewGuid().ToString('N').Substring(0,8))"

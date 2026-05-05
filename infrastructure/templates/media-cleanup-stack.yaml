@@ -1,0 +1,160 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'StreamMyCourse — SQS + Lambda worker for async S3 media cleanup after course delete'
+
+Parameters:
+  Environment:
+    Type: String
+    Default: dev
+    AllowedValues:
+      - dev
+      - integ
+      - prod
+    Description: Deployment environment
+
+  VideoBucketName:
+    Type: String
+    Description: S3 bucket name for course/lesson media (same as video stack)
+
+  LambdaCodeS3Bucket:
+    Type: String
+    Description: Artifacts bucket containing the media cleanup Lambda zip
+
+  LambdaCodeS3Key:
+    Type: String
+    Description: S3 key for the media cleanup Lambda deployment package
+
+  MessageRetentionPeriod:
+    Type: Number
+    Default: 1209600
+    Description: SQS message retention in seconds (default 14 days)
+
+  MaxReceiveCount:
+    Type: Number
+    Default: 3
+    Description: Receives before message goes to DLQ
+
+Conditions:
+  HasBucket: !Not [!Equals [!Ref VideoBucketName, '']]
+
+Resources:
+  MediaCleanupDlq:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !Sub 'StreamMyCourse-MediaCleanup-DLQ-${Environment}'
+      MessageRetentionPeriod: !Ref MessageRetentionPeriod
+      Tags:
+        - Key: Project
+          Value: StreamMyCourse
+        - Key: Environment
+          Value: !Ref Environment
+
+  MediaCleanupQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !Sub 'StreamMyCourse-MediaCleanup-${Environment}'
+      VisibilityTimeout: 300
+      MessageRetentionPeriod: !Ref MessageRetentionPeriod
+      RedrivePolicy:
+        deadLetterTargetArn: !GetAtt MediaCleanupDlq.Arn
+        maxReceiveCount: !Ref MaxReceiveCount
+      Tags:
+        - Key: Project
+          Value: StreamMyCourse
+        - Key: Environment
+          Value: !Ref Environment
+
+  MediaCleanupWorkerRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub 'StreamMyCourse-MediaCleanupWorkerRole-${Environment}'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: CloudWatchLogs
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource: !Sub 'arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/StreamMyCourse-MediaCleanupWorker-${Environment}:*'
+        - PolicyName: S3DeleteMedia
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:DeleteObject
+                  - s3:DeleteObjects
+                Resource: !If
+                  - HasBucket
+                  - !Sub 'arn:aws:s3:::${VideoBucketName}/*'
+                  - !Sub 'arn:aws:s3:::streammycourse-no-bucket-configured/NEVER_MATCH/*'
+        - PolicyName: SqsConsumeCleanupQueue
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - sqs:ReceiveMessage
+                  - sqs:DeleteMessage
+                  - sqs:GetQueueAttributes
+                  - sqs:ChangeMessageVisibility
+                Resource: !GetAtt MediaCleanupQueue.Arn
+      Tags:
+        - Key: Project
+          Value: StreamMyCourse
+        - Key: Environment
+          Value: !Ref Environment
+
+  MediaCleanupWorker:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub 'StreamMyCourse-MediaCleanupWorker-${Environment}'
+      Runtime: python3.11
+      Handler: worker.lambda_handler
+      Timeout: 300
+      MemorySize: 256
+      Role: !GetAtt MediaCleanupWorkerRole.Arn
+      Code:
+        S3Bucket: !Ref LambdaCodeS3Bucket
+        S3Key: !Ref LambdaCodeS3Key
+      Environment:
+        Variables:
+          VIDEO_BUCKET: !Ref VideoBucketName
+          LOG_LEVEL: INFO
+      Tags:
+        - Key: Project
+          Value: StreamMyCourse
+        - Key: Environment
+          Value: !Ref Environment
+
+  MediaCleanupEventSourceMapping:
+    Type: AWS::Lambda::EventSourceMapping
+    Properties:
+      BatchSize: 10
+      Enabled: true
+      EventSourceArn: !GetAtt MediaCleanupQueue.Arn
+      FunctionName: !Ref MediaCleanupWorker
+      FunctionResponseTypes:
+        - ReportBatchItemFailures
+
+Outputs:
+  MediaCleanupQueueUrl:
+    Description: URL of the media cleanup SQS queue (catalog Lambda SendMessage target)
+    Value: !Ref MediaCleanupQueue
+    Export:
+      Name: !Sub '${AWS::StackName}-MediaCleanupQueueUrl'
+
+  MediaCleanupQueueArn:
+    Description: ARN of the media cleanup SQS queue (IAM grant for catalog SendMessage)
+    Value: !GetAtt MediaCleanupQueue.Arn
+    Export:
+      Name: !Sub '${AWS::StackName}-MediaCleanupQueueArn'

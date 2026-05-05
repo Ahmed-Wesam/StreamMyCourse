@@ -9,6 +9,8 @@
 #
 # Lambda zip is uploaded to catalog-{env}-{gitSha}.zip so LambdaCodeS3Key changes every commit
 # (CFN updates the function).
+# For dev, integ, and prod, scripts/deploy-backend.sh deploys StreamMyCourse-MediaCleanup-{env} (SQS + worker)
+# before the API stack and passes queue URL/ARN into api-stack.yaml for async course media deletes.
 name: Deploy
 
 on:

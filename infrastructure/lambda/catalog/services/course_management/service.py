@@ -4,7 +4,8 @@ import logging
 from dataclasses import asdict
 from typing import Any, Dict, List
 
-from services.common.errors import BadRequest, Conflict, Forbidden, NotFound
+from services.common.errors import BadRequest, Conflict, Forbidden, NotFound, ServiceUnavailable
+from services.common.sqs_client import send_media_cleanup_job
 from services.course_management.models import Course, Lesson
 from services.course_management.ports import CourseCatalogRepositoryPort, CourseMediaStoragePort
 from services.enrollment.ports import EnrollmentRepositoryPort
@@ -18,10 +19,13 @@ class CourseManagementService:
         repo: CourseCatalogRepositoryPort,
         storage: CourseMediaStoragePort | None,
         enrollments: EnrollmentRepositoryPort,
+        *,
+        media_cleanup_queue_url: str = "",
     ):
         self._repo = repo
         self._storage = storage
         self._enrollments = enrollments
+        self._media_cleanup_queue_url = (media_cleanup_queue_url or "").strip()
 
     def _delete_media_keys(self, keys: List[str]) -> None:
         if self._storage is None:
@@ -296,9 +300,15 @@ class CourseManagementService:
                 keys.append(lesson.videoKey.strip())
             if lesson.thumbnailKey.strip():
                 keys.append(lesson.thumbnailKey.strip())
-        # Remove DB rows first so catalog reflects the delete even if S3 is slow.
+        deduped = list(dict.fromkeys(k.strip() for k in keys if k and k.strip()))
+        if deduped and not self._media_cleanup_queue_url:
+            raise ServiceUnavailable(
+                "Media cleanup queue is not configured (MEDIA_CLEANUP_QUEUE_URL is empty)"
+            )
+        # Remove DB rows first so catalog reflects the delete even if S3 cleanup lags (async worker).
         self._repo.delete_course_and_lessons(course_id)
-        self._delete_media_keys(keys)
+        if deduped:
+            send_media_cleanup_job(self._media_cleanup_queue_url, course_id, deduped)
         return {"id": course_id, "deleted": True}
 
     def list_lessons(self, course_id: str) -> List[Dict[str, Any]]:

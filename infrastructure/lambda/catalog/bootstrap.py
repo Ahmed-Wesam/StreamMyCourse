@@ -162,7 +162,12 @@ def build_aws_deps(cfg: AppConfig) -> AwsDeps:
     auth_repo = _build_auth_repo(cfg, conn_factory)
 
     storage = CourseMediaStorage(cfg.video_bucket) if cfg.video_bucket else None
-    service = CourseManagementService(course_repo, storage, enrollment_repo)
+    service = CourseManagementService(
+        course_repo,
+        storage,
+        enrollment_repo,
+        media_cleanup_queue_url=cfg.media_cleanup_queue_url,
+    )
     auth_service = UserProfileService(auth_repo)
     return AwsDeps(cfg=cfg, service=service, auth_service=auth_service)
 

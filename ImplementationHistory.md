@@ -4,6 +4,28 @@
 
 ---
 
+## 2026-05-04 — Async S3 media cleanup (SQS + worker) for course delete
+
+### Completed
+
+- [x] **SQS client** — [`infrastructure/lambda/catalog/services/common/sqs_client.py`](infrastructure/lambda/catalog/services/common/sqs_client.py) — `send_media_cleanup_job` (JSON payload `courseId` / `keys` / `timestamp`; splits messages if body would exceed SQS size; **propagates** SQS API errors; on a failed chunk after earlier sends succeed, logs `media_cleanup_sqs_partial_send` with chunk index, `course_id`, and a truncated queue URL prefix, then re-raises; empty queue URL with non-empty keys raises `BadRequest`; oversized single key raises `BadRequest`).
+- [x] **Catalog service** — [`infrastructure/lambda/catalog/services/course_management/service.py`](infrastructure/lambda/catalog/services/course_management/service.py) — If the course has deduplicated media keys and `MEDIA_CLEANUP_QUEUE_URL` is empty, **`ServiceUnavailable` (503) before** `delete_course_and_lessons` (no partial DB delete on misconfiguration). After DB delete, enqueues when keys exist and the queue is configured (no synchronous `_delete_media_keys` fallback for course delete). Other code paths (e.g. lesson delete) still use `_delete_media_keys` where applicable.
+- [x] **Errors** — [`infrastructure/lambda/catalog/services/common/errors.py`](infrastructure/lambda/catalog/services/common/errors.py) — `ServiceUnavailable` for misconfigured queue on course delete with media.
+- [x] **Config / bootstrap** — [`infrastructure/lambda/catalog/config.py`](infrastructure/lambda/catalog/config.py), [`infrastructure/lambda/catalog/bootstrap.py`](infrastructure/lambda/catalog/bootstrap.py) — `MEDIA_CLEANUP_QUEUE_URL` env wiring.
+- [x] **Worker Lambda** — [`infrastructure/lambda/media_cleanup/worker.py`](infrastructure/lambda/media_cleanup/worker.py) — SQS batch handler, `delete_objects` in chunks of 1000, `ReportBatchItemFailures` on errors; if `VIDEO_BUCKET` is unset, returns **per-record** `batchItemFailures` for every `messageId` so messages are not silently acknowledged.
+- [x] **CloudFormation** — [`infrastructure/templates/media-cleanup-stack.yaml`](infrastructure/templates/media-cleanup-stack.yaml); **API stack** — [`infrastructure/templates/api-stack.yaml`](infrastructure/templates/api-stack.yaml) — optional `MediaCleanupQueueUrl` / `MediaCleanupQueueArn` + `sqs:SendMessage` when ARN set + `MEDIA_CLEANUP_QUEUE_URL` on catalog Lambda.
+- [x] **Deploy** — [`scripts/deploy-media-cleanup.sh`](scripts/deploy-media-cleanup.sh); [`scripts/deploy-backend.sh`](scripts/deploy-backend.sh) — deploys media-cleanup stack after the video stack for **dev**, **integ**, and **prod**, then passes queue URL/ARN into the API deploy.
+- [x] **Tests** — [`tests/unit/test_sqs_client.py`](tests/unit/test_sqs_client.py), [`tests/unit/test_media_cleanup.py`](tests/unit/test_media_cleanup.py), service tests in [`tests/unit/services/course_management/test_service.py`](tests/unit/services/course_management/test_service.py); [`tests/unit/test_config.py`](tests/unit/test_config.py) for `MEDIA_CLEANUP_QUEUE_URL`; [`tests/integration/test_s3_cleanup.py`](tests/integration/test_s3_cleanup.py) polls S3 until async cleanup removes the object after course delete.
+- [x] **CI** — [`.github/workflows/ci.yml`](.github/workflows/ci.yml) parses `media-cleanup-stack.yaml`; [`scripts/check_lambda_boundaries.py`](scripts/check_lambda_boundaries.py) allows boto3 in `sqs_client.py`.
+- [x] **Docs** — [`design.md`](design.md) §10 backend note; [`plans/architecture/module-map.md`](plans/architecture/module-map.md) lists `sqs_client.py`.
+
+### Ops / IAM
+
+- **GitHub deploy role:** [`infrastructure/iam-policy-github-deploy-backend.json`](infrastructure/iam-policy-github-deploy-backend.json) includes **`SqsStreamMyCourseQueues`** (`sqs:*` on `arn:aws:sqs:eu-west-1:<account>:StreamMyCourse-*`) so CI can create the media-cleanup queues and event source mapping. Sync the live OIDC role after merge ([`scripts/apply-github-deploy-role-policies.sh`](scripts/apply-github-deploy-role-policies.sh) or redeploy the IAM stack) if deploy fails with SQS access denied.
+- **Manual verification:** Deploy via pipeline or `./scripts/deploy-backend.sh <dev|integ|prod>`; delete a course with uploaded media; API returns 200 only after enqueue succeeds; S3 objects disappear once the worker runs. **Rollback:** redeploy a catalog build that restores prior behavior, or fix queue permissions / worker; there is **no** silent sync-delete fallback for course delete when keys exist.
+
+---
+
 ## 2026-05-05 — RDS enrollments FK: ON DELETE CASCADE with course delete
 
 ### Completed

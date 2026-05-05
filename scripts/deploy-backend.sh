@@ -122,6 +122,40 @@ if [[ -z "$VIDEO_BUCKET" || -z "$BUCKET_URL" ]]; then
   exit 1
 fi
 
+# Async S3 cleanup (SQS + worker) for dev, integ, and prod. Override both URL and ARN to reuse
+# pre-deployed queue without running the media-cleanup stack again.
+MEDIA_QUEUE_URL="${MEDIA_CLEANUP_QUEUE_URL:-}"
+MEDIA_QUEUE_ARN="${MEDIA_CLEANUP_QUEUE_ARN:-}"
+case "$ENV" in
+dev | integ | prod)
+  if [[ -z "$MEDIA_QUEUE_URL" || -z "$MEDIA_QUEUE_ARN" ]]; then
+    MC_SCRIPT="${ROOT}/scripts/deploy-media-cleanup.sh"
+    chmod +x "$MC_SCRIPT"
+    "$MC_SCRIPT" "$ENV" "$REGION" "$ARTIFACT_BUCKET" "$SUFFIX"
+    MEDIA_STACK="StreamMyCourse-MediaCleanup-${ENV}"
+    MEDIA_QUEUE_URL="$(aws cloudformation describe-stacks \
+      --stack-name "$MEDIA_STACK" \
+      --region "$REGION" \
+      --query 'Stacks[0].Outputs[?OutputKey==`MediaCleanupQueueUrl`].OutputValue' \
+      --output text)"
+    MEDIA_QUEUE_ARN="$(aws cloudformation describe-stacks \
+      --stack-name "$MEDIA_STACK" \
+      --region "$REGION" \
+      --query 'Stacks[0].Outputs[?OutputKey==`MediaCleanupQueueArn`].OutputValue' \
+      --output text)"
+    if [[ -z "$MEDIA_QUEUE_URL" || "$MEDIA_QUEUE_URL" == "None" || -z "$MEDIA_QUEUE_ARN" || "$MEDIA_QUEUE_ARN" == "None" ]]; then
+      echo "Failed to read media cleanup stack outputs (queue URL / ARN)" >&2
+      exit 1
+    fi
+  fi
+  ;;
+esac
+
+MEDIA_PARAM_OVERRIDES=()
+if [[ -n "${MEDIA_QUEUE_URL:-}" && -n "${MEDIA_QUEUE_ARN:-}" ]]; then
+  MEDIA_PARAM_OVERRIDES=("MediaCleanupQueueUrl=${MEDIA_QUEUE_URL}" "MediaCleanupQueueArn=${MEDIA_QUEUE_ARN}")
+fi
+
 case "$ENV" in
 prod)
   API_STACK="StreamMyCourse-Api-prod"
@@ -179,7 +213,8 @@ aws cloudformation deploy \
   "GatewayResponseAllowOrigin=${GW_ALLOW}" \
   "${COGNITO_OVERRIDE[@]}" \
   "${RDS_STACK_OVERRIDE[@]}" \
-  "${USE_RDS_OVERRIDE[@]}"
+  "${USE_RDS_OVERRIDE[@]}" \
+  "${MEDIA_PARAM_OVERRIDES[@]}"
 
 API_ENDPOINT="$(aws cloudformation describe-stacks \
   --stack-name "$API_STACK" \

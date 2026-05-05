@@ -8,7 +8,6 @@ Parameters:
     AllowedValues:
       - dev
       - integ
-      - staging
       - prod
     Description: Deployment environment
 

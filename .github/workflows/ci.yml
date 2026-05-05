@@ -79,6 +79,7 @@ jobs:
           python scripts/parse_cloudformation_yaml.py infrastructure/templates/github-deploy-role-stack.yaml
           python scripts/parse_cloudformation_yaml.py infrastructure/templates/billing-alarm.yaml
           python scripts/parse_cloudformation_yaml.py infrastructure/templates/rds-stack.yaml
+          python scripts/parse_cloudformation_yaml.py infrastructure/templates/media-cleanup-stack.yaml
 
   workflow-lint:
     name: GitHub Actions workflow lint

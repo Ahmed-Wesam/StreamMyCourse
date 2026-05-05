@@ -31,6 +31,12 @@
       "Resource": "arn:aws:lambda:eu-west-1:YOUR_AWS_ACCOUNT_ID:function:StreamMyCourse-*"
     },
     {
+      "Sid": "SqsStreamMyCourseQueues",
+      "Effect": "Allow",
+      "Action": "sqs:*",
+      "Resource": "arn:aws:sqs:eu-west-1:YOUR_AWS_ACCOUNT_ID:StreamMyCourse-*"
+    },
+    {
       "Sid": "ApiGatewayEuWest1",
       "Effect": "Allow",
       "Action": ["apigateway:*", "execute-api:*"],
