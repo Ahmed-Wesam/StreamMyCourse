@@ -1,11 +1,23 @@
 import { useEffect, useState } from 'react'
 import { listCourses, type Course } from '../lib/api'
 
-/** Student catalog "Teach" CTA — teacher SPA is a separate origin (not /instructor on student routes). */
+/** Student catalog "Teach" CTA — teacher SPA is a separate origin (not /instructor on student routes).
+ * Uses env var if set; otherwise defaults based on environment (dev vs prod).
+ */
+function getDefaultTeacherUrl(): string {
+  const hostname = window.location.hostname
+  // Dev/local environments -> dev teacher site
+  if (hostname === 'dev.streammycourse.click' || hostname === 'localhost' || hostname === '127.0.0.1') {
+    return 'https://teach.dev.streammycourse.click'
+  }
+  // Production and all other environments -> prod teacher site
+  return 'https://teach.streammycourse.com'
+}
+
 const teacherSiteBaseUrl =
   typeof import.meta.env.VITE_TEACHER_SITE_URL === 'string' && import.meta.env.VITE_TEACHER_SITE_URL.trim().length > 0
     ? import.meta.env.VITE_TEACHER_SITE_URL.trim().replace(/\/$/, '')
-    : 'https://teach.streammycourse.com'
+    : getDefaultTeacherUrl()
 import { CourseCard } from '../components/course/CourseCard'
 import { CourseGrid } from '../components/course/CourseGrid'
 import { CourseSkeleton } from '../components/course/CourseSkeleton'
