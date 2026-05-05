@@ -90,7 +90,7 @@ gh run watch <CI_RUN_ID> --exit-status
    ```bash
    gh run view <CI_RUN_ID> --log
    ```
-2. **Reproduce locally** — Mirror the failing job (frontend, lambda, CloudFormation parse, actionlint, unit tests) using the same commands as in [`.cursor/skills/commit/SKILL.md`](../commit/SKILL.md) **Step 2** (CI parity, excluding `integ-tests-static` unless the failure is clearly in integration — then run the integration checks from `ci.yml` for that job).
+2. **Reproduce locally** — Mirror the failing job (frontend, lambda, CloudFormation parse, actionlint, unit tests) using the same commands as in [`.cursor/skills/commit/SKILL.md`](../commit/SKILL.md) **Step 2** (CI parity, excluding `integration-tests-static` unless the failure is clearly in integration — then run the integration checks from `ci.yml` for that job).
 3. **Use CLIs** — For AWS-side causes (deploy role, stack, etc.), follow [`.cursor/skills/use-cli/SKILL.md`](../use-cli/SKILL.md) and [`.cursor/skills/aws-cli/SKILL.md`](../aws-cli/SKILL.md) where relevant. For GitHub-side causes (permissions, workflow, org policy), use `gh api`, `gh run view`, and repo workflow files — not the browser — unless blocked.
 4. **Implement fixes** — Minimal, targeted code or config changes.
 5. **Commit** — Read and follow [`.cursor/skills/commit/SKILL.md`](../commit/SKILL.md) in full: analyze diff, run the same **CI parity** gates, split logical commits, conventional messages. **Push** is expected in this skill’s loop (see **Push** below).

@@ -32,7 +32,7 @@ Combine **code review** and **`/commit`** in one workflow: review first, fix wha
 
 When Phase 1 is complete, follow **[`.cursor/skills/commit/SKILL.md`](../commit/SKILL.md)** end-to-end:
 
-- Analyze changes, **CI parity** checks (same as `ci.yml` jobs: frontend, lambda, cloudformation, workflow-lint, lambda-unit-tests; **not** `integ-tests-static`), group commits, conventional messages, **`/update-docs`** when warranted.
+- Analyze changes, **CI parity** checks (same as `ci.yml` jobs: frontend, lambda, cloudformation, workflow-lint, lambda-unit-tests; **not** `integration-tests-static`), group commits, conventional messages, **`/update-docs`** when warranted.
 - Obey **Git safety** and **never push** rules from that skill.
 
 **Push:** Do **not** run `git push` unless the user explicitly requested push in the same instruction or a clear follow-up.
