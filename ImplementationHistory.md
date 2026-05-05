@@ -4,6 +4,33 @@
 
 ---
 
+## 2026-05-04 — CloudFormation DeletionPolicy audit and S3 data-loss fix
+
+### Incident
+
+Investigation of recurring "all S3 data deleted on deploy" reports identified the **VideoBucket** in [`infrastructure/templates/video-stack.yaml`](infrastructure/templates/video-stack.yaml) as **lacking `DeletionPolicy`/`UpdateReplacePolicy: Retain`**. Any CloudFormation operation that requires bucket replacement (certain property changes), or a stack delete, would destroy the bucket and **all uploaded course/lesson media** — with **no versioning** to recover from. The `CatalogTable` (DynamoDB) and `DbInstance` (RDS) were already protected (`Retain` and `Snapshot` respectively); the audit found four other unprotected resources that warranted the same hardening.
+
+### Completed
+
+- [x] **Video bucket (CRITICAL)** — [`infrastructure/templates/video-stack.yaml`](infrastructure/templates/video-stack.yaml) — `VideoBucket` now has `DeletionPolicy: Retain` and `UpdateReplacePolicy: Retain`. Prevents bucket and media destruction on stack delete or property-driven replacement.
+- [x] **SPA hosting buckets (MEDIUM)** — [`infrastructure/templates/edge-hosting-stack.yaml`](infrastructure/templates/edge-hosting-stack.yaml) — `SiteBucket` and `TeacherSiteBucket` retain on delete/replace. Contents are rebuildable from source, but retention prevents service downtime while CloudFront origin churns.
+- [x] **Async cleanup queues (LOW)** — [`infrastructure/templates/media-cleanup-stack.yaml`](infrastructure/templates/media-cleanup-stack.yaml) — `MediaCleanupQueue` and `MediaCleanupDlq` retain on delete so in-flight cleanup jobs and forensic DLQ messages survive a stack teardown.
+- [x] **Billing alerts (LOW)** — [`infrastructure/templates/billing-alarm.yaml`](infrastructure/templates/billing-alarm.yaml) — `BillingAlertTopic` retains on delete to preserve email subscriptions and operator pager wiring.
+
+### Verification
+
+- `aws cloudformation validate-template` passes for all four modified templates (`video-stack.yaml`, `edge-hosting-stack.yaml`, `media-cleanup-stack.yaml`, `billing-alarm.yaml`).
+- [`scripts/parse_cloudformation_yaml.py`](scripts/parse_cloudformation_yaml.py) parses each modified template (`YAML_OK`).
+- No existing data needs migration — `Retain` policies are inert until a delete/replace event.
+
+### Ops / Rollout
+
+- Next deploy via [`scripts/deploy-backend.sh`](scripts/deploy-backend.sh) / [`scripts/deploy-edge.sh`](scripts/deploy-edge.sh) attaches the new policies to the live stacks (no resource replacement; CFN treats DeletionPolicy as metadata).
+- Existing dev/integ/prod video buckets continue to hold their data; the new policies guard them against the next incident.
+- **Convention going forward:** any new `AWS::S3::Bucket`, `AWS::DynamoDB::Table`, `AWS::RDS::DBInstance`, `AWS::SQS::Queue`, or `AWS::SNS::Topic` resource MUST set `DeletionPolicy: Retain` (or `Snapshot` for RDS) unless it provably holds only ephemeral state.
+
+---
+
 ## 2026-05-04 — iOS Safari video playback fix
 
 ### Completed
