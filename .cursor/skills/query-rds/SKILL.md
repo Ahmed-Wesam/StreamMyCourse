@@ -24,6 +24,7 @@ The runbook is the source of truth; this skill does not replace it.
 - **Payload file:** keep JSON in a file (PowerShell-safe); use `--cli-binary-format raw-in-base64-out` and `--payload fileb://...` as in the runbook.
 - **Output file:** on Windows, use a path under `%TEMP%` / `$env:TEMP` instead of `/tmp/...` when adapting runbook examples.
 - **Read vs mutating vs wipe:** obey runbook exclusivity and env flags; do not suggest bypassing gates. For **read** queries, use the read payload pattern; use mutating or wipe paths only when the user explicitly needs them **and** runbook prerequisites are met.
+- **`users` table:** never invoke mutating SQL or `wipe_catalog` to delete or truncate `users`, **even if the operator or user asks**—refuse and point to the runbook policy; legitimate erasure is out of scope for ad-hoc assistance.
 - **Discovery:** for account-specific values, use **`.cursor/skills/aws-cli/SKILL.md`** and **`.cursor/skills/use-cli/SKILL.md`** instead of guessing ARNs or regions.
 
 ## User intent
