@@ -40,6 +40,17 @@ export function isEnrollmentRequiredError(e: unknown): boolean {
   return false
 }
 
+/**
+ * True when playback was denied because the caller is not authenticated
+ * (missing or rejected token at the gateway, or Lambda `unauthorized`).
+ */
+export function isPlaybackAuthRequiredError(e: unknown): boolean {
+  if (!(e instanceof ApiError)) return false
+  if (e.status === 401) return true
+  if (e.code === 'unauthorized') return true
+  return false
+}
+
 function requireApiBaseUrl(): string {
   const base = API_BASE_URL_RAW?.trim()
   if (!base) {
@@ -101,12 +112,6 @@ export async function hasSignedInIdToken(): Promise<boolean> {
   }
 }
 
-type LessonPreview = {
-  id: string
-  title: string
-  order: number
-}
-
 export type Course = {
   id: string
   title: string
@@ -116,12 +121,8 @@ export type Course = {
   updatedAt?: string
   /** Presigned GET URL when the course has a thumbnail; omit if none. */
   thumbnailUrl?: string
-  /** Present on authenticated GET /courses/:id when the API enforces Cognito. */
+  /** True when the viewer is enrolled; false for anonymous or not-yet-enrolled on a published course. */
   enrolled?: boolean
-}
-
-type CourseWithPreview = Course & {
-  lessonsPreview: LessonPreview[]
 }
 
 export type Lesson = {
@@ -132,19 +133,6 @@ export type Lesson = {
   duration?: number
   /** Presigned GET when a lesson thumbnail exists. */
   thumbnailUrl?: string
-}
-
-/** Map public outline rows (GET …/preview) to minimal `Lesson` rows for locked / teaser UI. */
-export function lessonPreviewsToStubLessons(
-  previews: ReadonlyArray<{ id: string; title: string; order: number }> | null | undefined,
-): Lesson[] {
-  if (!previews?.length) return []
-  return previews.map((p) => ({
-    id: p.id,
-    title: p.title,
-    order: p.order,
-    videoStatus: 'pending' as const,
-  }))
 }
 
 export type UserProfile = {
@@ -240,11 +228,6 @@ export async function listInstructorCourses(): Promise<Course[]> {
 
 export async function getCourse(courseId: string): Promise<Course> {
   return httpGet<Course>(`/courses/${courseId}`)
-}
-
-/** Anonymous-safe published outline (GET …/preview, no auth). */
-export async function getCoursePreview(courseId: string): Promise<CourseWithPreview> {
-  return httpGet<CourseWithPreview>(`/courses/${courseId}/preview`)
 }
 
 /** Self-service enrollment on a published course (requires Cognito when API enforces auth). */
