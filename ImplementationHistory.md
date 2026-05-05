@@ -34,7 +34,7 @@
 
 ### Ops / IAM
 
-- **GitHub deploy role:** [`infrastructure/iam-policy-github-deploy-backend.json`](infrastructure/iam-policy-github-deploy-backend.json) includes **`SqsStreamMyCourseQueues`** (`sqs:*` on `arn:aws:sqs:eu-west-1:<account>:StreamMyCourse-*`) so CI can create the media-cleanup queues and event source mapping. Sync the live OIDC role after merge ([`scripts/apply-github-deploy-role-policies.sh`](scripts/apply-github-deploy-role-policies.sh) or redeploy the IAM stack) if deploy fails with SQS access denied.
+- **GitHub deploy role:** [`infrastructure/iam-policy-github-deploy-backend.json`](infrastructure/iam-policy-github-deploy-backend.json) — **`SqsStreamMyCourseQueues`** plus **`lambda:*`** on both **`function:StreamMyCourse-*`** and **`event-source-mapping:*`** (SQS + worker deploy). [`infrastructure/templates/github-deploy-role-stack.yaml`](infrastructure/templates/github-deploy-role-stack.yaml) mirrors the same statements with **`!Sub`**. JSON files keep **`YOUR_AWS_ACCOUNT_ID`**; [`scripts/apply-github-deploy-role-policies.sh`](scripts/apply-github-deploy-role-policies.sh) / [`.ps1`](scripts/apply-github-deploy-role-policies.ps1) substitute it from **`sts get-caller-identity`** before **`put-role-policy`**. Sync the live role or redeploy the IAM stack if deploy fails with SQS/Lambda mapping access denied.
 - **Manual verification:** Deploy via pipeline or `./scripts/deploy-backend.sh <dev|integ|prod>`; delete a course with uploaded media; API returns 200 only after enqueue succeeds; S3 objects disappear once the worker runs. **Rollback:** redeploy a catalog build that restores prior behavior, or fix queue permissions / worker; there is **no** silent sync-delete fallback for course delete when keys exist.
 
 ---
@@ -100,14 +100,14 @@
 ### Completed
 
 - [x] **Professional README** — [`README.md`](README.md) — Complete rewrite transforming internal-facing documentation into product-focused presentation; includes architecture mermaid diagram, feature overview for students/instructors, tech stack table, quick start guide, and security section with proprietary notice.
-- [x] **Security hardening — IAM policy JSON sanitization** — [`infrastructure/iam-policy-github-deploy-web.json`](infrastructure/iam-policy-github-deploy-web.json), [`infrastructure/iam-policy-github-deploy-backend.json`](infrastructure/iam-policy-github-deploy-backend.json), [`infrastructure/iam-trust-github-oidc.json`](infrastructure/iam-trust-github-oidc.json) — Replaced hardcoded AWS account ID `YOUR_AWS_ACCOUNT_ID` with `YOUR_AWS_ACCOUNT_ID` placeholder in all IAM policy files.
+- [x] **Security hardening — IAM policy JSON sanitization** — [`infrastructure/iam-policy-github-deploy-web.json`](infrastructure/iam-policy-github-deploy-web.json), [`infrastructure/iam-policy-github-deploy-backend.json`](infrastructure/iam-policy-github-deploy-backend.json), [`infrastructure/iam-trust-github-oidc.json`](infrastructure/iam-trust-github-oidc.json) — Replaced hardcoded AWS account id with **`YOUR_AWS_ACCOUNT_ID`** placeholder in IAM policy files; [`scripts/apply-github-deploy-role-policies.sh`](scripts/apply-github-deploy-role-policies.sh) / [`.ps1`](scripts/apply-github-deploy-role-policies.ps1) substitute it from `sts get-caller-identity` before `put-role-policy`.
 - [x] **Security hardening — GitHub variable setup** — Set `AWS_ACCOUNT_ID` GitHub Actions variable on **dev** and **prod** environments via `/use-cli` (AWS) and `/github-cli` (GitHub CLI); same value used for both environments.
 - [x] **Security hardening — ImplementationHistory sanitization** — Redacted specific AWS resource identifiers (CloudFront domain, distribution ID, S3 bucket names, account ID references) from historical entries while preserving engineering narrative.
 - [x] **Security policy** — [`SECURITY.md`](SECURITY.md) — Created security policy document with vulnerability reporting guidelines, supported versions table, AWS account ID placeholder instructions, and security best practices for operators.
 
 ### Ops
 
-- When deploying IAM policies from the JSON files, operators must replace `YOUR_AWS_ACCOUNT_ID` with their actual AWS account ID (retrieved via `aws sts get-caller-identity`).
+- When deploying IAM policies from the JSON files, operators run [`scripts/apply-github-deploy-role-policies.sh`](scripts/apply-github-deploy-role-policies.sh) / [`.ps1`](scripts/apply-github-deploy-role-policies.ps1) (substitutes **`YOUR_AWS_ACCOUNT_ID`**) or replace that placeholder manually before upload.
 - The `AWS_ACCOUNT_ID` GitHub variable is set on both dev and prod environments for workflow use.
 
 ---
