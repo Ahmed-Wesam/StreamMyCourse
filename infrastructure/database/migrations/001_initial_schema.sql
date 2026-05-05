@@ -64,7 +64,7 @@ CREATE INDEX IF NOT EXISTS idx_lessons_course_order ON lessons(course_id, lesson
 -- to enroll. The migration script inserts users before enrollments.
 CREATE TABLE IF NOT EXISTS enrollments (
     user_sub     VARCHAR(255) NOT NULL REFERENCES users(user_sub),
-    course_id    UUID         NOT NULL REFERENCES courses(id),
+    course_id    UUID         NOT NULL REFERENCES courses(id) ON DELETE CASCADE,
     enrolled_at  TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
     source       VARCHAR(50)  NOT NULL DEFAULT 'self_service',
     PRIMARY KEY (user_sub, course_id)

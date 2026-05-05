@@ -4,6 +4,21 @@
 
 ---
 
+## 2026-05-05 — RDS enrollments FK: ON DELETE CASCADE with course delete
+
+### Completed
+
+- [x] **Schema** — [`infrastructure/database/migrations/001_initial_schema.sql`](infrastructure/database/migrations/001_initial_schema.sql) — `enrollments.course_id` references `courses(id) ON DELETE CASCADE` (same idea as `lessons.course_id`).
+- [x] **Catalog RDS repo** — [`infrastructure/lambda/catalog/services/course_management/rds_repo.py`](infrastructure/lambda/catalog/services/course_management/rds_repo.py) — `delete_course_and_lessons` uses a single `DELETE FROM courses`; enrollments and lessons are removed by FK cascade.
+- [x] **Tests** — [`tests/unit/test_rds_repos.py`](tests/unit/test_rds_repos.py) — `test_delete_course_and_lessons_single_transaction` asserts no separate `DELETE FROM enrollments` SQL.
+
+### Ops
+
+- **Existing** dev/prod RDS: upgrade `enrollments_course_id_fkey` with mutating SQL via **`StreamMyCourse-RdsQuery-<env>`** (see [`RDS_QUERY_RUNBOOK.md`](infrastructure/database/RDS_QUERY_RUNBOOK.md)) — `DROP CONSTRAINT IF EXISTS` then `ADD CONSTRAINT … ON DELETE CASCADE`; `CREATE TABLE IF NOT EXISTS` in `001` does not alter an already-created table.
+- Redeploy **catalog** Lambda after merge so deployed code matches repo.
+
+---
+
 ## 2026-05-04 — Lesson video upload: second presign no longer deletes prior S3 object
 
 ### Completed

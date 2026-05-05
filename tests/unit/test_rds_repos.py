@@ -362,11 +362,11 @@ class TestCourseCatalogRdsRepository:
     def test_delete_course_and_lessons_single_transaction(
         self, repo, fake_conn: FakeConn
     ) -> None:
-        # With ON DELETE CASCADE, a single DELETE on courses suffices.
+        # ON DELETE CASCADE on enrollments + lessons; single DELETE on courses.
         repo.delete_course_and_lessons("course-id")
-        # At least one DELETE was issued against courses.
         joined_sql = " ".join(sql.upper() for sql, _ in fake_conn.cursor_obj.executions)
         assert "DELETE FROM COURSES" in joined_sql
+        assert "DELETE FROM ENROLLMENTS" not in joined_sql
         assert fake_conn.committed >= 1
 
     def test_set_lesson_video_parameterized(
