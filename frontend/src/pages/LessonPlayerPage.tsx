@@ -171,7 +171,7 @@ export default function LessonPlayerPage() {
     <div>
       <div className="border-b border-slate-200/90 bg-slate-100">
         <div className="py-3">
-          <div className="hidden min-h-[1.25rem] sm:block">
+          <div className="hidden min-h-[1.25rem] sm:block sm:pl-3">
             <Link
               to={`/courses/${courseId}`}
               className="text-sm text-gray-600 transition-colors hover:text-gray-900"

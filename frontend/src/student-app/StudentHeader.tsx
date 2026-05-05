@@ -55,7 +55,7 @@ export function StudentHeader() {
     >
       <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-3 sm:px-5 lg:px-10">
         <Link to="/" className="flex min-w-0 items-center gap-2">
-          <span className="truncate text-xl font-bold tracking-tight text-gray-900">StreamMyCourse</span>
+          <span className="truncate text-xl font-bold tracking-tight text-gray-900">Stream My Course</span>
         </Link>
 
         <nav className="hidden items-center gap-8 md:flex" aria-label="Main">

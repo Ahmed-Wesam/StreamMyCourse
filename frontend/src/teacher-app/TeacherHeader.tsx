@@ -51,7 +51,7 @@ export function TeacherHeader() {
     >
       <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-3 sm:px-5 lg:px-10">
         <Link to="/" className="flex min-w-0 items-center gap-2">
-          <span className="truncate text-xl font-bold tracking-tight text-gray-900">StreamMyCourse</span>
+          <span className="truncate text-xl font-bold tracking-tight text-gray-900">Stream My Course</span>
           <span className="hidden sm:inline-flex items-center rounded-full bg-emerald-100 px-2.5 py-0.5 text-xs font-medium text-emerald-800">
             Instructor
           </span>

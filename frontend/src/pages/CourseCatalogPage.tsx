@@ -48,7 +48,7 @@ export default function CourseCatalogPage() {
               </h1>
               <p className="mt-6 max-w-2xl text-lg leading-relaxed text-slate-300 sm:text-xl">
                 Practical video training you can stream anytime. Learn real skills, follow structured lessons,
-                and start free — every course on StreamMyCourse is free during the MVP.
+                and start free — every course on Stream My Course is free during the MVP.
               </p>
               <div className="mt-10 flex flex-wrap gap-4">
                 <a
@@ -63,7 +63,7 @@ export default function CourseCatalogPage() {
                   rel="noopener noreferrer"
                   className="inline-flex items-center justify-center rounded-md border border-slate-500 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-slate-700/80"
                 >
-                  Teach on StreamMyCourse
+                  Teach on Stream My Course
                 </a>
               </div>
             </div>
@@ -143,7 +143,7 @@ export default function CourseCatalogPage() {
       >
           <h2 className="text-2xl font-bold text-slate-900">About</h2>
           <p className="mt-4 max-w-3xl text-slate-600">
-            StreamMyCourse is a lightweight video course platform for instructors who want to publish structured
+            Stream My Course is a lightweight video course platform for instructors who want to publish structured
             lessons and for learners who want a simple browse-to-watch experience — no accounts required in the MVP.
           </p>
       </section>
