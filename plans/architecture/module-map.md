@@ -18,8 +18,7 @@ This document is the “public surface” map for the Python Lambda under `infra
 |------|-------|------|
 | `controller.py` | HTTP adapter | Parses API Gateway events, maps errors to JSON, returns API responses; **`GET /courses/{id}`** / **`GET /courses/{id}/lessons`** are unauthenticated at the edge (**`AuthorizationType: NONE`**) and rely on **`service.list_lessons_public`** + **`get_course_detail_with_enrollment`** for DRAFT hiding |
 | `service.py` | Domain/application | Business rules; depends on **ports** only |
-| `repo.py` | Persistence adapter (DynamoDB) | Legacy DynamoDB access; PK/SK mapping stays here (rollback path while `USE_RDS=false`) |
-| `rds_repo.py` | Persistence adapter (PostgreSQL) | psycopg2-based adapter selected when `USE_RDS=true`; same `CourseCatalogRepositoryPort` |
+| `rds_repo.py` | Persistence adapter (PostgreSQL) | psycopg2-based `CourseCatalogRepositoryPort` implementation |
 | `storage.py` | Infrastructure adapter | S3 presign generation |
 | `ports.py` | Contracts | `Protocol` interfaces for repo/storage |
 | `models.py` | Domain models | Persistence-agnostic domain types |
@@ -33,9 +32,8 @@ This document is the “public surface” map for the Python Lambda under `infra
 |------|-------|------|
 | `controller.py` | HTTP adapter | `/users/me` handler |
 | `service.py` | Domain/application | Depends on `UserProfileRepositoryPort` |
-| `ports.py` | Contracts | `UserProfileRepositoryPort` Protocol (shared by DynamoDB and RDS adapters) |
-| `repo.py` | Persistence adapter (DynamoDB) | `UserProfileRepository` -- rollback path |
-| `rds_repo.py` | Persistence adapter (PostgreSQL) | `UserProfileRdsRepository` -- active under `USE_RDS=true` |
+| `ports.py` | Contracts | `UserProfileRepositoryPort` Protocol |
+| `rds_repo.py` | Persistence adapter (PostgreSQL) | `UserProfileRdsRepository` |
 
 **Cross-context rule:** `auth` must not import `course_management` (enforced in CI).
 
@@ -44,7 +42,6 @@ This document is the “public surface” map for the Python Lambda under `infra
 | File | Layer | Notes |
 |------|-------|------|
 | `ports.py` | Contracts | `EnrollmentRepositoryPort` |
-| `repo.py` | Persistence adapter (DynamoDB) | |
 | `rds_repo.py` | Persistence adapter (PostgreSQL) | Idempotent upserts via `ON CONFLICT DO NOTHING` |
 
 ### `services/progress/` (implemented)
