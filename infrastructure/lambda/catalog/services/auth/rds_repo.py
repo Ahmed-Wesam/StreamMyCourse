@@ -87,6 +87,7 @@ class UserProfileRdsRepository:
                 if commit:
                     conn.commit()
                 return cur
+            conn.rollback()
             raise
 
     def get_profile(self, user_sub: str) -> Optional[Dict[str, Any]]:
