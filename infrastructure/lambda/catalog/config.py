@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass
-from typing import List
+from typing import List, Optional
 
 
 @dataclass(frozen=True)
@@ -27,6 +27,15 @@ class AppConfig:
     log_level: str = "INFO"
     # Optional SQS queue URL for async S3 cleanup after course delete (empty = legacy sync delete)
     media_cleanup_queue_url: str = ""
+    # Cognito configuration for JWT verification on public routes
+    cognito_user_pool_id: str = ""
+    cognito_client_ids: List[str] = None  # type: ignore
+    cognito_region: str = ""
+
+    def __post_init__(self):
+        # Ensure cognito_client_ids is a list (frozen dataclass workaround)
+        if self.cognito_client_ids is None:
+            object.__setattr__(self, "cognito_client_ids", [])
 
 
 _DEFAULT_DB_PORT = 5432
@@ -50,6 +59,31 @@ def _parse_db_port(raw: str) -> int:
         return int(s)
     except ValueError:
         return _DEFAULT_DB_PORT
+
+
+def _parse_cognito_pool_arn(arn: str) -> tuple[str, str]:
+    """Parse Cognito User Pool ARN to extract (region, pool_id).
+
+    ARN format: arn:aws:cognito-idp:{region}:{account}:userpool/{pool_id}
+    Returns ("", "") if the ARN is invalid or empty.
+    """
+    s = (arn or "").strip()
+    if not s:
+        return ("", "")
+    try:
+        # ARN format: arn:aws:cognito-idp:region:account:userpool/pool_id
+        parts = s.split(":")
+        if len(parts) < 6:
+            return ("", "")
+        region = parts[3]
+        # Last part contains userpool/pool_id
+        last_part = parts[-1]
+        if "/" not in last_part:
+            return ("", "")
+        pool_id = last_part.split("/")[-1]
+        return (region, pool_id)
+    except Exception:
+        return ("", "")
 
 
 def load_config() -> AppConfig:
@@ -79,6 +113,13 @@ def load_config() -> AppConfig:
 
     media_cleanup_queue_url = os.environ.get("MEDIA_CLEANUP_QUEUE_URL", "").strip()
 
+    # Cognito configuration for JWT verification on public routes
+    cognito_pool_arn = os.environ.get("COGNITO_USER_POOL_ARN", "").strip()
+    cognito_region, cognito_user_pool_id = _parse_cognito_pool_arn(cognito_pool_arn)
+    # Client IDs can be comma-separated to support multiple app clients (e.g., student + teacher)
+    # For audience validation, we accept any valid client from the pool
+    cognito_client_ids = _split_csv(os.environ.get("COGNITO_CLIENT_ID", ""))
+
     return AppConfig(
         table_name=table_name,
         video_bucket=video_bucket,
@@ -93,4 +134,7 @@ def load_config() -> AppConfig:
         db_secret_arn=db_secret_arn,
         log_level=log_level,
         media_cleanup_queue_url=media_cleanup_queue_url,
+        cognito_user_pool_id=cognito_user_pool_id,
+        cognito_client_ids=cognito_client_ids,
+        cognito_region=cognito_region,
     )

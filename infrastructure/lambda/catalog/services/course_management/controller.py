@@ -4,7 +4,13 @@ import logging
 from typing import Any, Dict, Optional, Tuple
 
 from services.common.errors import Forbidden, HttpError, NotFound, Unauthorized
-from services.common.http import apigw_cognito_claims, apigw_routing_path, json_response, options_response
+from services.common.http import (
+    apigw_cognito_claims,
+    apigw_routing_path,
+    json_response,
+    options_response,
+)
+from services.common.jwt_verify import CognitoJwtConfig
 from services.common.runtime_context import set_upload_kind, update_action
 from services.common.validation import optional_str, parse_json_body, require_str
 from services.course_management import contracts as dto
@@ -34,8 +40,11 @@ def _method_and_path(event: Dict[str, Any]) -> Tuple[str, str]:
     return method, apigw_routing_path(event)
 
 
-def _jwt_claims(event: Dict[str, Any]) -> Dict[str, Any]:
-    return apigw_cognito_claims(event)
+def _jwt_claims(
+    event: Dict[str, Any],
+    jwt_config: Optional[CognitoJwtConfig] = None,
+) -> Dict[str, Any]:
+    return apigw_cognito_claims(event, jwt_config=jwt_config)
 
 
 def _actor_sub(claims: Dict[str, Any]) -> str:
@@ -125,6 +134,7 @@ def handle(
     video_bucket: str,
     auth_svc: UserProfileProvisioner,
     auth_enforced: bool = False,
+    jwt_config: Optional[CognitoJwtConfig] = None,
 ) -> Dict[str, Any]:
     method, raw_path = _method_and_path(event)
     if method == "OPTIONS":
@@ -133,7 +143,7 @@ def handle(
     action, params = _route(method, raw_path)
     # Set action in context for correlation logging
     update_action(action)
-    claims = _jwt_claims(event)
+    claims = _jwt_claims(event, jwt_config=jwt_config)
 
     try:
         if action == "list_courses":
