@@ -94,8 +94,8 @@ jobs:
           bash <(curl -fsSL https://raw.githubusercontent.com/rhysd/actionlint/v1.7.7/scripts/download-actionlint.bash)
           ./actionlint -color
 
-  integ-tests-static:
-    name: Integ tests static checks
+  integration-tests-static:
+    name: Integration tests static checks
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
