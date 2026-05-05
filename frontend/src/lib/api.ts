@@ -51,6 +51,16 @@ export function isPlaybackAuthRequiredError(e: unknown): boolean {
   return false
 }
 
+/** Progress API unavailable: Cognito not configured on API (503 auth_not_configured). */
+export function isProgressAuthNotConfiguredError(e: unknown): boolean {
+  return e instanceof ApiError && e.status === 503 && e.code === 'auth_not_configured'
+}
+
+/** Progress requires RDS but catalog is on DynamoDB-only (503 progress_requires_rds). */
+export function isProgressRdsUnavailableError(e: unknown): boolean {
+  return e instanceof ApiError && e.status === 503 && e.code === 'progress_requires_rds'
+}
+
 function requireApiBaseUrl(): string {
   const base = API_BASE_URL_RAW?.trim()
   if (!base) {
@@ -157,6 +167,32 @@ type Playback = {
   url: string
 }
 
+export type CourseProgressLesson = {
+  lessonId: string
+  completed: boolean
+  completedAt?: string | null
+  lastPositionSec: number
+}
+
+export type CourseProgress = {
+  courseId: string
+  totalReadyLessons: number
+  completedCount: number
+  percentComplete: number
+  lessons: CourseProgressLesson[]
+}
+
+export type LessonProgressUpdateBody = {
+  lastPositionSec?: number
+  markComplete?: boolean
+  markIncomplete?: boolean
+}
+
+export type LessonProgressUpdateResult = {
+  ok: boolean
+  throttled?: boolean
+}
+
 /** Presigned PUT target: lesson video, course thumbnail, or lesson thumbnail image. */
 type UploadUrlTarget =
   | { courseId: string; lessonId: string; uploadKind?: 'lesson' }
@@ -237,6 +273,21 @@ export async function enrollInCourse(courseId: string): Promise<{ courseId: stri
 
 export async function listLessons(courseId: string): Promise<Lesson[]> {
   return httpGet<Lesson[]>(`/courses/${courseId}/lessons`)
+}
+
+export async function getCourseProgress(courseId: string): Promise<CourseProgress> {
+  return httpGet<CourseProgress>(`/courses/${courseId}/progress`)
+}
+
+export async function updateLessonProgress(
+  courseId: string,
+  lessonId: string,
+  body: LessonProgressUpdateBody,
+): Promise<LessonProgressUpdateResult> {
+  return httpPut<LessonProgressUpdateResult>(
+    `/courses/${courseId}/lessons/${lessonId}/progress`,
+    body,
+  )
 }
 
 export async function getPlaybackUrl(courseId: string, lessonId: string): Promise<Playback> {

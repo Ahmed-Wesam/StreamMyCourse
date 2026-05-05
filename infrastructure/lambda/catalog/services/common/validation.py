@@ -48,3 +48,34 @@ def optional_str(body: Dict[str, Any], key: str, default: str = "") -> str:
     val = body.get(key)
     return val.strip() if isinstance(val, str) else default
 
+
+def optional_int(body: Dict[str, Any], key: str) -> int | None:
+    val = body.get(key)
+    if val is None:
+        return None
+    if isinstance(val, bool):
+        raise BadRequest(f"'{key}' must be a number")
+    if isinstance(val, int):
+        return int(val)
+    if isinstance(val, float):
+        if not val.is_integer():
+            raise BadRequest(f"'{key}' must be a whole number")
+        return int(val)
+    if isinstance(val, str):
+        s = val.strip()
+        if not s:
+            return None
+        try:
+            return int(s)
+        except ValueError as e:
+            raise BadRequest(f"'{key}' must be a number") from e
+    raise BadRequest(f"'{key}' must be a number")
+
+
+def optional_bool(body: Dict[str, Any], key: str) -> bool | None:
+    val = body.get(key)
+    if val is None:
+        return None
+    if isinstance(val, bool):
+        return val
+    raise BadRequest(f"'{key}' must be a boolean")

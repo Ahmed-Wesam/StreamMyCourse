@@ -12,6 +12,8 @@ const api = vi.hoisted(() => ({
   getCourse: vi.fn(),
   listLessons: vi.fn(),
   getPlaybackUrl: vi.fn(),
+  getCourseProgress: vi.fn(),
+  updateLessonProgress: vi.fn(),
   enrollInCourse: vi.fn(),
 }))
 
@@ -23,6 +25,10 @@ vi.mock('../lib/api', async (importOriginal) => {
     listLessons: (...args: unknown[]) => api.listLessons(...args) as ReturnType<typeof mod.listLessons>,
     getPlaybackUrl: (...args: unknown[]) =>
       api.getPlaybackUrl(...args) as ReturnType<typeof mod.getPlaybackUrl>,
+    getCourseProgress: (...args: unknown[]) =>
+      api.getCourseProgress(...args) as ReturnType<typeof mod.getCourseProgress>,
+    updateLessonProgress: (...args: unknown[]) =>
+      api.updateLessonProgress(...args) as ReturnType<typeof mod.updateLessonProgress>,
     enrollInCourse: (...args: unknown[]) =>
       api.enrollInCourse(...args) as ReturnType<typeof mod.enrollInCourse>,
   }
@@ -43,6 +49,8 @@ describe('LessonPlayerPage', () => {
     api.getCourse.mockReset()
     api.listLessons.mockReset()
     api.getPlaybackUrl.mockReset()
+    api.getCourseProgress.mockReset()
+    api.updateLessonProgress.mockReset()
     api.enrollInCourse.mockReset()
 
     api.getCourse.mockResolvedValue({
@@ -55,6 +63,14 @@ describe('LessonPlayerPage', () => {
       { id: 'l1', title: 'Lesson 1', order: 1, videoStatus: 'ready' },
     ])
     api.getPlaybackUrl.mockResolvedValue({ url: 'https://example.com/lesson.mp4' })
+    api.getCourseProgress.mockResolvedValue({
+      courseId: 'c1',
+      totalReadyLessons: 1,
+      completedCount: 0,
+      percentComplete: 0,
+      lessons: [{ lessonId: 'l1', completed: false, completedAt: null, lastPositionSec: 0 }],
+    })
+    api.updateLessonProgress.mockResolvedValue({ ok: true })
   })
 
   afterEach(() => {

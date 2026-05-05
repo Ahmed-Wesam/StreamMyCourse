@@ -51,3 +51,12 @@ def test_split_real_migration_file_contains_expected_ddl(schema_apply):
     assert "CREATE TABLE IF NOT EXISTS lessons" in joined
     assert "CREATE TABLE IF NOT EXISTS enrollments" in joined
     assert len(parts) >= 8
+
+
+def test_lesson_progress_migration_file_contains_expected_ddl(schema_apply):
+    path = _ROOT / "infrastructure" / "database" / "migrations" / "002_lesson_progress.sql"
+    sql = path.read_text(encoding="utf-8")
+    parts = schema_apply._split_sql_statements(sql)
+    joined = "\n".join(parts)
+    assert "CREATE TABLE IF NOT EXISTS lesson_progress" in joined
+    assert "idx_lesson_progress_course_user" in joined

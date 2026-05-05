@@ -14,6 +14,7 @@ from services.common.jwt_verify import CognitoJwtConfig
 from services.common.logging_setup import configure_logging
 from services.common.runtime_context import bind_from_lambda_event, clear_request_context, set_request_path
 from services.course_management.controller import handle as course_management_handle
+from services.progress.controller import handle as progress_handle
 
 logger = logging.getLogger(__name__)
 
@@ -32,6 +33,18 @@ def _build_jwt_config(cfg) -> Optional[CognitoJwtConfig]:
     return None
 
 
+def _is_progress_request(method: str, parts: list[str]) -> bool:
+    if len(parts) == 3 and parts[0] == "courses" and parts[2] == "progress" and method == "GET":
+        return True
+    if (
+        len(parts) == 6
+        and parts[0] == "courses"
+        and parts[2] == "lessons"
+        and parts[4] == "progress"
+        and method == "PUT"
+    ):
+        return True
+    return False
 def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     start_time = time.perf_counter()
     response: Dict[str, Any] = {}
@@ -68,7 +81,7 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 None,
             )
         else:
-            cfg, service, auth_service = lambda_bootstrap()
+            cfg, service, auth_service, progress_service = lambda_bootstrap()
 
             headers = event.get("headers") or {}
             req_origin = headers.get("origin") or headers.get("Origin")
@@ -98,6 +111,24 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                         auth_enforced=cfg.cognito_auth_enabled,
                         jwt_config=jwt_config,
                     )
+                elif _is_progress_request(method, parts):
+                    if progress_service is None:
+                        response = json_response(
+                            503,
+                            {
+                                "message": "Lesson progress requires PostgreSQL (USE_RDS=true).",
+                                "code": "progress_requires_rds",
+                            },
+                            origin,
+                        )
+                    else:
+                        response = progress_handle(
+                            event,
+                            origin=origin,
+                            progress_svc=progress_service,
+                            auth_enforced=cfg.cognito_auth_enabled,
+                            jwt_config=jwt_config,
+                        )
                 else:
                     response = course_management_handle(
                         event,

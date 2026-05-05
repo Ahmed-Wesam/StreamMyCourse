@@ -31,6 +31,9 @@ class AppConfig:
     cognito_user_pool_id: str = ""
     cognito_client_ids: List[str] = None  # type: ignore
     cognito_region: str = ""
+    progress_complete_ratio: float = 0.92
+    progress_position_slack_sec: int = 30
+    progress_min_put_interval_sec: int = 0
 
     def __post_init__(self):
         # Ensure cognito_client_ids is a list (frozen dataclass workaround)
@@ -59,6 +62,30 @@ def _parse_db_port(raw: str) -> int:
         return int(s)
     except ValueError:
         return _DEFAULT_DB_PORT
+
+
+def _parse_progress_ratio(raw: str) -> float:
+    s = (raw or "").strip()
+    if not s:
+        return 0.92
+    try:
+        v = float(s)
+    except ValueError:
+        return 0.92
+    if v <= 0 or v > 1.0:
+        return 0.92
+    return v
+
+
+def _parse_non_negative_int(raw: str, *, default: int) -> int:
+    s = (raw or "").strip()
+    if not s:
+        return default
+    try:
+        v = int(s)
+    except ValueError:
+        return default
+    return max(0, v)
 
 
 def _parse_cognito_pool_arn(arn: str) -> tuple[str, str]:
@@ -120,6 +147,14 @@ def load_config() -> AppConfig:
     # For audience validation, we accept any valid client from the pool
     cognito_client_ids = _split_csv(os.environ.get("COGNITO_CLIENT_ID", ""))
 
+    progress_complete_ratio = _parse_progress_ratio(os.environ.get("PROGRESS_COMPLETE_RATIO", ""))
+    progress_position_slack_sec = _parse_non_negative_int(
+        os.environ.get("PROGRESS_POSITION_SLACK_SEC", ""), default=30
+    )
+    progress_min_put_interval_sec = _parse_non_negative_int(
+        os.environ.get("PROGRESS_MIN_PUT_INTERVAL_SEC", ""), default=0
+    )
+
     return AppConfig(
         table_name=table_name,
         video_bucket=video_bucket,
@@ -137,4 +172,7 @@ def load_config() -> AppConfig:
         cognito_user_pool_id=cognito_user_pool_id,
         cognito_client_ids=cognito_client_ids,
         cognito_region=cognito_region,
+        progress_complete_ratio=progress_complete_ratio,
+        progress_position_slack_sec=progress_position_slack_sec,
+        progress_min_put_interval_sec=progress_min_put_interval_sec,
     )

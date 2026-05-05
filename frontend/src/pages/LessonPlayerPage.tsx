@@ -1,15 +1,22 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import {
   enrollInCourse,
   getCourse,
+  getCourseProgress,
   getPlaybackUrl,
   isEnrollmentRequiredError,
   isPlaybackAuthRequiredError,
+  isProgressAuthNotConfiguredError,
+  isProgressRdsUnavailableError,
   listLessons,
+  updateLessonProgress,
   type Course,
+  type CourseProgress,
   type Lesson,
 } from '../lib/api'
+
+const PROGRESS_SAVE_INTERVAL_MS = 12000
 
 function LessonItem({
   lesson,
@@ -17,12 +24,14 @@ function LessonItem({
   active,
   index,
   linkDisabled,
+  completed,
 }: {
   lesson: Lesson
   courseId: string
   active: boolean
   index: number
   linkDisabled: boolean
+  completed?: boolean
 }) {
   const rowClass = `group flex items-center px-4 py-3 transition-colors ${
     active
@@ -50,17 +59,22 @@ function LessonItem({
           index + 1
         )}
       </div>
-      <div className="ml-3 flex-1">
+      <div className="ml-3 flex-1 min-w-0">
         <h4 className={`text-sm font-medium ${active ? 'text-blue-900' : 'text-gray-900'}`}>
           {lesson.title}
         </h4>
         <p className="text-xs text-gray-500">Lesson {lesson.order}</p>
       </div>
-      {active && !linkDisabled && (
-        <div className="text-xs text-blue-600 font-medium">Playing</div>
+      {completed && !linkDisabled && (
+        <div className="text-xs font-medium text-emerald-700 shrink-0" aria-label="Completed">
+          Done
+        </div>
+      )}
+      {active && !linkDisabled && !completed && (
+        <div className="text-xs text-blue-600 font-medium shrink-0">Playing</div>
       )}
       {linkDisabled && (
-        <div className="text-xs font-medium text-amber-700">Locked</div>
+        <div className="text-xs font-medium text-amber-700 shrink-0">Locked</div>
       )}
     </>
   )
@@ -95,8 +109,38 @@ export default function LessonPlayerPage() {
   const [needsEnrollment, setNeedsEnrollment] = useState(false)
   const [needsSignIn, setNeedsSignIn] = useState(false)
   const [enrolling, setEnrolling] = useState(false)
+  const [progress, setProgress] = useState<CourseProgress | null>(null)
+  const [progressDisabled, setProgressDisabled] = useState(false)
+  const [markingIncomplete, setMarkingIncomplete] = useState(false)
+
+  const videoRef = useRef<HTMLVideoElement | null>(null)
+  const lastProgressSaveAt = useRef(0)
+  const resumeAppliedForLesson = useRef<string | null>(null)
 
   const playbackNavLocked = needsEnrollment || needsSignIn
+
+  const progressByLessonId = useMemo(() => {
+    const m = new Map<string, { completed: boolean; lastPositionSec: number }>()
+    if (!progress?.lessons) return m
+    for (const row of progress.lessons) {
+      m.set(row.lessonId, { completed: row.completed, lastPositionSec: row.lastPositionSec })
+    }
+    return m
+  }, [progress])
+
+  const sendProgress = useCallback(
+    async (body: { lastPositionSec?: number; markComplete?: boolean; markIncomplete?: boolean }) => {
+      if (progressDisabled || !courseId || !lessonId) return
+      try {
+        await updateLessonProgress(courseId, lessonId, body)
+      } catch (e) {
+        if (isProgressAuthNotConfiguredError(e) || isProgressRdsUnavailableError(e)) {
+          setProgressDisabled(true)
+        }
+      }
+    },
+    [courseId, lessonId, progressDisabled],
+  )
 
   useEffect(() => {
     let cancelled = false
@@ -105,6 +149,8 @@ export default function LessonPlayerPage() {
       setNeedsEnrollment(false)
       setNeedsSignIn(false)
       setSrc(null)
+      setProgress(null)
+      setProgressDisabled(false)
       try {
         const c = await getCourse(courseId)
         if (cancelled) return
@@ -116,6 +162,14 @@ export default function LessonPlayerPage() {
           const pb = await getPlaybackUrl(courseId, lessonId)
           if (cancelled) return
           setSrc(pb.url)
+          try {
+            const p = await getCourseProgress(courseId)
+            if (!cancelled) setProgress(p)
+          } catch (pe) {
+            if (isProgressAuthNotConfiguredError(pe) || isProgressRdsUnavailableError(pe)) {
+              if (!cancelled) setProgressDisabled(true)
+            }
+          }
         } catch (inner) {
           if (cancelled) return
           if (isEnrollmentRequiredError(inner)) {
@@ -145,6 +199,70 @@ export default function LessonPlayerPage() {
     }
   }, [courseId, lessonId])
 
+  useEffect(() => {
+    resumeAppliedForLesson.current = null
+    lastProgressSaveAt.current = 0
+  }, [lessonId])
+
+  useEffect(() => {
+    const el = videoRef.current
+    if (!el || !src || progressDisabled || playbackNavLocked) return
+
+    const onLoaded = () => {
+      if (resumeAppliedForLesson.current === lessonId) return
+      const row = progressByLessonId.get(lessonId)
+      if (row && !row.completed && row.lastPositionSec > 0) {
+        try {
+          el.currentTime = row.lastPositionSec
+        } catch {
+          /* seek may fail before metadata */
+        }
+      }
+      resumeAppliedForLesson.current = lessonId
+    }
+
+    const flushPosition = () => {
+      if (!Number.isFinite(el.currentTime) || el.currentTime < 0) return
+      const now = Date.now()
+      if (now - lastProgressSaveAt.current < PROGRESS_SAVE_INTERVAL_MS) return
+      lastProgressSaveAt.current = now
+      void sendProgress({ lastPositionSec: Math.floor(el.currentTime) })
+    }
+
+    const onTimeUpdate = () => {
+      flushPosition()
+    }
+
+    const onPause = () => {
+      flushPosition()
+    }
+
+    const onEnded = () => {
+      void sendProgress({
+        lastPositionSec: Math.floor(el.duration || el.currentTime || 0),
+        markComplete: true,
+      })
+    }
+
+    el.addEventListener('loadedmetadata', onLoaded)
+    el.addEventListener('timeupdate', onTimeUpdate)
+    el.addEventListener('pause', onPause)
+    el.addEventListener('ended', onEnded)
+    return () => {
+      el.removeEventListener('loadedmetadata', onLoaded)
+      el.removeEventListener('timeupdate', onTimeUpdate)
+      el.removeEventListener('pause', onPause)
+      el.removeEventListener('ended', onEnded)
+    }
+  }, [
+    src,
+    lessonId,
+    progressDisabled,
+    playbackNavLocked,
+    progressByLessonId,
+    sendProgress,
+  ])
+
   const activeLessonTitle = useMemo(() => {
     const l = lessons.find((x) => x.id === lessonId)
     return l?.title ?? 'Lesson'
@@ -168,6 +286,26 @@ export default function LessonPlayerPage() {
     return null
   }, [lessons, activeLessonIndex])
 
+  const currentLessonCompleted = progressByLessonId.get(lessonId)?.completed ?? false
+
+  const handleMarkIncomplete = () => {
+    if (progressDisabled || playbackNavLocked) return
+    setMarkingIncomplete(true)
+    void (async () => {
+      try {
+        await updateLessonProgress(courseId, lessonId, { markIncomplete: true })
+        const p = await getCourseProgress(courseId)
+        setProgress(p)
+      } catch (e) {
+        if (isProgressAuthNotConfiguredError(e) || isProgressRdsUnavailableError(e)) {
+          setProgressDisabled(true)
+        }
+      } finally {
+        setMarkingIncomplete(false)
+      }
+    })()
+  }
+
   return (
     <div>
       <div className="border-b border-slate-200/90 bg-slate-100">
@@ -185,7 +323,6 @@ export default function LessonPlayerPage() {
         </div>
       </div>
 
-      {/* Main Content */}
       <main className="py-6">
         {needsSignIn && (
           <div className="mb-6 rounded-lg border border-sky-200 bg-sky-50 p-4">
@@ -237,6 +374,15 @@ export default function LessonPlayerPage() {
                       ])
                       setLessons([...l].sort((a, b) => a.order - b.order))
                       setSrc(pb.url)
+                      try {
+                        const p = await getCourseProgress(courseId)
+                        setProgress(p)
+                        setProgressDisabled(false)
+                      } catch (pe) {
+                        if (isProgressAuthNotConfiguredError(pe) || isProgressRdsUnavailableError(pe)) {
+                          setProgressDisabled(true)
+                        }
+                      }
                     } catch (err) {
                       if (isPlaybackAuthRequiredError(err)) {
                         setNeedsSignIn(true)
@@ -286,13 +432,13 @@ export default function LessonPlayerPage() {
         )}
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Video Player */}
           <div className="lg:col-span-2 space-y-4">
             {loading ? (
               <VideoSkeleton />
             ) : (
               <div className="rounded-xl overflow-hidden shadow-lg bg-black">
                 <video
+                  ref={videoRef}
                   controls
                   playsInline
                   preload="metadata"
@@ -303,14 +449,40 @@ export default function LessonPlayerPage() {
               </div>
             )}
 
-            {/* Lesson Info */}
             <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
               <h1 className="text-2xl font-bold text-gray-900">{activeLessonTitle}</h1>
               <p className="mt-2 text-gray-600">
                 {course?.description}
               </p>
 
-              {/* Navigation Buttons */}
+              {progress && !progressDisabled && !playbackNavLocked && progress.totalReadyLessons > 0 && (
+                <div className="mt-4">
+                  <div className="flex items-center justify-between text-sm text-gray-600">
+                    <span>Course progress</span>
+                    <span className="font-medium text-gray-900">{progress.percentComplete}%</span>
+                  </div>
+                  <div className="mt-2 h-2 w-full overflow-hidden rounded-full bg-gray-100">
+                    <div
+                      className="h-full rounded-full bg-emerald-500 transition-all"
+                      style={{ width: `${Math.min(100, Math.max(0, progress.percentComplete))}%` }}
+                    />
+                  </div>
+                </div>
+              )}
+
+              {currentLessonCompleted && !progressDisabled && !playbackNavLocked && (
+                <div className="mt-4">
+                  <button
+                    type="button"
+                    disabled={markingIncomplete}
+                    onClick={handleMarkIncomplete}
+                    className="rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-sm font-medium text-gray-800 hover:bg-gray-50 disabled:opacity-60"
+                  >
+                    {markingIncomplete ? 'Updating…' : 'Mark lesson as not done'}
+                  </button>
+                </div>
+              )}
+
               <div className="mt-6 flex items-center justify-between">
                 {prevLesson ? (
                   playbackNavLocked ? (
@@ -376,7 +548,6 @@ export default function LessonPlayerPage() {
             </div>
           </div>
 
-          {/* Lessons Sidebar */}
           <aside className="lg:col-span-1">
             <div className="sticky top-28 overflow-hidden rounded-xl border border-gray-100 bg-white shadow-sm">
               <div className="px-4 py-4 border-b border-gray-100">
@@ -394,6 +565,7 @@ export default function LessonPlayerPage() {
                     active={lesson.id === lessonId}
                     index={index}
                     linkDisabled={playbackNavLocked}
+                    completed={progressByLessonId.get(lesson.id)?.completed}
                   />
                 ))}
               </div>

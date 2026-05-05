@@ -1,6 +1,6 @@
 # StreamMyCourse — MVP Design Document
 
-> **Status:** The **MVP defined in this document is shipped** and running in dev/prod. Further product scope, Phase 2 work, and the **engineering quality bar** (clean, maintainable code—prefer supported APIs over brittle UI hacks) are tracked in **[roadmap.md](./roadmap.md)** and **[ImplementationHistory.md](./ImplementationHistory.md)**. **Last updated:** 2026-05-04 · **Stack:** React 19 + AWS (Serverless)
+> **Status:** The **MVP defined in this document is shipped** and running in dev/prod. Further product scope, Phase 2 work, and the **engineering quality bar** (clean, maintainable code—prefer supported APIs over brittle UI hacks) are tracked in **[roadmap.md](./roadmap.md)** and **[ImplementationHistory.md](./ImplementationHistory.md)**. **Last updated:** 2026-05-05 · **Stack:** React 19 + AWS (Serverless)
 
 A free video course platform where instructors upload content and students stream it. No payments in MVP — all courses are free.
 
@@ -24,8 +24,9 @@ A free video course platform where instructors upload content and students strea
 | FR-4 | Minimal backend API (courses/lessons/playback URL) | Required |
 | FR-5 | Instructor flows: create/edit course, lessons, presigned upload, mark video ready, publish (**optional** Cognito auth; can run open for demos) | Required |
 | FR-6 | Catalog persistence: **deployed dev/prod** use **RDS PostgreSQL** (`USE_RDS=true` with `DB_*` + Secrets Manager). **DynamoDB** (single-table + `TABLE_NAME`) exists in code for **local / rollback** only — **deprecated and unused** in managed dev and prod. Lambda returns **503** `catalog_unconfigured` when neither mode is wired | Required |
+| FR-7 | **Lesson progress (RDS):** per-user resume position and completion for **video-ready** lessons; dedicated read API; server sets completion from watch ratio or explicit mark; `markIncomplete` clears completion | Required |
 
-**Out of scope:** Payments, enrollments, progress tracking, transcoding, DRM.
+**Out of scope:** Payments, transcoding, DRM. **Enrollments** and **basic progress** are in scope for the student experience (see FR-7 and §7).
 
 **In scope:** Instructor upload via presigned S3 URLs; draft/publish workflow backed by **PostgreSQL** in deployed environments (see §6).
 
@@ -44,7 +45,7 @@ React (Vite + TS + Tailwind)
 
 **Current Implementation:**
 - Lambda package under `infrastructure/lambda/catalog/` (handler `index.lambda_handler`; not inline in YAML)
-- **Modular layout (single deploy unit):** `services/course_management/` (controller → service → repo/storage), `services/common/` (HTTP/CORS helpers, validation, errors), `services/auth/` (user profile `GET /users/me`); composition in `bootstrap.py`; entry in `index.py`
+- **Modular layout (single deploy unit):** `services/course_management/` (controller → service → repo/storage), `services/common/` (HTTP/CORS helpers, validation, errors), `services/auth/` (user profile `GET /users/me`), `services/progress/` (lesson progress when `USE_RDS=true`); composition in `bootstrap.py`; entry in `index.py`
 - **User profile rows (RDS):** `users` is upserted on every successful Cognito sign-in by a **PostAuthentication** Lambda shipped with [`auth-stack.yaml`](infrastructure/templates/auth-stack.yaml) when `EnableUserProfileSync` and RDS parameters are set (CI passes the RDS stack + S3 zip). The same row is also created/updated lazily via **`GET /users/me`**. **POST /courses/{id}/enroll** always calls `get_or_create_profile` first so missing `users` rows cannot break the `enrollments` FK.
 - **RDS PostgreSQL** catalog in **deployed dev/prod** (`USE_RDS=true`); VPC-attached Lambda with `DB_HOST` / `DB_NAME` / `DB_PORT` / `DB_SECRET_ARN` from the api stack (see §10). **DynamoDB** single-table path (`TABLE_NAME`, `USE_RDS=false`) remains for **local tooling or rollback** — **not** used in managed dev/prod
 - S3 bucket CORS configured for browser PUT uploads
@@ -95,7 +96,7 @@ Manual upload (local) → S3 (MP4) → Browser <video> (presigned GET; Range-cap
 
 ## 6. Data (MVP)
 
-**RDS PostgreSQL (deployed dev/prod):** Managed **dev** and **prod** APIs use **only** the relational path (`USE_RDS=true`). Schema: [`001_initial_schema.sql`](infrastructure/database/migrations/001_initial_schema.sql) — tables `courses`, `lessons`, `enrollments`, `users` (see [ADR-0008](plans/architecture/adr-0008-dynamodb-to-rds-migration.md)). **DynamoDB catalog tables are deprecated** in these environments and are **not** used for application reads/writes.
+**RDS PostgreSQL (deployed dev/prod):** Managed **dev** and **prod** APIs use **only** the relational path (`USE_RDS=true`). Schema: [`001_initial_schema.sql`](infrastructure/database/migrations/001_initial_schema.sql) — tables `courses`, `lessons`, `enrollments`, `users`; [`002_lesson_progress.sql`](infrastructure/database/migrations/002_lesson_progress.sql) — `lesson_progress` (per `user_sub` + `lesson_id`; see [ADR-0009](plans/architecture/adr-0009-lesson-progress-rds.md)). **DynamoDB catalog tables are deprecated** in these environments and are **not** used for application reads/writes.
 
 **DynamoDB (legacy — rollback / local only):** Single table `StreamMyCourse-Catalog-{environment}` when `USE_RDS=false` and `TABLE_NAME` is set:
 
@@ -103,7 +104,7 @@ Manual upload (local) → S3 (MP4) → Browser <video> (presigned GET; Range-cap
 - `PK = COURSE#<id>`, `SK = LESSON#<lessonId>` — lesson id, title, `order`, `videoKey`, `videoStatus` (pending / ready), duration. `lessonId` (UUID) is the row identity; `order` is a service-owned attribute (display position, compacted to `1..N` on delete). Note: `order` is a DynamoDB reserved word; updates must use `ExpressionAttributeNames` (e.g. `#order`).
 - `PK = USER#<cognitoSub>`, `SK = ENROLLMENT#<courseId>` — self-service course access for lesson list + playback when the API enforces Cognito (`enrolledAt`, optional `source`).
 
-**Misconfiguration:** when neither persistence mode is wired (`USE_RDS=false` and no `TABLE_NAME`, or RDS env incomplete so the catalog cannot start), catalog routes return **503** with `code: catalog_unconfigured` (OPTIONS still returns CORS preflight). The handler error text may still mention `TABLE_NAME`; operators should treat **RDS env** as required for deployed stacks. When `ALLOWED_ORIGINS` is unset or parses to an empty allowlist, the handler returns **503** with `code: cors_misconfigured` and **no** `Access-Control-Allow-*` headers (fail-secure); set `ALLOWED_ORIGINS=*` only for deliberate local/dev tooling. Local UI must call a deployed API or a stack with persistence and CORS env set.
+**Misconfiguration:** when neither persistence mode is wired (`USE_RDS=false` and no `TABLE_NAME`, or RDS env incomplete so the catalog cannot start), catalog routes return **503** with `code: catalog_unconfigured` (OPTIONS still returns CORS preflight). The handler error text may still mention `TABLE_NAME`; operators should treat **RDS env** as required for deployed stacks. **Lesson progress** routes return **503** `progress_requires_rds` when the catalog is wired for DynamoDB only (`USE_RDS=false`). When `ALLOWED_ORIGINS` is unset or parses to an empty allowlist, the handler returns **503** with `code: cors_misconfigured` and **no** `Access-Control-Allow-*` headers (fail-secure); set `ALLOWED_ORIGINS=*` only for deliberate local/dev tooling. Local UI must call a deployed API or a stack with persistence and CORS env set.
 
 ---
 
@@ -129,6 +130,12 @@ POST   /courses/{id}/lessons            // Create lesson (+ presign flow via upl
 PUT    /courses/{id}/lessons/{lid}      // Update lesson title
 DELETE /courses/{id}/lessons/{lid}      // Delete lesson
 PUT    /courses/{id}/lessons/{lid}/video-ready   // Mark uploaded video ready (MVP)
+```
+
+### Progress (student; RDS + Cognito when enforced)
+```
+GET    /courses/{id}/progress                    // Aggregated progress for video-ready lessons only; Cognito when enforced; 503 auth_not_configured when Cognito authorizer absent (same contract as GET /users/me)
+PUT    /courses/{id}/lessons/{lid}/progress      // Body: optional lastPositionSec (int), optional markComplete (bool), optional markIncomplete (bool); server sets completed from ratio or explicit markComplete; markIncomplete clears completion
 ```
 
 ### Playback

@@ -294,6 +294,9 @@ Resources:
           MEDIA_CLEANUP_QUEUE_URL: !Ref MediaCleanupQueueUrl
           COGNITO_USER_POOL_ARN: !Ref CognitoUserPoolArn
           COGNITO_CLIENT_ID: !Ref CognitoClientId
+          PROGRESS_COMPLETE_RATIO: '0.92'
+          PROGRESS_POSITION_SLACK_SEC: '30'
+          PROGRESS_MIN_PUT_INTERVAL_SEC: '0'
       Tags:
         - Key: Project
           Value: StreamMyCourse
@@ -403,6 +406,22 @@ Resources:
       RestApiId: !Ref CatalogApi
       ParentId: !Ref LessonIdResource
       PathPart: video-ready
+
+  # API Gateway Resource: /courses/{courseId}/progress
+  CourseProgressResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref CatalogApi
+      ParentId: !Ref CourseIdResource
+      PathPart: progress
+
+  # API Gateway Resource: /courses/{courseId}/lessons/{lessonId}/progress
+  LessonProgressResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref CatalogApi
+      ParentId: !Ref LessonIdResource
+      PathPart: progress
 
   # API Gateway Resource: /playback
   PlaybackResource:
@@ -608,6 +627,33 @@ Resources:
         Type: AWS_PROXY
         Uri: !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${CatalogLambda.Arn}/invocations'
 
+  # API Gateway Method: GET /courses/{courseId}/progress
+  CourseProgressGetMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref CatalogApi
+      ResourceId: !Ref CourseProgressResource
+      HttpMethod: GET
+      AuthorizationType: !If [HasCognitoAuthorizer, COGNITO_USER_POOLS, NONE]
+      AuthorizerId: !If [HasCognitoAuthorizer, !Ref CognitoAuthorizer, !Ref AWS::NoValue]
+      Integration:
+        IntegrationHttpMethod: POST
+        Type: AWS_PROXY
+        Uri: !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${CatalogLambda.Arn}/invocations'
+
+  # API Gateway Method: OPTIONS /courses/{courseId}/progress (CORS preflight)
+  CourseProgressOptionsMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref CatalogApi
+      ResourceId: !Ref CourseProgressResource
+      HttpMethod: OPTIONS
+      AuthorizationType: NONE
+      Integration:
+        IntegrationHttpMethod: POST
+        Type: AWS_PROXY
+        Uri: !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${CatalogLambda.Arn}/invocations'
+
   # API Gateway Resource: /courses/{courseId}/publish
   CoursePublishResource:
     Type: AWS::ApiGateway::Resource
@@ -779,6 +825,33 @@ Resources:
     Properties:
       RestApiId: !Ref CatalogApi
       ResourceId: !Ref LessonVideoReadyResource
+      HttpMethod: OPTIONS
+      AuthorizationType: NONE
+      Integration:
+        IntegrationHttpMethod: POST
+        Type: AWS_PROXY
+        Uri: !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${CatalogLambda.Arn}/invocations'
+
+  # API Gateway Method: PUT /courses/{courseId}/lessons/{lessonId}/progress
+  LessonProgressPutMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref CatalogApi
+      ResourceId: !Ref LessonProgressResource
+      HttpMethod: PUT
+      AuthorizationType: !If [HasCognitoAuthorizer, COGNITO_USER_POOLS, NONE]
+      AuthorizerId: !If [HasCognitoAuthorizer, !Ref CognitoAuthorizer, !Ref AWS::NoValue]
+      Integration:
+        IntegrationHttpMethod: POST
+        Type: AWS_PROXY
+        Uri: !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${CatalogLambda.Arn}/invocations'
+
+  # API Gateway Method: OPTIONS /courses/{courseId}/lessons/{lessonId}/progress (CORS preflight)
+  LessonProgressOptionsMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref CatalogApi
+      ResourceId: !Ref LessonProgressResource
       HttpMethod: OPTIONS
       AuthorizationType: NONE
       Integration:

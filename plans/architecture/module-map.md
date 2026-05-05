@@ -47,6 +47,16 @@ This document is the “public surface” map for the Python Lambda under `infra
 | `repo.py` | Persistence adapter (DynamoDB) | |
 | `rds_repo.py` | Persistence adapter (PostgreSQL) | Idempotent upserts via `ON CONFLICT DO NOTHING` |
 
+### `services/progress/` (implemented; `USE_RDS=true` only)
+
+| File | Layer | Notes |
+|------|-------|-------|
+| `controller.py` | HTTP adapter | `GET /courses/{id}/progress`, `PUT /courses/{id}/lessons/{lid}/progress` |
+| `service.py` | Domain/application | Enrollment/staff checks; server-authoritative completion |
+| `rds_repo.py` | Persistence adapter (PostgreSQL) | `lesson_progress` table |
+| `ports.py` | Contracts | `LessonProgressRepositoryPort` |
+| `contracts.py` | API DTOs | TypedDicts for JSON shapes |
+
 ### `services/common/` (shared kernel)
 
 Cross-cutting utilities shared by multiple contexts:

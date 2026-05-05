@@ -35,6 +35,8 @@ from services.course_management.storage import CourseMediaStorage
 from services.enrollment.ports import EnrollmentRepositoryPort
 from services.enrollment.rds_repo import EnrollmentRdsRepository
 from services.enrollment.repo import EnrollmentRepository
+from services.progress.rds_repo import LessonProgressRdsRepository
+from services.progress.service import LessonProgressService
 
 
 @dataclass(frozen=True)
@@ -42,6 +44,7 @@ class AwsDeps:
     cfg: AppConfig
     service: CourseManagementService
     auth_service: UserProfileService
+    progress_service: Optional[LessonProgressService]
 
 
 _cached: Dict[str, Any] = {}
@@ -135,6 +138,15 @@ def _build_enrollment_repo(
     return EnrollmentRepository(cfg.table_name)
 
 
+def _build_progress_repo(
+    cfg: AppConfig, conn_factory: Optional[ConnectionFactory]
+) -> Optional[LessonProgressRdsRepository]:
+    if not cfg.use_rds:
+        return None
+    assert conn_factory is not None
+    return LessonProgressRdsRepository(conn_factory)
+
+
 def _build_auth_repo(
     cfg: AppConfig, conn_factory: Optional[ConnectionFactory]
 ) -> UserProfileRepositoryPort:
@@ -160,6 +172,7 @@ def build_aws_deps(cfg: AppConfig) -> AwsDeps:
     course_repo = _build_course_repo(cfg, conn_factory)
     enrollment_repo = _build_enrollment_repo(cfg, conn_factory)
     auth_repo = _build_auth_repo(cfg, conn_factory)
+    progress_repo = _build_progress_repo(cfg, conn_factory)
 
     storage = CourseMediaStorage(cfg.video_bucket) if cfg.video_bucket else None
     service = CourseManagementService(
@@ -169,7 +182,17 @@ def build_aws_deps(cfg: AppConfig) -> AwsDeps:
         media_cleanup_queue_url=cfg.media_cleanup_queue_url,
     )
     auth_service = UserProfileService(auth_repo)
-    return AwsDeps(cfg=cfg, service=service, auth_service=auth_service)
+    progress_service: Optional[LessonProgressService] = None
+    if progress_repo is not None:
+        progress_service = LessonProgressService(
+            course_repo,
+            enrollment_repo,
+            progress_repo,
+            complete_ratio=cfg.progress_complete_ratio,
+            position_slack_sec=cfg.progress_position_slack_sec,
+            min_put_interval_sec=cfg.progress_min_put_interval_sec,
+        )
+    return AwsDeps(cfg=cfg, service=service, auth_service=auth_service, progress_service=progress_service)
 
 
 def warm_aws_deps_if_needed(cfg: AppConfig) -> None:
@@ -179,21 +202,26 @@ def warm_aws_deps_if_needed(cfg: AppConfig) -> None:
         _cached["aws"] = build_aws_deps(cfg)
 
 
-def lambda_bootstrap() -> Tuple[AppConfig, Optional[CourseManagementService], Optional[UserProfileService]]:
+def lambda_bootstrap() -> Tuple[
+    AppConfig,
+    Optional[CourseManagementService],
+    Optional[UserProfileService],
+    Optional[LessonProgressService],
+]:
     """
     Composition root: load config and construct dependencies once.
     When neither USE_RDS nor TABLE_NAME is set the catalog cannot be wired, so
-    ``(cfg, None, None)`` is returned and the handler responds with a
+    ``(cfg, None, None, None)`` is returned and the handler responds with a
     configuration error.
     """
     cfg = load_config()
     if not cfg.use_rds and not cfg.table_name:
-        return cfg, None, None
+        return cfg, None, None, None
 
     existing = get_cached_aws_deps()
     if existing is not None:
-        return existing.cfg, existing.service, existing.auth_service
+        return existing.cfg, existing.service, existing.auth_service, existing.progress_service
 
     deps = build_aws_deps(cfg)
     _cached["aws"] = deps
-    return deps.cfg, deps.service, deps.auth_service
+    return deps.cfg, deps.service, deps.auth_service, deps.progress_service

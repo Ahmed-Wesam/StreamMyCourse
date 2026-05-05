@@ -52,11 +52,12 @@ def mocked_aws(monkeypatch: pytest.MonkeyPatch):
 
 class TestLambdaBootstrap:
     def test_returns_none_service_when_table_name_unset(self) -> None:
-        cfg, service, auth_service = bootstrap_mod.lambda_bootstrap()
+        cfg, service, auth_service, progress_service = bootstrap_mod.lambda_bootstrap()
         assert isinstance(cfg, AppConfig)
         assert cfg.table_name == ""
         assert service is None
         assert auth_service is None
+        assert progress_service is None
 
     def test_warm_cache_returns_same_service_instance(
         self, monkeypatch: pytest.MonkeyPatch, mocked_aws
@@ -64,13 +65,14 @@ class TestLambdaBootstrap:
         monkeypatch.setenv("TABLE_NAME", "my-table")
         monkeypatch.setenv("VIDEO_BUCKET", "my-bucket")
 
-        _cfg1, svc1, auth1 = bootstrap_mod.lambda_bootstrap()
-        _cfg2, svc2, auth2 = bootstrap_mod.lambda_bootstrap()
+        _cfg1, svc1, auth1, prog1 = bootstrap_mod.lambda_bootstrap()
+        _cfg2, svc2, auth2, prog2 = bootstrap_mod.lambda_bootstrap()
 
         assert svc1 is not None
         assert svc2 is not None
         assert svc1 is svc2
         assert auth1 is auth2
+        assert prog1 is prog2
 
     def test_table_set_but_no_bucket_still_builds_service(
         self, monkeypatch: pytest.MonkeyPatch, mocked_aws
@@ -79,9 +81,10 @@ class TestLambdaBootstrap:
         # service itself still constructs successfully.
         monkeypatch.setenv("TABLE_NAME", "my-table")
 
-        _cfg, service, auth_service = bootstrap_mod.lambda_bootstrap()
+        _cfg, service, auth_service, progress_service = bootstrap_mod.lambda_bootstrap()
         assert service is not None
         assert auth_service is not None
+        assert progress_service is None
 
 
 class TestBuildAwsDeps:
@@ -110,6 +113,7 @@ class TestBuildAwsDeps:
         assert deps.cfg is cfg
         assert deps.service is not None
         assert deps.auth_service is not None
+        assert deps.progress_service is None
 
 
 class TestWarmAwsDepsIfNeeded:
@@ -194,6 +198,7 @@ class TestBuildAwsDepsWithRds:
         from services.auth.rds_repo import UserProfileRdsRepository
         from services.course_management.rds_repo import CourseCatalogRdsRepository
         from services.enrollment.rds_repo import EnrollmentRdsRepository
+        from services.progress.rds_repo import LessonProgressRdsRepository
 
         cfg = AppConfig(
             table_name="t",  # retained during rollout; not used by RDS repos
@@ -214,6 +219,8 @@ class TestBuildAwsDepsWithRds:
         assert isinstance(deps.service._repo, CourseCatalogRdsRepository)
         assert isinstance(deps.service._enrollments, EnrollmentRdsRepository)
         assert isinstance(deps.auth_service._repo, UserProfileRdsRepository)
+        assert deps.progress_service is not None
+        assert isinstance(deps.progress_service._progress, LessonProgressRdsRepository)
 
     def test_use_rds_false_still_wires_dynamo_repos(self, mocked_aws) -> None:
         from services.auth.repo import UserProfileRepository

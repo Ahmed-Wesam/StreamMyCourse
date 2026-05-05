@@ -4,6 +4,23 @@
 
 ---
 
+## 2026-05-05 — Lesson progress (RDS + API + student player)
+
+### Completed
+
+- [x] **Schema** — [`infrastructure/database/migrations/002_lesson_progress.sql`](infrastructure/database/migrations/002_lesson_progress.sql) — `lesson_progress` with FK to `users`, `lessons`, `courses` and index `(course_id, user_sub)`.
+- [x] **Lambda** — `services/progress/` — service + RDS repo + controller; [`bootstrap.py`](infrastructure/lambda/catalog/bootstrap.py) wires `LessonProgressService` when `USE_RDS=true`; [`index.py`](infrastructure/lambda/catalog/index.py) dispatches progress routes; config env `PROGRESS_COMPLETE_RATIO`, `PROGRESS_POSITION_SLACK_SEC`, `PROGRESS_MIN_PUT_INTERVAL_SEC`.
+- [x] **API Gateway** — [`api-stack.yaml`](infrastructure/templates/api-stack.yaml) — resources and methods for GET course progress and PUT lesson progress (Cognito when authorizer present).
+- [x] **Frontend** — [`frontend/src/lib/api.ts`](frontend/src/lib/api.ts) + [`LessonPlayerPage.tsx`](frontend/src/pages/LessonPlayerPage.tsx) — fetch progress, resume position, periodic saves, mark incomplete.
+- [x] **Docs** — [`design.md`](design.md) §2/§6/§7, [ADR-0009](plans/architecture/adr-0009-lesson-progress-rds.md), [`module-map.md`](plans/architecture/module-map.md).
+
+### Verification
+
+- `python scripts/check_lambda_boundaries.py`
+- `pytest tests/unit/test_bootstrap.py tests/unit/test_index.py tests/unit/test_lesson_progress_service.py tests/unit/test_rds_schema_apply.py` (and full unit suite in CI)
+
+---
+
 ## 2026-05-05 — SQS Interface VPC Endpoint for Catalog Lambda
 
 ### Problem

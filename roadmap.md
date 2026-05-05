@@ -48,7 +48,7 @@ Optional parallel work: legacy DynamoDB access-pattern tuning if rollback ever r
 | **Stripe Payments** | One-time purchases + subscriptions | High |
 | **Reviews & Ratings** | 5-star + text reviews per course | Medium |
 | **Watchlist** | Save courses for later | Low |
-| **Progress Tracking v2** | % complete, lesson completion markers | Medium |
+| **Progress Tracking v2** | Host-reported progress, richer analytics, DRM-player integration beyond MVP RDS progress | Medium |
 | **Instructor Analytics** | Views, revenue, enrollment charts | Medium |
 | **Email Notifications** | SES for welcome, purchase confirmations | Medium |
 | **1080p Transcoding** | Add 1080p quality tier | Low |
