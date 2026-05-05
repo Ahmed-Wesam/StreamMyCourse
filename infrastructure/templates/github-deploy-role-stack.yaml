@@ -90,7 +90,13 @@ Resources:
           - Sid: LambdaStreamMyCourse
             Effect: Allow
             Action: lambda:*
-            Resource: !Sub "arn:aws:lambda:eu-west-1:${AWS::AccountId}:function:StreamMyCourse-*"
+            Resource:
+              - !Sub "arn:aws:lambda:eu-west-1:${AWS::AccountId}:function:StreamMyCourse-*"
+              - !Sub "arn:aws:lambda:eu-west-1:${AWS::AccountId}:event-source-mapping:*"
+          - Sid: SqsStreamMyCourseQueues
+            Effect: Allow
+            Action: sqs:*
+            Resource: !Sub "arn:aws:sqs:eu-west-1:${AWS::AccountId}:StreamMyCourse-*"
           - Sid: ApiGatewayEuWest1
             Effect: Allow
             Action:

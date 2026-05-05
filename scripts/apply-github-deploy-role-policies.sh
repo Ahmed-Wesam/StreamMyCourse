@@ -4,6 +4,9 @@
 # Run locally (with admin IAM credentials) BEFORE pushing workflow or policy changes that
 # need new permissions — otherwise Deploy can fail mid-pipeline (e.g. ACM in us-east-1).
 #
+# Policy JSON uses YOUR_AWS_ACCOUNT_ID in ARNs; this script replaces it with the account id
+# from aws sts get-caller-identity before iam put-role-policy (raw repo JSON is not valid IAM).
+#
 # Source of truth: infrastructure/iam-policy-github-deploy-backend.json
 #                 + infrastructure/iam-policy-github-deploy-web.json
 #
@@ -25,17 +28,30 @@ for f in "$BACKEND_DOC" "$WEB_DOC"; do
   fi
 done
 
-echo "Applying inline policies to IAM role: $ROLE_NAME"
+ACCOUNT_ID="$(aws sts get-caller-identity --query Account --output text)"
+if [[ -z "$ACCOUNT_ID" ]]; then
+  echo "Could not resolve AWS account id (sts get-caller-identity)" >&2
+  exit 1
+fi
+
+TMP_BACKEND="$(mktemp)"
+TMP_WEB="$(mktemp)"
+trap 'rm -f "$TMP_BACKEND" "$TMP_WEB"' EXIT
+
+sed "s/YOUR_AWS_ACCOUNT_ID/${ACCOUNT_ID}/g" "$BACKEND_DOC" >"$TMP_BACKEND"
+sed "s/YOUR_AWS_ACCOUNT_ID/${ACCOUNT_ID}/g" "$WEB_DOC" >"$TMP_WEB"
+
+echo "Applying inline policies to IAM role: $ROLE_NAME (substituting YOUR_AWS_ACCOUNT_ID -> $ACCOUNT_ID)"
 aws iam get-role --role-name "$ROLE_NAME" >/dev/null
 
 aws iam put-role-policy \
   --role-name "$ROLE_NAME" \
   --policy-name StreamMyCourseGitHubDeployBackend \
-  --policy-document "file://${BACKEND_DOC}"
+  --policy-document "file://${TMP_BACKEND}"
 
 aws iam put-role-policy \
   --role-name "$ROLE_NAME" \
   --policy-name StreamMyCourseGitHubDeployWeb \
-  --policy-document "file://${WEB_DOC}"
+  --policy-document "file://${TMP_WEB}"
 
 echo "[OK] StreamMyCourseGitHubDeployBackend + StreamMyCourseGitHubDeployWeb updated on $ROLE_NAME"
