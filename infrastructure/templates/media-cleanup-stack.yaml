@@ -39,6 +39,8 @@ Conditions:
 Resources:
   MediaCleanupDlq:
     Type: AWS::SQS::Queue
+    # Retain DLQ on stack delete to preserve any failed cleanup messages for forensic review.
+    DeletionPolicy: Retain
     Properties:
       QueueName: !Sub 'StreamMyCourse-MediaCleanup-DLQ-${Environment}'
       MessageRetentionPeriod: !Ref MessageRetentionPeriod
@@ -50,6 +52,8 @@ Resources:
 
   MediaCleanupQueue:
     Type: AWS::SQS::Queue
+    # Retain main queue on stack delete to preserve any in-flight cleanup jobs.
+    DeletionPolicy: Retain
     Properties:
       QueueName: !Sub 'StreamMyCourse-MediaCleanup-${Environment}'
       VisibilityTimeout: 300
