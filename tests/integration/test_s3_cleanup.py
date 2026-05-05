@@ -30,8 +30,8 @@ def test_delete_course_removes_uploaded_lesson_video(
     api: ApiClient,
     course_factory,
     lesson_factory,
-    integ_video_bucket: str,
-    integ_region: str,
+    video_bucket: str,
+    aws_region: str,
 ) -> None:
     course = course_factory()
     lesson = lesson_factory(course.course_id)
@@ -48,12 +48,12 @@ def test_delete_course_removes_uploaded_lesson_video(
     )
     assert put.status_code == 200
 
-    assert s3_object_exists(integ_video_bucket, video_key, region=integ_region)
+    assert s3_object_exists(video_bucket, video_key, region=aws_region)
 
     deleted = api.delete_course(course.course_id)
     assert deleted.status_code == 200
 
-    _wait_until_object_absent(integ_video_bucket, video_key, region=integ_region)
+    _wait_until_object_absent(video_bucket, video_key, region=aws_region)
 
 
 @pytest.mark.slow
@@ -61,8 +61,8 @@ def test_delete_lesson_removes_uploaded_video(
     api: ApiClient,
     course_factory,
     lesson_factory,
-    integ_video_bucket: str,
-    integ_region: str,
+    video_bucket: str,
+    aws_region: str,
 ) -> None:
     course = course_factory()
     lesson = lesson_factory(course.course_id)
@@ -79,9 +79,9 @@ def test_delete_lesson_removes_uploaded_video(
     )
     assert put.status_code == 200
 
-    assert s3_object_exists(integ_video_bucket, video_key, region=integ_region)
+    assert s3_object_exists(video_bucket, video_key, region=aws_region)
 
     deleted = api.delete_lesson(course.course_id, lesson.lesson_id)
     assert deleted.status_code == 200
 
-    assert not s3_object_exists(integ_video_bucket, video_key, region=integ_region)
+    assert not s3_object_exists(video_bucket, video_key, region=aws_region)

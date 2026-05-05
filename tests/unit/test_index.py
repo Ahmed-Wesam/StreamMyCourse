@@ -38,7 +38,6 @@ def _bootstrap_returning(
 @pytest.fixture
 def cfg_wildcard() -> AppConfig:
     return AppConfig(
-        table_name="",
         video_bucket="",
         default_mp4_url="",
         video_url="",
@@ -92,7 +91,7 @@ class TestServiceUnconfigured:
         assert resp["statusCode"] == 503
         body = json.loads(resp["body"])
         assert body["code"] == "catalog_unconfigured"
-        assert "TABLE_NAME" in body["message"]
+        assert "DB_HOST" in body["message"]
         # CORS headers must be present on the unconfigured response too.
         headers = resp["headers"]
         assert headers["Access-Control-Allow-Origin"] == "*"
@@ -156,7 +155,6 @@ class TestServiceUnconfigured:
         self, monkeypatch: pytest.MonkeyPatch, make_lambda_event
     ) -> None:
         cfg = AppConfig(
-            table_name="",
             video_bucket="",
             default_mp4_url="",
             video_url="",
@@ -223,58 +221,6 @@ class TestServiceConfigured:
 
 class TestProgressRouting:
     """Test routing for progress endpoints (GET /courses/{id}/progress, PUT /courses/{id}/lessons/{id}/progress)."""
-
-    def test_get_course_progress_returns_503_when_rds_disabled(
-        self,
-        monkeypatch: pytest.MonkeyPatch,
-        cfg_wildcard: AppConfig,
-        make_lambda_event,
-    ) -> None:
-        """Progress tracking requires RDS; should return 503 when USE_RDS=false."""
-        mock_service = MagicMock(spec=CourseManagementService)
-        mock_auth = MagicMock()
-        # progress_service is None when RDS is disabled
-
-        monkeypatch.setattr(
-            index_mod,
-            "lambda_bootstrap",
-            _bootstrap_returning(cfg_wildcard, mock_service, mock_auth, None),
-        )
-
-        evt = make_lambda_event(method="GET", path="/courses/course-123/progress")
-        resp = index_mod.lambda_handler(evt, None)
-
-        assert resp["statusCode"] == 503
-        body = json.loads(resp["body"])
-        assert body["code"] == "progress_requires_rds"
-        assert "PostgreSQL" in body["message"]
-
-    def test_put_lesson_progress_returns_503_when_rds_disabled(
-        self,
-        monkeypatch: pytest.MonkeyPatch,
-        cfg_wildcard: AppConfig,
-        make_lambda_event,
-    ) -> None:
-        """Progress tracking requires RDS; should return 503 when USE_RDS=false."""
-        mock_service = MagicMock(spec=CourseManagementService)
-        mock_auth = MagicMock()
-
-        monkeypatch.setattr(
-            index_mod,
-            "lambda_bootstrap",
-            _bootstrap_returning(cfg_wildcard, mock_service, mock_auth, None),
-        )
-
-        evt = make_lambda_event(
-            method="PUT",
-            path="/courses/course-123/lessons/lesson-456/progress",
-            body={"position": 60, "duration": 120},
-        )
-        resp = index_mod.lambda_handler(evt, None)
-
-        assert resp["statusCode"] == 503
-        body = json.loads(resp["body"])
-        assert body["code"] == "progress_requires_rds"
 
     def test_get_course_progress_routes_to_controller_when_rds_enabled(
         self,
@@ -378,3 +324,23 @@ class TestProgressRouting:
         resp = index_mod.lambda_handler(evt, None)
 
         assert resp["statusCode"] == 204
+
+    def test_progress_endpoint_returns_503_when_catalog_unconfigured(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        cfg_wildcard: AppConfig,
+        make_lambda_event,
+    ) -> None:
+        """Progress endpoints should return catalog_unconfigured 503 when RDS is not wired."""
+        monkeypatch.setattr(
+            index_mod,
+            "lambda_bootstrap",
+            _bootstrap_returning(cfg_wildcard, None, None, None),
+        )
+        evt = make_lambda_event(method="GET", path="/courses/course-123/progress")
+
+        resp = index_mod.lambda_handler(evt, None)
+
+        assert resp["statusCode"] == 503
+        body = json.loads(resp["body"])
+        assert body["code"] == "catalog_unconfigured"

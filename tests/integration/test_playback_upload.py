@@ -1,6 +1,6 @@
 """S4 playback + upload-url tests, including a real presigned PUT round-trip
-(marked slow because it actually writes a few bytes to the integ S3 bucket --
-the session-end safety net cleans them up)."""
+(marked slow because it actually writes a few bytes to the configured dev video
+bucket — the session-end safety net cleans them up)."""
 
 from __future__ import annotations
 
@@ -116,9 +116,9 @@ def test_lesson_thumbnail_upload_url_rejects_non_image_content_type(
 def test_full_upload_round_trip_to_s3_then_playback(
     api: ApiClient, course_factory, lesson_factory
 ):
-    """End-to-end upload: presigned PUT to integ S3, mark ready, fetch playback URL.
+    """End-to-end upload: presigned PUT to the video bucket, mark ready, fetch playback URL.
 
-    The integ video bucket has a CORS rule that allows PUT, but here we issue
+    The stack video bucket has a CORS rule that allows PUT, but here we issue
     the PUT from outside a browser so CORS doesn't apply -- this validates the
     presigned URL itself (signature + bucket reachability).
     """

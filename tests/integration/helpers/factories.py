@@ -11,7 +11,7 @@ from helpers.api import ApiClient
 
 # Prefix used on every test-created title so the session-end safety net can
 # identify leftovers regardless of which test produced them.
-TEST_TITLE_PREFIX = "integ-test-"
+TEST_TITLE_PREFIX = "integration-test-"
 
 
 def make_test_title(label: str = "course") -> str:

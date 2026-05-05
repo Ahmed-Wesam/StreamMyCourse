@@ -31,10 +31,10 @@ python -m coverage report --include="infrastructure/lambda/catalog/**" -m
 ## What's NOT covered here
 
 - Real AWS round-trips (DynamoDB, S3 presign, API Gateway routing) live in
-  `tests/integration/` against the dedicated `integ` backend stack.
+  `tests/integration/` against a deployed backend (typically dev stacks matching CI).
 - End-to-end CORS behavior on API Gateway error responses
   (`GatewayResponses`) — that's a CloudFormation/Gateway concern verified by
-  the integ smoke tests, not by Lambda code.
+  the HTTPS integration smoke tests, not by Lambda code.
 
 ## Layout
 
