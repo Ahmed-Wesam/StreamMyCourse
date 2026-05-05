@@ -43,13 +43,46 @@ ZIP="/tmp/media-cleanup-${ENV}-$$.zip"
 ZIP_KEY="media-cleanup-${ENV}-${SUFFIX}.zip"
 trap 'rm -f "$ZIP"' EXIT
 
-( cd "$LAMBDA_DIR" && zip -jq "$ZIP" worker.py )
+_zip_one_file() {
+  local dir="$1"
+  local file="$2"
+  local out="$3"
+  if command -v zip >/dev/null 2>&1; then
+    ( cd "$dir" && zip -jq "$out" "$file" )
+    return
+  fi
+  local py=""
+  if command -v python3 >/dev/null 2>&1; then
+    py="python3"
+  elif command -v python >/dev/null 2>&1; then
+    py="python"
+  else
+    echo "Neither zip(1) nor python3/python found; install Info-ZIP zip or Python." >&2
+    exit 1
+  fi
+  "$py" - "$dir" "$file" "$out" <<'PY'
+import os, sys, zipfile
+d, fn, out = sys.argv[1], sys.argv[2], sys.argv[3]
+path = os.path.join(d, fn)
+with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as zf:
+    zf.write(path, fn)
+PY
+}
+
+_zip_one_file "$LAMBDA_DIR" "worker.py" "$ZIP"
 
 echo "Uploading media cleanup Lambda s3://${ARTIFACT_BUCKET}/${ZIP_KEY}"
 aws s3 cp "$ZIP" "s3://${ARTIFACT_BUCKET}/${ZIP_KEY}" --region "$REGION"
 
+# Git Bash: AWS CLI often rejects file:///c/... URIs for --template-body; use a Windows path when cygpath exists.
+MEDIA_TEMPLATE="${TEMPLATE_DIR}/media-cleanup-stack.yaml"
+if command -v cygpath >/dev/null 2>&1; then
+  VALIDATE_BODY_URI="file://$(cygpath -m "$MEDIA_TEMPLATE")"
+else
+  VALIDATE_BODY_URI="file://${MEDIA_TEMPLATE}"
+fi
 aws cloudformation validate-template \
-  --template-body "file://${TEMPLATE_DIR}/media-cleanup-stack.yaml" \
+  --template-body "$VALIDATE_BODY_URI" \
   --region "$REGION"
 
 echo "Deploying media cleanup stack: $MEDIA_STACK"

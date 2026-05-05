@@ -77,7 +77,61 @@ if [[ -f "$REQ_FILE" ]]; then
     -t "$BUILD_DIR/_vendor"
 fi
 
-( cd "$BUILD_DIR" && zip -rq "$ZIP" . )
+_zip_dir_recursive() {
+  local src="$1"
+  local out="$2"
+  if command -v zip >/dev/null 2>&1; then
+    ( cd "$src" && zip -rq "$out" . )
+    return
+  fi
+  local py=""
+  if command -v python3 >/dev/null 2>&1; then
+    py="python3"
+  elif command -v python >/dev/null 2>&1; then
+    py="python"
+  else
+    echo "Neither zip(1) nor python3/python found; install Info-ZIP zip or Python to build Lambda bundles." >&2
+    exit 1
+  fi
+  "$py" - "$src" "$out" <<'PY'
+import os, sys, zipfile
+src, out = sys.argv[1], sys.argv[2]
+with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as zf:
+    for root, _, files in os.walk(src):
+        for name in files:
+            path = os.path.join(root, name)
+            if os.path.isfile(path):
+                zf.write(path, os.path.relpath(path, src))
+PY
+}
+
+_zip_one_file() {
+  local dir="$1"
+  local file="$2"
+  local out="$3"
+  if command -v zip >/dev/null 2>&1; then
+    ( cd "$dir" && zip -jq "$out" "$file" )
+    return
+  fi
+  local py=""
+  if command -v python3 >/dev/null 2>&1; then
+    py="python3"
+  elif command -v python >/dev/null 2>&1; then
+    py="python"
+  else
+    echo "Neither zip(1) nor python3/python found; install Info-ZIP zip or Python." >&2
+    exit 1
+  fi
+  "$py" - "$dir" "$file" "$out" <<'PY'
+import os, sys, zipfile
+d, fn, out = sys.argv[1], sys.argv[2], sys.argv[3]
+path = os.path.join(d, fn)
+with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as zf:
+    zf.write(path, fn)
+PY
+}
+
+_zip_dir_recursive "$BUILD_DIR" "$ZIP"
 echo "Uploading Lambda s3://${ARTIFACT_BUCKET}/${ZIP_KEY}"
 aws s3 cp "$ZIP" "s3://${ARTIFACT_BUCKET}/${ZIP_KEY}" --region "$REGION"
 
@@ -88,7 +142,7 @@ if [[ ! -f "${CF_INV_DIR}/index.py" ]]; then
   echo "Missing CloudFront invalidation Lambda: ${CF_INV_DIR}/index.py" >&2
   exit 1
 fi
-( cd "$CF_INV_DIR" && zip -jq "$INV_ZIP" index.py )
+_zip_one_file "$CF_INV_DIR" "index.py" "$INV_ZIP"
 echo "Uploading CloudFront invalidation bundle s3://${ARTIFACT_BUCKET}/${INV_KEY}"
 aws s3 cp "$INV_ZIP" "s3://${ARTIFACT_BUCKET}/${INV_KEY}" --region "$REGION"
 rm -f "$INV_ZIP"
