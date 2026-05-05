@@ -36,7 +36,9 @@ def test_playback_when_lesson_not_ready_returns_400(
 
 def test_playback_for_unknown_lesson_returns_404(api: ApiClient, course_factory):
     course = course_factory()
-    resp = api.get_playback(course.course_id, "lesson-does-not-exist")
+    # Use a valid UUID that does not exist in the database
+    unknown_lesson_id = "00000000-0000-0000-0000-000000000001"
+    resp = api.get_playback(course.course_id, unknown_lesson_id)
     assert resp.status_code == 404
     assert resp.json().get("code") == "not_found"
 
@@ -76,7 +78,9 @@ def test_upload_url_returns_presigned_url_and_records_video_key(
 
 def test_upload_url_for_unknown_lesson_returns_404(api: ApiClient, course_factory):
     course = course_factory()
-    resp = api.get_upload_url(course_id=course.course_id, lesson_id="lesson-does-not-exist")
+    # Use a valid UUID that does not exist in the database
+    unknown_lesson_id = "00000000-0000-0000-0000-000000000002"
+    resp = api.get_upload_url(course_id=course.course_id, lesson_id=unknown_lesson_id)
     assert resp.status_code == 404
     assert resp.json().get("code") == "not_found"
 

@@ -30,7 +30,8 @@ def test_get_course_known_id_returns_full_record(api: ApiClient, course_factory)
 
 
 def test_get_course_unknown_id_returns_404(api: ApiClient):
-    unknown = f"missing-{uuid.uuid4()}"
+    # Use a valid UUID that does not exist in the database
+    unknown = "00000000-0000-0000-0000-000000000000"
     resp = api.get_course(unknown)
     assert resp.status_code == 404
     assert resp.json().get("code") == "not_found"
