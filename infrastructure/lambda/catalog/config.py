@@ -7,18 +7,13 @@ from typing import List, Optional
 
 @dataclass(frozen=True)
 class AppConfig:
-    table_name: str
     video_bucket: str
     default_mp4_url: str
     video_url: str
     allowed_origins: List[str]
     cognito_auth_enabled: bool
-    # RDS / PostgreSQL migration fields. Kept optional (defaulted) so existing
-    # test fixtures that construct AppConfig with the DynamoDB-only field set
-    # keep working; load_config() always fills them in from the environment.
-    # use_rds flips the bootstrap between DynamoDB (default; rollback path)
-    # and PostgreSQL repos.
-    use_rds: bool = False
+    # RDS / PostgreSQL (catalog + progress). Incomplete values mean the handler
+    # returns catalog_unconfigured until the api stack wires DB_* from the RDS stack.
     db_host: str = ""
     db_name: str = ""
     db_port: int = 5432
@@ -114,7 +109,6 @@ def _parse_cognito_pool_arn(arn: str) -> tuple[str, str]:
 
 
 def load_config() -> AppConfig:
-    table_name = os.environ.get("TABLE_NAME", "").strip()
     video_bucket = os.environ.get("VIDEO_BUCKET", "").strip()
     default_mp4_url = os.environ.get(
         "DEFAULT_MP4_URL",
@@ -128,7 +122,6 @@ def load_config() -> AppConfig:
 
     cognito_auth_enabled = os.environ.get("COGNITO_AUTH_ENABLED", "").strip().lower() == "true"
 
-    use_rds = os.environ.get("USE_RDS", "").strip().lower() == "true"
     db_host = os.environ.get("DB_HOST", "").strip()
     db_name = os.environ.get("DB_NAME", "").strip()
     db_port = _parse_db_port(os.environ.get("DB_PORT", ""))
@@ -156,13 +149,11 @@ def load_config() -> AppConfig:
     )
 
     return AppConfig(
-        table_name=table_name,
         video_bucket=video_bucket,
         default_mp4_url=default_mp4_url,
         video_url=video_url,
         allowed_origins=allowed_origins,
         cognito_auth_enabled=cognito_auth_enabled,
-        use_rds=use_rds,
         db_host=db_host,
         db_name=db_name,
         db_port=db_port,

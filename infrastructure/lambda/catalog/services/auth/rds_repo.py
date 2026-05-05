@@ -7,8 +7,7 @@ in ``_row_to_profile``.
 
 ``put_profile`` is an upsert: the first call inserts, and a second call (e.g.
 a role promotion) updates ``email``, ``role``, ``cognito_sub``, ``updated_at``
-while preserving the original ``created_at``. This mirrors the DynamoDB
-adapter's behavior where ``createdAt`` is read back from the existing item.
+while preserving the original ``created_at``.
 """
 
 from __future__ import annotations

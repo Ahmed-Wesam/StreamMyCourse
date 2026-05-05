@@ -134,7 +134,7 @@ def _strip_api_stage_prefix(stage: object, path: str) -> str:
 
 
 def _strip_leading_stage_segment(path: str) -> str:
-    """If ``stage`` was missing, drop a first segment when it looks like a stage (``/integ/courses/...``)."""
+    """If ``stage`` was missing, drop a first segment when it looks like a stage (``/staging/courses/...``)."""
     parts = [p for p in path.split("/") if p]
     if len(parts) >= 2 and parts[0] not in _API_ROOTS and parts[1] in _API_ROOTS:
         return "/" + "/".join(parts[1:])
@@ -227,7 +227,7 @@ def apigw_cognito_claims(
                 # Secure path: verify signature and standard claims
                 claims = parse_jwt_claims_verified(token, jwt_config)
             else:
-                # Backward compatibility: unverified parse (for tests/integ without config)
+                # Backward compatibility: unverified parse (for tests without full authorizer config)
                 claims = _parse_jwt_claims_unverified(token)
 
     return claims if claims is not None else {}

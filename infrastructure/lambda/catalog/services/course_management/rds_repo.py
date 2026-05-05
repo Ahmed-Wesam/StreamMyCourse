@@ -1,8 +1,6 @@
 """PostgreSQL adapter for ``CourseCatalogRepositoryPort``.
 
-Mirrors the public surface of ``services.course_management.repo.CourseCatalogRepository``
-(the DynamoDB implementation) so the rest of the stack sees the same behavior
-when ``USE_RDS=true``.
+Implements :class:`CourseCatalogRepositoryPort` for the deployed catalog API.
 
 Mapping rules:
   * Column names: ``snake_case`` in SQL, ``camelCase`` in the domain model
