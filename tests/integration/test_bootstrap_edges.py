@@ -90,9 +90,11 @@ def test_json_array_body_returns_400(api: ApiClient):
 
 
 def test_upload_url_missing_course_id_returns_400(api: ApiClient):
+    # Use a valid UUID format for lessonId (courseId is intentionally missing)
+    unknown_lesson_id = "00000000-0000-0000-0000-000000000004"
     resp = api.raw.post(
         "/upload-url",
-        json={"lessonId": "anything", "filename": "x.mp4", "contentType": "video/mp4"},
+        json={"lessonId": unknown_lesson_id, "filename": "x.mp4", "contentType": "video/mp4"},
     )
     assert resp.status_code == 400
     body = resp.json()
@@ -101,9 +103,11 @@ def test_upload_url_missing_course_id_returns_400(api: ApiClient):
 
 
 def test_upload_url_missing_lesson_id_returns_400(api: ApiClient):
+    # Use a valid UUID format for courseId (lessonId is intentionally missing)
+    unknown_course_id = "00000000-0000-0000-0000-000000000005"
     resp = api.raw.post(
         "/upload-url",
-        json={"courseId": "anything", "filename": "x.mp4", "contentType": "video/mp4"},
+        json={"courseId": unknown_course_id, "filename": "x.mp4", "contentType": "video/mp4"},
     )
     assert resp.status_code == 400
     body = resp.json()
