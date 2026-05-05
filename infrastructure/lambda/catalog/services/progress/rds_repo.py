@@ -81,6 +81,7 @@ class LessonProgressRdsRepository(LessonProgressRepositoryPort):
                 if commit:
                     conn.commit()
                 return cur
+            conn.rollback()
             raise
 
     def get_progress_for_course(

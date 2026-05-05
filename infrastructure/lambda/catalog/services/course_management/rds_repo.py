@@ -142,6 +142,7 @@ class CourseCatalogRdsRepository:
                 if commit:
                     conn.commit()
                 return cur
+            conn.rollback()
             raise
 
     # ------------------------------------------------------------------

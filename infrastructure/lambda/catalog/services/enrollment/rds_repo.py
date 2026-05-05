@@ -51,6 +51,7 @@ class EnrollmentRdsRepository:
                 if commit:
                     conn.commit()
                 return cur
+            conn.rollback()
             raise
 
     def has_enrollment(self, *, user_sub: str, course_id: str) -> bool:
