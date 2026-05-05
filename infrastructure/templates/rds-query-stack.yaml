@@ -8,7 +8,6 @@ Parameters:
     Type: String
     AllowedValues:
       - dev
-      - integ
       - prod
     Description: Must match the RDS stack environment; echoed in EXPECTED_ENVIRONMENT for invoke guard.
 

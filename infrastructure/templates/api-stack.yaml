@@ -7,7 +7,6 @@ Parameters:
     Default: dev
     AllowedValues:
       - dev
-      - integ
       - prod
     Description: Deployment environment
 
@@ -61,11 +60,10 @@ Parameters:
 
   RdsStackName:
     Type: String
-    Default: ''
+    MinLength: 1
     Description: >-
       Name of the RDS stack (e.g. StreamMyCourse-Rds-dev) whose exports provide
-      the VPC/subnet/SG/secret for the Lambda. Leave empty to skip VPC attachment
-      (DynamoDB-only mode).
+      the VPC/subnet/SG/secret and DB_* settings for the catalog Lambda (required).
 
   LogLevel:
     Type: String
@@ -83,7 +81,7 @@ Parameters:
     Default: ''
     Description: >-
       SQS queue URL for async S3 media cleanup after course delete. When empty,
-      the catalog uses synchronous S3 deletes (legacy / integ).
+      the catalog uses synchronous S3 deletes (legacy rollout only).
 
   MediaCleanupQueueArn:
     Type: String
@@ -91,16 +89,6 @@ Parameters:
     Description: >-
       SQS queue ARN for sqs:SendMessage on the catalog Lambda role. Must be set
       when MediaCleanupQueueUrl is set.
-
-  UseRds:
-    Type: String
-    Default: 'false'
-    AllowedValues:
-      - 'true'
-      - 'false'
-    Description: >-
-      Feature flag. When 'true' the Lambda reads/writes via the PostgreSQL
-      adapter; when 'false' it continues using DynamoDB (instant rollback).
 
   ProgressCompleteRatio:
     Type: Number
@@ -119,36 +107,9 @@ Conditions:
   HasVideoBucket: !Not [!Equals [!Ref VideoBucketName, '']]
   HasCognitoAuthorizer: !Not [!Equals [!Ref CognitoUserPoolArn, '']]
   IsProd: !Equals [!Ref Environment, prod]
-  HasRdsStack: !Not [!Equals [!Ref RdsStackName, '']]
   HasMediaCleanupQueueArn: !Not [!Equals [!Ref MediaCleanupQueueArn, '']]
 
 Resources:
-  # DynamoDB Table for Course Catalog
-  CatalogTable:
-    Type: AWS::DynamoDB::Table
-    DeletionPolicy: Retain
-    UpdateReplacePolicy: Retain
-    Properties:
-      TableName: !Sub 'StreamMyCourse-Catalog-${Environment}'
-      BillingMode: PAY_PER_REQUEST
-      AttributeDefinitions:
-        - AttributeName: PK
-          AttributeType: S
-        - AttributeName: SK
-          AttributeType: S
-      KeySchema:
-        - AttributeName: PK
-          KeyType: HASH
-        - AttributeName: SK
-          KeyType: RANGE
-      PointInTimeRecoverySpecification:
-        PointInTimeRecoveryEnabled: !If [IsProd, true, false]
-      Tags:
-        - Key: Project
-          Value: StreamMyCourse
-        - Key: Environment
-          Value: !Ref Environment
-
   # Lambda Execution Role
   CatalogLambdaRole:
     Type: AWS::IAM::Role
@@ -172,20 +133,6 @@ Resources:
                   - logs:CreateLogStream
                   - logs:PutLogEvents
                 Resource: !Sub 'arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/StreamMyCourse-Catalog-${Environment}:*'
-        - PolicyName: DynamoDBAccess
-          PolicyDocument:
-            Version: '2012-10-17'
-            Statement:
-              - Effect: Allow
-                Action:
-                  - dynamodb:GetItem
-                  - dynamodb:PutItem
-                  - dynamodb:UpdateItem
-                  - dynamodb:DeleteItem
-                  - dynamodb:BatchWriteItem
-                  - dynamodb:Query
-                  - dynamodb:Scan
-                Resource: !GetAtt CatalogTable.Arn
         - PolicyName: S3PresignedUrl
           PolicyDocument:
             Version: '2012-10-17'
@@ -211,8 +158,7 @@ Resources:
                     - sqs:SendMessage
                   Resource: !Ref MediaCleanupQueueArn
           - !Ref AWS::NoValue
-        # VPC ENI lifecycle for Lambda-in-VPC. Always attached so flipping UseRds
-        # does not require a role redeploy. These actions are resource-less by
+        # VPC ENI lifecycle for Lambda-in-VPC. These actions are resource-less by
         # AWS design (they return IDs from the global EC2 API) — standard for the
         # Lambda-in-VPC pattern.
         - PolicyName: LambdaVpcEni
@@ -228,8 +174,6 @@ Resources:
                   - ec2:UnassignPrivateIpAddresses
                 Resource: '*'
         # Scoped to the specific RDS credentials secret exported by the RDS stack.
-        # When RdsStackName is empty we fall back to a placeholder ARN that matches
-        # nothing, so the policy is always present but grants no access in that case.
         - PolicyName: SecretsManagerRdsCreds
           PolicyDocument:
             Version: '2012-10-17'
@@ -237,11 +181,8 @@ Resources:
               - Effect: Allow
                 Action:
                   - secretsmanager:GetSecretValue
-                Resource: !If
-                  - HasRdsStack
-                  - !ImportValue
-                    'Fn::Sub': '${RdsStackName}-DbSecretArn'
-                  - !Sub 'arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:streammycourse-no-rds-stack/NEVER_MATCH-xxxxxx'
+                Resource: !ImportValue
+                  'Fn::Sub': '${RdsStackName}-DbSecretArn'
       Tags:
         - Key: Project
           Value: StreamMyCourse
@@ -256,54 +197,36 @@ Resources:
       Runtime: python3.11
       Handler: index.lambda_handler
       # Bumped from 15s to 30s to absorb VPC cold-start (~1-2s ENI attach) and
-      # Secrets Manager fetch (~0.5-1s on cold start) when UseRds=true.
+      # Secrets Manager fetch (~0.5-1s on cold start).
       Timeout: 30
       MemorySize: 512
       Role: !GetAtt CatalogLambdaRole.Arn
       Code:
         S3Bucket: !Ref LambdaCodeS3Bucket
         S3Key: !Ref LambdaCodeS3Key
-      # Attach to the private subnet + Lambda SG from the RDS stack when present.
-      # Without HasRdsStack the Lambda runs outside a VPC (DynamoDB-only mode).
-      VpcConfig: !If
-        - HasRdsStack
-        - SubnetIds:
-            - !ImportValue
-              'Fn::Sub': '${RdsStackName}-PrivateSubnetId'
-          SecurityGroupIds:
-            - !ImportValue
-              'Fn::Sub': '${RdsStackName}-LambdaSecurityGroupId'
-        - !Ref AWS::NoValue
+      VpcConfig:
+        SubnetIds:
+          - !ImportValue
+            'Fn::Sub': '${RdsStackName}-PrivateSubnetId'
+        SecurityGroupIds:
+          - !ImportValue
+            'Fn::Sub': '${RdsStackName}-LambdaSecurityGroupId'
       Environment:
         Variables:
           DEFAULT_MP4_URL: !Ref DefaultMp4Url
           VIDEO_URL: !Ref VideoUrl
           VIDEO_BUCKET: !Ref VideoBucketName
-          TABLE_NAME: !Ref CatalogTable
           ALLOWED_ORIGINS: !Ref CorsAllowOrigin
           COGNITO_AUTH_ENABLED: !If [HasCognitoAuthorizer, 'true', 'false']
           LOG_LEVEL: !Ref LogLevel
-          USE_RDS: !Ref UseRds
-          DB_HOST: !If
-            - HasRdsStack
-            - !ImportValue
-              'Fn::Sub': '${RdsStackName}-DbHost'
-            - ''
-          DB_PORT: !If
-            - HasRdsStack
-            - !ImportValue
-              'Fn::Sub': '${RdsStackName}-DbPort'
-            - ''
-          DB_NAME: !If
-            - HasRdsStack
-            - !ImportValue
-              'Fn::Sub': '${RdsStackName}-DbName'
-            - ''
-          DB_SECRET_ARN: !If
-            - HasRdsStack
-            - !ImportValue
-              'Fn::Sub': '${RdsStackName}-DbSecretArn'
-            - ''
+          DB_HOST: !ImportValue
+            'Fn::Sub': '${RdsStackName}-DbHost'
+          DB_PORT: !ImportValue
+            'Fn::Sub': '${RdsStackName}-DbPort'
+          DB_NAME: !ImportValue
+            'Fn::Sub': '${RdsStackName}-DbName'
+          DB_SECRET_ARN: !ImportValue
+            'Fn::Sub': '${RdsStackName}-DbSecretArn'
           MEDIA_CLEANUP_QUEUE_URL: !Ref MediaCleanupQueueUrl
           COGNITO_USER_POOL_ARN: !Ref CognitoUserPoolArn
           COGNITO_CLIENT_ID: !Ref CognitoClientId
@@ -1022,9 +945,3 @@ Outputs:
   LambdaFunctionName:
     Description: Lambda function name
     Value: !Ref CatalogLambda
-
-  TableName:
-    Description: DynamoDB table name
-    Value: !Ref CatalogTable
-    Export:
-      Name: !Sub '${AWS::StackName}-TableName'

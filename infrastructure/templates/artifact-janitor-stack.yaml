@@ -7,7 +7,7 @@ Parameters:
   Environment:
     Type: String
     Default: dev
-    AllowedValues: [dev, integ, prod]
+    AllowedValues: [dev, prod]
     Description: Deployment environment (affects naming only)
 
   ArtifactBucketName:
