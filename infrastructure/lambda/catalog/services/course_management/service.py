@@ -214,10 +214,11 @@ class CourseManagementService:
         course = self._repo.get_course(course_id)
         if not course:
             raise NotFound("Course not found")
+        # DRAFT courses are only visible to managers (owner/admin) regardless of auth_enforced
+        if course.status == "DRAFT":
+            if not self._can_manage_course_unenrolled(course, cognito_sub=cognito_sub, role=role):
+                raise NotFound("Course not found")
         if auth_enforced:
-            if course.status == "DRAFT":
-                if not self._can_manage_course_unenrolled(course, cognito_sub=cognito_sub, role=role):
-                    raise NotFound("Course not found")
             has_lessons = self.viewer_has_lesson_access(
                 course, course_id=course_id, cognito_sub=cognito_sub, role=role, auth_enforced=auth_enforced
             )
@@ -312,7 +313,8 @@ class CourseManagementService:
         course = self._repo.get_course(course_id)
         if not course:
             raise NotFound("Course not found")
-        if auth_enforced and course.status == "DRAFT":
+        # DRAFT courses are only visible to managers (owner/admin) regardless of auth_enforced
+        if course.status == "DRAFT":
             if not self._can_manage_course_unenrolled(course, cognito_sub=cognito_sub, role=role):
                 raise NotFound("Course not found")
         lessons = self._repo.list_lessons(course_id)
