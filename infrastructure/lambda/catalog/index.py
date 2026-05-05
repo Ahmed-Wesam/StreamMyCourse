@@ -4,12 +4,13 @@ import _vendor_bootstrap  # noqa: F401  # MUST be first: prepends _vendor/ to sy
 
 import logging
 import time
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 
 from bootstrap import lambda_bootstrap
 from config import load_config
 from services.auth.controller import handle_users_me
 from services.common.http import apigw_routing_path, json_response, options_response, pick_origin
+from services.common.jwt_verify import CognitoJwtConfig
 from services.common.logging_setup import configure_logging
 from services.common.runtime_context import bind_from_lambda_event, clear_request_context, set_request_path
 from services.course_management.controller import handle as course_management_handle
@@ -18,6 +19,17 @@ logger = logging.getLogger(__name__)
 
 # Configure logging on module load (cold start)
 configure_logging()
+
+
+def _build_jwt_config(cfg) -> Optional[CognitoJwtConfig]:
+    """Build Cognito JWT config from AppConfig if all required fields are present."""
+    if cfg.cognito_user_pool_id and cfg.cognito_region and cfg.cognito_client_ids:
+        return CognitoJwtConfig(
+            user_pool_id=cfg.cognito_user_pool_id,
+            client_ids=cfg.cognito_client_ids,
+            region=cfg.cognito_region,
+        )
+    return None
 
 
 def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
@@ -76,6 +88,7 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                     )
             else:
                 parts = [p for p in raw_path.split("/") if p]
+                jwt_config = _build_jwt_config(cfg)
 
                 if method == "GET" and parts == ["users", "me"]:
                     response = handle_users_me(
@@ -83,6 +96,7 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                         origin=origin,
                         auth_svc=auth_service,
                         auth_enforced=cfg.cognito_auth_enabled,
+                        jwt_config=jwt_config,
                     )
                 else:
                     response = course_management_handle(
@@ -92,6 +106,7 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                         video_bucket=cfg.video_bucket,
                         auth_svc=auth_service,
                         auth_enforced=cfg.cognito_auth_enabled,
+                        jwt_config=jwt_config,
                     )
 
         # Calculate duration and log request completion

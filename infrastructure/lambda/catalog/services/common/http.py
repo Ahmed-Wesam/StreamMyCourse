@@ -5,6 +5,11 @@ import json
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional
 
+from services.common.jwt_verify import (
+    CognitoJwtConfig,
+    parse_jwt_claims_verified,
+)
+
 # Defense-in-depth for JSON API responses (limited effect on fetch/XHR; avoids silent removal).
 _CSP_API = "default-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'"
 
@@ -172,11 +177,27 @@ def apigw_routing_path(event: Dict[str, Any]) -> str:
 _SKIP_AUTHORIZER_META = frozenset({"claims", "principalId", "integrationLatency", "scopes"})
 
 
-def apigw_cognito_claims(event: Dict[str, Any]) -> Dict[str, Any]:
+def apigw_cognito_claims(
+    event: Dict[str, Any],
+    jwt_config: Optional[CognitoJwtConfig] = None,
+) -> Dict[str, Any]:
     """Cognito JWT claims forwarded by API Gateway (shape varies slightly by integration).
 
     Falls back to parsing the Authorization header when API Gateway doesn't provide
     claims (public routes like GET /courses/{id} with AuthorizationType: NONE).
+
+    When jwt_config is provided, the Authorization header token is verified using
+    Cognito's JWKS (signature + standard claims). This prevents forged JWTs from
+    affecting authorization decisions on public routes.
+
+    Args:
+        event: API Gateway Lambda event
+        jwt_config: Optional Cognito JWT configuration for signature verification.
+                   When provided and authorizer claims are absent, the bearer token
+                   in the Authorization header is verified using Cognito's public keys.
+
+    Returns:
+        Dict containing JWT claims (sub, custom:role, email, etc.) or empty dict.
     """
     auth = event.get("requestContext", {}).get("authorizer") or {}
     claims: Dict[str, Any] | None = None
@@ -195,12 +216,19 @@ def apigw_cognito_claims(event: Dict[str, Any]) -> Dict[str, Any]:
         if claims is None and isinstance(auth.get("sub"), str):
             claims = {k: v for k, v in auth.items() if k not in _SKIP_AUTHORIZER_META}
 
-    # Fallback: parse JWT from Authorization header for public routes
+    # Fallback: parse and verify JWT from Authorization header for public routes
+    # API Gateway already verified the token on protected routes (authorizer present)
+    # For public routes, we must verify signatures to prevent forged tokens
     if claims is None:
         headers = event.get("headers") or {}
         token = _extract_bearer_token(headers)
         if token:
-            claims = _parse_jwt_claims_unverified(token)
+            if jwt_config is not None:
+                # Secure path: verify signature and standard claims
+                claims = parse_jwt_claims_verified(token, jwt_config)
+            else:
+                # Backward compatibility: unverified parse (for tests/integ without config)
+                claims = _parse_jwt_claims_unverified(token)
 
     return claims if claims is not None else {}
 

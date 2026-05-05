@@ -6,13 +6,17 @@ from typing import Any, Dict, Optional
 from services.auth.service import UserProfileService
 from services.common.errors import HttpError, Unauthorized
 from services.common.http import apigw_cognito_claims, json_response
+from services.common.jwt_verify import CognitoJwtConfig
 from services.common.runtime_context import update_action
 
 logger = logging.getLogger(__name__)
 
 
-def _claims_dict(event: Dict[str, Any]) -> Dict[str, Any]:
-    return apigw_cognito_claims(event)
+def _claims_dict(
+    event: Dict[str, Any],
+    jwt_config: Optional[CognitoJwtConfig] = None,
+) -> Dict[str, Any]:
+    return apigw_cognito_claims(event, jwt_config=jwt_config)
 
 
 def handle_users_me(
@@ -21,6 +25,7 @@ def handle_users_me(
     origin: Optional[str],
     auth_svc: UserProfileService,
     auth_enforced: bool,
+    jwt_config: Optional[CognitoJwtConfig] = None,
 ) -> Dict[str, Any]:
     # Set action for correlation logging
     update_action("get_users_me")
@@ -35,7 +40,7 @@ def handle_users_me(
             origin,
         )
 
-    claims = _claims_dict(event)
+    claims = _claims_dict(event, jwt_config=jwt_config)
     sub = str(claims.get("sub", "") or "").strip()
     if not sub:
         exc = Unauthorized("Authentication required")
