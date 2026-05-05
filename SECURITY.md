@@ -59,30 +59,13 @@ This repository implements the following security practices:
 - Automated security scanning (Vulture, ESLint)
 - No secrets in repository (all via GitHub Secrets/Variables)
 
-## AWS Account ID Placeholders
+## AWS account id in IAM policy JSON (`YOUR_AWS_ACCOUNT_ID`)
 
-The IAM policy JSON files in this repository contain `YOUR_AWS_ACCOUNT_ID` placeholders that must be replaced with your actual AWS account ID before deployment.
+The files `infrastructure/iam-policy-github-deploy-*.json` and `infrastructure/iam-trust-github-oidc.json` use the placeholder **`YOUR_AWS_ACCOUNT_ID`** in ARNs. That string is **not** read from GitHub Variables; it is **not** a credential.
 
-### Files Requiring Substitution
+**Applying inline policies:** run [`scripts/apply-github-deploy-role-policies.sh`](scripts/apply-github-deploy-role-policies.sh) or [`scripts/apply-github-deploy-role-policies.ps1`](scripts/apply-github-deploy-role-policies.ps1) with admin IAM credentials. Those scripts substitute the placeholder using **`aws sts get-caller-identity`**, then upload the result with **`iam put-role-policy`**.
 
-- `infrastructure/iam-policy-github-deploy-web.json`
-- `infrastructure/iam-policy-github-deploy-backend.json`
-- `infrastructure/iam-trust-github-oidc.json`
-
-### How to Set Your AWS Account ID
-
-Set the `AWS_ACCOUNT_ID` as a GitHub Actions variable:
-
-```bash
-# Get your AWS account ID
-aws sts get-caller-identity --query Account --output text
-
-# Set on dev environment
-gh variable set AWS_ACCOUNT_ID --env dev --body "YOUR_ACCOUNT_ID"
-
-# Set on prod environment
-gh variable set AWS_ACCOUNT_ID --env prod --body "YOUR_ACCOUNT_ID"
-```
+**CloudFormation:** [`infrastructure/templates/github-deploy-role-stack.yaml`](infrastructure/templates/github-deploy-role-stack.yaml) uses **`!Sub`** / **`${AWS::AccountId}`** instead; no placeholder in the template.
 
 ## Security Best Practices for Operators
 

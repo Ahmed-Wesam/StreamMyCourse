@@ -203,6 +203,8 @@ chmod +x scripts/apply-github-deploy-role-policies.sh
 
 Optional: `GITHUB_DEPLOY_ROLE_NAME` if the role name differs. This path does **not** create the role or OIDC provider and does **not** update the trust policy; use the stack (or `aws iam update-assume-role-policy`) when trust changes.
 
+The JSON policy files use the placeholder **`YOUR_AWS_ACCOUNT_ID`** in ARNs. [`scripts/apply-github-deploy-role-policies.sh`](scripts/apply-github-deploy-role-policies.sh) / [`.ps1`](scripts/apply-github-deploy-role-policies.ps1) replace it with the numeric account from **`aws sts get-caller-identity`** into a temp file, then call **`iam put-role-policy`**. Do not pass the raw JSON to IAM without that step (or manual find-and-replace).
+
 ### `deploy-backend.yml`
 
 [`.github/workflows/deploy-backend.yml`](../.github/workflows/deploy-backend.yml) — **`deploy-edge-dev`** / **`deploy-edge-prod`** run [`scripts/deploy-edge.sh`](../scripts/deploy-edge.sh) (**`StreamMyCourse-EdgeHosting-{env}`** in **us-east-1**). **`deploy-backend-dev`** / **`deploy-backend-prod`** run Cognito (auth) then [`scripts/deploy-backend.sh`](../scripts/deploy-backend.sh). Student and teacher **asset** deploys use the reusable workflows and **`needs`** the corresponding edge job. **Manual dispatch:** **full** or **integ-only**.
