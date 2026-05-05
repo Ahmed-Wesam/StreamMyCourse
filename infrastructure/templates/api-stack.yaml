@@ -102,6 +102,19 @@ Parameters:
       Feature flag. When 'true' the Lambda reads/writes via the PostgreSQL
       adapter; when 'false' it continues using DynamoDB (instant rollback).
 
+  ProgressCompleteRatio:
+    Type: Number
+    Default: 0.92
+    MinValue: 0.01
+    MaxValue: 1.0
+    Description: Ratio of video watched to auto-mark lesson complete
+
+  ProgressPositionSlackSec:
+    Type: Number
+    Default: 30
+    MinValue: 0
+    Description: Seconds past video end to allow position reporting
+
 Conditions:
   HasVideoBucket: !Not [!Equals [!Ref VideoBucketName, '']]
   HasCognitoAuthorizer: !Not [!Equals [!Ref CognitoUserPoolArn, '']]
@@ -294,6 +307,8 @@ Resources:
           MEDIA_CLEANUP_QUEUE_URL: !Ref MediaCleanupQueueUrl
           COGNITO_USER_POOL_ARN: !Ref CognitoUserPoolArn
           COGNITO_CLIENT_ID: !Ref CognitoClientId
+          PROGRESS_COMPLETE_RATIO: !Ref ProgressCompleteRatio
+          PROGRESS_POSITION_SLACK_SEC: !Ref ProgressPositionSlackSec
       Tags:
         - Key: Project
           Value: StreamMyCourse
@@ -395,6 +410,22 @@ Resources:
       RestApiId: !Ref CatalogApi
       ParentId: !Ref LessonsResource
       PathPart: '{lessonId}'
+
+  # API Gateway Resource: /courses/{courseId}/progress
+  CourseProgressResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref CatalogApi
+      ParentId: !Ref CourseIdResource
+      PathPart: progress
+
+  # API Gateway Resource: /courses/{courseId}/lessons/{lessonId}/progress
+  LessonProgressResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref CatalogApi
+      ParentId: !Ref LessonIdResource
+      PathPart: progress
 
   # API Gateway Resource: /courses/{courseId}/lessons/{lessonId}/video-ready
   LessonVideoReadyResource:
@@ -865,6 +896,60 @@ Resources:
         Type: AWS_PROXY
         Uri: !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${CatalogLambda.Arn}/invocations'
 
+  # API Gateway Method: GET /courses/{courseId}/progress
+  CourseProgressGetMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref CatalogApi
+      ResourceId: !Ref CourseProgressResource
+      HttpMethod: GET
+      AuthorizationType: !If [HasCognitoAuthorizer, COGNITO_USER_POOLS, NONE]
+      AuthorizerId: !If [HasCognitoAuthorizer, !Ref CognitoAuthorizer, !Ref AWS::NoValue]
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Uri: !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${CatalogLambda.Arn}/invocations'
+
+  # API Gateway Method: OPTIONS /courses/{courseId}/progress (CORS preflight)
+  CourseProgressOptionsMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref CatalogApi
+      ResourceId: !Ref CourseProgressResource
+      HttpMethod: OPTIONS
+      AuthorizationType: NONE
+      Integration:
+        IntegrationHttpMethod: POST
+        Type: AWS_PROXY
+        Uri: !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${CatalogLambda.Arn}/invocations'
+
+  # API Gateway Method: PUT /courses/{courseId}/lessons/{lessonId}/progress
+  LessonProgressPutMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref CatalogApi
+      ResourceId: !Ref LessonProgressResource
+      HttpMethod: PUT
+      AuthorizationType: !If [HasCognitoAuthorizer, COGNITO_USER_POOLS, NONE]
+      AuthorizerId: !If [HasCognitoAuthorizer, !Ref CognitoAuthorizer, !Ref AWS::NoValue]
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Uri: !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${CatalogLambda.Arn}/invocations'
+
+  # API Gateway Method: OPTIONS /courses/{courseId}/lessons/{lessonId}/progress (CORS preflight)
+  LessonProgressOptionsMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref CatalogApi
+      ResourceId: !Ref LessonProgressResource
+      HttpMethod: OPTIONS
+      AuthorizationType: NONE
+      Integration:
+        IntegrationHttpMethod: POST
+        Type: AWS_PROXY
+        Uri: !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${CatalogLambda.Arn}/invocations'
+
   # API Gateway Deployment
   # Include Lambda artifact key in Description so this resource updates whenever the
   # catalog zip changes, forcing a new deployment. Otherwise CloudFormation can leave
@@ -906,6 +991,10 @@ Resources:
       - UploadUrlOptionsMethod
       - UsersMeGetMethod
       - UsersMeOptionsMethod
+      - CourseProgressGetMethod
+      - CourseProgressOptionsMethod
+      - LessonProgressPutMethod
+      - LessonProgressOptionsMethod
     Properties:
       RestApiId: !Ref CatalogApi
       Description: !Sub 'catalog-${LambdaCodeS3Key}'

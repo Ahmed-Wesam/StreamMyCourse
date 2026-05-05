@@ -4,6 +4,38 @@
 
 ---
 
+## 2026-05-05 — Lesson Progress Tracking (RDS)
+
+### Completed
+
+- [x] **Database** — `infrastructure/database/migrations/002_lesson_progress.sql` — New table with FKs to users, lessons, courses; index on (course_id, user_sub)
+- [x] **Backend Service** — `services/progress/` bounded context:
+  - `ports.py` — Repository protocol
+  - `contracts.py` — API DTOs
+  - `service.py` — Business logic (authorization, auto-complete at 92%, position validation)
+  - `rds_repo.py` — PostgreSQL adapter with ON CONFLICT UPDATE
+  - `controller.py` — HTTP routing for GET/PUT endpoints
+- [x] **Wiring** — `config.py`, `bootstrap.py`, `index.py` — Progress service integrated as optional 4th tuple member in AwsDeps
+- [x] **Infrastructure** — `api-stack.yaml` — CloudFormation resources for endpoints, Lambda env vars
+- [x] **Frontend** — `api.ts` types/functions, `LessonPlayerPage.tsx` integration with progress bar, completion badges, resume position
+- [x] **Tests** — 37 backend unit tests, 19 frontend tests (68 total), all passing
+- [x] **Documentation** — ADR-0010, module-map.md update
+
+### Technical Notes
+
+- RDS-only: Returns 503 `progress_requires_rds` when USE_RDS=false
+- Authorization: enrollment OR course ownership required
+- Auto-complete: position/duration >= PROGRESS_COMPLETE_RATIO (default 0.92)
+- Position slack: allows up to 30 seconds past video duration
+- No throttling in MVP (deferred)
+
+### Verification
+
+- All CI checks pass (vulture, boundary checks, lint, knip, build, test)
+- CloudFormation template parses successfully
+
+---
+
 ## 2026-05-05 — SQS Interface VPC Endpoint for Catalog Lambda
 
 ### Problem

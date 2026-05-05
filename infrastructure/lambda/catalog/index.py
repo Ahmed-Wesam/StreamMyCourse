@@ -10,6 +10,7 @@ from bootstrap import lambda_bootstrap
 from config import load_config
 from services.auth.controller import handle_users_me
 from services.common.http import apigw_routing_path, json_response, options_response, pick_origin
+from services.progress.controller import handle_progress_request
 from services.common.jwt_verify import CognitoJwtConfig
 from services.common.logging_setup import configure_logging
 from services.common.runtime_context import bind_from_lambda_event, clear_request_context, set_request_path
@@ -68,7 +69,7 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 None,
             )
         else:
-            cfg, service, auth_service = lambda_bootstrap()
+            cfg, service, auth_service, progress_service = lambda_bootstrap()
 
             headers = event.get("headers") or {}
             req_origin = headers.get("origin") or headers.get("Origin")
@@ -90,7 +91,55 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 parts = [p for p in raw_path.split("/") if p]
                 jwt_config = _build_jwt_config(cfg)
 
-                if method == "GET" and parts == ["users", "me"]:
+                # Route progress requests (requires RDS)
+                if (
+                    len(parts) == 3
+                    and parts[0] == "courses"
+                    and parts[2] == "progress"
+                    and method == "GET"
+                ):
+                    if progress_service is None:
+                        response = json_response(
+                            503,
+                            {
+                                "message": "Progress tracking requires PostgreSQL. Set USE_RDS=true to enable.",
+                                "code": "progress_requires_rds",
+                            },
+                            origin,
+                        )
+                    else:
+                        response = handle_progress_request(
+                            event,
+                            origin=origin,
+                            progress_svc=progress_service,
+                            auth_enforced=cfg.cognito_auth_enabled,
+                            jwt_config=jwt_config,
+                        )
+                elif (
+                    len(parts) == 5
+                    and parts[0] == "courses"
+                    and parts[2] == "lessons"
+                    and parts[4] == "progress"
+                    and method == "PUT"
+                ):
+                    if progress_service is None:
+                        response = json_response(
+                            503,
+                            {
+                                "message": "Progress tracking requires PostgreSQL. Set USE_RDS=true to enable.",
+                                "code": "progress_requires_rds",
+                            },
+                            origin,
+                        )
+                    else:
+                        response = handle_progress_request(
+                            event,
+                            origin=origin,
+                            progress_svc=progress_service,
+                            auth_enforced=cfg.cognito_auth_enabled,
+                            jwt_config=jwt_config,
+                        )
+                elif method == "GET" and parts == ["users", "me"]:
                     response = handle_users_me(
                         event,
                         origin=origin,
