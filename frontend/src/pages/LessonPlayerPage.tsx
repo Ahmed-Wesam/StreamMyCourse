@@ -295,6 +295,8 @@ export default function LessonPlayerPage() {
                 <video
                   controls
                   playsInline
+                  preload="metadata"
+                  crossOrigin="anonymous"
                   className="w-full aspect-video"
                   src={src || undefined}
                 />
