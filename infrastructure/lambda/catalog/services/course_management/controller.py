@@ -5,7 +5,7 @@ from typing import Any, Dict, Optional, Tuple
 
 from services.common.errors import Forbidden, HttpError, NotFound, Unauthorized
 from services.common.http import apigw_cognito_claims, apigw_routing_path, json_response, options_response
-from services.common.runtime_context import update_action
+from services.common.runtime_context import set_upload_kind, update_action
 from services.common.validation import optional_str, parse_json_body, require_str
 from services.course_management import contracts as dto
 from services.course_management.ports import UserProfileProvisioner
@@ -323,11 +323,13 @@ def handle(
             content_type = optional_str(body, "contentType", "video/mp4") or "video/mp4"
             upload_kind = optional_str(body, "uploadKind", "lesson") or "lesson"
             if upload_kind == "thumbnail":
+                set_upload_kind("courseThumbnail")
                 thumb_upload: dto.UploadUrlResponse = svc.get_thumbnail_upload_url(  # type: ignore[assignment]
                     course_id=course_id, filename=filename, content_type=content_type
                 )
                 return json_response(200, thumb_upload, origin)
             if upload_kind == "lessonThumbnail":
+                set_upload_kind("lessonThumbnail")
                 lesson_thumb_id = require_str(body, "lessonId")
                 lesson_thumb: dto.UploadUrlResponse = svc.get_lesson_thumbnail_upload_url(  # type: ignore[assignment]
                     course_id=course_id,
@@ -336,6 +338,7 @@ def handle(
                     content_type=content_type,
                 )
                 return json_response(200, lesson_thumb, origin)
+            set_upload_kind("lessonVideo")
             lesson_id = require_str(body, "lessonId")
             upload: dto.UploadUrlResponse = svc.get_upload_url(  # type: ignore[assignment]
                 course_id=course_id, lesson_id=lesson_id, filename=filename, content_type=content_type

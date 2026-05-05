@@ -22,6 +22,18 @@ _http_method: contextvars.ContextVar[Optional[str]] = contextvars.ContextVar(
 _route_or_action: contextvars.ContextVar[Optional[str]] = contextvars.ContextVar(
     "route_or_action", default=None
 )
+# API Gateway + routing (observability; no secrets)
+_api_stage: contextvars.ContextVar[Optional[str]] = contextvars.ContextVar("api_stage", default=None)
+_api_domain: contextvars.ContextVar[Optional[str]] = contextvars.ContextVar("api_domain", default=None)
+_route_key: contextvars.ContextVar[Optional[str]] = contextvars.ContextVar("route_key", default=None)
+_client_ip: contextvars.ContextVar[Optional[str]] = contextvars.ContextVar("client_ip", default=None)
+_user_agent_snippet: contextvars.ContextVar[Optional[str]] = contextvars.ContextVar(
+    "user_agent_snippet", default=None
+)
+_request_path: contextvars.ContextVar[Optional[str]] = contextvars.ContextVar("request_path", default=None)
+_upload_kind: contextvars.ContextVar[Optional[str]] = contextvars.ContextVar("upload_kind", default=None)
+
+_USER_AGENT_MAX = 200
 
 
 def bind_request_context(
@@ -30,6 +42,13 @@ def bind_request_context(
     api_request_id: Optional[str] = None,
     http_method: Optional[str] = None,
     route_or_action: Optional[str] = None,
+    api_stage: Optional[str] = None,
+    api_domain: Optional[str] = None,
+    route_key: Optional[str] = None,
+    client_ip: Optional[str] = None,
+    user_agent_snippet: Optional[str] = None,
+    request_path: Optional[str] = None,
+    upload_kind: Optional[str] = None,
 ) -> None:
     """Bind request-scoped context variables.
 
@@ -41,11 +60,25 @@ def bind_request_context(
         api_request_id: The API Gateway requestId
         http_method: HTTP method (GET, POST, etc.)
         route_or_action: Route or action name (e.g., "get_course")
+        api_stage: API Gateway stage name (when present)
+        api_domain: API Gateway ``domainName`` (host)
+        route_key: HTTP API ``routeKey`` or synthesized REST route
+        client_ip: Client source IP from API Gateway (when present)
+        user_agent_snippet: Truncated User-Agent (when present)
+        request_path: Normalized application path used for routing (no stage prefix)
+        upload_kind: For ``POST /upload-url`` branches: lesson video vs thumbnail kinds
     """
     _lambda_request_id.set(lambda_request_id)
     _api_request_id.set(api_request_id)
     _http_method.set(http_method)
     _route_or_action.set(route_or_action)
+    _api_stage.set(api_stage)
+    _api_domain.set(api_domain)
+    _route_key.set(route_key)
+    _client_ip.set(client_ip)
+    _user_agent_snippet.set(user_agent_snippet)
+    _request_path.set(request_path)
+    _upload_kind.set(upload_kind)
 
 
 def clear_request_context() -> None:
@@ -58,20 +91,96 @@ def clear_request_context() -> None:
     _api_request_id.set(None)
     _http_method.set(None)
     _route_or_action.set(None)
+    _api_stage.set(None)
+    _api_domain.set(None)
+    _route_key.set(None)
+    _client_ip.set(None)
+    _user_agent_snippet.set(None)
+    _request_path.set(None)
+    _upload_kind.set(None)
 
 
 def get_request_context() -> Dict[str, Optional[str]]:
-    """Get the current request context as a dictionary.
-
-    Returns:
-        Dict with lambda_request_id, api_request_id, http_method, route_or_action
-    """
+    """Get the current request context as a dictionary."""
     return {
         "lambda_request_id": _lambda_request_id.get(),
         "api_request_id": _api_request_id.get(),
         "http_method": _http_method.get(),
         "route_or_action": _route_or_action.get(),
+        "api_stage": _api_stage.get(),
+        "api_domain": _api_domain.get(),
+        "route_key": _route_key.get(),
+        "client_ip": _client_ip.get(),
+        "user_agent_snippet": _user_agent_snippet.get(),
+        "request_path": _request_path.get(),
+        "upload_kind": _upload_kind.get(),
     }
+
+
+def set_request_path(path: str) -> None:
+    """Set normalized routing path (typically after ``apigw_routing_path``)."""
+    p = (path or "").strip()
+    _request_path.set(p or None)
+
+
+def set_upload_kind(kind: Optional[str]) -> None:
+    """Set upload classification for ``POST /upload-url`` (cleared each request)."""
+    if not kind or not str(kind).strip():
+        _upload_kind.set(None)
+        return
+    _upload_kind.set(str(kind).strip())
+
+
+def extract_apigw_public_fields(event: Dict[str, Any]) -> Dict[str, str]:
+    """Extract non-sensitive API Gateway fields for structured logs.
+
+    Supports HTTP API (v2) and REST API (v1) proxy integration shapes.
+    """
+    out: Dict[str, str] = {}
+    if not isinstance(event, dict):
+        return out
+    rc = event.get("requestContext")
+    if not isinstance(rc, dict):
+        return out
+
+    stage = rc.get("stage")
+    if isinstance(stage, str) and stage.strip():
+        out["api_stage"] = stage.strip()
+
+    domain = rc.get("domainName")
+    if isinstance(domain, str) and domain.strip():
+        out["api_domain"] = domain.strip()
+
+    rk = rc.get("routeKey")
+    if isinstance(rk, str) and rk.strip():
+        out["route_key"] = rk.strip()
+
+    http = rc.get("http")
+    if isinstance(http, dict):
+        ip = http.get("sourceIp")
+        if isinstance(ip, str) and ip.strip():
+            out["client_ip"] = ip.strip()
+        ua = http.get("userAgent")
+        if isinstance(ua, str) and ua.strip():
+            out["user_agent_snippet"] = ua.strip()[:_USER_AGENT_MAX]
+        if "route_key" not in out:
+            m = http.get("method")
+            p = http.get("path")
+            if isinstance(m, str) and m.strip():
+                path_part = p.strip() if isinstance(p, str) else ""
+                out["route_key"] = f"{m.strip()} {path_part}".strip()
+    else:
+        ident = rc.get("identity")
+        if isinstance(ident, dict):
+            ip = ident.get("sourceIp")
+            if isinstance(ip, str) and ip.strip():
+                out["client_ip"] = ip.strip()
+        http_method = event.get("httpMethod")
+        rp = rc.get("resourcePath")
+        if isinstance(http_method, str) and http_method.strip() and isinstance(rp, str):
+            out["route_key"] = f"{http_method.strip()} {rp}".strip()
+
+    return out
 
 
 def extract_api_request_id(event: Dict[str, Any]) -> Optional[str]:
@@ -145,6 +254,7 @@ def bind_from_lambda_event(
     """
     lambda_request_id = extract_lambda_request_id(lambda_context)
     api_request_id = extract_api_request_id(event)
+    gw = extract_apigw_public_fields(event)
 
     # Extract HTTP method from event
     http_method = None
@@ -161,8 +271,13 @@ def bind_from_lambda_event(
     bind_request_context(
         lambda_request_id=lambda_request_id,
         api_request_id=api_request_id,
-        http_method=http_method,
+        http_method=http_method if isinstance(http_method, str) else None,
         route_or_action=route_or_action,
+        api_stage=gw.get("api_stage"),
+        api_domain=gw.get("api_domain"),
+        route_key=gw.get("route_key"),
+        client_ip=gw.get("client_ip"),
+        user_agent_snippet=gw.get("user_agent_snippet"),
     )
 
 

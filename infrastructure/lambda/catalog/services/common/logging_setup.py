@@ -24,10 +24,12 @@ class JsonLogFormatter(logging.Formatter):
     - level: Log level name
     - logger: Logger name
     - message: Log message
-    - lambda_request_id: From contextvars (if set)
-    - api_request_id: From contextvars (if set)
-    - action: From contextvars (if set)
-    - http_method: From contextvars (if set)
+    - lambda_request_id, api_request_id, http_method: From contextvars (if set)
+    - action: Routed handler name from contextvars (``route_or_action``)
+    - api_stage, api_domain, route_key, client_ip, user_agent_snippet: API Gateway
+      fields when present (see ``runtime_context.extract_apigw_public_fields``)
+    - request_path: Normalized path used for in-Lambda routing (after stage strip)
+    - upload_kind: For ``POST /upload-url`` (lessonVideo | courseThumbnail | lessonThumbnail)
     - exc_info: Exception info (if present)
     """
 
@@ -43,16 +45,15 @@ class JsonLogFormatter(logging.Formatter):
             "message": record.getMessage(),
         }
 
-        # Add contextvar fields if available
+        # Add contextvar fields if available (API Gateway + routing + upload kind)
         ctx = runtime_context.get_request_context()
-        if ctx.get("lambda_request_id"):
-            log_obj["lambda_request_id"] = ctx["lambda_request_id"]
-        if ctx.get("api_request_id"):
-            log_obj["api_request_id"] = ctx["api_request_id"]
-        if ctx.get("route_or_action"):
-            log_obj["action"] = ctx["route_or_action"]
-        if ctx.get("http_method"):
-            log_obj["http_method"] = ctx["http_method"]
+        for key, value in ctx.items():
+            if value is None or value == "":
+                continue
+            if key == "route_or_action":
+                log_obj["action"] = value
+            else:
+                log_obj[key] = value
 
         # Add exception info if present
         if record.exc_info and record.exc_info[0] is not None:
@@ -91,6 +92,13 @@ class JsonLogFormatter(logging.Formatter):
                 "api_request_id",
                 "action",
                 "http_method",
+                "api_stage",
+                "api_domain",
+                "route_key",
+                "client_ip",
+                "user_agent_snippet",
+                "request_path",
+                "upload_kind",
             ):
                 log_obj[key] = value
 
@@ -126,6 +134,18 @@ class ContextVarFilter(logging.Filter):
             record.action = ctx["route_or_action"]
         if ctx.get("http_method"):
             record.http_method = ctx["http_method"]
+        for attr in (
+            "api_stage",
+            "api_domain",
+            "route_key",
+            "client_ip",
+            "user_agent_snippet",
+            "request_path",
+            "upload_kind",
+        ):
+            val = ctx.get(attr)
+            if val:
+                setattr(record, attr, val)
 
         return True
 

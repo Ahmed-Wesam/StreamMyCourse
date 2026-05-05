@@ -224,6 +224,47 @@ class TestContextVarFilter:
         finally:
             runtime_context.clear_request_context()
 
+    def test_json_formatter_includes_api_gateway_fields_from_context(self):
+        """Structured logs include API Gateway correlation fields when bound."""
+        from services.common.logging_setup import JsonLogFormatter
+        from services.common import runtime_context
+
+        formatter = JsonLogFormatter()
+        runtime_context.bind_request_context(
+            lambda_request_id="lambda-1",
+            api_request_id="api-1",
+            http_method="POST",
+            route_or_action="get_upload_url",
+            api_stage="dev",
+            api_domain="gw.example.com",
+            route_key="POST /upload-url",
+            client_ip="198.51.100.1",
+            user_agent_snippet="TestAgent/1",
+            request_path="/upload-url",
+            upload_kind="lessonVideo",
+        )
+        try:
+            record = logging.LogRecord(
+                name="test",
+                level=logging.INFO,
+                pathname="t.py",
+                lineno=1,
+                msg="hello",
+                args=(),
+                exc_info=None,
+            )
+            out = json.loads(formatter.format(record))
+            assert out["action"] == "get_upload_url"
+            assert out["api_stage"] == "dev"
+            assert out["api_domain"] == "gw.example.com"
+            assert out["route_key"] == "POST /upload-url"
+            assert out["client_ip"] == "198.51.100.1"
+            assert out["user_agent_snippet"] == "TestAgent/1"
+            assert out["request_path"] == "/upload-url"
+            assert out["upload_kind"] == "lessonVideo"
+        finally:
+            runtime_context.clear_request_context()
+
 
 class TestConfigureLoggingIdempotent:
     """Test Case: test_configure_logging_idempotent
