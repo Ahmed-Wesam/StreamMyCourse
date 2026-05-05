@@ -93,10 +93,10 @@ describe('LessonPlayerPage', () => {
 
     renderLessonPlayer()
 
-    expect(await screen.findByRole('heading', { name: /Enroll to watch/i })).toBeInTheDocument()
+    expect((await screen.findByRole('heading', { name: /Enroll to watch/i })).isConnected).toBe(true)
     fireEvent.click(screen.getByRole('button', { name: /Enroll for free/i }))
 
-    expect(await screen.findByRole('heading', { name: /Sign in to watch/i })).toBeInTheDocument()
-    expect(screen.queryByRole('heading', { name: /Enroll to watch/i })).not.toBeInTheDocument()
+    expect((await screen.findByRole('heading', { name: /Sign in to watch/i })).isConnected).toBe(true)
+    expect(screen.queryByRole('heading', { name: /Enroll to watch/i })).toBeNull()
   })
 })
