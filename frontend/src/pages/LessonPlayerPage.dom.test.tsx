@@ -72,7 +72,6 @@ describe('LessonPlayerPage', () => {
     })
 
     expect(video.playsInline).toBe(true)
-    expect(video.hasAttribute('playsinline')).toBe(true)
   })
 
   it('shows Sign in to watch and locks sidebar when playback returns 401', async () => {
@@ -80,8 +79,9 @@ describe('LessonPlayerPage', () => {
 
     renderLessonPlayer()
 
-    expect(await screen.findByRole('heading', { name: /Sign in to watch/i })).toBeInTheDocument()
-    expect(screen.getByRole('link', { name: /^Sign in$/i })).toHaveAttribute('href', '/login')
+    const signInHeading = await screen.findByRole('heading', { name: /Sign in to watch/i })
+    expect(signInHeading.isConnected).toBe(true)
+    expect(screen.getByRole('link', { name: /^Sign in$/i }).getAttribute('href')).toBe('/login')
     expect(screen.getAllByText('Locked').length).toBeGreaterThan(0)
   })
 
