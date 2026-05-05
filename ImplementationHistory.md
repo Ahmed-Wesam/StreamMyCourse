@@ -4,6 +4,27 @@
 
 ---
 
+## 2026-05-05 — SQS Interface VPC Endpoint for Catalog Lambda
+
+### Problem
+Catalog Lambda running in private subnets (via RDS stack VPC config) could not reach SQS to send media cleanup messages. The VPC had Interface endpoints for Secrets Manager and CloudWatch Logs, plus Gateway endpoints for S3 and DynamoDB, but **SQS does not support Gateway endpoints** (only Interface). Without a NAT Gateway, there was no route from the private subnet to `sqs.eu-west-1.amazonaws.com`.
+
+### Solution
+Added `SqsEndpoint` Interface VPC endpoint to [`infrastructure/templates/rds-stack.yaml`](infrastructure/templates/rds-stack.yaml) following the existing pattern for Secrets Manager and CloudWatch Logs endpoints:
+- Type: `AWS::EC2::VPCEndpoint` with `VpcEndpointType: Interface`
+- `PrivateDnsEnabled: true` so the Lambda SDK uses standard SQS hostnames
+- Attached to `PrivateSubnet` and `EndpointSecurityGroup` (existing security group already allows ingress from Lambda SG on 443)
+
+### Verification
+- CloudFormation template validation: `YAML_OK`
+- After CI/CD deploy to dev/integ/prod: Catalog Lambda can successfully `sqs:SendMessage` to the media cleanup queue
+- Media cleanup worker receives and processes deletion messages
+
+### Cost Impact
+~$7.20/month per environment (same as existing Secrets Manager and Logs endpoints); significantly cheaper than NAT Gateway (~$32+/month).
+
+---
+
 ## 2026-05-04 — CloudFormation DeletionPolicy audit and S3 data-loss fix
 
 ### Incident
