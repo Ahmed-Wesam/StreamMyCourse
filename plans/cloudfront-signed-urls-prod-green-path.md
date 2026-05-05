@@ -1,6 +1,6 @@
 # CloudFront signed URLs — green path to prod (agent / operator handoff)
 
-**Branch:** `CloudFormation-migration` — merge to `main` when ready to ship; use this doc for **prod** rollout and CI parity.
+**Branch:** `cloudfront-migration` — merge to `main` when ready to ship; use this doc for **prod** rollout and CI parity.
 
 ## Preconditions
 
