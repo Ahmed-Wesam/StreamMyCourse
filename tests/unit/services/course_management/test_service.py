@@ -406,7 +406,7 @@ class TestDeleteLessonOrderCompaction:
         with pytest.raises(NotFound):
             service.delete_lesson("c1", "missing")
 
-    def test_deletes_s3_before_repo(
+    def test_raises_when_queue_missing_but_lesson_has_media_keys(
         self, service: CourseManagementService, repo: MagicMock, storage: MagicMock
     ) -> None:
         repo.get_lesson_by_id.return_value = _lesson(
@@ -415,15 +415,47 @@ class TestDeleteLessonOrderCompaction:
             video_key=_video_key("c1", "lid-2", "66666666-6666-4666-8666-666666666666"),
             thumbnail_key=_lesson_thumb_key("c1", "lid-2"),
         )
-        repo.list_lessons.return_value = []
-        service.delete_lesson("c1", "lid-2")
-        storage.delete_objects.assert_called_once_with(
-            [
-                _video_key("c1", "lid-2", "66666666-6666-4666-8666-666666666666"),
-                _lesson_thumb_key("c1", "lid-2"),
-            ]
+        with pytest.raises(ServiceUnavailable, match="MEDIA_CLEANUP_QUEUE_URL"):
+            service.delete_lesson("c1", "lid-2")
+        repo.delete_lesson.assert_not_called()
+        storage.delete_objects.assert_not_called()
+
+    @patch("services.course_management.service.send_media_cleanup_job")
+    def test_enqueues_media_cleanup_when_queue_configured(
+        self,
+        send_job: MagicMock,
+        service_with_queue: CourseManagementService,
+        repo: MagicMock,
+        storage: MagicMock,
+    ) -> None:
+        repo.get_lesson_by_id.return_value = _lesson(
+            id_="lid-2",
+            order=2,
+            video_key=_video_key("c1", "lid-2", "66666666-6666-4666-8666-666666666666"),
+            thumbnail_key=_lesson_thumb_key("c1", "lid-2"),
         )
-        repo.delete_lesson.assert_called_once_with(course_id="c1", lesson_id="lid-2")
+        repo.list_lessons.return_value = []
+        order: list[str] = []
+
+        def _mark_db(*_a: object, **_k: object) -> None:
+            order.append("db")
+
+        def _mark_send(*_a: object, **_k: object) -> None:
+            order.append("sqs")
+
+        repo.delete_lesson.side_effect = _mark_db
+        send_job.side_effect = _mark_send
+        service_with_queue.delete_lesson("c1", "lid-2")
+        assert order == ["db", "sqs"]
+        storage.delete_objects.assert_not_called()
+        send_job.assert_called_once()
+        qurl, cid, keys = send_job.call_args[0]
+        assert qurl == "https://sqs.example/queue"
+        assert cid == "c1"
+        assert set(keys) == {
+            _video_key("c1", "lid-2", "66666666-6666-4666-8666-666666666666"),
+            _lesson_thumb_key("c1", "lid-2"),
+        }
 
     def test_compacts_remaining_orders_to_one_through_n(
         self, service: CourseManagementService, repo: MagicMock, storage: MagicMock
