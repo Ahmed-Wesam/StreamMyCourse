@@ -4,6 +4,19 @@
 
 ---
 
+## 2026-05-05 — Deploy workflow OIDC uses repository Actions variable for role ARN
+
+### Completed
+
+- [x] **GitHub Actions** — [`.github/workflows/deploy-backend.yml`](.github/workflows/deploy-backend.yml) — `configure-aws-credentials` `role-to-assume` and reusable-workflow `AWS_DEPLOY_ROLE_ARN` inputs now use **`${{ vars.AWS_DEPLOY_ROLE_ARN }}`** (not **`secrets.AWS_DEPLOY_ROLE_ARN`**), aligned with [`AGENTS.md`](AGENTS.md) and the **verify-rds** callers. Avoids a **dev** / **prod** environment **secret** shadowing the value with a **web-only** role ARN (which caused **`sqs:CreateQueue` AccessDenied** on `StreamMyCourse-MediaCleanup-integ`).
+- [x] **Contract test** — [`tests/unit/test_deploy_backend_workflow_contract.py`](tests/unit/test_deploy_backend_workflow_contract.py) — asserts the workflow contains no `secrets.AWS_DEPLOY_ROLE_ARN` and that **deploy-backend-integ** uses the variable for OIDC.
+
+### Ops
+
+- **Repository → Settings → Secrets and variables → Actions → Variables:** set **`AWS_DEPLOY_ROLE_ARN`** to the IAM role ARN that carries **backend** deploy permissions ([`infrastructure/iam-policy-github-deploy-backend.json`](infrastructure/iam-policy-github-deploy-backend.json) on the OIDC role, or the unified stack output). Re-run **Deploy** after merge if the failed media-cleanup stack left **`ROLLBACK_COMPLETE`**; delete that stack in CloudFormation before retry if a clean create is required.
+
+---
+
 ## 2026-05-04 — Async S3 media cleanup (SQS + worker) for course delete
 
 ### Completed

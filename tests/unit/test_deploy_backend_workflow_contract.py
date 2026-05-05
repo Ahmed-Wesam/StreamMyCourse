@@ -32,6 +32,15 @@ def test_deploy_workflow_includes_prod_rds_job_ids() -> None:
         assert needle in text, f"missing job block {needle!r}"
 
 
+def test_deploy_backend_uses_repository_variable_for_oidc_role_not_environment_secret() -> None:
+    """Backend/media/SQS deploys must not pick up a wrong per-env secret (e.g. web-only role ARN)."""
+    text = _workflow_text()
+    assert "secrets.AWS_DEPLOY_ROLE_ARN" not in text
+    assert text.count("vars.AWS_DEPLOY_ROLE_ARN") >= 10
+    integ = _job_block(text, "deploy-backend-integ", "\n  # --- Stage 2:")
+    assert "role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}" in integ
+
+
 def test_deploy_backend_prod_depends_on_rds_and_schema_and_uses_rds_env() -> None:
     text = _workflow_text()
     start = text.index("  deploy-backend-prod:")
