@@ -29,31 +29,61 @@ StreamMyCourse is a serverless learning management system (LMS) built for video-
 ## Architecture
 
 ```mermaid
-flowchart LR
-    subgraph Student["Student Site"]
-        S[React SPA]
+flowchart TB
+    subgraph Client["Client Layer"]
+        S[Student SPA<br/>React + Vite + TS]
+        T[Teacher SPA<br/>React + Vite + TS]
     end
-    subgraph Teacher["Teacher Site"]
-        T[React SPA]
+
+    subgraph Edge["Edge Layer (CloudFront)"]
+        CF_WEB["Static Site CDN<br/>S3 + OAC"]
+        CF_VIDEO["Video CDN<br/>S3 + OAC"]
     end
-    subgraph AWS["AWS Cloud"]
-        APIGW[API Gateway]
-        Lambda[Python Lambda]
-        RDS[(PostgreSQL RDS)]
-        S3[(S3 Video Storage)]
-        CF[CloudFront CDN]
-        Cognito[Cognito Auth]
+
+    subgraph Auth["Authentication (Cognito)"]
+        CG["User Pool + Google IdP"]
+        UPS["PostAuth Lambda<br/>User Profile Sync"]
     end
-    S -->|REST API| APIGW
-    T -->|REST API| APIGW
-    APIGW --> Lambda
-    Lambda --> RDS
-    Lambda --> S3
-    S -->|Video Stream| CF
-    T -->|Video Stream| CF
-    CF --> S3
-    S -->|OAuth| Cognito
-    T -->|OAuth| Cognito
+
+    subgraph API["API Layer"]
+        APIGW["API Gateway<br/>REST API"]
+        LAMBDA["Catalog Lambda<br/>Python 3.11"]
+    end
+
+    subgraph Storage["Storage Layer"]
+        RDS[("RDS PostgreSQL<br/>Courses / Lessons<br/>Enrollments / Users")]
+        S3_VIDEO["S3 Video Bucket<br/>Private + Presigned URLs"]
+        S3_WEB["S3 Web Bucket<br/>Static Assets"]
+    end
+
+    subgraph Async["Async Processing"]
+        SQS["Media Cleanup Queue<br/>SQS + DLQ"]
+        CLEANUP["Cleanup Worker<br/>Lambda"]
+    end
+
+    S -->|"Browse / Watch"| CF_WEB
+    T -->|"Create / Manage"| CF_WEB
+    CF_WEB --> S3_WEB
+
+    S -->|"Google OAuth"| CG
+    T -->|"Google OAuth"| CG
+    CG -->|"Sync User"| UPS
+    UPS -.->|"Upsert"| RDS
+
+    S -->|"REST API + JWT"| APIGW
+    T -->|"REST API + JWT"| APIGW
+    APIGW --> LAMBDA
+
+    LAMBDA -->|"Read / Write"| RDS
+    LAMBDA -->|"Presigned URLs"| S3_VIDEO
+    LAMBDA -->|"Enqueue Delete"| SQS
+
+    S -->|"Stream MP4"| CF_VIDEO
+    T -->|"Upload / Stream"| CF_VIDEO
+    CF_VIDEO --> S3_VIDEO
+
+    SQS --> CLEANUP
+    CLEANUP -->|"DeleteObjects"| S3_VIDEO
 ```
 
 ## Tech Stack
