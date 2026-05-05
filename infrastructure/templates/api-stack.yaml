@@ -51,6 +51,14 @@ Parameters:
     Default: ''
     Description: Cognito User Pool ARN for API Gateway COGNITO_USER_POOLS authorizer (optional; empty disables protected-route auth at gateway)
 
+  CognitoClientId:
+    Type: String
+    Default: ''
+    Description: >-
+      Cognito User Pool Client ID(s) for JWT audience validation.
+      Supports comma-separated list for multiple clients (e.g., student + teacher apps).
+      Required when CognitoUserPoolArn is set for public route JWT verification.
+
   RdsStackName:
     Type: String
     Default: ''
@@ -284,6 +292,8 @@ Resources:
               'Fn::Sub': '${RdsStackName}-DbSecretArn'
             - ''
           MEDIA_CLEANUP_QUEUE_URL: !Ref MediaCleanupQueueUrl
+          COGNITO_USER_POOL_ARN: !Ref CognitoUserPoolArn
+          COGNITO_CLIENT_ID: !Ref CognitoClientId
       Tags:
         - Key: Project
           Value: StreamMyCourse
