@@ -41,6 +41,16 @@ def test_deploy_backend_uses_repository_variable_for_oidc_role_not_environment_s
     assert "role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}" in integ
 
 
+def test_integ_jobs_have_no_github_environment_so_oidc_role_var_is_not_shadowed() -> None:
+    """Environment-level `AWS_DEPLOY_ROLE_ARN` would override the repo variable and can be web-only."""
+    text = _workflow_text()
+    integ_deploy = _job_block(text, "deploy-backend-integ", "\n  # --- Stage 2:")
+    integ_tests = _job_block(text, "integ-tests", "\n  # --- Stage 3:")
+    env_dev_line = re.compile(r"^\s+environment:\s*dev\s*$", re.M)
+    assert env_dev_line.search(integ_deploy) is None
+    assert env_dev_line.search(integ_tests) is None
+
+
 def test_deploy_backend_prod_depends_on_rds_and_schema_and_uses_rds_env() -> None:
     text = _workflow_text()
     start = text.index("  deploy-backend-prod:")
