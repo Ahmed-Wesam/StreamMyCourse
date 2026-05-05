@@ -13,15 +13,10 @@ param(
     [ValidateSet("billing", "api", "auth", "video", "edge-hosting", "rds")]
     [string]$Template = "api",
 
-    # api template: name of the rds-stack to import VPC/subnet/SG/secret from.
-    # When empty the api-stack deploys in DynamoDB-only mode (no VPC attachment).
+    # api template: name of the rds-stack to import VPC/subnet/SG/secret from (required).
+    # When empty, deploy.ps1 defaults to StreamMyCourse-Rds-<Environment>.
     [Parameter(Mandatory=$false)]
     [string]$RdsStackName = "",
-
-    # api template: feature flag that flips between DynamoDB and PostgreSQL adapters.
-    [Parameter(Mandatory=$false)]
-    [ValidateSet("true", "false", "")]
-    [string]$UseRds = "",
 
     [Parameter(Mandatory=$false)]
     [string]$EmailAddress = "",
@@ -97,7 +92,7 @@ param(
     [Parameter(Mandatory=$false)]
     [string]$GoogleClientSecret = "",
 
-    # auth stack: optional PostAuthentication Lambda (same RdsStackName as api when USE_RDS=true)
+    # auth stack: optional PostAuthentication Lambda (same RdsStackName as api when profile sync is on)
     [Parameter(Mandatory=$false)]
     [ValidateSet("true", "false", "")]
     [string]$EnableUserProfileSync = "",
@@ -455,10 +450,15 @@ if ($Template -eq "edge-hosting") {
     $cfDeployArgs += '--parameter-overrides'
     $cfDeployArgs += $authOverrides
 } elseif ($Template -eq "api") {
+    if ($RdsStackName -eq "") {
+        $RdsStackName = "StreamMyCourse-Rds-$Environment"
+        Write-Host "Note: RdsStackName defaulting to $RdsStackName" -ForegroundColor Yellow
+    }
     $apiOverrides = @(
         "Environment=$Environment",
         "LambdaCodeS3Bucket=$artifactBucket",
-        "LambdaCodeS3Key=$lambdaKey"
+        "LambdaCodeS3Key=$lambdaKey",
+        "RdsStackName=$RdsStackName"
     )
     if ($VideoBucketName -ne "") {
         $apiOverrides += "VideoBucketName=$VideoBucketName"
@@ -477,12 +477,6 @@ if ($Template -eq "edge-hosting") {
     }
     if ($CognitoUserPoolArn -ne "") {
         $apiOverrides += "CognitoUserPoolArn=$CognitoUserPoolArn"
-    }
-    if ($RdsStackName -ne "") {
-        $apiOverrides += "RdsStackName=$RdsStackName"
-    }
-    if ($UseRds -ne "") {
-        $apiOverrides += "UseRds=$UseRds"
     }
     $cfDeployArgs += '--parameter-overrides'
     $cfDeployArgs += $apiOverrides

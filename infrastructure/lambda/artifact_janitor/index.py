@@ -44,7 +44,7 @@ def parse_artifact_key(key: str) -> Tuple[str, str, str]:
     match = re.match(r'^(.*?)-([a-z]+)-([a-f0-9]{12,})\.zip$', key)
     if match:
         artifact_type = match.group(1)  # 'catalog' or 'rds-schema-apply'
-        env = match.group(2)  # 'dev', 'integ', 'prod'
+        env = match.group(2)  # 'dev' or 'prod'
         identifier = match.group(3)  # git sha or timestamp
         return (artifact_type, env, identifier)
 
@@ -54,7 +54,7 @@ def parse_artifact_key(key: str) -> Tuple[str, str, str]:
         if len(parts) == 2:
             base, suffix = parts
             # Try to extract env from base
-            for env in ['prod', 'integ', 'dev']:
+            for env in ['prod', 'dev']:
                 if f'-{env}-' in base or base.endswith(f'-{env}'):
                     artifact_type = base.replace(f'-{env}', '').replace(f'_{env}', '')
                     return (artifact_type or 'unknown', env, suffix.replace('.zip', ''))

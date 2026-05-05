@@ -96,7 +96,7 @@ cd infrastructure
 - CloudFormation template: **`teacher-web`** (`templates/teacher-web-stack.yaml`). Stack name convention: **`StreamMyCourse-TeacherWeb-{dev|prod}`**.
 - **Region:** deploy the stack in **`eu-west-1`** (same as student `web`). **`CertificateArn`** must still be an **ACM certificate in `us-east-1`** (CloudFront requirement); only the cert stack is created in Virginia.
 - **S3 bucket name** (in the template): `streammycourse-teacher-{Environment}-{Region}-{AccountId}` so the global bucket name matches the hosting region (avoids cooldown when moving stacks across regions).
-- **CI/CD:** On every **full** [`.github/workflows/deploy-backend.yml`](../.github/workflows/deploy-backend.yml) run after integ tests, **`deploy-edge-*`** runs **`edge-hosting-stack.yaml`** as **`StreamMyCourse-EdgeHosting-{env}`** in **`us-east-1`**, then reusable workflows sync assets to the **output buckets** in that region. Migration from legacy three stacks: [`edge-hosting-migration.md`](docs/edge-hosting-migration.md). For **manual-only** hosting, deploy the edge stack once with `deploy.ps1 -Template edge-hosting` (see snippet below) or use legacy `web` / `teacher-web` / `web-cert` templates.
+- **CI/CD:** On every **full** [`.github/workflows/deploy-backend.yml`](../.github/workflows/deploy-backend.yml) run after **integration HTTP tests** gate the SPA jobs, **`deploy-edge-*`** runs **`edge-hosting-stack.yaml`** as **`StreamMyCourse-EdgeHosting-{env}`** in **`us-east-1`**, then reusable workflows sync assets to the **output buckets** in that region. Migration from legacy three stacks: [`edge-hosting-migration.md`](docs/edge-hosting-migration.md). For **manual-only** hosting, deploy the edge stack once with `deploy.ps1 -Template edge-hosting` (see snippet below) or use legacy `web` / `teacher-web` / `web-cert` templates.
 
 ```powershell
 # Teacher dev SPA — include teach.* on the ACM cert (or use a cert that covers teach.yourdomain)
@@ -136,7 +136,7 @@ Optional **`deploy.ps1`** API parameters: `-VideoUrl`, `-DefaultMp4Url` (passed 
 
 ## GitHub Actions — automated deploys
 
-**Every push to `main`** runs **integ backend** → **integ tests** → **dev edge** → then **in parallel**: **dev backend + student web + teacher web** and **prod edge** (prod edge does **not** wait for dev Lambda or SPA deploys—only integ tests + dev edge). **Prod** backend and both prod SPAs run only after **prod edge** **and** the full dev column (integ stack, integ tests, dev edge, dev backend, both dev SPAs) succeed. **`cancel-in-progress: false`**: rapid commits **queue**. CloudFormation uses **`--no-fail-on-empty-changeset`**. Lambda code is uploaded as **`catalog-{env}-{gitSha12}.zip`** so **`LambdaCodeS3Key`** changes every commit.
+**Every push to `main`** runs **dev edge + RDS + `deploy-backend-dev`**, then **`integration-http-tests`**, then **student/teacher web** jobs and **`deploy-edge-prod`** / prod phases per each job’s **`needs`** in [`.github/workflows/deploy-backend.yml`](../.github/workflows/deploy-backend.yml) (see the workflow file for parallelism). **`cancel-in-progress: false`**: rapid commits **queue**. CloudFormation uses **`--no-fail-on-empty-changeset`**. Lambda code is uploaded as **`catalog-{env}-{gitSha12}.zip`** so **`LambdaCodeS3Key`** changes every commit.
 
 ### Secrets and variables (deploy workflows)
 
@@ -207,7 +207,7 @@ The JSON policy files use the placeholder **`YOUR_AWS_ACCOUNT_ID`** in ARNs. [`s
 
 ### `deploy-backend.yml`
 
-[`.github/workflows/deploy-backend.yml`](../.github/workflows/deploy-backend.yml) — **`deploy-edge-dev`** / **`deploy-edge-prod`** run [`scripts/deploy-edge.sh`](../scripts/deploy-edge.sh) (**`StreamMyCourse-EdgeHosting-{env}`** in **us-east-1**). **`deploy-backend-dev`** / **`deploy-backend-prod`** run Cognito (auth) then [`scripts/deploy-backend.sh`](../scripts/deploy-backend.sh). Student and teacher **asset** deploys use the reusable workflows and **`needs`** the corresponding edge job. **Manual dispatch:** **full** or **integ-only**.
+[`.github/workflows/deploy-backend.yml`](../.github/workflows/deploy-backend.yml) — **`deploy-edge-dev`** / **`deploy-edge-prod`** run [`scripts/deploy-edge.sh`](../scripts/deploy-edge.sh) (**`StreamMyCourse-EdgeHosting-{env}`** in **us-east-1**). **`deploy-backend-dev`** / **`deploy-backend-prod`** run Cognito (auth) then [`scripts/deploy-backend.sh`](../scripts/deploy-backend.sh). Student and teacher **asset** deploys use the reusable workflows and **`needs`** the corresponding edge job. **Manual dispatch:** runs the same graph without waiting for upstream CI (**operator responsibility** — see workflow header comments).
 
 ### `deploy-web.yml` + `deploy-web-reusable.yml`
 
