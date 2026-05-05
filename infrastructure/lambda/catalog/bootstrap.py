@@ -2,12 +2,10 @@
 
 Responsibilities:
   * Load configuration once per warm Lambda container.
-  * Pick between the DynamoDB and PostgreSQL repository adapters based on
-    ``cfg.use_rds``.
+  * Wire PostgreSQL repository adapters (RDS only).
   * Build the domain services and cache them in module state so subsequent
-    invocations reuse the same objects (important for the PostgreSQL path: the
-    connection is created lazily on the first query and cached for the lifetime
-    of the warm container).
+    invocations reuse the same objects (the connection is created lazily on the
+    first query and cached for the lifetime of the warm container).
 
 Nothing here talks to AWS SDKs directly except inside the private
 ``_build_rds_connection_factory`` helper, which is the only place Secrets
@@ -23,20 +21,14 @@ from dataclasses import dataclass
 from typing import Any, Callable, Dict, Optional, Tuple
 
 from config import AppConfig, load_config
-from services.auth.ports import UserProfileRepositoryPort
 from services.auth.rds_repo import UserProfileRdsRepository
-from services.auth.repo import UserProfileRepository
 from services.auth.service import UserProfileService
-from services.course_management.ports import CourseCatalogRepositoryPort
 from services.course_management.rds_repo import CourseCatalogRdsRepository
-from services.course_management.repo import CourseCatalogRepository
 from services.course_management.service import CourseManagementService
 from services.course_management.storage import CourseMediaStorage
-from services.enrollment.ports import EnrollmentRepositoryPort
 from services.enrollment.rds_repo import EnrollmentRdsRepository
-from services.enrollment.repo import EnrollmentRepository
-from services.progress.service import LessonProgressService
 from services.progress.rds_repo import LessonProgressRdsRepository
+from services.progress.service import LessonProgressService
 
 
 @dataclass(frozen=True)
@@ -44,23 +36,13 @@ class AwsDeps:
     cfg: AppConfig
     service: CourseManagementService
     auth_service: UserProfileService
-    progress_service: Optional[LessonProgressService] = None
+    progress_service: LessonProgressService
 
 
 _cached: Dict[str, Any] = {}
 
 
 ConnectionFactory = Callable[[], Any]
-
-
-# ---------------------------------------------------------------------------
-# Indirection hooks for testability.
-#
-# These two attributes exist so tests can monkeypatch
-# ``bootstrap._secretsmanager_client`` and ``bootstrap._psycopg2_connect``
-# without reaching into boto3 / psycopg2 globals. In production they resolve
-# to the real SDK calls on first use.
-# ---------------------------------------------------------------------------
 
 
 def _secretsmanager_client() -> Any:
@@ -75,6 +57,10 @@ def _psycopg2_connect(**kwargs: Any) -> Any:
     return psycopg2.connect(**kwargs)
 
 
+def _rds_config_complete(cfg: AppConfig) -> bool:
+    return bool(cfg.db_host and cfg.db_name and cfg.db_secret_arn)
+
+
 def _build_rds_connection_factory(cfg: AppConfig) -> ConnectionFactory:
     """Return a ``() -> connection`` callable that lazily opens a PostgreSQL
     connection using credentials fetched from Secrets Manager.
@@ -85,9 +71,11 @@ def _build_rds_connection_factory(cfg: AppConfig) -> ConnectionFactory:
     when the Lambda is invoked but does not touch RDS.
     """
     if not cfg.db_secret_arn:
-        raise RuntimeError("DB_SECRET_ARN is required when USE_RDS=true")
+        raise RuntimeError("DB_SECRET_ARN is required for the RDS catalog")
     if not cfg.db_host:
-        raise RuntimeError("DB_HOST is required when USE_RDS=true")
+        raise RuntimeError("DB_HOST is required for the RDS catalog")
+    if not cfg.db_name:
+        raise RuntimeError("DB_NAME is required for the RDS catalog")
 
     def factory() -> Any:
         sm = _secretsmanager_client()
@@ -107,57 +95,11 @@ def _build_rds_connection_factory(cfg: AppConfig) -> ConnectionFactory:
             dbname=cfg.db_name,
             user=user,
             password=password,
-            # TLS is enforced even inside the VPC (defense in depth). RDS
-            # PostgreSQL supports TLS out of the box.
             sslmode="require",
-            # Fail fast on a stuck connect instead of hanging up to the Lambda
-            # timeout: 5 seconds is comfortable once the ENI is attached.
             connect_timeout=5,
         )
 
     return factory
-
-
-def _build_course_repo(
-    cfg: AppConfig, conn_factory: Optional[ConnectionFactory]
-) -> CourseCatalogRepositoryPort:
-    if cfg.use_rds:
-        assert conn_factory is not None  # validated by caller
-        return CourseCatalogRdsRepository(conn_factory)
-    if not cfg.table_name:
-        raise RuntimeError("TABLE_NAME is required when USE_RDS=false")
-    return CourseCatalogRepository(cfg.table_name)
-
-
-def _build_enrollment_repo(
-    cfg: AppConfig, conn_factory: Optional[ConnectionFactory]
-) -> EnrollmentRepositoryPort:
-    if cfg.use_rds:
-        assert conn_factory is not None
-        return EnrollmentRdsRepository(conn_factory)
-    return EnrollmentRepository(cfg.table_name)
-
-
-def _build_auth_repo(
-    cfg: AppConfig, conn_factory: Optional[ConnectionFactory]
-) -> UserProfileRepositoryPort:
-    if cfg.use_rds:
-        assert conn_factory is not None
-        return UserProfileRdsRepository(conn_factory)
-    return UserProfileRepository(cfg.table_name)
-
-
-def _build_progress_repo(
-    cfg: AppConfig, conn_factory: Optional[ConnectionFactory]
-) -> Optional[LessonProgressRdsRepository]:
-    """Build progress repository if RDS is enabled.
-
-    Progress tracking requires PostgreSQL for persistence.
-    Returns None if USE_RDS=false (DynamoDB path).
-    """
-    if not cfg.use_rds or conn_factory is None:
-        return None
-    return LessonProgressRdsRepository(conn_factory)
 
 
 def get_cached_aws_deps() -> Optional[AwsDeps]:
@@ -166,17 +108,16 @@ def get_cached_aws_deps() -> Optional[AwsDeps]:
 
 
 def build_aws_deps(cfg: AppConfig) -> AwsDeps:
-    if not cfg.use_rds and not cfg.table_name:
-        raise RuntimeError("build_aws_deps called without TABLE_NAME")
+    if not _rds_config_complete(cfg):
+        raise RuntimeError(
+            "RDS catalog requires DB_HOST, DB_NAME, and DB_SECRET_ARN to be set"
+        )
 
-    conn_factory: Optional[ConnectionFactory] = None
-    if cfg.use_rds:
-        conn_factory = _build_rds_connection_factory(cfg)
-
-    course_repo = _build_course_repo(cfg, conn_factory)
-    enrollment_repo = _build_enrollment_repo(cfg, conn_factory)
-    auth_repo = _build_auth_repo(cfg, conn_factory)
-    progress_repo = _build_progress_repo(cfg, conn_factory)
+    conn_factory = _build_rds_connection_factory(cfg)
+    course_repo = CourseCatalogRdsRepository(conn_factory)
+    enrollment_repo = EnrollmentRdsRepository(conn_factory)
+    auth_repo = UserProfileRdsRepository(conn_factory)
+    progress_repo = LessonProgressRdsRepository(conn_factory)
 
     storage = CourseMediaStorage(cfg.video_bucket) if cfg.video_bucket else None
     service = CourseManagementService(
@@ -186,17 +127,13 @@ def build_aws_deps(cfg: AppConfig) -> AwsDeps:
         media_cleanup_queue_url=cfg.media_cleanup_queue_url,
     )
     auth_service = UserProfileService(auth_repo)
-
-    # Build progress service only when RDS is available (requires PostgreSQL)
-    progress_service: Optional[LessonProgressService] = None
-    if progress_repo is not None:
-        progress_service = LessonProgressService(
-            progress_repo,
-            enrollment_repo,
-            course_repo,
-            progress_complete_ratio=cfg.progress_complete_ratio,
-            position_slack_sec=cfg.progress_position_slack_sec,
-        )
+    progress_service = LessonProgressService(
+        progress_repo,
+        enrollment_repo,
+        course_repo,
+        progress_complete_ratio=cfg.progress_complete_ratio,
+        position_slack_sec=cfg.progress_position_slack_sec,
+    )
 
     return AwsDeps(
         cfg=cfg,
@@ -207,7 +144,7 @@ def build_aws_deps(cfg: AppConfig) -> AwsDeps:
 
 
 def warm_aws_deps_if_needed(cfg: AppConfig) -> None:
-    if not cfg.use_rds and not cfg.table_name:
+    if not _rds_config_complete(cfg):
         return
     if "aws" not in _cached:
         _cached["aws"] = build_aws_deps(cfg)
@@ -221,12 +158,12 @@ def lambda_bootstrap() -> Tuple[
 ]:
     """
     Composition root: load config and construct dependencies once.
-    When neither USE_RDS nor TABLE_NAME is set the catalog cannot be wired, so
+    When RDS settings are incomplete the catalog cannot be wired, so
     ``(cfg, None, None, None)`` is returned and the handler responds with a
     configuration error.
     """
     cfg = load_config()
-    if not cfg.use_rds and not cfg.table_name:
+    if not _rds_config_complete(cfg):
         return cfg, None, None, None
 
     existing = get_cached_aws_deps()

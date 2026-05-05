@@ -82,7 +82,11 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                     response = json_response(
                         503,
                         {
-                            "message": "Catalog is not configured: TABLE_NAME must be set.",
+                            "message": (
+                                "Catalog is not configured: set DB_HOST, DB_NAME, and "
+                                "DB_SECRET_ARN (deploy the api stack with RdsStackName "
+                                "wired to the RDS stack)."
+                            ),
                             "code": "catalog_unconfigured",
                         },
                         origin,
@@ -91,30 +95,19 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 parts = [p for p in raw_path.split("/") if p]
                 jwt_config = _build_jwt_config(cfg)
 
-                # Route progress requests (requires RDS)
                 if (
                     len(parts) == 3
                     and parts[0] == "courses"
                     and parts[2] == "progress"
                     and method in ("GET", "OPTIONS")
                 ):
-                    if progress_service is None and method != "OPTIONS":
-                        response = json_response(
-                            503,
-                            {
-                                "message": "Progress tracking requires PostgreSQL. Set USE_RDS=true to enable.",
-                                "code": "progress_requires_rds",
-                            },
-                            origin,
-                        )
-                    else:
-                        response = handle_progress_request(
-                            event,
-                            origin=origin,
-                            progress_svc=progress_service,
-                            auth_enforced=cfg.cognito_auth_enabled,
-                            jwt_config=jwt_config,
-                        )
+                    response = handle_progress_request(
+                        event,
+                        origin=origin,
+                        progress_svc=progress_service,
+                        auth_enforced=cfg.cognito_auth_enabled,
+                        jwt_config=jwt_config,
+                    )
                 elif (
                     len(parts) == 5
                     and parts[0] == "courses"
@@ -122,23 +115,13 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                     and parts[4] == "progress"
                     and method in ("PUT", "OPTIONS")
                 ):
-                    if progress_service is None and method != "OPTIONS":
-                        response = json_response(
-                            503,
-                            {
-                                "message": "Progress tracking requires PostgreSQL. Set USE_RDS=true to enable.",
-                                "code": "progress_requires_rds",
-                            },
-                            origin,
-                        )
-                    else:
-                        response = handle_progress_request(
-                            event,
-                            origin=origin,
-                            progress_svc=progress_service,
-                            auth_enforced=cfg.cognito_auth_enabled,
-                            jwt_config=jwt_config,
-                        )
+                    response = handle_progress_request(
+                        event,
+                        origin=origin,
+                        progress_svc=progress_service,
+                        auth_enforced=cfg.cognito_auth_enabled,
+                        jwt_config=jwt_config,
+                    )
                 elif method == "GET" and parts == ["users", "me"]:
                     response = handle_users_me(
                         event,

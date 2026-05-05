@@ -1,11 +1,7 @@
 """PostgreSQL adapter for :class:`EnrollmentRepositoryPort`.
 
-Mirrors :class:`services.enrollment.repo.EnrollmentRepository` (DynamoDB) so
-that flipping ``USE_RDS`` has no observable effect on the service layer.
-
 ``enrollments`` has ``PRIMARY KEY (user_sub, course_id)``, so idempotent upserts
-use ``ON CONFLICT DO NOTHING`` -- a second enrollment attempt is a no-op just
-like the DynamoDB ``PutItem`` overwrite semantics.
+use ``ON CONFLICT DO NOTHING`` -- a second enrollment attempt is a no-op.
 """
 
 from __future__ import annotations
