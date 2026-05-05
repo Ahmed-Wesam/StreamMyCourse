@@ -1,7 +1,7 @@
 ---
 name: review-plan
 description: >-
-  Reviews a written plan as an independent second agent, performs an objective
+  Reviews a written plan in the same chat (Cursor Auto), performs an objective
   security audit, checks that non-trivial plans schedule /update_docs after
   success, checks for subagent delegation to avoid context rot, revises the
   plan document with findings, and surfaces clarifying questions. Mandates
@@ -14,9 +14,9 @@ disable-model-invocation: true
 
 # /review_plan
 
-Second-agent review: **plan quality**, **security**, **test-driven development (mandatory for code changes)**, **subagent delegation (to avoid context rot)**, **session docs closure (`/update_docs`)** where applicable, **plan file revision**, and **clarifying questions**. Stay objective; disagree with the plan when evidence supports it.
+Peer-style plan review (same agent / Auto): **plan quality**, **security**, **test-driven development (mandatory for code changes)**, **subagent delegation (to avoid context rot)** in the *plan under review*, **session docs closure (`/update_docs`)** where applicable, **plan file revision**, and **clarifying questions**. Stay objective; disagree with the plan when evidence supports it.
 
-**Execution model:** This skill uses a **subagent delegation pattern**. The parent agent (you) must spawn a single subagent via the Task tool to execute all review work in isolation. This prevents context pollution and ensures an objective, fresh perspective.
+**Execution model:** Run the full review **in this chat**, in the **same agent** the user already invoked (Cursor **Auto** / default router). **Do not** spawn a separate subagent via the Task tool for plan review: that can route to a **premium billed** child agent and is **out of scope** for this skill. If the user wants another pass, they can run `/review_plan` again.
 
 ## Test-driven development (mandatory)
 
@@ -61,7 +61,7 @@ Repeat the cycle for the next behavior until the plan's scope is covered.
 
 ## Subagent delegation for parallelizable tasks (avoid context rot)
 
-Large plans with long sequential task lists cause **context rot**: the parent agent loses coherence as the context window fills with completed work, leading to degraded decision-making, missed dependencies, and incomplete execution.
+Large plans with long sequential task lists cause **context rot**: the implementing agent loses coherence as the context window fills with completed work, leading to degraded decision-making, missed dependencies, and incomplete execution.
 
 ### Checklist for the plan under review
 
@@ -86,29 +86,25 @@ When revising the plan, add:
 - A `### Aggregation` subsection specifying how the parent collects and integrates results
 - Result schemas or contracts for subagent returns
 
-## Subagent delegation pattern (execute all work in a subagent)
+## Execution pattern (single agent, no Task review subagent)
 
-**Do not perform review steps in the parent agent.** Instead, spawn a single subagent that executes the complete review workflow.
+Perform the complete review **yourself** in this conversation. **Do not** use the Task tool to delegate `/review_plan` to another agent.
 
-### Parent agent steps (you):
+### Steps (you, the invoking agent)
 
 1. **Parse the user's request**
    - Identify the plan file path (attached, explicit path, or ask once if unclear)
    - Determine the review scope (full review, security-only, or specific aspects)
 
-2. **Spawn the review subagent via Task tool**
-   - Use `subagent_type: "generalPurpose"`
-   - Pass the plan file path and any relevant context
-   - The subagent prompt must include the complete "Subagent review workflow" section below
-   - Set `run_in_background: false` (this is typically fast, user waits for result)
+2. **Run the review workflow** (below): read the plan, audit, revise the file, surface questions.
 
-3. **Relay results**
-   - Forward the subagent's findings to the user
-   - If the subagent asks clarifying questions, present them via AskQuestion tool
+3. **Report to the user**
+   - Summarize verdict, risks, TDD and delegation notes, doc closure, file edits, and clarifying questions
+   - If clarifying questions remain, present them via AskQuestion when that fits better than open text
 
-### Subagent review workflow (include this in the Task prompt):
+### Review workflow (execute in order)
 
-The subagent must execute these steps:
+You must execute these steps:
 
 1. **Read the plan file** using Read tool
 
@@ -141,9 +137,9 @@ The subagent must execute these steps:
 
 6. **Clarifying questions**
    - Derive 1-3 questions that unblock ambiguity
-   - Include in the response to parent agent
+   - Include them in your final message to the user
 
-**Subagent return format:**
+**Return format (for your summary to the user):**
 - Verdict (approve / revise / needs-discussion)
 - Top risks found
 - TDD/test-order gaps addressed
@@ -152,7 +148,7 @@ The subagent must execute these steps:
 - Summary of file changes made
 - Clarifying questions (if any)
 
-## Instructions for the subagent
+## Instructions for the reviewer
 
 - **Persona:** Review as if you were not the author of the plan; cite gaps and overclaims.
 - **Security:** Do not checklist-wash; tie each note to a concrete asset or flow from the plan.
@@ -164,16 +160,16 @@ The subagent must execute these steps:
 
 ## Output to the user (chat)
 
-The parent agent should summarize after the subagent completes:
-- Verdict from subagent
+End with a concise summary covering:
+- Verdict (approve / revise / needs-discussion)
 - Top risks identified
 - TDD / test-order gaps addressed
-- Subagent delegation / context rot prevention addressed (parallelizable tasks identified, `Task` tool usage with `run_in_background: true` specified, aggregation points defined)
+- Plan-level subagent delegation / context rot notes (what the *plan* should say about `Task` and parallel work—not spawning a Task agent for this review)
 - Whether `/update_docs` post-success was missing and added (or rightly exempt)
-- What changed in the file
-- Any clarifying questions from the subagent
+- What changed in the plan file
+- Clarifying questions (if any)
 
 ## Examples
 
-- User: "`/review_plan`" with `enable_google_sign-in_*.plan.md` attached → parent parses path, spawns subagent with full context, subagent performs review, adds security + peer sections, `## Test plan (TDD)`, verifies final `/update_docs` step, parent relays summary to user.
-- User: "Audit this plan for security only" → parent spawns subagent with security-focused scope, subagent emphasizes security section, parent relays findings.
+- User: "`/review_plan`" with `enable_google_sign-in_*.plan.md` attached → you read the plan, run the workflow, edit the plan file (peer review, security, TDD sections, `/update_docs` if needed), then summarize in chat.
+- User: "Audit this plan for security only" → same flow with emphasis on the security audit sections and summary.
