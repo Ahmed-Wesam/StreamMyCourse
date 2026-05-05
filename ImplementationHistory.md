@@ -4,6 +4,22 @@
 
 ---
 
+## 2026-05-05 — Catalog Lambda: API Gateway fields in structured logs
+
+### Completed
+
+- [x] **Request context** — [`infrastructure/lambda/catalog/services/common/runtime_context.py`](infrastructure/lambda/catalog/services/common/runtime_context.py) — `extract_apigw_public_fields` (HTTP API + REST), `set_request_path`, `set_upload_kind`; `bind_from_lambda_event` binds stage, domain, route key, client IP, truncated User-Agent.
+- [x] **JSON logs** — [`infrastructure/lambda/catalog/services/common/logging_setup.py`](infrastructure/lambda/catalog/services/common/logging_setup.py) — Formatter emits non-empty context fields (including `request_path`, `upload_kind` when set).
+- [x] **Handler** — [`infrastructure/lambda/catalog/index.py`](infrastructure/lambda/catalog/index.py) — Sets `request_path` after `apigw_routing_path`.
+- [x] **Upload-url branch labels** — [`infrastructure/lambda/catalog/services/course_management/controller.py`](infrastructure/lambda/catalog/services/course_management/controller.py) — `upload_kind` context: `lessonVideo`, `courseThumbnail`, `lessonThumbnail`.
+- [x] **Tests** — [`tests/unit/services/common/test_runtime_context.py`](tests/unit/services/common/test_runtime_context.py), [`tests/unit/services/common/test_logging_setup.py`](tests/unit/services/common/test_logging_setup.py).
+
+### Ops
+
+- CloudWatch JSON lines for catalog invocations can include `client_ip` and `user_agent_snippet`; align log retention and access with your privacy posture.
+
+---
+
 ## 2026-05-04 — Pre-public release: Security hardening and professional README
 
 ### Completed
