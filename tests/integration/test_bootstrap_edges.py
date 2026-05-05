@@ -89,12 +89,14 @@ def test_json_array_body_returns_400(api: ApiClient):
 # --- 400 missing required fields on /upload-url --------------------------------
 
 
-def test_upload_url_missing_course_id_returns_400(api: ApiClient):
-    # Use a valid UUID format for lessonId (courseId is intentionally missing)
-    unknown_lesson_id = "00000000-0000-0000-0000-000000000004"
+def test_upload_url_missing_course_id_returns_400(api: ApiClient, lesson_factory, course_factory):
+    # Create a real course and lesson so we have valid IDs
+    course = course_factory()
+    lesson = lesson_factory(course.course_id)
+    # Omit courseId but include lessonId to test validation
     resp = api.raw.post(
         "/upload-url",
-        json={"lessonId": unknown_lesson_id, "filename": "x.mp4", "contentType": "video/mp4"},
+        json={"lessonId": lesson.lesson_id, "filename": "x.mp4", "contentType": "video/mp4"},
     )
     assert resp.status_code == 400
     body = resp.json()
@@ -102,12 +104,13 @@ def test_upload_url_missing_course_id_returns_400(api: ApiClient):
     assert "courseId" in body.get("message", "")
 
 
-def test_upload_url_missing_lesson_id_returns_400(api: ApiClient):
-    # Use a valid UUID format for courseId (lessonId is intentionally missing)
-    unknown_course_id = "00000000-0000-0000-0000-000000000005"
+def test_upload_url_missing_lesson_id_returns_400(api: ApiClient, course_factory):
+    # Create a real course so we have a valid courseId
+    course = course_factory()
+    # Omit lessonId but include courseId to test validation
     resp = api.raw.post(
         "/upload-url",
-        json={"courseId": unknown_course_id, "filename": "x.mp4", "contentType": "video/mp4"},
+        json={"courseId": course.course_id, "filename": "x.mp4", "contentType": "video/mp4"},
     )
     assert resp.status_code == 400
     body = resp.json()
