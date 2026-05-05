@@ -2,8 +2,7 @@ from __future__ import annotations
 
 import logging
 import os
-import re
-from typing import List, Sequence
+from typing import TYPE_CHECKING, List, Sequence
 from uuid import uuid4
 
 try:
@@ -14,11 +13,18 @@ except Exception:  # pragma: no cover
     Config = None  # type: ignore[misc, assignment]
 
 from services.common.errors import BadRequest
+from services.course_management.media_keys import is_valid_media_object_key
 from services.course_management.models import PresignResult
+
+if TYPE_CHECKING:
+    from services.course_management.cloudfront_storage import CloudFrontUrlSigner
 
 logger = logging.getLogger(__name__)
 
 _S3_DELETE_BATCH = 1000
+
+# Hint CloudFront / browsers; aligns with signed GET lifetime (see MEDIA_GET_EXPIRES_SECONDS in config).
+_LESSON_MEDIA_CACHE_CONTROL = "public, max-age=28800"
 
 # Presigned upload contracts (align with design.md upload limits / MIME safety)
 MAX_VIDEO_UPLOAD_BYTES = 10 * 1024 * 1024 * 1024  # 10 GiB (documented; S3 single PUT max 5 GiB)
@@ -28,22 +34,6 @@ ALLOWED_VIDEO_CONTENT_TYPES = frozenset(
 )
 ALLOWED_IMAGE_CONTENT_TYPES = frozenset(
     {"image/jpeg", "image/jpg", "image/png", "image/webp", "image/gif"}
-)
-
-# UUID v4-style segment (hyphenated 8-4-4-4-12 hex); matches uuid4() string form.
-_UUID_SEGMENT = r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}"
-
-_MEDIA_KEY_PATTERNS = (
-    # Lesson video: {courseId}/lessons/{lessonId}/video/{uuid}.{ext}
-    re.compile(
-        rf"^({_UUID_SEGMENT})/lessons/({_UUID_SEGMENT})/video/({_UUID_SEGMENT})\.(mp4|webm|mov|avi)$"
-    ),
-    # Lesson thumbnail
-    re.compile(
-        rf"^({_UUID_SEGMENT})/lessons/({_UUID_SEGMENT})/thumbnail/({_UUID_SEGMENT})\.(jpg|png|webp|gif)$"
-    ),
-    # Course thumbnail
-    re.compile(rf"^({_UUID_SEGMENT})/thumbnail/({_UUID_SEGMENT})\.(jpg|png|webp|gif)$"),
 )
 
 
@@ -82,10 +72,8 @@ def _extension_for_image_content_type(norm: str) -> str:
 
 
 def _is_valid_media_object_key(key: str) -> bool:
-    k = (key or "").strip()
-    if not k or ".." in k or "//" in k or k.startswith("/"):
-        return False
-    return any(p.fullmatch(k) is not None for p in _MEDIA_KEY_PATTERNS)
+    """Backward-compatible alias for tests and callers using the private name."""
+    return is_valid_media_object_key(key)
 
 
 def _s3_client():
@@ -152,7 +140,12 @@ class CourseMediaStorage:
         # S3 also caps single PUT at 5 GiB.
         upload_url = self._s3.generate_presigned_url(
             ClientMethod="put_object",
-            Params={"Bucket": self._bucket, "Key": video_key, "ContentType": ctype},
+            Params={
+                "Bucket": self._bucket,
+                "Key": video_key,
+                "ContentType": ctype,
+                "CacheControl": _LESSON_MEDIA_CACHE_CONTROL,
+            },
             ExpiresIn=expires_seconds,
         )
         return PresignResult(uploadUrl=upload_url, videoKey=video_key)
@@ -174,7 +167,12 @@ class CourseMediaStorage:
         thumb_key = f"{cid}/thumbnail/{uuid4()}.{ext}"
         upload_url = self._s3.generate_presigned_url(
             ClientMethod="put_object",
-            Params={"Bucket": self._bucket, "Key": thumb_key, "ContentType": ctype},
+            Params={
+                "Bucket": self._bucket,
+                "Key": thumb_key,
+                "ContentType": ctype,
+                "CacheControl": _LESSON_MEDIA_CACHE_CONTROL,
+            },
             ExpiresIn=expires_seconds,
         )
         return PresignResult(uploadUrl=upload_url, videoKey=thumb_key)
@@ -198,12 +196,26 @@ class CourseMediaStorage:
         thumb_key = f"{cid}/lessons/{lid}/thumbnail/{uuid4()}.{ext}"
         upload_url = self._s3.generate_presigned_url(
             ClientMethod="put_object",
-            Params={"Bucket": self._bucket, "Key": thumb_key, "ContentType": ctype},
+            Params={
+                "Bucket": self._bucket,
+                "Key": thumb_key,
+                "ContentType": ctype,
+                "CacheControl": _LESSON_MEDIA_CACHE_CONTROL,
+            },
             ExpiresIn=expires_seconds,
         )
         return PresignResult(uploadUrl=upload_url, videoKey=thumb_key)
 
-    def presign_get(self, *, key: str, expires_seconds: int = 3600) -> str:
+    def presign_get_cloudfront(
+        self, *, key: str, expires_seconds: int, signer: "CloudFrontUrlSigner"
+    ) -> str:
+        """Delegate to ``CloudFrontUrlSigner`` after shared object-key validation."""
+        k = (key or "").strip()
+        if not is_valid_media_object_key(k):
+            raise BadRequest("Invalid object key for playback")
+        return signer.sign_url(k, expires_seconds=expires_seconds)
+
+    def presign_get(self, *, key: str, expires_seconds: int = 28800) -> str:
         k = (key or "").strip()
         if not _is_valid_media_object_key(k):
             raise BadRequest("Invalid object key for playback")

@@ -36,15 +36,29 @@ if (Test-Path (Join-Path $awsInstallDir 'aws.exe')) {
 
 $videoStack = "StreamMyCourse-Video-$Environment"
 Write-Host "=== 1/2 Video stack: $videoStack ===" -ForegroundColor Cyan
-& "$here\deploy.ps1" -Template video -StackName $videoStack -Environment $Environment -Region $Region
+$cfSsmParam = $env:CLOUDFRONT_PUBLIC_KEY_SSM_PARAMETER_NAME
+if (-not $cfSsmParam) { $cfSsmParam = '' }
+& "$here\deploy.ps1" -Template video -StackName $videoStack -Environment $Environment -Region $Region `
+    -CloudFrontPublicKeySsmParameterName $cfSsmParam
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
 $bucketJson = aws cloudformation describe-stacks --stack-name $videoStack --region $Region --query 'Stacks[0].Outputs' --output json | ConvertFrom-Json
 $videoBucket = ($bucketJson | Where-Object { $_.OutputKey -eq 'BucketName' }).OutputValue
 $bucketUrl = ($bucketJson | Where-Object { $_.OutputKey -eq 'BucketURL' }).OutputValue
+$cfDomain = [string](($bucketJson | Where-Object { $_.OutputKey -eq 'CloudFrontDomain' }).OutputValue)
+$cfKeyId = [string](($bucketJson | Where-Object { $_.OutputKey -eq 'CloudFrontKeyPairId' }).OutputValue)
+$cfInvArn = [string](($bucketJson | Where-Object { $_.OutputKey -eq 'CloudFrontInvalidationLambdaArn' }).OutputValue)
+$cfInvName = [string](($bucketJson | Where-Object { $_.OutputKey -eq 'CloudFrontInvalidationLambdaName' }).OutputValue)
 if (-not $videoBucket) {
     Write-Host "[X] Could not read BucketName from $videoStack" -ForegroundColor Red
     exit 1
+}
+
+$cfSecretArn = $env:CLOUDFRONT_PRIVATE_KEY_SECRET_ARN
+if (-not $cfSecretArn) { $cfSecretArn = '' }
+$videoUrlForApi = $bucketUrl
+if ($cfDomain -and $cfKeyId -and $cfSecretArn) {
+    $videoUrlForApi = "https://$cfDomain"
 }
 
 $apiStack = if ($Environment -eq 'prod') {
@@ -74,7 +88,12 @@ $gatewayResponseOrigin = if ($Environment -eq 'prod') {
 Write-Host "=== 2/2 API stack: $apiStack (video bucket: $videoBucket) ===" -ForegroundColor Cyan
 & "$here\deploy.ps1" -Template api -StackName $apiStack -Region $Region -Environment $Environment `
     -VideoBucketName $videoBucket `
-    -VideoUrl $bucketUrl `
+    -VideoUrl $videoUrlForApi `
+    -CloudFrontDomain $cfDomain `
+    -CloudFrontKeyPairId $cfKeyId `
+    -CloudFrontPrivateKeySecretArn $cfSecretArn `
+    -CloudFrontInvalidationLambdaArn $cfInvArn `
+    -CloudFrontInvalidationLambdaName $cfInvName `
     -CorsAllowOrigin $cors `
     -GatewayResponseAllowOrigin $gatewayResponseOrigin
 

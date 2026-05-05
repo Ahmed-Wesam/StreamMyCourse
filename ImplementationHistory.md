@@ -4,6 +4,26 @@
 
 ---
 
+## 2026-05-05 — Video playback: CloudFront signed URLs + invalidation on media change
+
+### Completed
+
+- [x] **Signing adapter** — [`infrastructure/lambda/catalog/services/course_management/cloudfront_storage.py`](infrastructure/lambda/catalog/services/course_management/cloudfront_storage.py) — `CloudFrontUrlSigner` (RSA-SHA1 per CloudFront policy), `CloudFrontInvalidator` (async `lambda:InvokeFunction` on `CfInvalidate`).
+- [x] **Shared key validation** — [`infrastructure/lambda/catalog/services/course_management/media_keys.py`](infrastructure/lambda/catalog/services/course_management/media_keys.py); [`storage.py`](infrastructure/lambda/catalog/services/course_management/storage.py) — `presign_get_cloudfront`, `Cache-Control` on lesson-media PUT presigns, default GET TTL **28800** s.
+- [x] **Service / bootstrap** — [`service.py`](infrastructure/lambda/catalog/services/course_management/service.py), [`bootstrap.py`](infrastructure/lambda/catalog/bootstrap.py), [`config.py`](infrastructure/lambda/catalog/config.py) — env `CLOUDFRONT_*`, `CF_INVALIDATION_LAMBDA_NAME`, optional `MEDIA_GET_EXPIRES_SECONDS`.
+- [x] **Templates** — [`video-stack.yaml`](infrastructure/templates/video-stack.yaml) — conditional **Trusted Key Groups**, **`https-only`**, SSM dynamic reference for public PEM parameter name; [`cloudfront-keys-stack.yaml`](infrastructure/templates/cloudfront-keys-stack.yaml); [`api-stack.yaml`](infrastructure/templates/api-stack.yaml) — IAM for Secrets Manager + invalidation invoke.
+- [x] **Deploy** — [`scripts/deploy-backend.sh`](scripts/deploy-backend.sh), [`deploy-environment.ps1`](infrastructure/deploy-environment.ps1), [`deploy.ps1`](infrastructure/deploy.ps1) — optional `CLOUDFRONT_PUBLIC_KEY_SSM_PARAMETER_NAME` / `CLOUDFRONT_PRIVATE_KEY_SECRET_ARN`; [`scripts/deploy-cloudfront-keys-stack.sh`](scripts/deploy-cloudfront-keys-stack.sh) / [`.ps1`](scripts/deploy-cloudfront-keys-stack.ps1).
+- [x] **Frontend** — [`LessonPlayerPage.tsx`](frontend/src/pages/LessonPlayerPage.tsx) — `crossOrigin="anonymous"`, one-shot playback URL retry on `<video>` error.
+- [x] **Deps / CI** — [`requirements.txt`](infrastructure/lambda/catalog/requirements.txt) `cryptography==43.0.1`; [`ci.yml`](.github/workflows/ci.yml) parses **cloudfront-keys** template; [`check_lambda_boundaries.py`](scripts/check_lambda_boundaries.py) allowlists **`cloudfront_storage.py`** for boto3.
+- [x] **Tests** — [`test_cloudfront_signer.py`](tests/unit/test_cloudfront_signer.py), [`test_storage_cloudfront.py`](tests/unit/test_storage_cloudfront.py), extensions to [`test_course_management_service.py`](tests/unit/test_course_management_service.py), [`test_service.py`](tests/unit/services/course_management/test_service.py), [`test_config.py`](tests/unit/test_config.py), [`test_bootstrap.py`](tests/unit/test_bootstrap.py), [`test_yaml_security.py`](tests/unit/test_yaml_security.py).
+
+### Ops / manual smoke (deployed env)
+
+- Run **`deploy-cloudfront-keys-stack`** once per env; set **`CLOUDFRONT_PUBLIC_KEY_SSM_PARAMETER_NAME`** and **`CLOUDFRONT_PRIVATE_KEY_SECRET_ARN`** before **`deploy-backend.sh`** / **`deploy-environment.ps1`** so the API stack receives signing params.
+- Verify **Range** seek on a large MP4 via CloudFront; confirm **invalidation** after replace/delete shows fresh bytes; SPA **`npm run lint` / `build:all` / `test`** should run in CI or locally after **`npm ci`** (local failures seen if `node_modules` is locked — retry).
+
+---
+
 ## 2026-05-05 — RDS enrollments FK: ON DELETE CASCADE with course delete
 
 ### Completed

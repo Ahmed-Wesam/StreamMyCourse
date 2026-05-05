@@ -29,3 +29,32 @@ def test_video_stack_no_cors_wildcard_and_hardening() -> None:
     assert "AllowedOrigins:" in text
     assert "AllowedOrigins:\n              - '*'" not in text.replace(" ", "")
     assert "- '*'" not in text, "wildcard S3 CORS origin must not appear"
+
+
+def test_video_stack_https_only_and_conditional_trusted_key_groups() -> None:
+    text = (_repo_root() / "infrastructure" / "templates" / "video-stack.yaml").read_text(encoding="utf-8")
+    assert "ViewerProtocolPolicy: https-only" in text
+    assert "TrustedKeyGroups:" in text
+    assert "HasCloudFrontSigningKey" in text
+
+
+def test_api_stack_cloudfront_secret_policy_uses_parameter_arn_not_star() -> None:
+    text = (_repo_root() / "infrastructure" / "templates" / "api-stack.yaml").read_text(encoding="utf-8")
+    assert "SecretsManagerCloudFrontSigningKey" in text
+    assert "CloudFrontPrivateKeySecretArn" in text
+    assert "secretsmanager:GetSecretValue" in text
+    assert "HasCloudFrontSigning" in text
+
+
+def test_api_stack_no_cloudfront_private_pem_parameter() -> None:
+    text = (_repo_root() / "infrastructure" / "templates" / "api-stack.yaml").read_text(encoding="utf-8")
+    assert "CloudFrontPrivateKeyPEM" not in text
+
+
+def test_cloudfront_keys_stack_secret_only_no_embedded_private_material_param() -> None:
+    text = (_repo_root() / "infrastructure" / "templates" / "cloudfront-keys-stack.yaml").read_text(
+        encoding="utf-8"
+    )
+    assert "AWS::SecretsManager::Secret" in text
+    assert "BEGIN RSA PRIVATE KEY" not in text
+    assert "CloudFrontPrivateKeyPEM" not in text

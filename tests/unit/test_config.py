@@ -19,6 +19,11 @@ def _clear_env(monkeypatch: pytest.MonkeyPatch) -> None:
         "DB_NAME",
         "DB_PORT",
         "DB_SECRET_ARN",
+        "CLOUDFRONT_DOMAIN",
+        "CLOUDFRONT_KEY_PAIR_ID",
+        "CLOUDFRONT_PRIVATE_KEY_SECRET_ARN",
+        "CF_INVALIDATION_LAMBDA_NAME",
+        "MEDIA_GET_EXPIRES_SECONDS",
     ):
         monkeypatch.delenv(name, raising=False)
 
@@ -88,6 +93,39 @@ class TestAllowedOrigins:
         monkeypatch.setenv("ALLOWED_ORIGINS", "https://app.example.com")
         cfg = load_config()
         assert cfg.allowed_origins == ["https://app.example.com"]
+
+
+class TestCloudFrontFields:
+    def test_cloudfront_defaults_empty(self) -> None:
+        cfg = load_config()
+        assert cfg.cloudfront_domain == ""
+        assert cfg.cloudfront_key_pair_id == ""
+        assert cfg.cloudfront_private_key_secret_arn == ""
+        assert cfg.cf_invalidation_lambda_name == ""
+        assert cfg.media_get_expires_seconds == 28800
+
+    def test_cloudfront_loaded_from_env(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("CLOUDFRONT_DOMAIN", " dexample.cloudfront.net ")
+        monkeypatch.setenv("CLOUDFRONT_KEY_PAIR_ID", " K2ABC ")
+        monkeypatch.setenv(
+            "CLOUDFRONT_PRIVATE_KEY_SECRET_ARN",
+            " arn:aws:secretsmanager:eu-west-1:1:secret:x ",
+        )
+        monkeypatch.setenv("CF_INVALIDATION_LAMBDA_NAME", " StreamMyCourse-CfInvalidate-dev ")
+        monkeypatch.setenv("MEDIA_GET_EXPIRES_SECONDS", "7200")
+        cfg = load_config()
+        assert cfg.cloudfront_domain == "dexample.cloudfront.net"
+        assert cfg.cloudfront_key_pair_id == "K2ABC"
+        assert cfg.cloudfront_private_key_secret_arn == "arn:aws:secretsmanager:eu-west-1:1:secret:x"
+        assert cfg.cf_invalidation_lambda_name == "StreamMyCourse-CfInvalidate-dev"
+        assert cfg.media_get_expires_seconds == 7200
+
+    def test_media_ttl_invalid_falls_back_to_default(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("MEDIA_GET_EXPIRES_SECONDS", "not-int")
+        cfg = load_config()
+        assert cfg.media_get_expires_seconds == 28800
 
 
 class TestRdsFields:

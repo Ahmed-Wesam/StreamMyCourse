@@ -35,6 +35,10 @@ def _clear_env(monkeypatch: pytest.MonkeyPatch) -> None:
         "DB_NAME",
         "DB_PORT",
         "DB_SECRET_ARN",
+        "CLOUDFRONT_DOMAIN",
+        "CLOUDFRONT_KEY_PAIR_ID",
+        "CLOUDFRONT_PRIVATE_KEY_SECRET_ARN",
+        "CF_INVALIDATION_LAMBDA_NAME",
     ):
         monkeypatch.delenv(name, raising=False)
 
@@ -110,6 +114,38 @@ class TestBuildAwsDeps:
         assert deps.cfg is cfg
         assert deps.service is not None
         assert deps.auth_service is not None
+
+    def test_partial_cloudfront_config_skips_signer(self, mocked_aws) -> None:
+        cfg = AppConfig(
+            table_name="t",
+            video_bucket="b",
+            default_mp4_url="",
+            video_url="",
+            allowed_origins=["*"],
+            cognito_auth_enabled=False,
+            cloudfront_domain="d.cloudfront.net",
+            cloudfront_key_pair_id="",
+            cloudfront_private_key_secret_arn="arn:aws:secretsmanager:eu-west-1:1:secret:x",
+        )
+        deps = bootstrap_mod.build_aws_deps(cfg)
+        assert deps.service._cloudfront_signer is None
+
+    def test_full_cloudfront_config_wires_signer_and_invalidator(self, mocked_aws) -> None:
+        cfg = AppConfig(
+            table_name="t",
+            video_bucket="b",
+            default_mp4_url="",
+            video_url="",
+            allowed_origins=["*"],
+            cognito_auth_enabled=False,
+            cloudfront_domain="d.cloudfront.net",
+            cloudfront_key_pair_id="K2PAIRID",
+            cloudfront_private_key_secret_arn="arn:aws:secretsmanager:eu-west-1:1:secret:x",
+            cf_invalidation_lambda_name="StreamMyCourse-CfInvalidate-dev",
+        )
+        deps = bootstrap_mod.build_aws_deps(cfg)
+        assert deps.service._cloudfront_signer is not None
+        assert deps.service._cf_invalidator is not None
 
 
 class TestWarmAwsDepsIfNeeded:

@@ -25,9 +25,17 @@ class AppConfig:
     db_secret_arn: str = ""
     # Logging configuration
     log_level: str = "INFO"
+    # CloudFront signed URLs for lesson media (optional; empty → S3 presigned GET fallback).
+    cloudfront_domain: str = ""
+    cloudfront_key_pair_id: str = ""
+    cloudfront_private_key_secret_arn: str = ""
+    cf_invalidation_lambda_name: str = ""
+    # Signed URL / presigned GET lifetime (seconds); default 8 hours.
+    media_get_expires_seconds: int = 28800
 
 
 _DEFAULT_DB_PORT = 5432
+_DEFAULT_MEDIA_GET_EXPIRES = 28800
 
 
 def _split_csv(raw: str) -> List[str]:
@@ -75,6 +83,22 @@ def load_config() -> AppConfig:
     if log_level not in ("DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"):
         log_level = "INFO"
 
+    cloudfront_domain = os.environ.get("CLOUDFRONT_DOMAIN", "").strip()
+    cloudfront_key_pair_id = os.environ.get("CLOUDFRONT_KEY_PAIR_ID", "").strip()
+    cloudfront_private_key_secret_arn = os.environ.get(
+        "CLOUDFRONT_PRIVATE_KEY_SECRET_ARN", ""
+    ).strip()
+    cf_invalidation_lambda_name = os.environ.get("CF_INVALIDATION_LAMBDA_NAME", "").strip()
+
+    raw_media_ttl = (os.environ.get("MEDIA_GET_EXPIRES_SECONDS") or "").strip()
+    if raw_media_ttl:
+        try:
+            media_get_expires_seconds = max(60, int(raw_media_ttl))
+        except ValueError:
+            media_get_expires_seconds = _DEFAULT_MEDIA_GET_EXPIRES
+    else:
+        media_get_expires_seconds = _DEFAULT_MEDIA_GET_EXPIRES
+
     return AppConfig(
         table_name=table_name,
         video_bucket=video_bucket,
@@ -88,4 +112,9 @@ def load_config() -> AppConfig:
         db_port=db_port,
         db_secret_arn=db_secret_arn,
         log_level=log_level,
+        cloudfront_domain=cloudfront_domain,
+        cloudfront_key_pair_id=cloudfront_key_pair_id,
+        cloudfront_private_key_secret_arn=cloudfront_private_key_secret_arn,
+        cf_invalidation_lambda_name=cf_invalidation_lambda_name,
+        media_get_expires_seconds=media_get_expires_seconds,
     )

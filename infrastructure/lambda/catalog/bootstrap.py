@@ -30,6 +30,7 @@ from services.auth.service import UserProfileService
 from services.course_management.ports import CourseCatalogRepositoryPort
 from services.course_management.rds_repo import CourseCatalogRdsRepository
 from services.course_management.repo import CourseCatalogRepository
+from services.course_management.cloudfront_storage import CloudFrontInvalidator, CloudFrontUrlSigner
 from services.course_management.service import CourseManagementService
 from services.course_management.storage import CourseMediaStorage
 from services.enrollment.ports import EnrollmentRepositoryPort
@@ -135,6 +136,27 @@ def _build_enrollment_repo(
     return EnrollmentRepository(cfg.table_name)
 
 
+def _build_cloudfront_signer(cfg: AppConfig) -> CloudFrontUrlSigner | None:
+    if not (
+        cfg.cloudfront_domain
+        and cfg.cloudfront_key_pair_id
+        and cfg.cloudfront_private_key_secret_arn
+    ):
+        return None
+    return CloudFrontUrlSigner(
+        key_pair_id=cfg.cloudfront_key_pair_id,
+        secret_arn=cfg.cloudfront_private_key_secret_arn,
+        domain=cfg.cloudfront_domain,
+    )
+
+
+def _build_cf_invalidator(cfg: AppConfig) -> CloudFrontInvalidator | None:
+    name = (cfg.cf_invalidation_lambda_name or "").strip()
+    if not name:
+        return None
+    return CloudFrontInvalidator(function_name=name)
+
+
 def _build_auth_repo(
     cfg: AppConfig, conn_factory: Optional[ConnectionFactory]
 ) -> UserProfileRepositoryPort:
@@ -162,7 +184,14 @@ def build_aws_deps(cfg: AppConfig) -> AwsDeps:
     auth_repo = _build_auth_repo(cfg, conn_factory)
 
     storage = CourseMediaStorage(cfg.video_bucket) if cfg.video_bucket else None
-    service = CourseManagementService(course_repo, storage, enrollment_repo)
+    service = CourseManagementService(
+        course_repo,
+        storage,
+        enrollment_repo,
+        cloudfront_signer=_build_cloudfront_signer(cfg),
+        cf_invalidator=_build_cf_invalidator(cfg),
+        media_get_expires_seconds=cfg.media_get_expires_seconds,
+    )
     auth_service = UserProfileService(auth_repo)
     return AwsDeps(cfg=cfg, service=service, auth_service=auth_service)
 

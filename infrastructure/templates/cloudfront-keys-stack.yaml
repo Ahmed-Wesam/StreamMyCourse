@@ -1,0 +1,30 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: >-
+  StreamMyCourse - Secrets Manager secret placeholder for CloudFront URL signing private key.
+  After deploy, run put-secret-value with the PEM private key (see scripts/deploy-cloudfront-keys-stack.sh).
+
+Parameters:
+  Environment:
+    Type: String
+    Default: dev
+    AllowedValues:
+      - dev
+      - integ
+      - staging
+      - prod
+    Description: Deployment environment
+
+Resources:
+  CloudFrontSigningPrivateKeySecret:
+    Type: AWS::SecretsManager::Secret
+    Properties:
+      Name: !Sub 'streammycourse/cloudfront/private-key-${Environment}'
+      Description: >-
+        PEM RSA private key for CloudFront signed URLs. Overwrite value via AWS CLI
+        put-secret-value after first deploy (placeholder below is not a valid key).
+      SecretString: PLACEHOLDER_OVERWRITE_VIA_PUT_SECRET_VALUE
+
+Outputs:
+  PrivateKeySecretArn:
+    Description: Pass to api-stack CloudFrontPrivateKeySecretArn and bootstrap env wiring
+    Value: !Ref CloudFrontSigningPrivateKeySecret

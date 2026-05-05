@@ -18,10 +18,17 @@ class CourseManagementService:
         repo: CourseCatalogRepositoryPort,
         storage: CourseMediaStoragePort | None,
         enrollments: EnrollmentRepositoryPort,
+        *,
+        cloudfront_signer: Any | None = None,
+        cf_invalidator: Any | None = None,
+        media_get_expires_seconds: int = 28800,
     ):
         self._repo = repo
         self._storage = storage
         self._enrollments = enrollments
+        self._cloudfront_signer = cloudfront_signer
+        self._cf_invalidator = cf_invalidator
+        self._media_get_expires_seconds = max(60, int(media_get_expires_seconds))
 
     def _delete_media_keys(self, keys: List[str]) -> None:
         if self._storage is None:
@@ -33,6 +40,14 @@ class CourseManagementService:
             self._storage.delete_objects(deduped)
         except Exception as exc:
             logger.warning("S3 delete_objects failed (continuing): %s", exc)
+
+    def _invalidate_cf_paths(self, keys_or_paths: List[str]) -> None:
+        if self._cf_invalidator is None:
+            return
+        try:
+            self._cf_invalidator.invalidate_paths(keys_or_paths)
+        except Exception as exc:
+            logger.warning("CloudFront invalidation failed (continuing): %s", exc)
 
     def _safe_presign_get(self, key: str, *, media: str) -> str | None:
         """Presign GET for display URLs, or None if the key cannot be signed.
@@ -46,7 +61,15 @@ class CourseManagementService:
         if not k:
             return None
         try:
-            return self._storage.presign_get(key=k, expires_seconds=3600)
+            if self._cloudfront_signer is not None:
+                return self._storage.presign_get_cloudfront(
+                    key=k,
+                    expires_seconds=self._media_get_expires_seconds,
+                    signer=self._cloudfront_signer,
+                )
+            return self._storage.presign_get(
+                key=k, expires_seconds=self._media_get_expires_seconds
+            )
         except BadRequest:
             logger.warning("presign_get rejected key for %s", media, extra={"key_prefix": k[:96]})
             return None
@@ -299,6 +322,7 @@ class CourseManagementService:
         # Remove DB rows first so catalog reflects the delete even if S3 is slow.
         self._repo.delete_course_and_lessons(course_id)
         self._delete_media_keys(keys)
+        self._invalidate_cf_paths(keys)
         return {"id": course_id, "deleted": True}
 
     def list_lessons(self, course_id: str) -> List[Dict[str, Any]]:
@@ -325,6 +349,7 @@ class CourseManagementService:
         if lesson.thumbnailKey.strip():
             media_keys.append(lesson.thumbnailKey.strip())
         self._delete_media_keys(media_keys)
+        self._invalidate_cf_paths(media_keys)
         self._repo.delete_lesson(course_id=course_id, lesson_id=lesson_id)
         # Compact remaining orders to 1..N so display has no gaps.
         remaining = sorted(self._repo.list_lessons(course_id), key=lambda l: l.order)
@@ -352,13 +377,20 @@ class CourseManagementService:
             raise NotFound("Lesson not found")
         if not lesson.videoKey:
             raise BadRequest("No video uploaded for lesson")
+        old_thumb = lesson.thumbnailKey.strip()
         if thumbnail_key:
             self._validate_lesson_thumbnail_key(course_id, lesson_id, thumbnail_key)
-            old_thumb = lesson.thumbnailKey.strip()
             if old_thumb and old_thumb != thumbnail_key.strip():
                 self._delete_media_keys([old_thumb])
             self._repo.set_lesson_thumbnail(course_id, lesson_id, thumbnail_key)
         self._repo.set_lesson_video_status(course_id=course_id, lesson_id=lesson_id, status="ready")
+        inv_paths: List[str] = [lesson.videoKey.strip()]
+        if thumbnail_key:
+            nt = thumbnail_key.strip()
+            if old_thumb and old_thumb != nt:
+                inv_paths.append(old_thumb)
+            inv_paths.append(nt)
+        self._invalidate_cf_paths(inv_paths)
         return {"lessonId": lesson_id, "videoStatus": "ready"}
 
     def get_playback_url(self, course_id: str, lesson_id: str, *, video_bucket: str) -> Dict[str, Any]:
@@ -371,7 +403,19 @@ class CourseManagementService:
             raise NotFound("No video uploaded")
         if self._storage is None:
             return {"url": f"https://{video_bucket}.s3.amazonaws.com/{lesson.videoKey}"}
-        return {"url": self._storage.presign_get(key=lesson.videoKey, expires_seconds=3600)}
+        if self._cloudfront_signer is not None:
+            return {
+                "url": self._storage.presign_get_cloudfront(
+                    key=lesson.videoKey,
+                    expires_seconds=self._media_get_expires_seconds,
+                    signer=self._cloudfront_signer,
+                )
+            }
+        return {
+            "url": self._storage.presign_get(
+                key=lesson.videoKey, expires_seconds=self._media_get_expires_seconds
+            )
+        }
 
     def get_upload_url(
         self,
@@ -463,5 +507,9 @@ class CourseManagementService:
         if old_thumb and old_thumb != thumbnail_key.strip():
             self._delete_media_keys([old_thumb])
         self._repo.set_course_thumbnail(course_id, thumbnail_key)
+        inv_paths = [thumbnail_key.strip()]
+        if old_thumb and old_thumb != thumbnail_key.strip():
+            inv_paths.append(old_thumb)
+        self._invalidate_cf_paths(inv_paths)
         return {"id": course_id, "thumbnailReady": True}
 

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, useRef } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import {
   enrollInCourse,
@@ -96,6 +96,27 @@ export default function LessonPlayerPage() {
   const [needsEnrollment, setNeedsEnrollment] = useState(false)
   const [enrolling, setEnrolling] = useState(false)
   const videoRef = useRef<HTMLVideoElement>(null)
+  const playbackRetryUsedRef = useRef(false)
+
+  useEffect(() => {
+    playbackRetryUsedRef.current = false
+  }, [lessonId])
+
+  const handleVideoError = useCallback(() => {
+    if (playbackRetryUsedRef.current || !courseId || !lessonId || needsEnrollment) return
+    playbackRetryUsedRef.current = true
+    void (async () => {
+      try {
+        const pb = await getPlaybackUrl(courseId, lessonId)
+        setSrc(pb.url)
+        setError(null)
+      } catch (e) {
+        setError(
+          e instanceof Error ? e.message : 'Video playback failed. Try refreshing the page.',
+        )
+      }
+    })()
+  }, [courseId, lessonId, needsEnrollment])
 
   useEffect(() => {
     let cancelled = false
@@ -255,11 +276,13 @@ export default function LessonPlayerPage() {
               <VideoSkeleton />
             ) : (
               <div className="rounded-xl overflow-hidden shadow-lg bg-black">
-                <video 
+                <video
                   ref={videoRef}
-                  controls 
-                  className="w-full aspect-video" 
+                  crossOrigin="anonymous"
+                  controls
+                  className="w-full aspect-video"
                   src={src || undefined}
+                  onError={handleVideoError}
                 />
               </div>
             )}

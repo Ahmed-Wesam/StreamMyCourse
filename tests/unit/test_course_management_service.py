@@ -44,6 +44,9 @@ class _FakeStorageStrict:
     def delete_objects(self, keys):  # pragma: no cover
         return []
 
+    def presign_get_cloudfront(self, *, key: str, expires_seconds: int, signer) -> str:  # noqa: ANN001
+        return signer.sign_url(key, expires_seconds=expires_seconds)
+
 
 class _LessonsRepo:
     def __init__(self, lessons: List[Lesson]) -> None:
@@ -130,3 +133,70 @@ class TestSafePresignThumbnails:
         svc = CourseManagementService(_OneLessonRepo(), _FakeStorageStrict(), _FakeEnrollments())
         with pytest.raises(BadRequest):
             svc.get_playback_url("c1", "l1", video_bucket="ignored-when-storage-set")
+
+    def test_get_playback_url_uses_cloudfront_when_signer_configured(self) -> None:
+        class _Repo:
+            def get_lesson_by_id(self, course_id: str, lesson_id: str) -> Optional[Lesson]:
+                return Lesson(
+                    id=lesson_id,
+                    title="x",
+                    order=1,
+                    videoKey=(
+                        f"{_CID}/lessons/{_L1}/video/"
+                        "11111111-1111-4111-8111-111111111111.mp4"
+                    ),
+                    videoStatus="ready",
+                )
+
+        class _Signer:
+            def sign_url(self, key: str, *, expires_seconds: int) -> str:
+                return f"https://cf.example/{key}?sig=1"
+
+        svc = CourseManagementService(
+            _Repo(),
+            _FakeStorageStrict(),
+            _FakeEnrollments(),
+            cloudfront_signer=_Signer(),
+        )
+        out = svc.get_playback_url("c1", "l1", video_bucket="b")
+        assert out["url"].startswith("https://cf.example/")
+
+    def test_get_playback_url_falls_back_to_s3_when_signer_missing(self) -> None:
+        class _Repo:
+            def get_lesson_by_id(self, course_id: str, lesson_id: str) -> Optional[Lesson]:
+                return Lesson(
+                    id=lesson_id,
+                    title="x",
+                    order=1,
+                    videoKey=(
+                        f"{_CID}/lessons/{_L1}/video/"
+                        "11111111-1111-4111-8111-111111111111.mp4"
+                    ),
+                    videoStatus="ready",
+                )
+
+        svc = CourseManagementService(_Repo(), _FakeStorageStrict(), _FakeEnrollments())
+        out = svc.get_playback_url("c1", "l1", video_bucket="b")
+        assert out["url"].startswith("https://signed.test/")
+
+    def test_thumbnail_url_uses_cloudfront_when_signer_configured(self) -> None:
+        class _Signer:
+            def sign_url(self, key: str, *, expires_seconds: int) -> str:
+                return f"https://cf.example/{key}"
+
+        thumb = f"{_CID}/lessons/{_L2}/thumbnail/22222222-2222-4222-8222-222222222222.png"
+        lessons = [
+            Lesson(
+                id="l2",
+                title="T",
+                order=1,
+                videoKey="",
+                videoStatus="pending",
+                thumbnailKey=thumb,
+            ),
+        ]
+        svc = CourseManagementService(
+            _LessonsRepo(lessons), _FakeStorageStrict(), _FakeEnrollments(), cloudfront_signer=_Signer()
+        )
+        out = svc.list_lessons("c1")
+        assert out[0]["thumbnailUrl"].startswith("https://cf.example/")

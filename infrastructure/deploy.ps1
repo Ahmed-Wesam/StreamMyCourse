@@ -35,6 +35,26 @@ param(
     [Parameter(Mandatory=$false)]
     [string]$VideoUrl = "",
 
+    # video template: SSM parameter name holding PEM public key for CloudFront signing (optional).
+    [Parameter(Mandatory=$false)]
+    [string]$CloudFrontPublicKeySsmParameterName = "",
+
+    # api template: CloudFront signed URL wiring (optional; use with CLOUDFRONT_PRIVATE_KEY_SECRET_ARN env for deploy-environment).
+    [Parameter(Mandatory=$false)]
+    [string]$CloudFrontDomain = "",
+
+    [Parameter(Mandatory=$false)]
+    [string]$CloudFrontKeyPairId = "",
+
+    [Parameter(Mandatory=$false)]
+    [string]$CloudFrontPrivateKeySecretArn = "",
+
+    [Parameter(Mandatory=$false)]
+    [string]$CloudFrontInvalidationLambdaArn = "",
+
+    [Parameter(Mandatory=$false)]
+    [string]$CloudFrontInvalidationLambdaName = "",
+
     [Parameter(Mandatory=$false)]
     [string]$DefaultMp4Url = "",
 
@@ -466,6 +486,21 @@ if ($Template -eq "edge-hosting") {
     if ($VideoUrl -ne "") {
         $apiOverrides += "VideoUrl=$VideoUrl"
     }
+    if ($CloudFrontDomain -ne "") {
+        $apiOverrides += "CloudFrontDomain=$CloudFrontDomain"
+    }
+    if ($CloudFrontKeyPairId -ne "") {
+        $apiOverrides += "CloudFrontKeyPairId=$CloudFrontKeyPairId"
+    }
+    if ($CloudFrontPrivateKeySecretArn -ne "") {
+        $apiOverrides += "CloudFrontPrivateKeySecretArn=$CloudFrontPrivateKeySecretArn"
+    }
+    if ($CloudFrontInvalidationLambdaArn -ne "") {
+        $apiOverrides += "CloudFrontInvalidationLambdaArn=$CloudFrontInvalidationLambdaArn"
+    }
+    if ($CloudFrontInvalidationLambdaName -ne "") {
+        $apiOverrides += "CloudFrontInvalidationLambdaName=$CloudFrontInvalidationLambdaName"
+    }
     if ($DefaultMp4Url -ne "") {
         $apiOverrides += "DefaultMp4Url=$DefaultMp4Url"
     }
@@ -503,6 +538,9 @@ if ($Template -eq "edge-hosting") {
         "InvalidationLambdaCodeS3Bucket=$videoArtifactBucket",
         "InvalidationLambdaCodeS3Key=$videoInvalidationKey"
     )
+    if ($CloudFrontPublicKeySsmParameterName -ne "") {
+        $videoOverrides += "CloudFrontPublicKeySsmParameterName=$CloudFrontPublicKeySsmParameterName"
+    }
     $cfDeployArgs += '--parameter-overrides'
     $cfDeployArgs += $videoOverrides
 } else {

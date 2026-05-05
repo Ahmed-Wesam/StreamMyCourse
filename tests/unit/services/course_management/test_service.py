@@ -248,7 +248,7 @@ class TestListLessons:
         storage.presign_get.return_value = "https://signed-lesson-thumb"
         out = service.list_lessons("c1")
         assert out[0]["thumbnailUrl"] == "https://signed-lesson-thumb"
-        storage.presign_get.assert_called_once_with(key=k, expires_seconds=3600)
+        storage.presign_get.assert_called_once_with(key=k, expires_seconds=28800)
 
 
 class TestCreateLessonService:
@@ -586,7 +586,7 @@ class TestGetPlaybackUrl:
         out = service.get_playback_url("c1", "lid", video_bucket="bucket")
 
         storage.presign_get.assert_called_once_with(
-            key=_video_key("c1", "lid"), expires_seconds=3600
+            key=_video_key("c1", "lid"), expires_seconds=28800
         )
         assert out == {"url": "https://signed.example/get?sig=def"}
 
@@ -604,6 +604,51 @@ class TestGetPlaybackUrl:
         assert out == {
             "url": f"https://my-bucket.s3.amazonaws.com/{_video_key('c1', 'lid')}"
         }
+
+    def test_cloudfront_signer_uses_presign_get_cloudfront(
+        self, repo: MagicMock, storage: MagicMock, enrollments: MagicMock
+    ) -> None:
+        signer = MagicMock()
+        storage.presign_get_cloudfront.return_value = "https://cf.example/out"
+        svc = CourseManagementService(
+            repo, storage, enrollments, cloudfront_signer=signer
+        )
+        vk = _video_key("c1", "lid")
+        repo.get_lesson_by_id.return_value = _lesson(
+            id_="lid", video_key=vk, video_status="ready"
+        )
+        out = svc.get_playback_url("c1", "lid", video_bucket="bucket")
+        storage.presign_get_cloudfront.assert_called_once_with(
+            key=vk, expires_seconds=28800, signer=signer
+        )
+        storage.presign_get.assert_not_called()
+        assert out == {"url": "https://cf.example/out"}
+
+
+class TestCfInvalidationHooks:
+    def test_mark_lesson_video_ready_invokes_invalidator(
+        self, repo: MagicMock, storage: MagicMock, enrollments: MagicMock
+    ) -> None:
+        inv = MagicMock()
+        svc = CourseManagementService(repo, storage, enrollments, cf_invalidator=inv)
+        vk = _video_key("c1", "lid")
+        repo.get_lesson_by_id.return_value = _lesson(id_="lid", video_key=vk)
+        svc.mark_lesson_video_ready("c1", "lid")
+        inv.invalidate_paths.assert_called_once_with([vk])
+
+    def test_delete_lesson_invokes_invalidator_with_media_keys(
+        self, repo: MagicMock, storage: MagicMock, enrollments: MagicMock
+    ) -> None:
+        inv = MagicMock()
+        svc = CourseManagementService(repo, storage, enrollments, cf_invalidator=inv)
+        vk = _video_key("c1", "lid-2", "66666666-6666-4666-8666-666666666666")
+        tk = _lesson_thumb_key("c1", "lid-2")
+        repo.get_lesson_by_id.return_value = _lesson(
+            id_="lid-2", order=2, video_key=vk, thumbnail_key=tk
+        )
+        repo.list_lessons.return_value = []
+        svc.delete_lesson("c1", "lid-2")
+        inv.invalidate_paths.assert_called_once_with([vk, tk])
 
 
 # --- get_upload_url -----------------------------------------------------------
@@ -894,7 +939,7 @@ class TestPublicCourseThumbnailUrl:
         assert "thumbnailKey" not in out
         storage.presign_get.assert_called_once_with(
             key=_course_thumb_key("c1", "10101010-1010-4101-8101-101010101010"),
-            expires_seconds=3600,
+            expires_seconds=28800,
         )
 
     def test_list_published_attaches_thumbnail_url(
@@ -926,7 +971,7 @@ class TestPublicCourseThumbnailUrl:
         out = service.get_course("c1")
         assert out["thumbnailUrl"] == "https://from-lesson"
         storage.presign_get.assert_called_once_with(
-            key=_lesson_thumb_key("c1", "l1", _TH3), expires_seconds=3600
+            key=_lesson_thumb_key("c1", "l1", _TH3), expires_seconds=28800
         )
 
     def test_list_published_uses_lesson_thumbnail_fallback(

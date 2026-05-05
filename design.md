@@ -80,9 +80,9 @@ React (Vite + TS + Tailwind)
 ## 5. Video Pipeline (MVP)
 
 ```
-Manual upload (local) → S3 (MP4) → Browser <video> (presigned GET; Range-capable CORS)
+Manual upload (local) → S3 (MP4) → Lambda mints signed CloudFront GET (or S3 presigned fallback)
                          ↓
-              CloudFront (same bucket via OAC) — optional origin URLs; invalidation Lambda per env
+              CloudFront (OAC → private bucket); Trusted Key Groups when signing enabled; invalidation Lambda per env
 ```
 
 - **Format:** MP4 only
@@ -355,7 +355,7 @@ Ordered engineering priorities before large Phase 2 (monetization / DRM) work. D
 
 | Priority | Item | Goal |
 |----------|------|------|
-| 1 | **CloudFront (video)** | **Shipped:** CDN for MP4 via [`video-stack.yaml`](infrastructure/templates/video-stack.yaml); PriceClass_200; OAC + bucket policy so CloudFront can read the private video bucket; presigned **S3** playback remains primary; **`StreamMyCourse-CfInvalidate-<env>`** Lambda for `CreateInvalidation`. |
+| 1 | **CloudFront (video)** | **Shipped:** CDN for MP4 via [`video-stack.yaml`](infrastructure/templates/video-stack.yaml); **Signed URLs** when SSM public PEM + Secrets Manager private key + api-stack params are wired (see [`scripts/deploy-cloudfront-keys-stack.sh`](scripts/deploy-cloudfront-keys-stack.sh)); **`https-only`** viewer policy; optional **`TrustedKeyGroups`**; OAC + bucket policy; **S3 presigned GET** remains rollback when signing env is unset; catalog invokes **`StreamMyCourse-CfInvalidate-<env>`** after media-affecting mutations; default **`MEDIA_GET_EXPIRES_SECONDS=28800`** (8h). |
 | 2 | **Frontend hosting** | **Shipped:** dual SPAs (student + teacher) to S3 + CloudFront + Route 53 via [`edge-hosting-stack.yaml`](infrastructure/templates/edge-hosting-stack.yaml) and the deploy pipeline (see §10). **Remaining:** ops polish (monitoring, cache tuning, domain/certificate hygiene). |
 | 3 | **Auth** | **Shipped:** Cognito pool + required Google IdP + Google-only student/teacher app clients; API authorizer + `GET /users/me` + SPA Amplify Hosted UI OAuth + **`SignIn`** shell. **Ops:** GitHub **`TEACHER_*` / `STUDENT_*` callback URLs**, **`GOOGLE_OAUTH_*`** secrets per env (required for full deploy), and API **`CorsAllowOrigin`** must match hosted origins. **Remaining:** tighten which routes are public vs Cognito-only (catalog still has open reads by design). |
 | 4 | **RDS PostgreSQL (catalog)** | **Shipped and live in deployed dev/prod:** [`rds-stack.yaml`](infrastructure/templates/rds-stack.yaml), API **`UseRds=true`**, PostgreSQL adapters (`services/*/rds_repo.py`), migrator [`scripts/migrate-dynamodb-to-rds.py`](scripts/migrate-dynamodb-to-rds.py). **DynamoDB catalog is deprecated** in managed dev/prod (unused). **Remaining:** optional cleanup of idle DynamoDB tables/IAM, tighter docs for pure-local DynamoDB dev. See [ADR-0008](plans/architecture/adr-0008-dynamodb-to-rds-migration.md) and [`tests/integration/README.md`](tests/integration/README.md). |

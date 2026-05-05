@@ -26,6 +26,17 @@ Parameters:
     Type: String
     Description: S3 key for the CloudFront invalidation Lambda deployment package (index.py only).
 
+  CloudFrontPublicKeySsmParameterName:
+    Type: String
+    Default: ''
+    Description: >-
+      SSM parameter name (must start with /) holding the PEM public key for signed URLs.
+      Create with: aws ssm put-parameter --type String --value "$(cat pubkey.pem)".
+      Leave empty to deploy without TrustedKeyGroups (legacy / open distribution).
+
+Conditions:
+  HasCloudFrontSigningKey: !Not [!Equals [!Ref CloudFrontPublicKeySsmParameterName, '']]
+
 Resources:
   VideoBucket:
     Type: AWS::S3::Bucket
@@ -78,6 +89,24 @@ Resources:
         SigningBehavior: always
         SigningProtocol: sigv4
 
+  VideoSigningPublicKey:
+    Type: AWS::CloudFront::PublicKey
+    Condition: HasCloudFrontSigningKey
+    Properties:
+      PublicKeyConfig:
+        Name: !Sub 'StreamMyCourse-video-signing-${Environment}'
+        EncodedKey: !Sub '{{resolve:ssm:${CloudFrontPublicKeySsmParameterName}}}'
+        CallerReference: !Sub '${AWS::StackName}-video-signing-key'
+
+  VideoSigningKeyGroup:
+    Type: AWS::CloudFront::KeyGroup
+    Condition: HasCloudFrontSigningKey
+    Properties:
+      KeyGroupConfig:
+        Name: !Sub 'StreamMyCourse-video-keygroup-${Environment}'
+        Items:
+          - !Ref VideoSigningPublicKey
+
   CloudFrontDistribution:
     Type: AWS::CloudFront::Distribution
     Properties:
@@ -90,7 +119,11 @@ Resources:
           CloudFrontDefaultCertificate: true
         DefaultCacheBehavior:
           TargetOriginId: S3VideoBucket
-          ViewerProtocolPolicy: redirect-to-https
+          ViewerProtocolPolicy: https-only
+          TrustedKeyGroups: !If
+            - HasCloudFrontSigningKey
+            - - !Ref VideoSigningKeyGroup
+            - !Ref AWS::NoValue
           AllowedMethods:
             - GET
             - HEAD
@@ -213,3 +246,11 @@ Outputs:
   CloudFrontInvalidationLambdaName:
     Description: Invoke with aws lambda invoke to invalidate cache paths
     Value: !Ref CloudFrontInvalidationLambda
+
+  CloudFrontInvalidationLambdaArn:
+    Description: ARN for granting catalog Lambda invoke permission
+    Value: !GetAtt CloudFrontInvalidationLambda.Arn
+
+  CloudFrontKeyPairId:
+    Description: CloudFront key pair id for signed URLs (empty when signing disabled)
+    Value: !If [HasCloudFrontSigningKey, !Ref VideoSigningPublicKey, '']

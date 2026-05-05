@@ -6,3 +6,4 @@
 # macOS/Windows. boto3 is NOT listed -- it ships with the Lambda runtime.
 
 psycopg2-binary==2.9.9
+cryptography==43.0.1

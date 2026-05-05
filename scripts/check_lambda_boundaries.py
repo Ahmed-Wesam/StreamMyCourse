@@ -74,12 +74,18 @@ def check_file(path: str) -> List[Violation]:
         _norm_path(os.path.join(ROOT, "infrastructure/lambda/catalog/bootstrap.py")),
         _norm_path(os.path.join(ROOT, "infrastructure/lambda/catalog/services/course_management/repo.py")),
         _norm_path(os.path.join(ROOT, "infrastructure/lambda/catalog/services/course_management/storage.py")),
+        _norm_path(os.path.join(ROOT, "infrastructure/lambda/catalog/services/course_management/cloudfront_storage.py")),
         _norm_path(os.path.join(ROOT, "infrastructure/lambda/catalog/services/auth/repo.py")),
         _norm_path(os.path.join(ROOT, "infrastructure/lambda/catalog/services/enrollment/repo.py")),
         _norm_path(os.path.join(ROOT, "infrastructure/lambda/cognito_user_profile_sync/repo.py")),
     }
     if "boto3" in roots and _norm_path(path) not in allowed_boto3_files:
-        violations.append(Violation(rel, "boto3 may only be imported in bootstrap.py, repo.py, or storage.py"))
+        violations.append(
+            Violation(
+                rel,
+                "boto3 may only be imported in bootstrap.py, repo.py, storage.py, or cloudfront_storage.py",
+            )
+        )
 
     # Global: psycopg2 only in the RDS adapters + the composition root
     # (bootstrap.py opens the connection). No other module should reach for

@@ -95,13 +95,18 @@ rm -f "$INV_ZIP"
 
 VIDEO_STACK="StreamMyCourse-Video-${ENV}"
 echo "Deploying video stack: $VIDEO_STACK"
+VIDEO_OVERRIDE=(
+  "Environment=${ENV}"
+  "InvalidationLambdaCodeS3Bucket=${ARTIFACT_BUCKET}"
+  "InvalidationLambdaCodeS3Key=${INV_KEY}"
+)
+if [[ -n "${CLOUDFRONT_PUBLIC_KEY_SSM_PARAMETER_NAME:-}" ]]; then
+  VIDEO_OVERRIDE+=("CloudFrontPublicKeySsmParameterName=${CLOUDFRONT_PUBLIC_KEY_SSM_PARAMETER_NAME}")
+fi
 aws cloudformation deploy \
   --template-file "$TEMPLATE_DIR/video-stack.yaml" \
   --stack-name "$VIDEO_STACK" \
-  --parameter-overrides \
-    "Environment=${ENV}" \
-    "InvalidationLambdaCodeS3Bucket=${ARTIFACT_BUCKET}" \
-    "InvalidationLambdaCodeS3Key=${INV_KEY}" \
+  --parameter-overrides "${VIDEO_OVERRIDE[@]}" \
   --capabilities CAPABILITY_IAM CAPABILITY_NAMED_IAM \
   --region "$REGION" \
   --no-fail-on-empty-changeset
@@ -116,10 +121,38 @@ BUCKET_URL="$(aws cloudformation describe-stacks \
   --region "$REGION" \
   --query 'Stacks[0].Outputs[?OutputKey==`BucketURL`].OutputValue' \
   --output text)"
+CLOUDFRONT_DOMAIN_OUT="$(aws cloudformation describe-stacks \
+  --stack-name "$VIDEO_STACK" \
+  --region "$REGION" \
+  --query 'Stacks[0].Outputs[?OutputKey==`CloudFrontDomain`].OutputValue' \
+  --output text)"
+CLOUDFRONT_KEY_PAIR_ID_OUT="$(aws cloudformation describe-stacks \
+  --stack-name "$VIDEO_STACK" \
+  --region "$REGION" \
+  --query 'Stacks[0].Outputs[?OutputKey==`CloudFrontKeyPairId`].OutputValue' \
+  --output text)"
+CF_INV_ARN="$(aws cloudformation describe-stacks \
+  --stack-name "$VIDEO_STACK" \
+  --region "$REGION" \
+  --query 'Stacks[0].Outputs[?OutputKey==`CloudFrontInvalidationLambdaArn`].OutputValue' \
+  --output text)"
+CF_INV_NAME="$(aws cloudformation describe-stacks \
+  --stack-name "$VIDEO_STACK" \
+  --region "$REGION" \
+  --query 'Stacks[0].Outputs[?OutputKey==`CloudFrontInvalidationLambdaName`].OutputValue' \
+  --output text)"
 
 if [[ -z "$VIDEO_BUCKET" || -z "$BUCKET_URL" ]]; then
   echo "Failed to read video stack outputs (BucketName / BucketURL)" >&2
   exit 1
+fi
+
+VIDEO_URL_FOR_API="$BUCKET_URL"
+API_CF_DOMAIN="${CLOUDFRONT_DOMAIN_OUT:-}"
+API_CF_KEY_ID="${CLOUDFRONT_KEY_PAIR_ID_OUT:-}"
+API_CF_SECRET_ARN="${CLOUDFRONT_PRIVATE_KEY_SECRET_ARN:-}"
+if [[ -n "$API_CF_DOMAIN" && -n "$API_CF_KEY_ID" && -n "$API_CF_SECRET_ARN" ]]; then
+  VIDEO_URL_FOR_API="https://${API_CF_DOMAIN}"
 fi
 
 case "$ENV" in
@@ -163,6 +196,21 @@ if [[ -n "${USE_RDS:-}" ]]; then
   USE_RDS_OVERRIDE=("UseRds=${USE_RDS}")
 fi
 
+API_OVERRIDE=(
+  "Environment=${ENV}"
+  "LambdaCodeS3Bucket=${ARTIFACT_BUCKET}"
+  "LambdaCodeS3Key=${ZIP_KEY}"
+  "VideoBucketName=${VIDEO_BUCKET}"
+  "VideoUrl=${VIDEO_URL_FOR_API}"
+  "CorsAllowOrigin=${CORS}"
+  "GatewayResponseAllowOrigin=${GW_ALLOW}"
+)
+API_OVERRIDE+=("CloudFrontDomain=${API_CF_DOMAIN:-}")
+API_OVERRIDE+=("CloudFrontKeyPairId=${API_CF_KEY_ID:-}")
+API_OVERRIDE+=("CloudFrontPrivateKeySecretArn=${API_CF_SECRET_ARN:-}")
+API_OVERRIDE+=("CloudFrontInvalidationLambdaArn=${CF_INV_ARN:-}")
+API_OVERRIDE+=("CloudFrontInvalidationLambdaName=${CF_INV_NAME:-}")
+
 aws cloudformation deploy \
   --template-file "$TEMPLATE_DIR/api-stack.yaml" \
   --stack-name "$API_STACK" \
@@ -170,13 +218,7 @@ aws cloudformation deploy \
   --region "$REGION" \
   --no-fail-on-empty-changeset \
   --parameter-overrides \
-  "Environment=${ENV}" \
-  "LambdaCodeS3Bucket=${ARTIFACT_BUCKET}" \
-  "LambdaCodeS3Key=${ZIP_KEY}" \
-  "VideoBucketName=${VIDEO_BUCKET}" \
-  "VideoUrl=${BUCKET_URL}" \
-  "CorsAllowOrigin=${CORS}" \
-  "GatewayResponseAllowOrigin=${GW_ALLOW}" \
+  "${API_OVERRIDE[@]}" \
   "${COGNITO_OVERRIDE[@]}" \
   "${RDS_STACK_OVERRIDE[@]}" \
   "${USE_RDS_OVERRIDE[@]}"

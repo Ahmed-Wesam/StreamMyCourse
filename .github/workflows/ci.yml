@@ -75,6 +75,7 @@ jobs:
           python scripts/parse_cloudformation_yaml.py infrastructure/templates/api-stack.yaml
           python scripts/parse_cloudformation_yaml.py infrastructure/templates/auth-stack.yaml
           python scripts/parse_cloudformation_yaml.py infrastructure/templates/video-stack.yaml
+          python scripts/parse_cloudformation_yaml.py infrastructure/templates/cloudfront-keys-stack.yaml
           python scripts/parse_cloudformation_yaml.py infrastructure/templates/edge-hosting-stack.yaml
           python scripts/parse_cloudformation_yaml.py infrastructure/templates/github-deploy-role-stack.yaml
           python scripts/parse_cloudformation_yaml.py infrastructure/templates/billing-alarm.yaml

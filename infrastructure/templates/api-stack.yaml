@@ -37,6 +37,32 @@ Parameters:
     Default: ''
     Description: S3 bucket name used for video uploads (presigned PUT)
 
+  CloudFrontDomain:
+    Type: String
+    Default: ''
+    Description: >-
+      Video CloudFront distribution hostname (e.g. d111111abcdef8.cloudfront.net) for signed playback URLs.
+
+  CloudFrontKeyPairId:
+    Type: String
+    Default: ''
+    Description: CloudFront public key id from the video stack (empty disables CloudFront signing).
+
+  CloudFrontPrivateKeySecretArn:
+    Type: String
+    Default: ''
+    Description: Secrets Manager ARN holding PEM private key matching the CloudFront public key.
+
+  CloudFrontInvalidationLambdaArn:
+    Type: String
+    Default: ''
+    Description: ARN of StreamMyCourse-CfInvalidate-* Lambda (for cache invalidation after media changes).
+
+  CloudFrontInvalidationLambdaName:
+    Type: String
+    Default: ''
+    Description: Name of the invalidation Lambda (passed as CF_INVALIDATION_LAMBDA_NAME).
+
   LambdaCodeS3Bucket:
     Type: String
     Default: ''
@@ -86,6 +112,11 @@ Conditions:
   HasCognitoAuthorizer: !Not [!Equals [!Ref CognitoUserPoolArn, '']]
   IsProd: !Equals [!Ref Environment, prod]
   HasRdsStack: !Not [!Equals [!Ref RdsStackName, '']]
+  HasCloudFrontSigning: !And
+    - !Not [!Equals [!Ref CloudFrontDomain, '']]
+    - !Not [!Equals [!Ref CloudFrontKeyPairId, '']]
+    - !Not [!Equals [!Ref CloudFrontPrivateKeySecretArn, '']]
+  HasCfInvalidateLambda: !Not [!Equals [!Ref CloudFrontInvalidationLambdaArn, '']]
 
 Resources:
   # DynamoDB Table for Course Catalog
@@ -196,6 +227,28 @@ Resources:
                   - !ImportValue
                     'Fn::Sub': '${RdsStackName}-DbSecretArn'
                   - !Sub 'arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:streammycourse-no-rds-stack/NEVER_MATCH-xxxxxx'
+        - PolicyName: SecretsManagerCloudFrontSigningKey
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Sid: ReadCloudFrontPrivateKey
+                Effect: Allow
+                Action: secretsmanager:GetSecretValue
+                Resource: !If
+                  - HasCloudFrontSigning
+                  - !Ref CloudFrontPrivateKeySecretArn
+                  - !Sub 'arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:streammycourse-no-cf-signing/NEVER_MATCH-xxxxxx'
+        - PolicyName: InvokeCloudFrontInvalidationLambda
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Sid: InvokeCfInvalidate
+                Effect: Allow
+                Action: lambda:InvokeFunction
+                Resource: !If
+                  - HasCfInvalidateLambda
+                  - !Ref CloudFrontInvalidationLambdaArn
+                  - !Sub 'arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:streammycourse-no-cf-invalidate'
       Tags:
         - Key: Project
           Value: StreamMyCourse
@@ -258,6 +311,10 @@ Resources:
             - !ImportValue
               'Fn::Sub': '${RdsStackName}-DbSecretArn'
             - ''
+          CLOUDFRONT_DOMAIN: !Ref CloudFrontDomain
+          CLOUDFRONT_KEY_PAIR_ID: !Ref CloudFrontKeyPairId
+          CLOUDFRONT_PRIVATE_KEY_SECRET_ARN: !Ref CloudFrontPrivateKeySecretArn
+          CF_INVALIDATION_LAMBDA_NAME: !Ref CloudFrontInvalidationLambdaName
       Tags:
         - Key: Project
           Value: StreamMyCourse
