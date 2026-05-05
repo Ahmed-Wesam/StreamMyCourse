@@ -9,7 +9,6 @@ Parameters:
     AllowedValues:
       - dev
       - integ
-      - staging
       - prod
 
   CognitoDomainPrefix:

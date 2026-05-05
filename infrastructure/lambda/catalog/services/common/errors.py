@@ -33,3 +33,8 @@ class Forbidden(HttpError):
     def __init__(self, message: str = "Forbidden", *, code: str | None = "forbidden"):
         super().__init__(403, message, code=code)
 
+
+class ServiceUnavailable(HttpError):
+    def __init__(self, message: str, *, code: str | None = "service_unavailable"):
+        super().__init__(503, message, code=code)
+

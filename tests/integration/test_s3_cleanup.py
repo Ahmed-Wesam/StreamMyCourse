@@ -2,11 +2,27 @@
 
 from __future__ import annotations
 
+import time
+
 import httpx
 import pytest
 
 from helpers.api import ApiClient
 from helpers.cleanup import s3_object_exists
+
+
+def _wait_until_object_absent(
+    bucket: str, key: str, *, region: str, timeout_s: float = 120.0, poll_s: float = 2.0
+) -> None:
+    """Course delete enqueues async S3 cleanup; poll until the worker removes the object."""
+    deadline = time.monotonic() + timeout_s
+    while time.monotonic() < deadline:
+        if not s3_object_exists(bucket, key, region=region):
+            return
+        time.sleep(poll_s)
+    assert not s3_object_exists(bucket, key, region=region), (
+        f"S3 object still present after {timeout_s}s: s3://{bucket}/{key}"
+    )
 
 
 @pytest.mark.slow
@@ -37,7 +53,7 @@ def test_delete_course_removes_uploaded_lesson_video(
     deleted = api.delete_course(course.course_id)
     assert deleted.status_code == 200
 
-    assert not s3_object_exists(integ_video_bucket, video_key, region=integ_region)
+    _wait_until_object_absent(integ_video_bucket, video_key, region=integ_region)
 
 
 @pytest.mark.slow

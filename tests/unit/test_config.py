@@ -19,6 +19,9 @@ def _clear_env(monkeypatch: pytest.MonkeyPatch) -> None:
         "DB_NAME",
         "DB_PORT",
         "DB_SECRET_ARN",
+        "COGNITO_AUTH_ENABLED",
+        "LOG_LEVEL",
+        "MEDIA_CLEANUP_QUEUE_URL",
     ):
         monkeypatch.delenv(name, raising=False)
 
@@ -166,3 +169,14 @@ class TestRdsFields:
         assert cfg.db_host == "rds.example.com"
         assert cfg.db_name == "smc"
         assert cfg.db_secret_arn == "arn:aws:sm:eu:1:secret:x"
+
+
+class TestMediaCleanupQueueUrl:
+    def test_defaults_empty(self) -> None:
+        cfg = load_config()
+        assert cfg.media_cleanup_queue_url == ""
+
+    def test_loaded_from_env(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("MEDIA_CLEANUP_QUEUE_URL", "  https://sqs.example/q  ")
+        cfg = load_config()
+        assert cfg.media_cleanup_queue_url == "https://sqs.example/q"

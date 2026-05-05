@@ -7,11 +7,11 @@ ports are the only seam we need.
 
 from __future__ import annotations
 
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 
-from services.common.errors import BadRequest, Conflict, Forbidden, NotFound
+from services.common.errors import BadRequest, Conflict, Forbidden, NotFound, ServiceUnavailable
 from services.course_management.models import Course, Lesson, PresignResult
 from services.course_management.service import CourseManagementService
 
@@ -94,6 +94,15 @@ def service(
 @pytest.fixture
 def service_no_storage(repo: MagicMock, enrollments: MagicMock) -> CourseManagementService:
     return CourseManagementService(repo, None, enrollments)
+
+
+@pytest.fixture
+def service_with_queue(
+    repo: MagicMock, storage: MagicMock, enrollments: MagicMock
+) -> CourseManagementService:
+    return CourseManagementService(
+        repo, storage, enrollments, media_cleanup_queue_url="https://sqs.example/queue"
+    )
 
 
 # --- list_published_courses ---------------------------------------------------
@@ -282,12 +291,46 @@ class TestDeleteCourse:
         repo.delete_course_and_lessons.assert_called_once_with("c1")
         assert out == {"id": "c1", "deleted": True}
 
-    def test_deletes_db_before_s3(
-        self, service: CourseManagementService, repo: MagicMock, storage: MagicMock
+    def test_raises_when_queue_missing_but_course_has_media_keys(
+        self, service: CourseManagementService, repo: MagicMock
     ) -> None:
         repo.get_course.return_value = _course(
             id_="c1", thumbnail_key=_course_thumb_key("c1", _TH3)
         )
+        repo.list_lessons.return_value = []
+        with pytest.raises(ServiceUnavailable, match="MEDIA_CLEANUP_QUEUE_URL"):
+            service.delete_course("c1")
+        repo.delete_course_and_lessons.assert_not_called()
+
+    @patch("services.course_management.service.send_media_cleanup_job")
+    def test_enqueue_failure_after_db_delete_propagates(
+        self, send_job: MagicMock, service_with_queue: CourseManagementService, repo: MagicMock
+    ) -> None:
+        repo.get_course.return_value = _course(id_="c1")
+        repo.list_lessons.return_value = [_lesson(id_="l1", video_key=_video_key("c1", "l1"))]
+        send_job.side_effect = RuntimeError("sqs down")
+        with pytest.raises(RuntimeError, match="sqs down"):
+            service_with_queue.delete_course("c1")
+        repo.delete_course_and_lessons.assert_called_once_with("c1")
+
+    def test_without_storage_raises_when_queue_missing_and_media_keys(
+        self, service_no_storage: CourseManagementService, repo: MagicMock
+    ) -> None:
+        repo.get_course.return_value = _course(id_="c1")
+        repo.list_lessons.return_value = [_lesson(id_="l1", video_key=_video_key("c1", "l1"))]
+        with pytest.raises(ServiceUnavailable, match="MEDIA_CLEANUP_QUEUE_URL"):
+            service_no_storage.delete_course("c1")
+        repo.delete_course_and_lessons.assert_not_called()
+
+    @patch("services.course_management.service.send_media_cleanup_job")
+    def test_enqueues_media_cleanup_when_queue_configured(
+        self,
+        send_job: MagicMock,
+        service_with_queue: CourseManagementService,
+        repo: MagicMock,
+        storage: MagicMock,
+    ) -> None:
+        repo.get_course.return_value = _course(id_="c1", thumbnail_key=_course_thumb_key("c1", _TH3))
         repo.list_lessons.return_value = [
             _lesson(
                 id_="l1",
@@ -300,41 +343,35 @@ class TestDeleteCourse:
         def _mark_db(*_a: object, **_k: object) -> None:
             order.append("db")
 
-        def _mark_s3(*_a: object, **_k: object) -> list[str]:
-            order.append("s3")
-            return []
+        def _mark_send(*_a: object, **_k: object) -> None:
+            order.append("sqs")
 
         repo.delete_course_and_lessons.side_effect = _mark_db
-        storage.delete_objects.side_effect = _mark_s3
-        service.delete_course("c1")
-        assert order == ["db", "s3"]
-        storage.delete_objects.assert_called_once()
-        keys = storage.delete_objects.call_args[0][0]
+        send_job.side_effect = _mark_send
+        service_with_queue.delete_course("c1")
+        assert order == ["db", "sqs"]
+        storage.delete_objects.assert_not_called()
+        send_job.assert_called_once()
+        qurl, cid, keys = send_job.call_args[0]
+        assert qurl == "https://sqs.example/queue"
+        assert cid == "c1"
         assert set(keys) == {
             _course_thumb_key("c1", _TH3),
             _video_key("c1", "l1"),
             _lesson_thumb_key("c1", "l1", _TH4),
         }
-        repo.delete_course_and_lessons.assert_called_once_with("c1")
 
-    def test_s3_failure_still_deletes_course_in_db(
-        self, service: CourseManagementService, repo: MagicMock, storage: MagicMock
+    @patch("services.course_management.service.send_media_cleanup_job")
+    def test_enqueue_runs_without_storage_when_queue_configured(
+        self, send_job: MagicMock, repo: MagicMock, enrollments: MagicMock
     ) -> None:
+        svc = CourseManagementService(
+            repo, None, enrollments, media_cleanup_queue_url="https://sqs.example/queue"
+        )
         repo.get_course.return_value = _course(id_="c1")
         repo.list_lessons.return_value = [_lesson(id_="l1", video_key=_video_key("c1", "l1"))]
-        storage.delete_objects.side_effect = RuntimeError("boom")
-        out = service.delete_course("c1")
-        assert out == {"id": "c1", "deleted": True}
-        repo.delete_course_and_lessons.assert_called_once_with("c1")
-
-    def test_without_storage_skips_s3(
-        self, service_no_storage: CourseManagementService, repo: MagicMock
-    ) -> None:
-        repo.get_course.return_value = _course(id_="c1")
-        repo.list_lessons.return_value = [_lesson(id_="l1", video_key=_video_key("c1", "l1"))]
-        out = service_no_storage.delete_course("c1")
-        assert out == {"id": "c1", "deleted": True}
-        repo.delete_course_and_lessons.assert_called_once_with("c1")
+        svc.delete_course("c1")
+        send_job.assert_called_once()
 
 
 # --- update_lesson ------------------------------------------------------------

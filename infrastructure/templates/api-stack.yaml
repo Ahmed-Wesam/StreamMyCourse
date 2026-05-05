@@ -8,7 +8,6 @@ Parameters:
     AllowedValues:
       - dev
       - integ
-      - staging
       - prod
     Description: Deployment environment
 
@@ -71,6 +70,20 @@ Parameters:
       - 'CRITICAL'
     Description: Log level for Lambda function (DEBUG, INFO, WARNING, ERROR, CRITICAL)
 
+  MediaCleanupQueueUrl:
+    Type: String
+    Default: ''
+    Description: >-
+      SQS queue URL for async S3 media cleanup after course delete. When empty,
+      the catalog uses synchronous S3 deletes (legacy / integ).
+
+  MediaCleanupQueueArn:
+    Type: String
+    Default: ''
+    Description: >-
+      SQS queue ARN for sqs:SendMessage on the catalog Lambda role. Must be set
+      when MediaCleanupQueueUrl is set.
+
   UseRds:
     Type: String
     Default: 'false'
@@ -86,6 +99,7 @@ Conditions:
   HasCognitoAuthorizer: !Not [!Equals [!Ref CognitoUserPoolArn, '']]
   IsProd: !Equals [!Ref Environment, prod]
   HasRdsStack: !Not [!Equals [!Ref RdsStackName, '']]
+  HasMediaCleanupQueueArn: !Not [!Equals [!Ref MediaCleanupQueueArn, '']]
 
 Resources:
   # DynamoDB Table for Course Catalog
@@ -165,6 +179,17 @@ Resources:
                   - !Sub 'arn:aws:s3:::${VideoBucketName}/*'
                   # Non-existent bucket prefix: avoids account-wide s3:* on all buckets when param is empty.
                   - 'arn:aws:s3:::streammycourse-no-bucket-configured/NEVER_MATCH/*'
+        - !If
+          - HasMediaCleanupQueueArn
+          - PolicyName: SqsMediaCleanupSend
+            PolicyDocument:
+              Version: '2012-10-17'
+              Statement:
+                - Effect: Allow
+                  Action:
+                    - sqs:SendMessage
+                  Resource: !Ref MediaCleanupQueueArn
+          - !Ref AWS::NoValue
         # VPC ENI lifecycle for Lambda-in-VPC. Always attached so flipping UseRds
         # does not require a role redeploy. These actions are resource-less by
         # AWS design (they return IDs from the global EC2 API) — standard for the
@@ -258,6 +283,7 @@ Resources:
             - !ImportValue
               'Fn::Sub': '${RdsStackName}-DbSecretArn'
             - ''
+          MEDIA_CLEANUP_QUEUE_URL: !Ref MediaCleanupQueueUrl
       Tags:
         - Key: Project
           Value: StreamMyCourse

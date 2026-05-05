@@ -25,6 +25,8 @@ class AppConfig:
     db_secret_arn: str = ""
     # Logging configuration
     log_level: str = "INFO"
+    # Optional SQS queue URL for async S3 cleanup after course delete (empty = legacy sync delete)
+    media_cleanup_queue_url: str = ""
 
 
 _DEFAULT_DB_PORT = 5432
@@ -75,6 +77,8 @@ def load_config() -> AppConfig:
     if log_level not in ("DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"):
         log_level = "INFO"
 
+    media_cleanup_queue_url = os.environ.get("MEDIA_CLEANUP_QUEUE_URL", "").strip()
+
     return AppConfig(
         table_name=table_name,
         video_bucket=video_bucket,
@@ -88,4 +92,5 @@ def load_config() -> AppConfig:
         db_port=db_port,
         db_secret_arn=db_secret_arn,
         log_level=log_level,
+        media_cleanup_queue_url=media_cleanup_queue_url,
     )
