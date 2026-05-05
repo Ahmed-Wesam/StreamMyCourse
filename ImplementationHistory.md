@@ -4,6 +4,14 @@
 
 ---
 
+## 2026-05-04 — iOS Safari video playback fix
+
+### Completed
+
+- [x] **Lesson Player** — [`frontend/src/pages/LessonPlayerPage.tsx`](frontend/src/pages/LessonPlayerPage.tsx) — Added `preload="metadata"` and `crossOrigin="anonymous"` to the video element to fix iOS Safari playback (muted speaker icon / black screen). iOS Safari requires explicit preload metadata and CORS handling for cross-origin video sources (S3/CloudFront presigned URLs).
+
+---
+
 ## 2026-05-05 — Deploy workflow OIDC uses repository Actions variable for role ARN
 
 ### Completed
