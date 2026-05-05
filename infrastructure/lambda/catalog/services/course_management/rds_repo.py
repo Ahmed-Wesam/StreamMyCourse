@@ -210,7 +210,7 @@ class CourseCatalogRdsRepository:
         )
 
     def delete_course_and_lessons(self, course_id: str) -> None:
-        # ON DELETE CASCADE on lessons.course_id removes dependent rows atomically.
+        # enrollments.course_id and lessons.course_id use ON DELETE CASCADE from courses.
         self._execute(
             "DELETE FROM courses WHERE id = %s",
             (course_id,),
