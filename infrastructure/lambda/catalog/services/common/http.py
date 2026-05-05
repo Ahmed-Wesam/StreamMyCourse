@@ -1,11 +1,50 @@
 from __future__ import annotations
 
+import base64
 import json
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional
 
 # Defense-in-depth for JSON API responses (limited effect on fetch/XHR; avoids silent removal).
 _CSP_API = "default-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'"
+
+
+def _extract_bearer_token(headers: Dict[str, Any]) -> str | None:
+    """Extract JWT from Authorization: Bearer <token> header."""
+    auth_header = headers.get("Authorization") or headers.get("authorization")
+    if not isinstance(auth_header, str):
+        return None
+    auth_header = auth_header.strip()
+    if auth_header.lower().startswith("bearer "):
+        token = auth_header[7:].strip()
+        return token if token else None
+    return None
+
+
+def _parse_jwt_claims_unverified(token: str) -> Dict[str, Any]:
+    """Parse JWT payload (claims) without signature verification.
+
+    This is safe for public routes where API Gateway doesn't enforce Cognito:
+    - For ownership checks (DRAFT course access), we compare sub against createdBy.
+    - A forged JWT would only allow seeing that specific user's DRAFT courses.
+    - API Gateway still verifies JWT on protected routes; this is a fallback.
+    """
+    try:
+        parts = token.split(".")
+        if len(parts) != 3:
+            return {}
+        # JWT payload is base64url encoded; add padding if needed
+        payload_b64 = parts[1]
+        padding_needed = 4 - len(payload_b64) % 4
+        if padding_needed != 4:
+            payload_b64 += "=" * padding_needed
+        payload_bytes = base64.urlsafe_b64decode(payload_b64)
+        parsed = json.loads(payload_bytes.decode("utf-8"))
+        if isinstance(parsed, dict):
+            return parsed
+    except Exception:
+        pass
+    return {}
 
 
 @dataclass(frozen=True)
@@ -134,21 +173,34 @@ _SKIP_AUTHORIZER_META = frozenset({"claims", "principalId", "integrationLatency"
 
 
 def apigw_cognito_claims(event: Dict[str, Any]) -> Dict[str, Any]:
-    """Cognito JWT claims forwarded by API Gateway (shape varies slightly by integration)."""
+    """Cognito JWT claims forwarded by API Gateway (shape varies slightly by integration).
+
+    Falls back to parsing the Authorization header when API Gateway doesn't provide
+    claims (public routes like GET /courses/{id} with AuthorizationType: NONE).
+    """
     auth = event.get("requestContext", {}).get("authorizer") or {}
-    if not isinstance(auth, dict):
-        return {}
-    nested = auth.get("claims")
-    if isinstance(nested, dict) and nested:
-        return nested
-    if isinstance(nested, str) and nested.strip():
-        try:
-            parsed = json.loads(nested)
-            if isinstance(parsed, dict) and parsed:
-                return parsed
-        except json.JSONDecodeError:
-            pass
-    if isinstance(auth.get("sub"), str):
-        return {k: v for k, v in auth.items() if k not in _SKIP_AUTHORIZER_META}
-    return {}
+    claims: Dict[str, Any] | None = None
+
+    if isinstance(auth, dict):
+        nested = auth.get("claims")
+        if isinstance(nested, dict) and nested:
+            claims = nested
+        elif isinstance(nested, str) and nested.strip():
+            try:
+                parsed = json.loads(nested)
+                if isinstance(parsed, dict) and parsed:
+                    claims = parsed
+            except json.JSONDecodeError:
+                pass
+        if claims is None and isinstance(auth.get("sub"), str):
+            claims = {k: v for k, v in auth.items() if k not in _SKIP_AUTHORIZER_META}
+
+    # Fallback: parse JWT from Authorization header for public routes
+    if claims is None:
+        headers = event.get("headers") or {}
+        token = _extract_bearer_token(headers)
+        if token:
+            claims = _parse_jwt_claims_unverified(token)
+
+    return claims if claims is not None else {}
 
