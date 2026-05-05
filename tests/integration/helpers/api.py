@@ -30,9 +30,6 @@ class ApiClient:
     def get_course(self, course_id: str) -> httpx.Response:
         return self._client.get(f"/courses/{course_id}")
 
-    def get_course_preview(self, course_id: str) -> httpx.Response:
-        return self._client.get(f"/courses/{course_id}/preview")
-
     def enroll_course(self, course_id: str) -> httpx.Response:
         return self._client.post(f"/courses/{course_id}/enroll", json={})
 

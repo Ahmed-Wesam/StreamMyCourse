@@ -203,20 +203,6 @@ class CourseManagementService:
             return course
         raise Forbidden("Enrollment required to view this course", code="enrollment_required")
 
-    def get_course_preview(self, course_id: str) -> Dict[str, Any]:
-        course = self._repo.get_course(course_id)
-        if not course or course.status != "PUBLISHED":
-            raise NotFound("Course not found")
-        data = self._public_course_dict(course)
-        self._apply_course_cover_fallback(course_id, data)
-        lessons = self._repo.list_lessons(course_id)
-        preview_lessons = [
-            {"id": l.id, "title": l.title, "order": l.order}
-            for l in sorted(lessons, key=lambda x: x.order)
-        ]
-        data["lessonsPreview"] = preview_lessons
-        return data
-
     def get_course_detail_with_enrollment(
         self,
         course_id: str,
@@ -313,6 +299,24 @@ class CourseManagementService:
 
     def list_lessons(self, course_id: str) -> List[Dict[str, Any]]:
         return [self._public_lesson_dict(l) for l in self._repo.list_lessons(course_id)]
+
+    def list_lessons_public(
+        self,
+        course_id: str,
+        *,
+        cognito_sub: str,
+        role: str,
+        auth_enforced: bool,
+    ) -> List[Dict[str, Any]]:
+        """Published lesson rows for catalog UI (thumbnails, no videoKey). DRAFT is 404 unless caller can manage."""
+        course = self._repo.get_course(course_id)
+        if not course:
+            raise NotFound("Course not found")
+        if auth_enforced and course.status == "DRAFT":
+            if not self._can_manage_course_unenrolled(course, cognito_sub=cognito_sub, role=role):
+                raise NotFound("Course not found")
+        lessons = self._repo.list_lessons(course_id)
+        return [self._public_lesson_dict(l) for l in sorted(lessons, key=lambda x: x.order)]
 
     def create_lesson(self, course_id: str, title: str) -> Dict[str, Any]:
         lesson = self._repo.create_lesson(course_id=course_id, title=title or "Lesson")
