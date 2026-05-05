@@ -11,7 +11,7 @@ function getDefaultTeacherUrl(): string {
     return 'https://teach.dev.streammycourse.click'
   }
   // Production and all other environments -> prod teacher site
-  return 'https://teach.streammycourse.com'
+  return 'https://teach.streammycourse.click'
 }
 
 const teacherSiteBaseUrl =
