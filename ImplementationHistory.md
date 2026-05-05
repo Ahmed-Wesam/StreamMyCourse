@@ -54,6 +54,23 @@
 
 ---
 
+## 2026-05-05 — Public catalog reads: course detail + lesson list (remove `/preview`)
+
+### Completed
+
+- [x] **Service** — [`infrastructure/lambda/catalog/services/course_management/service.py`](infrastructure/lambda/catalog/services/course_management/service.py) — Added **`list_lessons_public`** (gate-before-query: `get_course` then DRAFT visibility via `_can_manage_course_unenrolled` before `repo.list_lessons`). Removed **`get_course_preview`**. Existing **`get_course_detail_with_enrollment`** already sets **`enrolled=false`** for anonymous callers on **PUBLISHED** courses.
+- [x] **Controller** — [`infrastructure/lambda/catalog/services/course_management/controller.py`](infrastructure/lambda/catalog/services/course_management/controller.py) — **`GET /courses/{id}`** and **`GET /courses/{id}/lessons`** no longer call **`_require_authenticated`** or **`ensure_can_view_lessons_and_playback`**; lessons use **`list_lessons_public`**. **`GET /playback/...`** unchanged (still authenticated + enrollment when enforced). Removed **`/preview`** route and handler.
+- [x] **API Gateway** — [`infrastructure/templates/api-stack.yaml`](infrastructure/templates/api-stack.yaml) — Removed **`/courses/{courseId}/preview`** resource and methods; **`GET /courses/{courseId}`** and **`GET /courses/{courseId}/lessons`** use **`AuthorizationType: NONE`**; deployment logical id **`CatalogApiDeploymentV8` → `CatalogApiDeploymentV9`** (stage **`DeploymentId`** updated; **`DependsOn`** no longer references preview methods).
+- [x] **Frontend** — [`frontend/src/lib/api.ts`](frontend/src/lib/api.ts) — Removed **`getCoursePreview`** / **`lessonPreviewsToStubLessons`**. [`CourseDetailPage.tsx`](frontend/src/pages/CourseDetailPage.tsx) / [`LessonPlayerPage.tsx`](frontend/src/pages/LessonPlayerPage.tsx) always use **`getCourse` + `listLessons`**; **`previewOnly`** = not signed in, **`needsEnrollment`** = signed in and **`enrolled === false`**; playback enrollment errors load sidebar from **`listLessons`** (thumbnails visible).
+- [x] **Tests** — [`tests/unit/services/course_management/test_service.py`](tests/unit/services/course_management/test_service.py), [`test_controller.py`](tests/unit/services/course_management/test_controller.py); [`tests/integration/test_publish.py`](tests/integration/test_publish.py) (anonymous **`httpx.Client`** without `Authorization`); [`frontend/src/lib/api.test.ts`](frontend/src/lib/api.test.ts); removed **`get_course_preview`** from [`tests/integration/helpers/api.py`](tests/integration/helpers/api.py).
+- [x] **Docs** — [`design.md`](design.md) §7 API + §9 security + §10 deployment note (**`CatalogApiDeploymentV9`**).
+
+### Ops
+
+- **Deploy backend** after merge so API Gateway stage picks up **`CatalogApiDeploymentV9`** (otherwise anonymous **`GET /courses/.../lessons`** can still return **403 Missing Authentication Token** from a stale stage snapshot). Smoke: anonymous `curl` to **`/courses/{published-id}`** and **`/lessons`** without **`Authorization`** → **200**; DRAFT id → **404**; **`/preview`** path removed at gateway (404 from API GW or Lambda **`not_found`**).
+
+---
+
 ## 2026-05-04 — Lesson video upload: second presign no longer deletes prior S3 object
 
 ### Completed

@@ -2,15 +2,16 @@
 
 ## Context
 
-Published courses should be discoverable without sign-in, but lesson lists and playback require either enrollment or instructor/admin override.
+Published courses should be discoverable without sign-in, including **lesson list metadata** (titles, order, thumbnails) for catalog UI; **playback** still requires enrollment or instructor/admin override when auth is enforced.
 
 ## Decision
 
 - Store enrollments in the existing catalog table: `PK = USER#<sub>`, `SK = ENROLLMENT#<courseId>`.
-- Add `GET /courses/{id}/preview` (no Cognito at gateway) returning published metadata plus `lessonsPreview` only.
-- Gate `GET /courses/{id}`, `GET .../lessons`, and `GET /playback/...` in Lambda when `COGNITO_AUTH_ENABLED` is true, with admin and course owner (same ownership rule as mutations) bypassing enrollment.
+- **`GET /courses/{id}`** and **`GET /courses/{id}/lessons`** use **no** Cognito authorizer at API Gateway (`AuthorizationType: NONE`). Lambda returns **PUBLISHED** catalog data (including presigned **thumbnail** URLs; **`videoKey`** never in JSON). **DRAFT** returns **404** unless the caller is owner/admin (JWT claims when present). **`enrolled`** on course detail is **false** for anonymous or not-yet-enrolled viewers on published courses.
+- **`GET /playback/...`** remains Cognito-gated at the gateway when a pool is configured; Lambda enforces enrollment (or owner/admin bypass) when `COGNITO_AUTH_ENABLED` is true.
 
 ## Consequences
 
-- API Gateway must attach the Cognito authorizer to the protected GETs when a pool is configured; anonymous clients use `/preview` only.
+- Anonymous browsers call the same course + lesson list endpoints as signed-in users; only playback requires auth + enrollment when enforced.
+- Supersedes the earlier **`GET /courses/{id}/preview`** + **`lessonsPreview`** shape (removed).
 - Deleting a course does not automatically delete enrollment rows (acceptable for MVP; rows are small and inert).

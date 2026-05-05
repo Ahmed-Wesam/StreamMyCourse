@@ -16,7 +16,7 @@ This document is the “public surface” map for the Python Lambda under `infra
 
 | File | Layer | Notes |
 |------|-------|------|
-| `controller.py` | HTTP adapter | Parses API Gateway events, maps errors to JSON, returns API responses |
+| `controller.py` | HTTP adapter | Parses API Gateway events, maps errors to JSON, returns API responses; **`GET /courses/{id}`** / **`GET /courses/{id}/lessons`** are unauthenticated at the edge (**`AuthorizationType: NONE`**) and rely on **`service.list_lessons_public`** + **`get_course_detail_with_enrollment`** for DRAFT hiding |
 | `service.py` | Domain/application | Business rules; depends on **ports** only |
 | `repo.py` | Persistence adapter (DynamoDB) | Legacy DynamoDB access; PK/SK mapping stays here (rollback path while `USE_RDS=false`) |
 | `rds_repo.py` | Persistence adapter (PostgreSQL) | psycopg2-based adapter selected when `USE_RDS=true`; same `CourseCatalogRepositoryPort` |
