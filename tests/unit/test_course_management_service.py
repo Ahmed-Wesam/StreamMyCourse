@@ -73,7 +73,7 @@ class TestSafePresignThumbnails:
     def test_list_lessons_omits_thumbnail_when_presign_rejected(self) -> None:
         lessons = [
             Lesson(
-                id="l1",
+                id=_L1,
                 title="Bad thumb",
                 order=1,
                 videoKey=f"{_CID}/lessons/{_L1}/video/11111111-1111-4111-8111-111111111111.mp4",
@@ -81,7 +81,7 @@ class TestSafePresignThumbnails:
                 thumbnailKey="legacy/course-thumb.jpg",
             ),
             Lesson(
-                id="l2",
+                id=_L2,
                 title="Good thumb",
                 order=2,
                 videoKey="",
@@ -93,7 +93,7 @@ class TestSafePresignThumbnails:
             ),
         ]
         svc = CourseManagementService(_LessonsRepo(lessons), _FakeStorageStrict(), _FakeEnrollments())
-        out = svc.list_lessons("c1")
+        out = svc.list_lessons(_CID)
         assert len(out) == 2
         assert "thumbnailUrl" not in out[0]
         assert (
@@ -104,7 +104,7 @@ class TestSafePresignThumbnails:
     def test_list_published_courses_omits_bad_course_thumbnail(self) -> None:
         courses = [
             Course(
-                id="c1",
+                id=_CID,
                 title="T",
                 description="",
                 status="PUBLISHED",
@@ -129,4 +129,4 @@ class TestSafePresignThumbnails:
 
         svc = CourseManagementService(_OneLessonRepo(), _FakeStorageStrict(), _FakeEnrollments())
         with pytest.raises(BadRequest):
-            svc.get_playback_url("c1", "l1", video_bucket="ignored-when-storage-set")
+            svc.get_playback_url(_CID, _L1, video_bucket="ignored-when-storage-set")
