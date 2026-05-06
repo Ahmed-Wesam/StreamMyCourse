@@ -90,11 +90,15 @@ class LessonProgressService:
 
         Args:
             position: Current playback position in seconds
-            duration: Total lesson duration in seconds
+            duration: Total lesson duration in seconds (0 = unknown client-side)
 
         Raises:
-            BadRequest: If position > duration + position_slack_sec
+            BadRequest: If position > duration + position_slack_sec when duration > 0
         """
+        if duration <= 0:
+            # Client may send duration=0 before video metadata or lesson length is available.
+            # Using duration + slack would cap position at ~30s and reject legitimate playback.
+            return
         max_allowed = duration + self._position_slack_sec
         if position > max_allowed:
             raise BadRequest(
