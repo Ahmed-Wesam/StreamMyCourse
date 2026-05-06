@@ -6,7 +6,9 @@ we load it by path to avoid coupling the catalog test tree to that layout."""
 from __future__ import annotations
 
 import importlib.util
+import json
 from pathlib import Path
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -65,3 +67,99 @@ def test_split_real_migration_file_contains_expected_ddl(schema_apply):
     assert "PRIMARY KEY (user_sub, lesson_id)" in joined
     assert "CONSTRAINT chk_lesson_progress_position_nonneg" in joined
     assert len(parts) >= 11
+
+
+def test_handler_returns_error_when_secret_arn_missing(schema_apply, monkeypatch) -> None:
+    monkeypatch.delenv("SECRET_ARN", raising=False)
+    out = schema_apply.handler({}, MagicMock(aws_request_id=""))
+    assert out == {"ok": False, "error": "SECRET_ARN is not set"}
+
+
+def test_handler_returns_error_when_schema_file_missing(schema_apply, monkeypatch) -> None:
+    """The repo checkout may not ship ``schema.sql`` beside ``index.py``; handler must fail clearly."""
+    monkeypatch.setenv("SECRET_ARN", "arn:aws:secretsmanager:us-east-1:1:secret:x")
+    out = schema_apply.handler({}, MagicMock(aws_request_id="rid"))
+    assert out["ok"] is False
+    assert "schema.sql missing" in str(out.get("error", ""))
+
+
+def test_handler_applies_schema_and_commits(schema_apply, monkeypatch, tmp_path) -> None:
+    # Avoid writing into the repo tree: point __file__ at a temp dir so the handler
+    # resolves schema.sql relative to tmp_path instead of infrastructure/lambda/.
+    monkeypatch.setattr(schema_apply, "__file__", str(tmp_path / "index.py"))
+    schema_file = tmp_path / "schema.sql"
+    schema_file.write_text("-- comment line\nCREATE TABLE IF NOT EXISTS _unit (id INT);\n", encoding="utf-8")
+    monkeypatch.setenv(
+        "SECRET_ARN", "arn:aws:secretsmanager:us-east-1:123456789:secret:rds/schema"
+    )
+    secret = {
+        "host": "db.example",
+        "port": 5432,
+        "username": "u",
+        "password": "p",
+        "dbname": "app",
+    }
+    mock_conn = MagicMock()
+    mock_cur = MagicMock()
+    mock_cur.__enter__ = MagicMock(return_value=mock_cur)
+    mock_cur.__exit__ = MagicMock(return_value=False)
+    mock_conn.cursor.return_value = mock_cur
+
+    with (
+        patch.object(schema_apply, "boto3") as mock_boto,
+        patch.object(schema_apply, "psycopg2") as mock_pg,
+    ):
+        mock_boto.client.return_value.get_secret_value.return_value = {
+            "SecretString": json.dumps(secret),
+        }
+        mock_pg.connect.return_value = mock_conn
+        mock_pg.Error = Exception
+
+        out = schema_apply.handler({"debug": True}, MagicMock(aws_request_id="rid"))
+
+    assert out == {"ok": True}
+    mock_pg.connect.assert_called_once()
+    assert mock_cur.execute.call_count >= 1
+    args = [c[0][0] for c in mock_cur.execute.call_args_list]
+    assert any("CREATE TABLE" in str(s) for s in args)
+    mock_conn.commit.assert_called_once()
+    mock_conn.close.assert_called_once()
+
+
+def test_handler_rollback_on_statement_error(schema_apply, monkeypatch, tmp_path) -> None:
+    monkeypatch.setattr(schema_apply, "__file__", str(tmp_path / "index.py"))
+    schema_file = tmp_path / "schema.sql"
+    schema_file.write_text("SELECT 1;\nSELECT 2;\n", encoding="utf-8")
+    monkeypatch.setenv("SECRET_ARN", "arn:x")
+    secret = {
+        "host": "h",
+        "port": 5432,
+        "username": "u",
+        "password": "p",
+        "dbname": "d",
+    }
+
+    mock_conn = MagicMock()
+    mock_cur = MagicMock()
+    mock_cur.__enter__ = MagicMock(return_value=mock_cur)
+    mock_cur.__exit__ = MagicMock(return_value=False)
+    mock_conn.cursor.return_value = mock_cur
+
+    with (
+        patch.object(schema_apply, "boto3") as mock_boto,
+        patch.object(schema_apply, "psycopg2") as mock_pg,
+    ):
+        PgErr = type("PgErr", (Exception,), {})
+        mock_pg.Error = PgErr
+        mock_cur.execute.side_effect = PgErr("stmt failed")
+        mock_boto.client.return_value.get_secret_value.return_value = {
+            "SecretString": json.dumps(secret),
+        }
+        mock_pg.connect.return_value = mock_conn
+
+        out = schema_apply.handler({}, MagicMock(aws_request_id=""))
+
+    assert out["ok"] is False
+    assert "stmt failed" in str(out.get("error", ""))
+    mock_conn.rollback.assert_called_once()
+    mock_conn.close.assert_called_once()

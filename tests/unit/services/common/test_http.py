@@ -55,6 +55,13 @@ class TestApigwRoutingPath:
         }
         assert apigw_routing_path(evt) == "/courses/xyz"
 
+    def test_stage_root_path_normalizes_to_slash(self) -> None:
+        evt = {
+            "requestContext": {"stage": "dev"},
+            "path": "/dev",
+        }
+        assert apigw_routing_path(evt) == "/"
+
 
 class TestApigwCognitoClaims:
     def test_reads_nested_claims(self) -> None:
@@ -81,6 +88,31 @@ class TestApigwCognitoClaims:
         payload = json.dumps({"sub": "abc", "email": "u@example.com"})
         evt = {"requestContext": {"authorizer": {"claims": payload}}}
         assert apigw_cognito_claims(evt) == {"sub": "abc", "email": "u@example.com"}
+
+    def test_falls_back_to_authorization_header_unverified_when_no_authorizer(self) -> None:
+        # Token with payload {"sub":"abc"} and no signature verification (unverified parse).
+        token = "a.eyJzdWIiOiJhYmMifQ.c"
+        evt = {"headers": {"Authorization": f"Bearer {token}"}}
+        assert apigw_cognito_claims(evt) == {"sub": "abc"}
+
+    def test_falls_back_to_authorization_header_verified_when_jwt_config_provided(self, monkeypatch) -> None:
+        token = "a.b.c"
+        evt = {"headers": {"authorization": f"Bearer {token}"}}
+        expected = {"sub": "verified"}
+        monkeypatch.setattr(
+            "services.common.http.parse_jwt_claims_verified",
+            lambda t, cfg: expected,
+        )
+        out = apigw_cognito_claims(evt, jwt_config=object())  # type: ignore[arg-type]
+        assert out == expected
+
+    def test_authorization_header_malformed_returns_empty(self) -> None:
+        evt = {"headers": {"Authorization": "Basic abc"}}
+        assert apigw_cognito_claims(evt) == {}
+
+    def test_stringified_claims_invalid_json_is_ignored(self) -> None:
+        evt = {"requestContext": {"authorizer": {"claims": "{not-json"}}}
+        assert apigw_cognito_claims(evt) == {}
 
 
 class TestPickOrigin:
