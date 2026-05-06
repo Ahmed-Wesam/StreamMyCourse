@@ -429,7 +429,13 @@ class TestGetCourseProgress:
         """Returns correct totals and percent for course progress."""
         enrollment_repo.has_enrollment.return_value = True
         course_repo.get_course.return_value = MagicMock(createdBy="teacher-1")
-        # Mock 3 lessons: 2 completed, 1 not completed
+        # Mock 3 lessons in the course
+        course_repo.list_lessons.return_value = [
+            MagicMock(id="lesson-1"),
+            MagicMock(id="lesson-2"),
+            MagicMock(id="lesson-3"),
+        ]
+        # Mock 3 progress records: 2 completed, 1 not completed
         progress_repo.get_progress_for_course.return_value = [
             _progress_row(lesson_id="lesson-1", completed=True, last_position_sec=100),
             _progress_row(lesson_id="lesson-2", completed=True, last_position_sec=90),
@@ -457,6 +463,8 @@ class TestGetCourseProgress:
         """Empty course returns 0 counts and 0%."""
         enrollment_repo.has_enrollment.return_value = True
         course_repo.get_course.return_value = MagicMock(createdBy="teacher-1")
+        # No lessons in the course
+        course_repo.list_lessons.return_value = []
         progress_repo.get_progress_for_course.return_value = []
 
         result = service.get_course_progress(
@@ -480,6 +488,10 @@ class TestGetCourseProgress:
         """All lessons completed returns 100%."""
         enrollment_repo.has_enrollment.return_value = True
         course_repo.get_course.return_value = MagicMock(createdBy="teacher-1")
+        course_repo.list_lessons.return_value = [
+            MagicMock(id="lesson-1"),
+            MagicMock(id="lesson-2"),
+        ]
         progress_repo.get_progress_for_course.return_value = [
             _progress_row(lesson_id="lesson-1", completed=True, last_position_sec=100),
             _progress_row(lesson_id="lesson-2", completed=True, last_position_sec=90),
@@ -503,6 +515,9 @@ class TestGetCourseProgress:
         """Teacher can get progress for their own course."""
         enrollment_repo.has_enrollment.return_value = False
         course_repo.get_course.return_value = MagicMock(createdBy="teacher-1")
+        course_repo.list_lessons.return_value = [
+            MagicMock(id="lesson-1"),
+        ]
         progress_repo.get_progress_for_course.return_value = [
             _progress_row(user_sub="student-1", lesson_id="lesson-1", completed=True),
         ]
@@ -514,6 +529,52 @@ class TestGetCourseProgress:
 
         assert result["courseId"] == "course-1"
         assert result["totalReadyLessons"] == 1
+
+    def test_get_course_progress_merges_with_all_lessons(
+        self,
+        service: "LessonProgressService",
+        enrollment_repo: MagicMock,
+        progress_repo: MagicMock,
+        course_repo: MagicMock,
+    ) -> None:
+        """Returns progress for all lessons, including those without progress records.
+
+        This is the regression test for: completing 1 lesson should not mark all as complete.
+        The bug was that only lessons with progress records were returned, causing
+        the frontend to not find progress for other lessons.
+        """
+        enrollment_repo.has_enrollment.return_value = True
+        course_repo.get_course.return_value = MagicMock(createdBy="teacher-1")
+        # 3 lessons in course, but user only has progress for 1 (completed)
+        course_repo.list_lessons.return_value = [
+            MagicMock(id="lesson-1"),
+            MagicMock(id="lesson-2"),
+            MagicMock(id="lesson-3"),
+        ]
+        progress_repo.get_progress_for_course.return_value = [
+            _progress_row(lesson_id="lesson-1", completed=True, last_position_sec=100),
+        ]
+
+        result = service.get_course_progress(
+            user_sub="user-1",
+            course_id="course-1",
+        )
+
+        # Should report all 3 lessons
+        assert result["totalReadyLessons"] == 3
+        assert result["completedCount"] == 1
+        assert result["percentComplete"] == pytest.approx(33.33, 0.01)
+        assert len(result["lessons"]) == 3
+
+        # Verify all lessons are in result with correct completion status
+        lessons_by_id = {l["lessonId"]: l for l in result["lessons"]}
+        assert lessons_by_id["lesson-1"]["completed"] is True
+        assert lessons_by_id["lesson-1"]["lastPositionSec"] == 100
+        # Lessons without progress should have default "not started" values
+        assert lessons_by_id["lesson-2"]["completed"] is False
+        assert lessons_by_id["lesson-2"]["lastPositionSec"] == 0
+        assert lessons_by_id["lesson-3"]["completed"] is False
+        assert lessons_by_id["lesson-3"]["lastPositionSec"] == 0
 
 
 class TestDurationUpdateOnProgress:
