@@ -243,6 +243,54 @@ describe('LessonPlayerPage', () => {
     })
   })
 
+  it('counts failures when markIncomplete fails', async () => {
+    // Set up completed lesson state
+    api.getCourseProgress.mockResolvedValue({
+      courseId: 'c1',
+      totalReadyLessons: 2,
+      completedCount: 1,
+      percentComplete: 50,
+      lessons: [
+        { lessonId: 'l1', completed: true, lastPositionSec: 400 },
+        { lessonId: 'l2', completed: false, lastPositionSec: 0 },
+      ],
+    })
+
+    // All calls fail to quickly trigger circuit breaker
+    api.updateLessonProgress.mockRejectedValue(new Error('Network error'))
+
+    // Spy on console.warn to verify circuit breaker message
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+
+    renderLessonPlayer('/courses/c1/lessons/l1')
+
+    const button = await screen.findByRole('button', { name: /Mark as not done/i })
+
+    // Click 10 times to trigger circuit breaker, awaiting each click
+    for (let i = 0; i < 10; i++) {
+      fireEvent.click(button)
+      await waitFor(() => {
+        expect(api.updateLessonProgress).toHaveBeenCalledTimes(i + 1)
+      })
+    }
+
+    // Wait for the last failure to be processed and circuit breaker to trip
+    await waitFor(() => {
+      // console.warn should have been called with circuit breaker message
+      expect(warnSpy).toHaveBeenCalledWith(
+        'Progress update circuit breaker tripped after 10 failures'
+      )
+    })
+
+    // 11th click should not call API (circuit breaker open)
+    fireEvent.click(button)
+    await new Promise((resolve) => setTimeout(resolve, 50))
+    expect(api.updateLessonProgress).toHaveBeenCalledTimes(10)
+
+    warnSpy.mockRestore()
+    vi.restoreAllMocks()
+  })
+
   it('calls progress update on video time update', async () => {
     // Mock Date.now to return increasing values to bypass throttling
     const now = Date.now()
@@ -292,5 +340,225 @@ describe('LessonPlayerPage', () => {
         markComplete: true,
       })
     })
+  })
+
+  it('stops progress updates after 10 consecutive failures (circuit breaker)', async () => {
+    // Mock updateLessonProgress to always fail
+    api.updateLessonProgress.mockRejectedValue(new Error('Network error'))
+
+    // Mock Date.now to control timing
+    const now = Date.now()
+    let timeOffset = 0
+    vi.spyOn(Date, 'now').mockImplementation(() => now + timeOffset)
+
+    renderLessonPlayer()
+
+    const video = await waitFor(() => {
+      const el = document.querySelector('video')
+      expect(el).not.toBeNull()
+      return el as HTMLVideoElement
+    })
+
+    // Trigger 10 failed updates (each with 15s between attempts)
+    for (let i = 0; i < 10; i++) {
+      timeOffset = i * 15000 // 15 seconds between each
+      Object.defineProperty(video, 'currentTime', { writable: true, value: 10 + i * 10 })
+      fireEvent.timeUpdate(video)
+      await waitFor(() => {
+        expect(api.updateLessonProgress).toHaveBeenCalledTimes(i + 1)
+      })
+    }
+
+    // Circuit breaker should now be open - 11th attempt should not call API
+    timeOffset = 160000 // More than 15s after last
+    Object.defineProperty(video, 'currentTime', { writable: true, value: 200 })
+    fireEvent.timeUpdate(video)
+
+    // Wait a bit and verify no 11th call
+    await new Promise((resolve) => setTimeout(resolve, 100))
+    expect(api.updateLessonProgress).toHaveBeenCalledTimes(10)
+
+    vi.restoreAllMocks()
+  })
+
+  it('throttles progress updates to 15 seconds minimum between attempts', async () => {
+    const now = Date.now()
+    let timeOffset = 0
+    vi.spyOn(Date, 'now').mockImplementation(() => now + timeOffset)
+
+    renderLessonPlayer()
+
+    const video = await waitFor(() => {
+      const el = document.querySelector('video')
+      expect(el).not.toBeNull()
+      return el as HTMLVideoElement
+    })
+
+    // First update at t=0
+    timeOffset = 0
+    Object.defineProperty(video, 'currentTime', { writable: true, value: 10 })
+    fireEvent.timeUpdate(video)
+    await waitFor(() => {
+      expect(api.updateLessonProgress).toHaveBeenCalledTimes(1)
+    })
+
+    // Second update at t=5s - should be throttled
+    timeOffset = 5000
+    Object.defineProperty(video, 'currentTime', { writable: true, value: 20 })
+    fireEvent.timeUpdate(video)
+    await new Promise((resolve) => setTimeout(resolve, 100))
+    expect(api.updateLessonProgress).toHaveBeenCalledTimes(1)
+
+    // Third update at t=20s - should go through (15s passed)
+    timeOffset = 20000
+    Object.defineProperty(video, 'currentTime', { writable: true, value: 30 })
+    fireEvent.timeUpdate(video)
+    await waitFor(() => {
+      expect(api.updateLessonProgress).toHaveBeenCalledTimes(2)
+    })
+
+    vi.restoreAllMocks()
+  })
+
+  it('saves progress immediately on video pause (checkpoint)', async () => {
+    const now = Date.now()
+    vi.spyOn(Date, 'now').mockImplementation(() => now)
+
+    renderLessonPlayer()
+
+    const video = await waitFor(() => {
+      const el = document.querySelector('video')
+      expect(el).not.toBeNull()
+      return el as HTMLVideoElement
+    })
+
+    // First update to establish a baseline
+    Object.defineProperty(video, 'currentTime', { writable: true, value: 10 })
+    fireEvent.timeUpdate(video)
+    await waitFor(() => {
+      expect(api.updateLessonProgress).toHaveBeenCalledTimes(1)
+    })
+
+    // Pause should trigger immediate save (ignoring 15s throttle)
+    Object.defineProperty(video, 'currentTime', { writable: true, value: 50 })
+    fireEvent.pause(video)
+
+    await waitFor(() => {
+      expect(api.updateLessonProgress).toHaveBeenCalledTimes(2)
+      expect(api.updateLessonProgress).toHaveBeenLastCalledWith('c1', 'l1', {
+        lastPositionSec: 50,
+        durationSec: 400,
+      })
+    })
+
+    vi.restoreAllMocks()
+  })
+
+  it('stops saving after 20 identical timestamps in a row (same-position circuit breaker)', async () => {
+    const now = Date.now()
+    vi.spyOn(Date, 'now').mockImplementation(() => now)
+
+    renderLessonPlayer()
+
+    const video = await waitFor(() => {
+      const el = document.querySelector('video')
+      expect(el).not.toBeNull()
+      return el as HTMLVideoElement
+    })
+
+    // Repeatedly pause at same timestamp
+    Object.defineProperty(video, 'currentTime', { writable: true, value: 999 })
+
+    // Fire 25 pauses at same position
+    for (let i = 0; i < 25; i++) {
+      fireEvent.pause(video)
+      await new Promise((resolve) => setTimeout(resolve, 10))
+    }
+
+    // Wait for any async operations
+    await new Promise((resolve) => setTimeout(resolve, 100))
+
+    // Should have exactly 20 calls (first call sets position, next 19 increment streak to 19,
+    // 21st call makes streak=20 and trips breaker, calls 21-25 blocked)
+    const callCount = api.updateLessonProgress.mock.calls.length
+    expect(callCount).toBe(20)
+
+    // If position changes, circuit should reset and allow one more save
+    Object.defineProperty(video, 'currentTime', { writable: true, value: 1000 })
+    fireEvent.pause(video)
+    await new Promise((resolve) => setTimeout(resolve, 50))
+    const finalCount = api.updateLessonProgress.mock.calls.length
+    expect(finalCount).toBe(callCount + 1)
+
+    vi.restoreAllMocks()
+  })
+
+  it('saves progress when tab becomes hidden (visibilitychange checkpoint)', async () => {
+    const now = Date.now()
+    vi.spyOn(Date, 'now').mockImplementation(() => now)
+
+    renderLessonPlayer()
+
+    const video = await waitFor(() => {
+      const el = document.querySelector('video')
+      expect(el).not.toBeNull()
+      return el as HTMLVideoElement
+    })
+
+    // First update to establish a baseline
+    Object.defineProperty(video, 'currentTime', { writable: true, value: 10 })
+    fireEvent.timeUpdate(video)
+    await waitFor(() => {
+      expect(api.updateLessonProgress).toHaveBeenCalledTimes(1)
+    })
+
+    // Simulate visibilitychange to hidden
+    Object.defineProperty(video, 'currentTime', { writable: true, value: 60 })
+    Object.defineProperty(document, 'hidden', { writable: true, value: true })
+    document.dispatchEvent(new Event('visibilitychange'))
+
+    await waitFor(() => {
+      expect(api.updateLessonProgress).toHaveBeenCalledTimes(2)
+      expect(api.updateLessonProgress).toHaveBeenLastCalledWith('c1', 'l1', {
+        lastPositionSec: 60,
+        durationSec: 400,
+      })
+    })
+
+    vi.restoreAllMocks()
+  })
+
+  it('saves progress on pagehide checkpoint', async () => {
+    const now = Date.now()
+    vi.spyOn(Date, 'now').mockImplementation(() => now)
+
+    renderLessonPlayer()
+
+    const video = await waitFor(() => {
+      const el = document.querySelector('video')
+      expect(el).not.toBeNull()
+      return el as HTMLVideoElement
+    })
+
+    // First update to establish a baseline
+    Object.defineProperty(video, 'currentTime', { writable: true, value: 10 })
+    fireEvent.timeUpdate(video)
+    await waitFor(() => {
+      expect(api.updateLessonProgress).toHaveBeenCalledTimes(1)
+    })
+
+    // Set video time and trigger pagehide
+    Object.defineProperty(video, 'currentTime', { writable: true, value: 75 })
+    fireEvent(window, new Event('pagehide'))
+
+    await waitFor(() => {
+      expect(api.updateLessonProgress).toHaveBeenCalledTimes(2)
+      expect(api.updateLessonProgress).toHaveBeenLastCalledWith('c1', 'l1', {
+        lastPositionSec: 75,
+        durationSec: 400,
+      })
+    })
+
+    vi.restoreAllMocks()
   })
 })

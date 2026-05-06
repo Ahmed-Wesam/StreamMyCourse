@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import {
   enrollInCourse,
@@ -15,6 +15,11 @@ import {
   type CourseProgress,
   type Lesson,
 } from '../lib/api'
+
+// Progress tracking constants
+const PROGRESS_INTERVAL_MS = 15000 // 15 seconds between heartbeat attempts
+const MAX_CONSECUTIVE_FAILURES = 10 // Circuit breaker threshold
+const MAX_SAME_POSITION_STREAK = 20 // Stop saving if timestamp doesn't change
 
 function LessonItem({
   lesson,
@@ -106,9 +111,15 @@ export default function LessonPlayerPage() {
   const [needsSignIn, setNeedsSignIn] = useState(false)
   const [enrolling, setEnrolling] = useState(false)
   const [courseProgress, setCourseProgress] = useState<CourseProgress | null>(null)
-  const lastProgressUpdateRef = useRef<number>(0)
+  const lastAttemptRef = useRef<number>(0) // Track last attempt time (initialized to 0 to allow first update)
+  const consecutiveFailuresRef = useRef<number>(0)
+  const circuitOpenRef = useRef<boolean>(false)
+  const lastSentPositionSecRef = useRef<number | null>(null)
+  const samePositionStreakRef = useRef<number>(0)
+  const samePositionCircuitOpenRef = useRef<boolean>(false)
   const inFlightProgressRef = useRef<Promise<unknown> | null>(null)
   const isUnmountedRef = useRef<boolean>(false)
+  const videoRef = useRef<HTMLVideoElement | null>(null)
 
   const playbackNavLocked = needsEnrollment || needsSignIn
 
@@ -205,12 +216,43 @@ export default function LessonPlayerPage() {
     return courseProgress?.percentComplete ?? 0
   }, [courseProgress])
 
+  // Helper to track and limit repeated saves at the same timestamp (e.g., user paused for hours)
+  const shouldSkipBecauseSamePosition = (positionSec: number): boolean => {
+    // If position changed, reset streak + close same-position circuit
+    if (lastSentPositionSecRef.current === null || lastSentPositionSecRef.current !== positionSec) {
+      lastSentPositionSecRef.current = positionSec
+      samePositionStreakRef.current = 0
+      samePositionCircuitOpenRef.current = false
+      return false
+    }
+
+    // Position unchanged
+    samePositionStreakRef.current += 1
+    if (samePositionStreakRef.current >= MAX_SAME_POSITION_STREAK) {
+      samePositionCircuitOpenRef.current = true
+      console.warn('Progress update same-position circuit breaker tripped after 20 identical timestamps')
+      return true
+    }
+
+    return false
+  }
+
   const handleTimeUpdate = (e: React.SyntheticEvent<HTMLVideoElement>) => {
     const video = e.currentTarget
     const now = Date.now()
-    if (now - lastProgressUpdateRef.current < 12000) return
+
+    // Circuit breaker: stop if too many failures
+    if (circuitOpenRef.current) return
+
+    const positionSec = Math.floor(video.currentTime)
+    if (samePositionCircuitOpenRef.current && lastSentPositionSecRef.current === positionSec) return
+
+    // Throttle: 15 seconds between attempts
+    if (now - lastAttemptRef.current < PROGRESS_INTERVAL_MS) return
+
     // Skip if already have in-flight request
     if (inFlightProgressRef.current) return
+
     const lessonProgress = courseProgress?.lessons.find((l) => l.lessonId === lessonId)
     if (lessonProgress?.completed) return
 
@@ -219,18 +261,32 @@ export default function LessonPlayerPage() {
       Number.isFinite(video.duration) && video.duration > 0 ? Math.floor(video.duration) : 0
     const durationSec = fromVideo > 0 ? fromVideo : (activeLesson?.duration ?? 0)
 
+    // Record attempt time before sending
+    lastAttemptRef.current = now
+
+    if (shouldSkipBecauseSamePosition(positionSec)) return
+
     const promise = updateLessonProgress(courseId, lessonId, {
-      lastPositionSec: Math.floor(video.currentTime),
+      lastPositionSec: positionSec,
       durationSec,
     })
     inFlightProgressRef.current = promise
     promise
       .then(() => {
         if (!isUnmountedRef.current) {
-          lastProgressUpdateRef.current = Date.now()
+          // Reset failure count on success
+          consecutiveFailuresRef.current = 0
         }
       })
-      .catch(console.warn)
+      .catch(() => {
+        // Count failures and trip circuit breaker if needed
+        consecutiveFailuresRef.current++
+        if (consecutiveFailuresRef.current >= MAX_CONSECUTIVE_FAILURES) {
+          circuitOpenRef.current = true
+          console.warn('Progress update circuit breaker tripped after 10 failures')
+        }
+        // Per-request failures not logged to avoid console spam
+      })
       .finally(() => {
         inFlightProgressRef.current = null
       })
@@ -239,36 +295,138 @@ export default function LessonPlayerPage() {
   const handleVideoEnded = async () => {
     const activeLesson = lessons.find((l) => l.id === lessonId)
     if (!activeLesson) return
+
+    // Circuit breaker check
+    if (circuitOpenRef.current) {
+      console.warn('Progress update circuit breaker is open; skipping completion save')
+      return
+    }
+
     // Wait for any in-flight progress update
     if (inFlightProgressRef.current) {
       await inFlightProgressRef.current.catch(() => {}) // Ignore errors
     }
+
     try {
       await updateLessonProgress(courseId, lessonId, {
         lastPositionSec: activeLesson.duration || 0,
         durationSec: activeLesson.duration || 0,
         markComplete: true,
       })
+      // Reset failure count on success
+      consecutiveFailuresRef.current = 0
       const prog = await getCourseProgress(courseId)
       if (!isUnmountedRef.current) {
         setCourseProgress(prog)
       }
-    } catch (err) {
-      console.error(err)
+    } catch {
+      // Count failures and trip circuit breaker if needed
+      consecutiveFailuresRef.current++
+      if (consecutiveFailuresRef.current >= MAX_CONSECUTIVE_FAILURES) {
+        circuitOpenRef.current = true
+        console.warn('Progress update circuit breaker tripped after 10 failures')
+      }
+      // Per-request failures not logged to avoid console spam
     }
   }
 
-  const handleMarkIncomplete = () => {
+  const handleMarkIncomplete = async () => {
+    // Circuit breaker check
+    if (circuitOpenRef.current) {
+      console.warn('Progress update circuit breaker is open; skipping mark incomplete')
+      return
+    }
+
     const activeLesson = lessons.find((l) => l.id === lessonId)
-    updateLessonProgress(courseId, lessonId, {
-      lastPositionSec: 0,
-      durationSec: activeLesson?.duration ?? 0,
-      markIncomplete: true,
-    })
-      .then(() => getCourseProgress(courseId))
-      .then((prog) => setCourseProgress(prog))
-      .catch(console.error)
+
+    try {
+      await updateLessonProgress(courseId, lessonId, {
+        lastPositionSec: 0,
+        durationSec: activeLesson?.duration ?? 0,
+        markIncomplete: true,
+      })
+      // Reset failure count on success
+      consecutiveFailuresRef.current = 0
+      const prog = await getCourseProgress(courseId)
+      setCourseProgress(prog)
+    } catch {
+      // Count failures and trip circuit breaker if needed
+      consecutiveFailuresRef.current++
+      if (consecutiveFailuresRef.current >= MAX_CONSECUTIVE_FAILURES) {
+        circuitOpenRef.current = true
+        console.warn('Progress update circuit breaker tripped after 10 failures')
+      }
+      // Per-request failures not logged to avoid console spam
+    }
   }
+
+  // Checkpoint save helper (ignores throttle, respects circuit breaker)
+  const saveCheckpoint = useCallback(async (positionSec: number) => {
+    if (circuitOpenRef.current) return
+    if (!courseId || !lessonId) return
+
+    // Check same-position circuit breaker: prevents spam when user pauses and leaves
+    // tab open for hours. After 20 saves at the same timestamp, we stop until
+    // the position changes (user resumes playback).
+    if (shouldSkipBecauseSamePosition(positionSec)) return
+
+    const activeLesson = lessons.find((l) => l.id === lessonId)
+    const durationSec = activeLesson?.duration ?? 0
+
+    try {
+      await updateLessonProgress(courseId, lessonId, {
+        lastPositionSec: positionSec,
+        durationSec,
+      })
+      consecutiveFailuresRef.current = 0
+    } catch {
+      consecutiveFailuresRef.current++
+      if (consecutiveFailuresRef.current >= MAX_CONSECUTIVE_FAILURES) {
+        circuitOpenRef.current = true
+        console.warn('Progress update circuit breaker tripped after 10 failures')
+      }
+      // Per-request failures not logged to avoid console spam
+    }
+  }, [courseId, lessonId, lessons])
+
+  // Video pause checkpoint
+  const handlePause = useCallback(() => {
+    const video = videoRef.current
+    if (!video) return
+    saveCheckpoint(Math.floor(video.currentTime))
+  }, [saveCheckpoint])
+
+  // Visibility change checkpoint
+  const handleVisibilityChange = useCallback(() => {
+    if (document.hidden) {
+      const video = videoRef.current
+      if (!video) return
+      saveCheckpoint(Math.floor(video.currentTime))
+    }
+  }, [saveCheckpoint])
+
+  // Pagehide checkpoint - best effort save
+  const handlePageHide = useCallback(() => {
+    const video = videoRef.current
+    if (!video || circuitOpenRef.current) return
+
+    const positionSec = Math.floor(video.currentTime)
+
+    // Best-effort save using checkpoint helper
+    // Request may not complete if tab closes before fetch finishes
+    saveCheckpoint(positionSec)
+  }, [saveCheckpoint])
+
+  // Checkpoint event listeners
+  useEffect(() => {
+    document.addEventListener('visibilitychange', handleVisibilityChange)
+    window.addEventListener('pagehide', handlePageHide)
+
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange)
+      window.removeEventListener('pagehide', handlePageHide)
+    }
+  }, [handleVisibilityChange, handlePageHide])
 
   return (
     <div>
@@ -395,6 +553,7 @@ export default function LessonPlayerPage() {
             ) : (
               <div className="rounded-xl overflow-hidden shadow-lg bg-black">
                 <video
+                  ref={videoRef}
                   controls
                   playsInline
                   preload="metadata"
@@ -403,6 +562,7 @@ export default function LessonPlayerPage() {
                   src={src || undefined}
                   onTimeUpdate={handleTimeUpdate}
                   onEnded={handleVideoEnded}
+                  onPause={handlePause}
                 />
               </div>
             )}
