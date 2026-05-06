@@ -437,6 +437,120 @@ class TestCourseCatalogRdsRepository:
         # Transactional: single commit after all updates.
         assert fake_conn.committed >= 1
 
+    def test_create_course_raises_when_returning_empty(
+        self, repo, fake_conn: FakeConn
+    ) -> None:
+        """INSERT ... RETURNING with no row raises RuntimeError (line 187)."""
+        fake_conn.cursor_obj.rows_to_return = []  # No row returned
+        with pytest.raises(RuntimeError, match="RETURNING returned no row"):
+            repo.create_course(title="T", description="D", created_by="teacher")
+
+    def test_create_lesson_raises_when_returning_empty(
+        self, repo, fake_conn: FakeConn
+    ) -> None:
+        """INSERT ... RETURNING with no row raises RuntimeError (line 258)."""
+        # Stage the MAX query result first, then empty for INSERT
+        fake_conn.cursor_obj.rows_to_return = [(0,)]  # MAX order query
+        # Next fetchone for INSERT will return None
+        with pytest.raises(RuntimeError, match="RETURNING returned no row"):
+            repo.create_lesson("course-id", "Lesson Title")
+
+    def test_set_lesson_duration_skips_when_duration_zero_or_negative(
+        self, repo, fake_conn: FakeConn
+    ) -> None:
+        """Duration <= 0 should not issue any query (lines 348-350)."""
+        repo.set_lesson_duration("c", "l", 0)
+        repo.set_lesson_duration("c", "l", -5)
+        # No executions should have occurred
+        assert fake_conn.cursor_obj.executions == []
+
+    def test_set_lesson_duration_skips_when_duration_positive_but_no_zero_duration_lessons(
+        self, repo, fake_conn: FakeConn
+    ) -> None:
+        """Duration > 0 issues UPDATE (happy path)."""
+        repo.set_lesson_duration("c", "l", 120)
+        sql, params = fake_conn.cursor_obj.executions[-1]
+        assert "UPDATE" in sql.upper()
+        assert 120 in params
+
+    def test_set_lesson_orders_skips_when_orders_empty(
+        self, repo, fake_conn: FakeConn
+    ) -> None:
+        """Empty orders dict should not issue any query (lines 370-371)."""
+        repo.set_lesson_orders("course-id", {})
+        # Filter out any SELECT or other queries, only check UPDATEs
+        update_sqls = [
+            (sql, params)
+            for sql, params in fake_conn.cursor_obj.executions
+            if sql.upper().startswith("UPDATE")
+        ]
+        assert update_sqls == []
+
+    def test_set_lesson_orders_rolls_back_on_exception(
+        self, repo, fake_conn: FakeConn
+    ) -> None:
+        """Exception during reordering should rollback (lines 381-383)."""
+
+        def fail(sql: str, params: Sequence[Any] = ()) -> None:
+            raise ValueError("database error")
+
+        fake_conn.cursor_obj.execute = fail  # type: ignore[assignment]
+        with pytest.raises(ValueError, match="database error"):
+            repo.set_lesson_orders("course-id", {"l1": 1})
+        assert fake_conn.rolled_back >= 1
+
+    def test_list_courses_retries_once_on_operational_error(self) -> None:
+        """Connection retry on OperationalError (lines 135-146)."""
+        from services.course_management.rds_repo import CourseCatalogRdsRepository
+
+        good = FakeConn()
+        cid = uuid.UUID("11111111-2222-3333-4444-555555555555")
+        now = datetime(2026, 5, 3, 12, 0, 0, tzinfo=timezone.utc)
+        good.cursor_obj.bulk_rows_to_return = [
+            (cid, "Title", "Desc", "DRAFT", "teacher", "", now, now),
+        ]
+        attempt = {"n": 0}
+
+        def factory() -> FakeConn:
+            attempt["n"] += 1
+            if attempt["n"] == 1:
+                bad = FakeConn()
+
+                def fail(sql: str, params: Sequence[Any] = ()) -> None:
+                    raise psycopg2.OperationalError("connection lost")
+
+                bad.cursor_obj.execute = fail  # type: ignore[assignment]
+                return bad
+            return good
+
+        repo = CourseCatalogRdsRepository(factory)
+        courses = repo.list_courses()
+        assert len(courses) == 1
+        assert courses[0].title == "Title"
+        assert attempt["n"] == 2
+
+    def test__to_iso_with_datetime_returns_iso(self) -> None:
+        """Helper _to_iso converts datetime to ISO string (lines 44-46)."""
+        from services.course_management.rds_repo import _to_iso
+
+        dt = datetime(2026, 5, 3, 12, 0, 0, tzinfo=timezone.utc)
+        result = _to_iso(dt)
+        assert result == "2026-05-03T12:00:00+00:00"
+
+    def test__to_iso_with_none_returns_empty_string(self) -> None:
+        """Helper _to_iso converts None to empty string (line 45)."""
+        from services.course_management.rds_repo import _to_iso
+
+        result = _to_iso(None)
+        assert result == ""
+
+    def test__to_iso_with_string_returns_string(self) -> None:
+        """Helper _to_iso passes through non-datetime values (line 46)."""
+        from services.course_management.rds_repo import _to_iso
+
+        result = _to_iso("already-string")
+        assert result == "already-string"
+
 
 # ---------------------------------------------------------------------------
 # EnrollmentRdsRepository
