@@ -60,7 +60,7 @@ describe('LessonPlayerPage', () => {
       status: 'PUBLISHED',
     })
     api.listLessons.mockResolvedValue([
-      { id: 'l1', title: 'Lesson 1', order: 1, videoStatus: 'ready' },
+      { id: 'l1', title: 'Lesson 1', order: 1, videoStatus: 'ready', duration: 400 },
       { id: 'l2', title: 'Lesson 2', order: 2, videoStatus: 'ready', duration: 300 },
     ])
     api.getPlaybackUrl.mockResolvedValue({ url: 'https://example.com/lesson.mp4' })
@@ -235,7 +235,11 @@ describe('LessonPlayerPage', () => {
     fireEvent.click(button)
 
     await waitFor(() => {
-      expect(api.updateLessonProgress).toHaveBeenCalledWith('c1', 'l1', { lastPositionSec: 0, markIncomplete: true })
+      expect(api.updateLessonProgress).toHaveBeenCalledWith('c1', 'l1', {
+        lastPositionSec: 0,
+        durationSec: 400,
+        markIncomplete: true,
+      })
     })
   })
 
@@ -260,7 +264,10 @@ describe('LessonPlayerPage', () => {
     fireEvent.timeUpdate(video)
 
     await waitFor(() => {
-      expect(api.updateLessonProgress).toHaveBeenCalledWith('c1', 'l1', { lastPositionSec: 10 })
+      expect(api.updateLessonProgress).toHaveBeenCalledWith('c1', 'l1', {
+        lastPositionSec: 10,
+        durationSec: 400,
+      })
     })
 
     vi.restoreAllMocks()
@@ -279,7 +286,11 @@ describe('LessonPlayerPage', () => {
     fireEvent.ended(video)
 
     await waitFor(() => {
-      expect(api.updateLessonProgress).toHaveBeenCalledWith('c1', 'l2', { lastPositionSec: 300, markComplete: true })
+      expect(api.updateLessonProgress).toHaveBeenCalledWith('c1', 'l2', {
+        lastPositionSec: 300,
+        durationSec: 300,
+        markComplete: true,
+      })
     })
   })
 })

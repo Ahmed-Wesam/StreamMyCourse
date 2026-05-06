@@ -194,6 +194,8 @@ export type CourseProgress = {
 
 export type UpdateLessonProgressBody = {
   lastPositionSec: number
+  /** Total lesson length in seconds (from `Lesson.duration` or `HTMLVideoElement.duration`); sent to the API as `duration`. */
+  durationSec: number
   markComplete?: boolean
   markIncomplete?: boolean
 }
@@ -362,7 +364,13 @@ export async function updateLessonProgress(
   lessonId: string,
   body: UpdateLessonProgressBody,
 ): Promise<UpdateProgressResponse> {
-  return httpPut<UpdateProgressResponse>(`/courses/${courseId}/lessons/${lessonId}/progress`, body)
+  const payload: Record<string, unknown> = {
+    position: body.lastPositionSec,
+    duration: body.durationSec,
+  }
+  if (body.markComplete) payload.markComplete = true
+  if (body.markIncomplete) payload.markIncomplete = true
+  return httpPut<UpdateProgressResponse>(`/courses/${courseId}/lessons/${lessonId}/progress`, payload)
 }
 
 /**

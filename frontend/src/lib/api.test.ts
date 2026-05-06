@@ -153,12 +153,18 @@ describe('updateLessonProgress', () => {
     vi.unstubAllGlobals()
   })
 
-  it('calls correct endpoint with PUT', async () => {
-    await updateLessonProgress('course-1', 'lesson-1', { lastPositionSec: 100, markComplete: true })
+  it('calls correct endpoint with PUT and maps body to position/duration', async () => {
+    await updateLessonProgress('course-1', 'lesson-1', {
+      lastPositionSec: 100,
+      durationSec: 600,
+      markComplete: true,
+    })
     expect(fetch).toHaveBeenCalledTimes(1)
     const [url, init] = vi.mocked(fetch).mock.calls[0]
     expect(url).toContain('/courses/course-1/lessons/lesson-1/progress')
     expect(init?.method).toBe('PUT')
+    const sent = JSON.parse((init?.body as string) ?? '{}') as Record<string, unknown>
+    expect(sent).toEqual({ position: 100, duration: 600, markComplete: true })
   })
 })
 
