@@ -6,6 +6,7 @@ directly. No patching of module globals — the ports are the only seam we need.
 
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from typing import List, Optional
 from unittest.mock import MagicMock
 
@@ -21,9 +22,9 @@ def _progress_row(
     lesson_id: str = "lesson-1",
     course_id: str = "course-1",
     completed: bool = False,
-    completed_at: Optional[str] = None,
+    completed_at: Optional[datetime] = None,
     last_position_sec: int = 0,
-    updated_at: str = "2026-01-01T00:00:00Z",
+    updated_at: Optional[datetime] = None,
 ) -> LessonProgressRow:
     return LessonProgressRow(
         user_sub=user_sub,
@@ -32,7 +33,7 @@ def _progress_row(
         completed=completed,
         completed_at=completed_at,
         last_position_sec=last_position_sec,
-        updated_at=updated_at,
+        updated_at=updated_at or datetime.now(timezone.utc),
     )
 
 
@@ -172,12 +173,13 @@ class TestAutoCompleteLogic:
         enrollment_repo.has_enrollment.return_value = True
         course_repo.get_course.return_value = MagicMock(createdBy="teacher-1")
         # 92 / 100 = 0.92, exactly at threshold
+        completed_time = datetime(2026, 1, 1, 0, 0, 0, tzinfo=timezone.utc)
         progress_repo.upsert_progress.return_value = _progress_row(
             user_sub="user-1",
             lesson_id="lesson-1",
             course_id="course-1",
             completed=True,
-            completed_at="2026-01-01T00:00:00Z",
+            completed_at=completed_time,
             last_position_sec=92,
         )
 
@@ -234,12 +236,13 @@ class TestAutoCompleteLogic:
         """Position/duration > 0.92 → completed=True."""
         enrollment_repo.has_enrollment.return_value = True
         course_repo.get_course.return_value = MagicMock(createdBy="teacher-1")
+        completed_time = datetime(2026, 1, 1, 0, 0, 0, tzinfo=timezone.utc)
         progress_repo.upsert_progress.return_value = _progress_row(
             user_sub="user-1",
             lesson_id="lesson-1",
             course_id="course-1",
             completed=True,
-            completed_at="2026-01-01T00:00:00Z",
+            completed_at=completed_time,
             last_position_sec=95,
         )
 
@@ -338,12 +341,13 @@ class TestExplicitMarkComplete:
         """Explicit markComplete=True action sets completed=True regardless of position."""
         enrollment_repo.has_enrollment.return_value = True
         course_repo.get_course.return_value = MagicMock(createdBy="teacher-1")
+        completed_time = datetime(2026, 1, 1, 0, 0, 0, tzinfo=timezone.utc)
         progress_repo.upsert_progress.return_value = _progress_row(
             user_sub="user-1",
             lesson_id="lesson-1",
             course_id="course-1",
             completed=True,
-            completed_at="2026-01-01T00:00:00Z",
+            completed_at=completed_time,
             last_position_sec=5,
         )
 

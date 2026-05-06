@@ -156,7 +156,7 @@ class LessonProgressService:
                     "lastPositionSec": row.last_position_sec,
                 }
                 if row.completed and row.completed_at:
-                    item["completedAt"] = row.completed_at
+                    item["completedAt"] = row.completed_at.isoformat()
                 if row.completed:
                     completed_count += 1
             else:
@@ -261,7 +261,7 @@ class LessonProgressService:
             "lastPositionSec": row.last_position_sec,
         }
         if row.completed and row.completed_at:
-            lesson_progress["completedAt"] = row.completed_at
+            lesson_progress["completedAt"] = row.completed_at.isoformat()
 
         return {
             "ok": True,
