@@ -108,7 +108,7 @@ function ResumeLearningButton({
   const label =
     lessons.length === 0
       ? 'No lessons'
-      : resumeInfo?.startTimeSec && resumeInfo.startTimeSec > 0
+      : resumeInfo && resumeInfo.startTimeSec > 0
         ? 'Resume Learning'
         : 'Start Learning'
 
@@ -356,6 +356,19 @@ function LessonItem({
     </div>
   )
 
+  // Calculate gradient color from red (0%) to green (100%) based on completion
+  const progressColor =
+    thumbnailProgressPercent !== null
+      ? `linear-gradient(90deg, #dc2626 0%, #eab308 50%, #16a34a 100%)`
+      : undefined
+  const progressStyle =
+    thumbnailProgressPercent !== null
+      ? {
+          width: `${thumbnailProgressPercent}%`,
+          background: progressColor,
+        }
+      : undefined
+
   const progressBar =
     thumbnailProgressPercent !== null ? (
       <div
@@ -366,7 +379,10 @@ function LessonItem({
         aria-valuemax={100}
         aria-label={`Lesson watched about ${thumbnailProgressPercent}%`}
       >
-        <div className="h-full bg-red-600" style={{ width: `${thumbnailProgressPercent}%` }} />
+        <div
+          className="h-full"
+          style={progressStyle}
+        />
       </div>
     ) : null
 
