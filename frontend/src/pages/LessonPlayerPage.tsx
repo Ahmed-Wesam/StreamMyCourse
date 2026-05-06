@@ -214,8 +214,14 @@ export default function LessonPlayerPage() {
     const lessonProgress = courseProgress?.lessons.find((l) => l.lessonId === lessonId)
     if (lessonProgress?.completed) return
 
+    const activeLesson = lessons.find((l) => l.id === lessonId)
+    const fromVideo =
+      Number.isFinite(video.duration) && video.duration > 0 ? Math.floor(video.duration) : 0
+    const durationSec = fromVideo > 0 ? fromVideo : (activeLesson?.duration ?? 0)
+
     const promise = updateLessonProgress(courseId, lessonId, {
       lastPositionSec: Math.floor(video.currentTime),
+      durationSec,
     })
     inFlightProgressRef.current = promise
     promise
@@ -240,6 +246,7 @@ export default function LessonPlayerPage() {
     try {
       await updateLessonProgress(courseId, lessonId, {
         lastPositionSec: activeLesson.duration || 0,
+        durationSec: activeLesson.duration || 0,
         markComplete: true,
       })
       const prog = await getCourseProgress(courseId)
@@ -252,8 +259,10 @@ export default function LessonPlayerPage() {
   }
 
   const handleMarkIncomplete = () => {
+    const activeLesson = lessons.find((l) => l.id === lessonId)
     updateLessonProgress(courseId, lessonId, {
       lastPositionSec: 0,
+      durationSec: activeLesson?.duration ?? 0,
       markIncomplete: true,
     })
       .then(() => getCourseProgress(courseId))
