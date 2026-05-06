@@ -25,6 +25,15 @@
 
 ---
 
+## 2026-05-06 — Lesson progress UX and validation
+
+### Completed
+
+- [x] **`LessonProgressService._validate_position`** — When **`duration <= 0`** (unknown length on the client), skip **`duration + slack`** cap so updates are not rejected at ~30s; known duration behavior unchanged ([`services/progress/service.py`](infrastructure/lambda/catalog/services/progress/service.py), unit test in [`test_progress_service.py`](tests/unit/services/progress/test_progress_service.py)).
+- [x] **Course detail** — Signed-in learners see per-lesson watch progress (bar under each lesson row): [`getCourseProgress`](frontend/src/lib/api.ts) + [`CourseDetailPage.tsx`](frontend/src/pages/CourseDetailPage.tsx); expected 503/403 cases ignored without noisy warnings.
+
+---
+
 ## 2026-05-05 — RDS: lesson_progress DDL folded into 001_initial_schema
 
 ### Completed
