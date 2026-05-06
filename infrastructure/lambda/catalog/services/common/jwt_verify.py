@@ -131,19 +131,19 @@ def _rsa_public_key_from_jwk(jwk: Dict[str, str]) -> Any:
 
     Uses cryptography library if available, otherwise raises.
     """
+    # JWK RSA parameters — validate shape before importing optional cryptography
+    n_b64 = jwk.get("n", "")
+    e_b64 = jwk.get("e", "")
+
+    if not n_b64 or not e_b64:
+        raise ValueError("JWK missing required RSA parameters (n, e)")
+
     try:
         from cryptography.hazmat.primitives.asymmetric import rsa
     except ImportError as exc:
         raise RuntimeError(
             "cryptography library is required for JWT signature verification"
         ) from exc
-
-    # JWK RSA parameters
-    n_b64 = jwk.get("n", "")
-    e_b64 = jwk.get("e", "")
-
-    if not n_b64 or not e_b64:
-        raise ValueError("JWK missing required RSA parameters (n, e)")
 
     n_bytes = _base64url_decode(n_b64)
     e_bytes = _base64url_decode(e_b64)
