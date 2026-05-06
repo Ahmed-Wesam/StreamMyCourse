@@ -4,51 +4,69 @@
 
 ---
 
-## 2026-05-06 — Integration Test Audit: 25 Security Tests + 3-Principal CI Matrix
+## 2026-05-06 — Integration Test Suite: 95 Tests + UUID Validation + Multi-Principal Security
 
 ### Completed
 
-- [x] **Integration Test Suite** — 17 new HTTPS integration tests covering critical security boundaries:
-  - `test_access_control.py` — Role-based access control (instructor/student/admin boundaries)
+- [x] **Integration Test Suite** — 95 HTTPS integration tests (consolidated from 100 via parameterization):
+  - `test_access_control.py` — 8 parameterized IDOR/BOLA cross-teacher security tests
   - `test_auth_gateway.py` — Cognito authorizer + API Gateway integration
-  - `test_bootstrap_edges.py` — Lambda cold-start and bootstrap error handling
-  - `test_course_thumbnail.py` — Thumbnail upload/presigned URL security
-  - `test_courses.py` — Course CRUD operations + ownership validation
-  - `test_enrollment.py` — Enrollment flow + duplicate prevention
-  - `test_instructor_dashboard.py` — Instructor-scoped data isolation
+  - `test_bootstrap_edges.py` — Lambda cold-start, CORS, malformed input handling
+  - `test_course_thumbnail.py` — Thumbnail upload/presigned URL tests
+  - `test_courses.py` — Course CRUD + lesson update tests
+  - `test_enrollment.py` — Enrollment flow, idempotency, draft rejection, 404 handling
+  - `test_instructor_dashboard.py` — `/courses/mine` endpoint + sorting tests
+  - `test_lesson_not_found.py` — 7 tests for non-existent lesson ID 404 responses
   - `test_lesson_ordering.py` — Lesson sequence integrity
-  - `test_playback_auth.py` — Video playback authorization (presigned URL scoping)
+  - `test_playback_auth.py` — 4 enrollment-gated playback authorization tests
   - `test_playback_upload.py` — Upload URL generation + content-type validation
-  - `test_progress.py` — Progress tracking accuracy + concurrent update handling
-  - `test_publish.py` — Draft/publish workflow state transitions
-  - `test_rds_path.py` — RDS connectivity + migration verification
-  - `test_s3_cleanup.py` — S3 media deletion via SQS (async cleanup worker)
-  - `test_smoke.py` — Health check + basic connectivity
-  - `test_student_permissions_allowed.py` — Positive permission cases for students
-  - `test_student_permissions_denials.py` — Negative permission cases (403/401 boundaries)
+  - `test_progress.py` — 7 progress tracking + aggregation tests
+  - `test_publish.py` — Draft/publish workflow, idempotency, validation edge cases
+  - `test_rds_path.py` — RDS connectivity (removed 1 duplicate test)
+  - `test_s3_cleanup.py` — S3 media deletion via SQS worker
+  - `test_student_permissions_allowed.py` — 5 positive student permission tests
+  - `test_student_permissions_denials.py` — 10 parameterized student→instructor denial tests
 
-- [x] **Unit Test Additions** — [`test_integration_api_client.py`](tests/unit/test_integration_api_client.py): API client contract validation for integration test helpers
+- [x] **Backend UUID Validation** — [`infrastructure/lambda/catalog/services/course_management/service.py`](infrastructure/lambda/catalog/services/course_management/service.py):
+  - Added `_is_valid_uuid()` helper with `UUID` stdlib validation
+  - 16 public methods now validate UUID format before database queries
+  - Returns 404 `not_found` for malformed IDs instead of 500 `internal_error`
+  - Prevents PostgreSQL type errors on invalid input
+
+- [x] **Unit Test Additions** — [`tests/unit/test_integration_api_client.py`](tests/unit/test_integration_api_client.py): API client contract validation + 23 new UUID validation tests in [`test_service.py`](tests/unit/services/course_management/test_service.py)
+
+- [x] **Multi-Principal Test Infrastructure** — [`tests/integration/conftest.py`](tests/integration/conftest.py):
+  - `alt_api` fixture — Teacher B for cross-user access control tests
+  - `student_api` fixture — Student principal for permission tests
+  - `alt_course_factory`, `alt_lesson_factory` — Teacher B resource creation
+  - `enrolled_course` fixture — Published course with student enrollment
+  - Multi-principal cleanup: safety net cleans up for ALL 3 principals
+
+- [x] **Test Parameterization** — Reduced test count from 100→88 (now 95) while maintaining coverage:
+  - 10 student denial tests → 1 parameterized test
+  - 8 IDOR tests → 1 parameterized test  
+  - 2 upload-url validation tests → 1 parameterized test
 
 - [x] **3-Principal CI Matrix** — GitHub Actions workflow [`deploy-backend.yml`](.github/workflows/deploy-backend.yml) orchestrates:
   1. **dev** — Edge + RDS + Backend deploy on main push
-  2. **integration** — HTTPS pytest against dev environment (17 integration tests)
+  2. **integration** — HTTPS pytest against dev (95 integration tests)
   3. **verify-rds** — Database verification with Cognito credentials
   4. **prod** — Sequential prod deploy only after dev + tests pass
 
-- [x] **Security Test Coverage (25 Tests)** — Cross-cutting security validations:
-  - Authentication: Token expiry, invalid JWT, missing Authorization header
-  - Authorization: Role elevation attempts, cross-tenant access, instructor-only endpoints
-  - Input validation: SQL injection resistance, path traversal attempts, oversized payloads
-  - Output validation: Response schema enforcement, error message hygiene (no stack leaks)
-  - CORS: Preflight handling, origin enforcement on sensitive endpoints
-  - Presigned URLs: Expiration enforcement, signature validation, content-type restrictions
+- [x] **Security Test Coverage** — Cross-cutting validations:
+  - Authentication: Token handling, missing Authorization header
+  - Authorization: IDOR (Teacher A → Teacher B), BFLA (Student → Instructor), role boundaries
+  - Input validation: UUID format, SQL injection resistance, path traversal
+  - CORS: Preflight handling, origin enforcement
+  - Presigned URLs: Scoping, content-type restrictions
 
 ### Technical Notes
 
-- Integration tests require `LOCAL_COGNITO_PASSWORD` in `.env.local` for authentication flow
-- Test helpers in [`tests/integration/helpers/api.py`](tests/integration/helpers/api.py): `ApiClient` with automatic JWT refresh
+- Integration tests require `LOCAL_COGNITO_PASSWORD` + `LOCAL_COGNITO_PASSWORD_ALT` + `LOCAL_COGNITO_PASSWORD_STUDENT` in `.env.local`
+- Test helpers in [`tests/integration/helpers/api.py`](tests/integration/helpers/api.py): `ApiClient` with methods for all catalog endpoints
 - All integration tests run against **deployed** dev environment (no local mocks)
-- CI gate: Prod deploy blocked if any of 17 integration tests fail
+- Cleanup: Per-test finalizers + session-end safety net with dual-prefix support (`integration-test-` and `[TEST]`)
+- CI gate: Prod deploy blocked if any of 95 integration tests fail
 
 ---
 
