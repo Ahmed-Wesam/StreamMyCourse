@@ -224,6 +224,15 @@ class LessonProgressService:
             last_position_sec=position,
         )
 
+        # If we have a valid duration, try to populate lesson duration (best effort)
+        # Any enrolled user or owner can trigger this if the lesson has no duration yet
+        if duration > 0:
+            try:
+                self._course_repo.set_lesson_duration(course_id, lesson_id, duration)
+            except Exception:
+                # Silently ignore - duration update is best-effort, shouldn't break progress tracking
+                pass
+
         # Build response
         lesson_progress: LessonProgressItem = {
             "lessonId": row.lesson_id,
