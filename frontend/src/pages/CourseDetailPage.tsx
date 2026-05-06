@@ -3,11 +3,34 @@ import { Link, useParams } from 'react-router-dom'
 import {
   enrollInCourse,
   getCourse,
+  getCourseProgress,
   hasSignedInIdToken,
+  isEnrollmentRequiredError,
+  isProgressAuthNotConfiguredError,
+  isProgressRdsUnavailableError,
   listLessons,
   type Course,
+  type CourseProgress,
   type Lesson,
+  type LessonProgressItem,
 } from '../lib/api'
+
+/** 0–100 for the thumbnail bar, or null when no in-progress / completed state to show. */
+function lessonThumbnailProgressPercent(
+  lesson: Lesson,
+  progressItem: LessonProgressItem | undefined,
+): number | null {
+  if (!progressItem) return null
+  if (progressItem.completed) return 100
+  const pos = progressItem.lastPositionSec
+  if (pos <= 0) return null
+  const duration = lesson.duration
+  if (duration != null && duration > 0) {
+    return Math.min(100, Math.round((pos / duration) * 100))
+  }
+  // Started but no duration on the lesson DTO — show a small sliver like “partially watched”.
+  return 12
+}
 
 function SkeletonLesson() {
   return (
@@ -79,6 +102,7 @@ function CourseDetailBody({
   loading,
   lessons,
   course,
+  courseProgress,
   previewOnly,
   needsEnrollment,
   enrolling,
@@ -89,6 +113,7 @@ function CourseDetailBody({
   loading: boolean
   lessons: Lesson[]
   course: Course | null
+  courseProgress: CourseProgress | null
   previewOnly: boolean
   needsEnrollment: boolean
   enrolling: boolean
@@ -139,6 +164,10 @@ function CourseDetailBody({
                     courseId={courseId}
                     index={index}
                     linkDisabled={previewOnly || needsEnrollment}
+                    thumbnailProgressPercent={lessonThumbnailProgressPercent(
+                      lesson,
+                      courseProgress?.lessons.find((p) => p.lessonId === lesson.id),
+                    )}
                   />
                 ))}
               </div>
@@ -222,17 +251,20 @@ function LessonItem({
   courseId,
   index,
   linkDisabled,
+  thumbnailProgressPercent,
 }: {
   lesson: Lesson
   courseId: string
   index: number
   linkDisabled: boolean
+  thumbnailProgressPercent: number | null
 }) {
-  const rowClass =
-    'group flex items-center px-6 py-4 border-b border-gray-100 last:border-0 ' +
+  const rowShell =
+    'group block px-6 pt-4 pb-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-blue-500 ' +
     (linkDisabled ? 'cursor-default opacity-80' : 'cursor-pointer hover:bg-blue-50 transition-colors')
-  const inner = (
-    <>
+
+  const mainRow = (
+    <div className="flex items-center pb-3">
       <div className="relative h-10 w-10 shrink-0 overflow-hidden rounded-lg bg-blue-100 text-blue-600">
         {lesson.thumbnailUrl ? (
           <img src={lesson.thumbnailUrl} alt="" className="h-full w-full object-cover" />
@@ -242,27 +274,48 @@ function LessonItem({
           </span>
         )}
       </div>
-      <div className="ml-4 flex-1">
+      <div className="ml-4 flex-1 min-w-0">
         <h3 className="text-gray-900 font-medium group-hover:text-blue-700 transition-colors">
           {lesson.title}
         </h3>
         <p className="text-sm text-gray-500">Lesson {lesson.order}</p>
       </div>
-      <div className="flex items-center text-blue-600 opacity-0 group-hover:opacity-100 transition-opacity">
+      <div className="flex shrink-0 items-center text-blue-600 opacity-0 group-hover:opacity-100 transition-opacity">
         <span className="text-sm font-medium mr-2">{linkDisabled ? 'Locked' : 'Play'}</span>
         <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
         </svg>
       </div>
-    </>
+    </div>
   )
+
+  const progressBar =
+    thumbnailProgressPercent !== null ? (
+      <div
+        className="relative z-10 -mx-6 h-[3px] w-auto bg-black/25"
+        role="progressbar"
+        aria-valuenow={thumbnailProgressPercent}
+        aria-valuemin={0}
+        aria-valuemax={100}
+        aria-label={`Lesson watched about ${thumbnailProgressPercent}%`}
+      >
+        <div className="h-full bg-red-600" style={{ width: `${thumbnailProgressPercent}%` }} />
+      </div>
+    ) : null
+
   if (linkDisabled) {
-    return <div className={rowClass}>{inner}</div>
+    return (
+      <div className={rowShell}>
+        {mainRow}
+        {progressBar}
+      </div>
+    )
   }
   return (
-    <Link to={`/courses/${courseId}/lessons/${lesson.id}`} className={rowClass}>
-      {inner}
+    <Link to={`/courses/${courseId}/lessons/${lesson.id}`} className={rowShell}>
+      {mainRow}
+      {progressBar}
     </Link>
   )
 }
@@ -278,10 +331,12 @@ export default function CourseDetailPage() {
   const [previewOnly, setPreviewOnly] = useState(false)
   const [needsEnrollment, setNeedsEnrollment] = useState(false)
   const [enrolling, setEnrolling] = useState(false)
+  const [courseProgress, setCourseProgress] = useState<CourseProgress | null>(null)
 
   const loadCourseData = useCallback(async () => {
     setError(null)
     setLoading(true)
+    setCourseProgress(null)
     const signedIn = await hasSignedInIdToken()
     setPreviewOnly(!signedIn)
     setNeedsEnrollment(false)
@@ -292,6 +347,21 @@ export default function CourseDetailPage() {
       setLessons([...l].sort((a, b) => a.order - b.order))
       if (signedIn) {
         setNeedsEnrollment(c.enrolled === false)
+      }
+      if (signedIn) {
+        try {
+          const prog = await getCourseProgress(courseId)
+          setCourseProgress(prog)
+        } catch (e) {
+          setCourseProgress(null)
+          if (
+            !isProgressRdsUnavailableError(e) &&
+            !isProgressAuthNotConfiguredError(e) &&
+            !isEnrollmentRequiredError(e)
+          ) {
+            console.warn('Failed to load course progress:', e)
+          }
+        }
       }
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to load')
@@ -327,6 +397,7 @@ export default function CourseDetailPage() {
           loading={loading}
           lessons={lessons}
           course={course}
+          courseProgress={courseProgress}
           previewOnly={previewOnly}
           needsEnrollment={needsEnrollment}
           enrolling={enrolling}
