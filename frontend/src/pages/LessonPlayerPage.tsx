@@ -128,6 +128,8 @@ export default function LessonPlayerPage() {
   const videoRef = useRef<HTMLVideoElement | null>(null)
   // Track if we've applied the initial resume time to prevent re-seeking
   const resumeAppliedRef = useRef<boolean>(false)
+  // Track if we've sent duration update to prevent duplicate calls
+  const durationSentRef = useRef<boolean>(false)
 
   const playbackNavLocked = needsEnrollment || needsSignIn
 
@@ -230,21 +232,42 @@ export default function LessonPlayerPage() {
     return savedPosition > 0 ? savedPosition : 0
   }, [resumeTimeSec, courseProgress, lessonId])
 
-  // Handle video metadata loaded - set initial time if resuming
+  // Handle video metadata loaded - set initial time if resuming, and send duration to backend
   const handleLoadedMetadata = useCallback(() => {
     const video = videoRef.current
-    if (!video || resumeAppliedRef.current) return
+    if (!video) return
+
+    // Send video duration to backend if we have a valid duration
+    // This helps populate lesson duration for newly uploaded videos
+    const videoDuration = Math.floor(video.duration)
+    const activeLesson = lessons.find((l) => l.id === lessonId)
+    const hasDuration = activeLesson?.duration && activeLesson.duration > 0
+
+    if (videoDuration > 0 && !hasDuration && !durationSentRef.current) {
+      // Mark as sent immediately to prevent duplicate calls
+      durationSentRef.current = true
+      // Send duration update (best effort - don't block playback on this)
+      void updateLessonProgress(courseId, lessonId, {
+        lastPositionSec: 0,
+        durationSec: videoDuration,
+      }).catch(() => {
+        // Silently ignore - duration update is best effort
+      })
+    }
+
+    if (resumeAppliedRef.current) return
 
     const resumeTime = getResumeTimeSec()
     if (resumeTime > 0 && resumeTime < video.duration) {
       video.currentTime = resumeTime
       resumeAppliedRef.current = true
     }
-  }, [getResumeTimeSec])
+  }, [getResumeTimeSec, courseId, lessonId, lessons])
 
-  // Reset resume flag when lesson changes
+  // Reset flags when lesson changes
   useEffect(() => {
     resumeAppliedRef.current = false
+    durationSentRef.current = false
   }, [lessonId])
 
   const coursePercentComplete = useMemo(() => {
