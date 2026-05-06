@@ -514,3 +514,83 @@ class TestGetCourseProgress:
 
         assert result["courseId"] == "course-1"
         assert result["totalReadyLessons"] == 1
+
+
+class TestDurationUpdateOnProgress:
+    """Tests for lesson duration population via progress updates."""
+
+    def test_update_progress_with_duration_calls_set_lesson_duration(
+        self,
+        service: "LessonProgressService",
+        enrollment_repo: MagicMock,
+        progress_repo: MagicMock,
+        course_repo: MagicMock,
+    ) -> None:
+        """When progress update includes valid duration, lesson duration should be updated."""
+        enrollment_repo.has_enrollment.return_value = True
+        progress_repo.upsert_progress.return_value = _progress_row(
+            lesson_id="lesson-1", completed=False, last_position_sec=30
+        )
+
+        service.update_lesson_progress(
+            user_sub="user-1",
+            course_id="course-1",
+            lesson_id="lesson-1",
+            position=30,
+            duration=120,  # Valid duration from video metadata
+        )
+
+        # Should call set_lesson_duration on course_repo
+        course_repo.set_lesson_duration.assert_called_once_with("course-1", "lesson-1", 120)
+
+    def test_update_progress_with_zero_duration_skips_set_lesson_duration(
+        self,
+        service: "LessonProgressService",
+        enrollment_repo: MagicMock,
+        progress_repo: MagicMock,
+        course_repo: MagicMock,
+    ) -> None:
+        """Duration of 0 should not trigger lesson duration update."""
+        enrollment_repo.has_enrollment.return_value = True
+        progress_repo.upsert_progress.return_value = _progress_row(
+            lesson_id="lesson-1", completed=False, last_position_sec=0
+        )
+
+        service.update_lesson_progress(
+            user_sub="user-1",
+            course_id="course-1",
+            lesson_id="lesson-1",
+            position=0,
+            duration=0,  # No duration available
+        )
+
+        # Should NOT call set_lesson_duration
+        course_repo.set_lesson_duration.assert_not_called()
+
+    def test_update_progress_duration_error_silently_ignored(
+        self,
+        service: "LessonProgressService",
+        enrollment_repo: MagicMock,
+        progress_repo: MagicMock,
+        course_repo: MagicMock,
+    ) -> None:
+        """Errors in duration update should not break progress tracking."""
+        enrollment_repo.has_enrollment.return_value = True
+        progress_repo.upsert_progress.return_value = _progress_row(
+            lesson_id="lesson-1", completed=False, last_position_sec=30
+        )
+        # Simulate error in duration update
+        course_repo.set_lesson_duration.side_effect = Exception("DB error")
+
+        # Should not raise despite the error
+        result = service.update_lesson_progress(
+            user_sub="user-1",
+            course_id="course-1",
+            lesson_id="lesson-1",
+            position=30,
+            duration=120,
+        )
+
+        # Progress update should still succeed
+        assert result["ok"] is True
+        course_repo.set_lesson_duration.assert_called_once()
