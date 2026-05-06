@@ -232,7 +232,6 @@ jobs:
           fi
 
       - name: Mint Cognito JWT ALT (teacher B) - conditional
-        if: ${{ secrets.COGNITO_RDS_VERIFY_TEST_PASSWORD_ALT != '' }}
         env:
           COGNITO_TEST_PASSWORD_ALT: ${{ secrets.COGNITO_RDS_VERIFY_TEST_PASSWORD_ALT }}
           COGNITO_TEST_USERNAME_ALT: ${{ vars.COGNITO_RDS_VERIFY_TEST_USERNAME_ALT }}
@@ -242,6 +241,12 @@ jobs:
           REGION="${{ env.AWS_REGION }}"
           USERNAME="${COGNITO_TEST_USERNAME_ALT:-ci-rds-verify-2@noreply.local}"
           TOKEN=""
+
+          # Skip if password secret is not set
+          if [[ -z "${COGNITO_TEST_PASSWORD_ALT:-}" ]]; then
+            echo "Skipping ALT JWT minting (COGNITO_RDS_VERIFY_TEST_PASSWORD_ALT not set)"
+            exit 0
+          fi
 
           if [[ -n "${COGNITO_TEST_PASSWORD_ALT:-}" ]]; then
             pool="$(aws cloudformation describe-stacks \
@@ -285,7 +290,6 @@ jobs:
           fi
 
       - name: Mint Cognito JWT STUDENT - conditional
-        if: ${{ secrets.COGNITO_RDS_VERIFY_TEST_PASSWORD_STUDENT != '' }}
         env:
           COGNITO_TEST_PASSWORD_STUDENT: ${{ secrets.COGNITO_RDS_VERIFY_TEST_PASSWORD_STUDENT }}
           COGNITO_TEST_USERNAME_STUDENT: ${{ vars.COGNITO_RDS_VERIFY_TEST_USERNAME_STUDENT }}
@@ -295,6 +299,12 @@ jobs:
           REGION="${{ env.AWS_REGION }}"
           USERNAME="${COGNITO_TEST_USERNAME_STUDENT:-ci-student@noreply.local}"
           TOKEN=""
+
+          # Skip if password secret is not set
+          if [[ -z "${COGNITO_TEST_PASSWORD_STUDENT:-}" ]]; then
+            echo "Skipping STUDENT JWT minting (COGNITO_RDS_VERIFY_TEST_PASSWORD_STUDENT not set)"
+            exit 0
+          fi
 
           if [[ -n "${COGNITO_TEST_PASSWORD_STUDENT:-}" ]]; then
             pool="$(aws cloudformation describe-stacks \
