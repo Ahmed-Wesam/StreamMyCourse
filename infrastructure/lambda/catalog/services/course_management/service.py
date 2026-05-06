@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 from dataclasses import asdict
 from typing import Any, Dict, List
+from uuid import UUID
 
 from services.common.errors import BadRequest, Conflict, Forbidden, NotFound, ServiceUnavailable
 from services.common.sqs_client import send_media_cleanup_job
@@ -11,6 +12,15 @@ from services.course_management.ports import CourseCatalogRepositoryPort, Course
 from services.enrollment.ports import EnrollmentRepositoryPort
 
 logger = logging.getLogger(__name__)
+
+
+def _is_valid_uuid(value: str) -> bool:
+    """Check if value is a valid UUID format."""
+    try:
+        UUID(value)
+        return True
+    except (ValueError, TypeError):
+        return False
 
 
 class CourseManagementService:
@@ -135,6 +145,8 @@ class CourseManagementService:
         return out
 
     def get_course(self, course_id: str) -> Dict[str, Any]:
+        if not _is_valid_uuid(course_id):
+            raise NotFound("Course not found")
         course = self._repo.get_course(course_id)
         if not course:
             raise NotFound("Course not found")
@@ -231,6 +243,8 @@ class CourseManagementService:
     def enroll_in_published_course(self, course_id: str, *, cognito_sub: str) -> Dict[str, Any]:
         if not cognito_sub.strip():
             raise Forbidden("Authentication required", code="forbidden")
+        if not _is_valid_uuid(course_id):
+            raise NotFound("Course not found")
         course = self._repo.get_course(course_id)
         if not course or course.status != "PUBLISHED":
             raise NotFound("Course not found")
@@ -271,10 +285,14 @@ class CourseManagementService:
             raise Forbidden("Not allowed to modify this course")
 
     def update_course(self, course_id: str, title: str, description: str) -> Dict[str, Any]:
+        if not _is_valid_uuid(course_id):
+            raise NotFound("Course not found")
         self._repo.update_course(course_id=course_id, title=title, description=description)
         return {"id": course_id, "updated": True}
 
     def delete_course(self, course_id: str) -> Dict[str, Any]:
+        if not _is_valid_uuid(course_id):
+            raise NotFound("Course not found")
         course = self._repo.get_course(course_id)
         if not course:
             raise NotFound("Course not found")
@@ -298,6 +316,8 @@ class CourseManagementService:
         return {"id": course_id, "deleted": True}
 
     def list_lessons(self, course_id: str) -> List[Dict[str, Any]]:
+        if not _is_valid_uuid(course_id):
+            raise NotFound("Course not found")
         return [self._public_lesson_dict(l) for l in self._repo.list_lessons(course_id)]
 
     def list_lessons_public(
@@ -309,6 +329,8 @@ class CourseManagementService:
         auth_enforced: bool,
     ) -> List[Dict[str, Any]]:
         """Published lesson rows for catalog UI (thumbnails, no videoKey). DRAFT is 404 unless caller can manage."""
+        if not _is_valid_uuid(course_id):
+            raise NotFound("Course not found")
         course = self._repo.get_course(course_id)
         if not course:
             raise NotFound("Course not found")
@@ -319,10 +341,16 @@ class CourseManagementService:
         return [self._public_lesson_dict(l) for l in sorted(lessons, key=lambda x: x.order)]
 
     def create_lesson(self, course_id: str, title: str) -> Dict[str, Any]:
+        if not _is_valid_uuid(course_id):
+            raise NotFound("Course not found")
         lesson = self._repo.create_lesson(course_id=course_id, title=title or "Lesson")
         return {"lessonId": lesson.id, "order": lesson.order}
 
     def update_lesson(self, course_id: str, lesson_id: str, title: str) -> Dict[str, Any]:
+        if not _is_valid_uuid(course_id):
+            raise NotFound("Course not found")
+        if not _is_valid_uuid(lesson_id):
+            raise NotFound("Lesson not found")
         lesson = self._repo.get_lesson_by_id(course_id, lesson_id)
         if not lesson:
             raise NotFound("Lesson not found")
@@ -330,6 +358,10 @@ class CourseManagementService:
         return {"lessonId": lesson_id, "updated": True}
 
     def delete_lesson(self, course_id: str, lesson_id: str) -> Dict[str, Any]:
+        if not _is_valid_uuid(course_id):
+            raise NotFound("Course not found")
+        if not _is_valid_uuid(lesson_id):
+            raise NotFound("Lesson not found")
         lesson = self._repo.get_lesson_by_id(course_id, lesson_id)
         if not lesson:
             raise NotFound("Lesson not found")
@@ -354,6 +386,8 @@ class CourseManagementService:
         return {"lessonId": lesson_id, "deleted": True}
 
     def publish_course(self, course_id: str) -> Dict[str, Any]:
+        if not _is_valid_uuid(course_id):
+            raise NotFound("Course not found")
         lessons = self._repo.list_lessons(course_id)
         if not any(l.videoStatus == "ready" for l in lessons):
             raise BadRequest("Course needs at least one ready lesson to publish")
@@ -367,6 +401,10 @@ class CourseManagementService:
         *,
         thumbnail_key: str | None = None,
     ) -> Dict[str, Any]:
+        if not _is_valid_uuid(course_id):
+            raise NotFound("Course not found")
+        if not _is_valid_uuid(lesson_id):
+            raise NotFound("Lesson not found")
         lesson = self._repo.get_lesson_by_id(course_id, lesson_id)
         if not lesson:
             raise NotFound("Lesson not found")
@@ -382,6 +420,10 @@ class CourseManagementService:
         return {"lessonId": lesson_id, "videoStatus": "ready"}
 
     def get_playback_url(self, course_id: str, lesson_id: str, *, video_bucket: str) -> Dict[str, Any]:
+        if not _is_valid_uuid(course_id):
+            raise NotFound("Course not found")
+        if not _is_valid_uuid(lesson_id):
+            raise NotFound("Lesson not found")
         lesson = self._repo.get_lesson_by_id(course_id, lesson_id)
         if not lesson:
             raise NotFound("Lesson not found")
@@ -401,6 +443,10 @@ class CourseManagementService:
         filename: str,
         content_type: str,
     ) -> Dict[str, Any]:
+        if not _is_valid_uuid(course_id):
+            raise NotFound("Course not found")
+        if not _is_valid_uuid(lesson_id):
+            raise NotFound("Lesson not found")
         if self._storage is None:
             raise BadRequest("Uploads are not configured")
         lesson = self._repo.get_lesson_by_id(course_id, lesson_id)
@@ -436,6 +482,8 @@ class CourseManagementService:
         filename: str,
         content_type: str,
     ) -> Dict[str, Any]:
+        if not _is_valid_uuid(course_id):
+            raise NotFound("Course not found")
         if self._storage is None:
             raise BadRequest("Uploads are not configured")
         course = self._repo.get_course(course_id)
@@ -459,6 +507,10 @@ class CourseManagementService:
         filename: str,
         content_type: str,
     ) -> Dict[str, Any]:
+        if not _is_valid_uuid(course_id):
+            raise NotFound("Course not found")
+        if not _is_valid_uuid(lesson_id):
+            raise NotFound("Lesson not found")
         if self._storage is None:
             raise BadRequest("Uploads are not configured")
         lesson = self._repo.get_lesson_by_id(course_id, lesson_id)
@@ -475,6 +527,8 @@ class CourseManagementService:
         return {"uploadUrl": presign.uploadUrl, "thumbnailKey": presign.videoKey}
 
     def mark_course_thumbnail_ready(self, course_id: str, thumbnail_key: str) -> Dict[str, Any]:
+        if not _is_valid_uuid(course_id):
+            raise NotFound("Course not found")
         course = self._repo.get_course(course_id)
         if not course:
             raise NotFound("Course not found")
