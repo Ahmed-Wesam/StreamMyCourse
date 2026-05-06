@@ -281,10 +281,11 @@ def pytest_sessionfinish(session: pytest.Session, exitstatus: int) -> None:
     all_matched_ids: list[str] = []
 
     # Clean up for each principal that has a JWT configured
+    # Note: student is excluded - students cannot create courses (only enroll),
+    # so there's nothing to clean up via /courses/mine safety net
     tokens = [
         ("primary", os.environ.get("INTEGRATION_COGNITO_JWT", "").strip()),
         ("alt_teacher", os.environ.get("INTEGRATION_COGNITO_JWT_ALT", "").strip()),
-        ("student", os.environ.get("INTEGRATION_COGNITO_JWT_STUDENT", "").strip()),
     ]
 
     # Support both old '[TEST]' prefix and new 'integration-test-' prefix
