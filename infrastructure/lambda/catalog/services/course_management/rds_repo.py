@@ -337,6 +337,28 @@ class CourseCatalogRdsRepository:
             commit=True,
         )
 
+    def set_lesson_duration(
+        self, course_id: str, lesson_id: str, duration: int
+    ) -> None:
+        """Set lesson duration (in seconds) when extracted from video metadata.
+
+        Only updates if duration is currently 0 or NULL (first-time metadata extraction).
+        Prevents overwriting duration from client progress updates after the fact.
+        """
+        if duration <= 0:
+            return
+        self._execute(
+            """
+            UPDATE lessons
+               SET duration = %s
+             WHERE course_id = %s
+               AND id = %s
+               AND (duration IS NULL OR duration = 0)
+            """,
+            (duration, course_id, lesson_id),
+            commit=True,
+        )
+
     def set_lesson_orders(self, course_id: str, orders: Dict[str, int]) -> None:
         """Renumber lessons transactionally.
 
