@@ -303,6 +303,26 @@ class TestPositionValidation:
 
         assert "position" in exc_info.value.message.lower()
 
+    def test_unknown_duration_allows_position_beyond_slack(
+        self,
+        service: "LessonProgressService",
+        enrollment_repo: MagicMock,
+        course_repo: MagicMock,
+    ) -> None:
+        """duration=0 means unknown length; do not cap position at 0 + slack."""
+        enrollment_repo.has_enrollment.return_value = True
+        course_repo.get_course.return_value = MagicMock(createdBy="teacher-1")
+
+        result = service.update_lesson_progress(
+            user_sub="user-1",
+            course_id="course-1",
+            lesson_id="lesson-1",
+            position=600,
+            duration=0,
+        )
+
+        assert result["ok"] is True
+
 
 # --- Explicit mark complete/incomplete tests ----------------------------------
 
