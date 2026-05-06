@@ -25,6 +25,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any, Dict, Iterator, List, Optional, Sequence, Tuple
 
+import psycopg2
 import pytest
 
 
@@ -485,6 +486,43 @@ class TestEnrollmentRdsRepository:
         sql, _ = fake_conn.cursor_obj.executions[-1]
         assert "on conflict" in sql.lower() or "ON CONFLICT" in sql
 
+    def test_has_enrollment_retries_once_on_operational_error(self) -> None:
+        from services.enrollment.rds_repo import EnrollmentRdsRepository
+
+        good = FakeConn()
+        good.cursor_obj.rows_to_return.append((1,))
+        attempt = {"n": 0}
+
+        def factory() -> FakeConn:
+            attempt["n"] += 1
+            if attempt["n"] == 1:
+                bad = FakeConn()
+
+                def fail(sql: str, params: Sequence[Any] = ()) -> None:
+                    raise psycopg2.OperationalError("connection lost")
+
+                bad.cursor_obj.execute = fail  # type: ignore[assignment]
+                return bad
+            return good
+
+        repo = EnrollmentRdsRepository(factory)
+        assert repo.has_enrollment(user_sub="u", course_id="c") is True
+        assert attempt["n"] == 2
+
+    def test_non_operational_error_rolls_back_without_retry(self) -> None:
+        from services.enrollment.rds_repo import EnrollmentRdsRepository
+
+        conn = FakeConn()
+
+        def fail(sql: str, params: Sequence[Any] = ()) -> None:
+            raise ValueError("bad query")
+
+        conn.cursor_obj.execute = fail  # type: ignore[assignment]
+        repo = EnrollmentRdsRepository(lambda: conn)
+        with pytest.raises(ValueError, match="bad query"):
+            repo.has_enrollment(user_sub="u", course_id="c")
+        assert conn.rolled_back >= 1
+
 
 # ---------------------------------------------------------------------------
 # UserProfileRdsRepository
@@ -565,3 +603,78 @@ class TestUserProfileRdsRepository:
             sql.lower() for sql, _ in fake_conn.cursor_obj.executions
         )
         assert "on conflict" in joined_sql
+
+    def test_put_profile_raises_when_returning_is_empty(
+        self, repo, fake_conn: FakeConn
+    ) -> None:
+        # ``RETURNING`` produced no row — empty queue => ``fetchone()`` is None
+        fake_conn.cursor_obj.rows_to_return = []
+
+        with pytest.raises(RuntimeError, match="RETURNING returned no row"):
+            repo.put_profile(user_sub="sub-x", email="a@b.com", role="student")
+
+    def test_get_profile_retries_once_on_operational_error(self) -> None:
+        from services.auth.rds_repo import UserProfileRdsRepository
+
+        good = FakeConn()
+        now = datetime(2026, 5, 3, 12, 0, 0, tzinfo=timezone.utc)
+        good.cursor_obj.rows_to_return.append(
+            ("sub-9", "a@b.com", "student", "sub-9", now, now)
+        )
+        attempt = {"n": 0}
+
+        def factory() -> FakeConn:
+            attempt["n"] += 1
+            if attempt["n"] == 1:
+                bad = FakeConn()
+
+                def fail(sql: str, params: Sequence[Any] = ()) -> None:
+                    raise psycopg2.OperationalError("connection lost")
+
+                bad.cursor_obj.execute = fail  # type: ignore[assignment]
+                return bad
+            return good
+
+        repo = UserProfileRdsRepository(factory)
+        p = repo.get_profile("sub-9")
+        assert p is not None
+        assert p["email"] == "a@b.com"
+        assert attempt["n"] == 2
+
+    def test_put_profile_non_operational_error_rolls_back(self, repo, fake_conn: FakeConn) -> None:
+        conn = fake_conn
+
+        def fail(sql: str, params: Sequence[Any] = ()) -> None:
+            raise ValueError("bad query")
+
+        conn.cursor_obj.execute = fail  # type: ignore[assignment]
+        with pytest.raises(ValueError, match="bad query"):
+            repo.put_profile(user_sub="sub-x", email="a@b.com", role="student")
+        assert conn.rolled_back >= 1
+
+    def test_put_profile_retries_once_on_operational_error(self) -> None:
+        from services.auth.rds_repo import UserProfileRdsRepository
+
+        good = FakeConn()
+        now = datetime(2026, 5, 3, 12, 0, 0, tzinfo=timezone.utc)
+        good.cursor_obj.rows_to_return.append(
+            ("sub-z", "z@b.com", "teacher", "sub-z", now, now)
+        )
+        attempt = {"n": 0}
+
+        def factory() -> FakeConn:
+            attempt["n"] += 1
+            if attempt["n"] == 1:
+                bad = FakeConn()
+
+                def fail(sql: str, params: Sequence[Any] = ()) -> None:
+                    raise psycopg2.OperationalError("connection lost")
+
+                bad.cursor_obj.execute = fail  # type: ignore[assignment]
+                return bad
+            return good
+
+        repo = UserProfileRdsRepository(factory)
+        result = repo.put_profile(user_sub="sub-z", email="z@b.com", role="teacher")
+        assert result["role"] == "teacher"
+        assert attempt["n"] == 2

@@ -17,6 +17,7 @@ from datetime import datetime, timezone
 from typing import Any, List, Optional, Sequence, Tuple
 
 import pytest
+import psycopg2
 
 
 # ---------------------------------------------------------------------------
@@ -241,39 +242,43 @@ class TestLessonProgressRdsRepository:
         assert False in params or 0 in params  # completed flag
         assert 50 in params  # position
 
-    def test_connection_retry_on_operational_error(
-        self, repo, fake_conn: FakeConn
-    ) -> None:
-        """Test connection retry on OperationalError (simulating lost connection)."""
-        # Simulate an OperationalError on first call by creating a failing cursor
-        call_count = 0
-        original_cursor = fake_conn.cursor_obj
+    def test_execute_retries_once_on_operational_error(self) -> None:
+        """Pin the reconnect+retry behavior in _execute (used by all queries)."""
+        from services.progress.rds_repo import LessonProgressRdsRepository
 
-        def failing_cursor_factory():
-            nonlocal call_count
-            call_count += 1
-            if call_count == 1:
-                raise OperationalError("connection lost")
-            return original_cursor
+        good = FakeConn()
+        good.cursor_obj.bulk_rows_to_return = []
+        attempt = {"n": 0}
 
-        fake_conn.cursor = failing_cursor_factory
+        def factory() -> FakeConn:
+            attempt["n"] += 1
+            if attempt["n"] == 1:
+                bad = FakeConn()
 
-        now = datetime(2026, 5, 5, 12, 0, 0, tzinfo=timezone.utc)
-        original_cursor.rows_to_return.append(
-            ("user-1", "lesson-1", "course-1", True, now.isoformat(), 100, now.isoformat())
-        )
+                def fail(sql: str, params: Sequence[Any] = ()) -> None:
+                    raise psycopg2.OperationalError("connection lost")
 
-        # Need to re-create repo with new factory that simulates failure
-        # Actually, we need to inject psycopg2 OperationalError somehow
-        # Let's use a simpler approach - test the _execute method directly
-        # by checking that OperationalError triggers reconnect
+                bad.cursor_obj.execute = fail  # type: ignore[assignment]
+                return bad
+            return good
 
-        # For now, just verify the retry logic is in place by checking the _execute method
-        # exists and has the retry pattern (inspecting the code)
-        from services.progress import rds_repo
+        repo = LessonProgressRdsRepository(factory)
+        assert repo.get_progress_for_course(user_sub="u", course_id="c") == []
+        assert attempt["n"] == 2
 
-        # Verify the _execute method exists
-        assert hasattr(repo, '_execute')
+    def test_execute_rolls_back_on_non_operational_error(self) -> None:
+        from services.progress.rds_repo import LessonProgressRdsRepository
+
+        conn = FakeConn()
+
+        def fail(sql: str, params: Sequence[Any] = ()) -> None:
+            raise ValueError("bad query")
+
+        conn.cursor_obj.execute = fail  # type: ignore[assignment]
+        repo = LessonProgressRdsRepository(lambda: conn)
+        with pytest.raises(ValueError, match="bad query"):
+            repo.get_progress_for_course(user_sub="u", course_id="c")
+        assert conn.rolled_back >= 1
 
     def test_upsert_progress_sets_completed_at_when_completing(
         self, repo, fake_conn: FakeConn
