@@ -13,7 +13,7 @@ Commit unstaged and staged changes as small, logical commits using conventional 
 ## Workflow
 
 1. **Analyze changes** - Check git status and diff to understand what changed
-2. **Run pre-deploy checks (CI parity)** - Run the same gates as GitHub Actions **CI** (see [`.github/workflows/ci.yml`](../../../.github/workflows/ci.yml)) for every job **except** **`integration-tests-static`** (the integration test tree: install integration test deps, `py_compile` on `tests/integration/**/*.py`, and `pytest --collect-only` under `tests/integration`). That means: **frontend**, **lambda**, **cloudformation**, **workflow-lint** (actionlint on `.github/workflows`), and **lambda-unit-tests**. Fix failures before committing. Skip individual commands that clearly do not apply to the touched files only when it saves time and risk is low (e.g. skip frontend installs if the diff is doc-only); otherwise run the full set.
+2. **Run pre-deploy checks (CI parity)** - Run the same gates as GitHub Actions **CI** (see [`.github/workflows/ci.yml`](../../../.github/workflows/ci.yml)) for every job. That means: **frontend**, **lambda**, **cloudformation**, **workflow-lint** (actionlint on `.github/workflows`), **lambda-unit-tests**, and **local-integration-tests** (if `.env.local` with `LOCAL_COGNITO_PASSWORD` exists). Fix failures before committing. Skip individual commands that clearly do not apply to the touched files only when it saves time and risk is low (e.g. skip frontend installs if the diff is doc-only); otherwise run the full set.
 3. **Group logically** - Organize files into related groups (by feature, module, or change type)
 4. **Stage and commit each group** - Create focused commits with conventional commit messages
 5. **Update project docs (`/update-docs`)** - After commits, follow [`.cursor/skills/update-docs/SKILL.md`](../update-docs/SKILL.md): refresh `design.md`, `roadmap.md`, and `ImplementationHistory.md` when the session’s changes warrant it (features, APIs, infra, CI/CD, security, shipped behavior). If you edit those files, commit them (e.g. `docs: sync project docs` or a scoped `docs(...)`). Skip when nothing material changed (e.g. typo-only or the three files were already the only commits).
@@ -31,9 +31,9 @@ git diff --stat
 git diff HEAD
 ```
 
-### Step 2: Pre-deploy checks (matches CI, excluding integration test static job only)
+### Step 2: Pre-deploy checks (matches CI, plus local integration tests when available)
 
-Run from the **repository root** unless noted. Mirrors [`.github/workflows/ci.yml`](../../../.github/workflows/ci.yml) jobs **`frontend`**, **`lambda`**, **`cloudformation`**, **`workflow-lint`**, and **`lambda-unit-tests`**. The only CI job **not** run here is **`integration-tests-static`** (integration test package install, compile, and collect-only).
+Run from the **repository root** unless noted. Mirrors [`.github/workflows/ci.yml`](../../../.github/workflows/ci.yml) jobs **`frontend`**, **`lambda`**, **`cloudformation`**, **`workflow-lint`**, **`lambda-unit-tests`**, and **`integration-tests-static`**. Additionally runs **local integration tests** against the deployed dev environment if credentials are available.
 
 **Prerequisites:** Node 20+, Python 3.11+, `pip` available, **bash** (for actionlint install script; Git Bash on Windows is fine).
 
@@ -94,7 +94,7 @@ fi
 
 On **Windows** without `actionlint` on `PATH`, run the block in **Git Bash** / MSYS so `bash` and the download script work; the dropped **`actionlint.exe`** stays untracked (gitignored). No need to delete it after each run unless you prefer a clean tree.
 
-**Lambda unit tests** (same as CI job `lambda-unit-tests`; repo root; not integration tests):
+**Lambda unit tests** (same as CI job `lambda-unit-tests`; repo root):
 
 ```bash
 pip install -r tests/unit/requirements.txt
@@ -102,11 +102,23 @@ coverage run -m pytest tests/unit -q --junitxml=tests/unit/results.xml
 coverage report --include="infrastructure/lambda/catalog/**" -m
 ```
 
-**Excluded — entire CI job `integration-tests-static` (do not run for /commit):**
+**Integration tests static** (same as CI job `integration-tests-static`):
 
-- `pip install -r tests/integration/requirements.txt`
-- `py_compile` on `tests/integration/**/*.py`
-- `cd tests/integration && pytest --collect-only` (or `working-directory: tests/integration` equivalent)
+```bash
+pip install -r tests/integration/requirements.txt
+python -c "import glob, py_compile; [py_compile.compile(p, doraise=True) for p in glob.glob('tests/integration/**/*.py', recursive=True)]"
+cd tests/integration && python -m pytest --collect-only -q
+```
+
+**Local integration tests against dev** (run if credentials available):
+
+If `.env.local` exists with `LOCAL_COGNITO_PASSWORD` set, run the full HTTPS integration test suite against the deployed dev environment:
+
+```bash
+./scripts/run-local-integration-tests.sh -q
+```
+
+This ensures the changes work end-to-end against the real AWS dev stack (API Gateway + Lambda + PostgreSQL + S3 + Cognito). If `.env.local` is not present or lacks the password, skip this step (the CI will catch integration issues on push to main).
 
 **IAM policy JSON / GitHub deploy stack (before `git push`):** If the diff touches [`infrastructure/iam-policy-github-deploy-backend.json`](../../../infrastructure/iam-policy-github-deploy-backend.json), [`infrastructure/iam-policy-github-deploy-web.json`](../../../infrastructure/iam-policy-github-deploy-web.json), [`infrastructure/templates/github-deploy-role-stack.yaml`](../../../infrastructure/templates/github-deploy-role-stack.yaml), or [`infrastructure/iam-trust-github-oidc.json`](../../../infrastructure/iam-trust-github-oidc.json), or adds/changes workflow steps that need **new AWS permissions**, run locally (admin credentials) **before** pushing so GitHub Actions does not fail mid-**Deploy**:
 
