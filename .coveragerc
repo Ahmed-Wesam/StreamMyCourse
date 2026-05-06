@@ -1,0 +1,8 @@
+[run]
+# Unit coverage should reflect unit-owned code. Some unit tests import small
+# helpers from integration packages (e.g. safety checks), but we don't want to
+# enforce coverage targets on integration-only helpers.
+omit =
+    tests/integration/*
+    tests/integration/**
+
