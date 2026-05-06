@@ -397,7 +397,7 @@ Resources:
       - DbInstance
     Properties:
       FunctionName: !Sub 'StreamMyCourse-RdsSchemaApplier-${Environment}'
-      Description: !Sub 'Apply 001_initial_schema.sql to RDS (${Environment})'
+      Description: !Sub 'Apply initial catalog schema (001_initial_schema.sql, includes lesson_progress) to RDS (${Environment})'
       Runtime: python3.11
       Handler: index.handler
       Role: !GetAtt SchemaApplierLambdaRole.Arn
@@ -467,7 +467,7 @@ Outputs:
 
   SchemaApplierFunctionName:
     Condition: HasSchemaApplierCode
-    Description: Invoke this function (payload {}) from CI to apply 001_initial_schema.sql
+    Description: Invoke this function (payload {}) from CI to apply bundled initial schema (001_initial_schema.sql, includes lesson_progress)
     Value: !Ref SchemaApplierLambda
     Export:
       Name: !Sub '${AWS::StackName}-SchemaApplierFunctionName'

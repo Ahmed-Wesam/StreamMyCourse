@@ -41,6 +41,8 @@ We will implement progress tracking as an RDS-only feature using PostgreSQL.
 
 ### Database Schema
 
+Canonical idempotent DDL (`CREATE TABLE IF NOT EXISTS`, indexes, check constraint) lives in [`infrastructure/database/migrations/001_initial_schema.sql`](../../infrastructure/database/migrations/001_initial_schema.sql). The following snippet summarizes shape and relationships.
+
 ```sql
 CREATE TABLE lesson_progress (
     user_sub VARCHAR(255) NOT NULL REFERENCES users(user_sub),

@@ -41,6 +41,7 @@ def test_split_sql_empty_and_whitespace(schema_apply):
 
 
 def test_split_real_migration_file_contains_expected_ddl(schema_apply):
+    """001_initial_schema.sql is the bundled schema; split/join must surface all core DDL including lesson_progress."""
     path = _ROOT / "infrastructure" / "database" / "migrations" / "001_initial_schema.sql"
     sql = path.read_text(encoding="utf-8")
     parts = schema_apply._split_sql_statements(sql)
@@ -50,34 +51,17 @@ def test_split_real_migration_file_contains_expected_ddl(schema_apply):
     assert "CREATE TABLE IF NOT EXISTS courses" in joined
     assert "CREATE TABLE IF NOT EXISTS lessons" in joined
     assert "CREATE TABLE IF NOT EXISTS enrollments" in joined
-    assert len(parts) >= 8
-
-
-def test_split_lesson_progress_migration_contains_expected_ddl(schema_apply):
-    """Test that migration 002_lesson_progress.sql applies cleanly and contains expected DDL."""
-    path = _ROOT / "infrastructure" / "database" / "migrations" / "002_lesson_progress.sql"
-    sql = path.read_text(encoding="utf-8")
-    parts = schema_apply._split_sql_statements(sql)
-    joined = "\n".join(parts)
-
-    # Verify table creation
     assert "CREATE TABLE IF NOT EXISTS lesson_progress" in joined
-    # Verify primary key columns
     assert "user_sub" in joined
     assert "lesson_id" in joined
-    # Verify progress columns
     assert "completed" in joined
     assert "completed_at" in joined
     assert "last_position_sec" in joined
     assert "updated_at" in joined
-    # Verify foreign key references
     assert "REFERENCES users(user_sub)" in joined
     assert "REFERENCES lessons(id)" in joined
     assert "REFERENCES courses(id)" in joined
-    # Verify index
     assert "CREATE INDEX IF NOT EXISTS idx_lesson_progress_course_user" in joined
-    # Verify constraints
     assert "PRIMARY KEY (user_sub, lesson_id)" in joined
     assert "CONSTRAINT chk_lesson_progress_position_nonneg" in joined
-    # Should have at least 2 statements (CREATE TABLE, CREATE INDEX)
-    assert len(parts) >= 2
+    assert len(parts) >= 11
