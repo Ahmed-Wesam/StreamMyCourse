@@ -6,7 +6,7 @@ alwaysApply: true
 # Debugging and root cause analysis (StreamMyCourse)
 
 ## Mindset
-
+- Always verify a hypothesis 100% don't make assumptions such as "it must be an authentication issue" always verify via tests or cli
 - Treat failures as **signal**: reproduce reliably, form hypotheses, then change one thing at a time.
 - Prefer **evidence** (logs, failing test, minimal repro) over guessing.
 - After a non-obvious fix, add or extend a **test** or a short note in `ImplementationHistory.md` when it helps the team.
