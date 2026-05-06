@@ -4,6 +4,35 @@
 
 ---
 
+## 2026-05-06 — Ops: catalog TRUNCATE (keep users), schema applier, API stage refresh
+
+### Completed
+
+- [x] **RDS Query (dev + prod)** — Mutating `TRUNCATE enrollments, lessons, courses RESTART IDENTITY CASCADE` with `allow_mutating_sql` (runbook selective clear; `users` untouched; no `wipe_catalog`; no RDS snapshots).
+- [x] **Schema applier** — Local [`scripts/deploy-rds-stack.sh`](scripts/deploy-rds-stack.sh) for **dev** and **prod** (uploads new `schema.sql` zip from repo `001`), then `aws lambda invoke` on **StreamMyCourse-RdsSchemaApplier-dev** / **prod** with `{}` → `{"ok": true}`.
+- [x] **Read-back** — `lesson_progress` present in `information_schema` on both envs; catalog row counts zero except `users` (dev 5, prod 7).
+- [x] **API Gateway** — `aws apigateway create-deployment` on **prod** (`hf8fcfj66g`, stage `prod`) and **dev** (`qstuxlbcp4`, stage `dev`); dev required `update-stage` patch to new `deploymentId` so public `GET …/progress` stopped returning `MissingAuthenticationTokenException` (now **401** without JWT, consistent with Cognito authorizer).
+- [x] **Backend deploy** — [`scripts/deploy-backend.sh`](scripts/deploy-backend.sh) **dev** and **prod** with `COGNITO_USER_POOL_ARN` from respective Auth stacks (Lambda zip refresh; CF reported no template changes).
+
+---
+
+## 2026-05-05 — RDS: lesson_progress DDL folded into 001_initial_schema
+
+### Completed
+
+- [x] **Schema** — Appended former `002_lesson_progress.sql` DDL to [`001_initial_schema.sql`](infrastructure/database/migrations/001_initial_schema.sql); removed `002` so the schema-applier bundle (copy of `001` only) applies `lesson_progress` on deploy.
+- [x] **Tests** — [`tests/unit/test_rds_schema_apply.py`](tests/unit/test_rds_schema_apply.py) asserts split/join of `001` includes `lesson_progress`, `idx_lesson_progress_course_user`, and `chk_lesson_progress_position_nonneg` (TDD red → green).
+
+### Verification
+
+- `python -m pytest tests/unit/test_rds_schema_apply.py -q`
+
+### Operational follow-up (manual)
+
+_Superseded by **2026-05-06 — Ops** above (schema applier invoked, RDS verified, API stages refreshed, `curl` returns 401 without JWT on `/progress`)._
+
+---
+
 ## 2026-05-05 — Integration suite: CORS, lesson delete latency, scoped S3 cleanup
 
 ### Completed
@@ -41,7 +70,7 @@ Existing stacks may have orphaned DynamoDB tables from previous deployments (ret
 
 ### Completed
 
-- [x] **Database** — `infrastructure/database/migrations/002_lesson_progress.sql` — New table with FKs to users, lessons, courses; index on (course_id, user_sub)
+- [x] **Database** — `lesson_progress` in [`001_initial_schema.sql`](infrastructure/database/migrations/001_initial_schema.sql) — FKs to users, lessons, courses; index on (course_id, user_sub); previously shipped as `002_lesson_progress.sql` until folded into `001` (see Implementation History entry **RDS: lesson_progress DDL folded into 001_initial_schema**).
 - [x] **Backend Service** — `services/progress/` bounded context:
   - `ports.py` — Repository protocol
   - `contracts.py` — API DTOs
