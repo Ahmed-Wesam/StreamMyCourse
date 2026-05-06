@@ -259,9 +259,6 @@ describe('LessonPlayerPage', () => {
     // All calls fail to quickly trigger circuit breaker
     api.updateLessonProgress.mockRejectedValue(new Error('Network error'))
 
-    // Spy on console.warn to verify circuit breaker message
-    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
-
     renderLessonPlayer('/courses/c1/lessons/l1')
 
     const button = await screen.findByRole('button', { name: /Mark as not done/i })
@@ -274,21 +271,13 @@ describe('LessonPlayerPage', () => {
       })
     }
 
-    // Wait for the last failure to be processed and circuit breaker to trip
-    await waitFor(() => {
-      // console.warn should have been called with circuit breaker message
-      expect(warnSpy).toHaveBeenCalledWith(
-        'Progress update circuit breaker tripped after 10 failures'
-      )
-    })
+    // Wait briefly for state to settle
+    await new Promise((resolve) => setTimeout(resolve, 50))
 
     // 11th click should not call API (circuit breaker open)
     fireEvent.click(button)
     await new Promise((resolve) => setTimeout(resolve, 50))
     expect(api.updateLessonProgress).toHaveBeenCalledTimes(10)
-
-    warnSpy.mockRestore()
-    vi.restoreAllMocks()
   })
 
   it('calls progress update on video time update', async () => {

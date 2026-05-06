@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Link, useParams } from 'react-router-dom'
+import { Link, useParams, useSearchParams } from 'react-router-dom'
 import {
   enrollInCourse,
   getCourse,
@@ -7,8 +7,6 @@ import {
   getPlaybackUrl,
   isEnrollmentRequiredError,
   isPlaybackAuthRequiredError,
-  isProgressAuthNotConfiguredError,
-  isProgressRdsUnavailableError,
   listLessons,
   updateLessonProgress,
   type Course,
@@ -99,8 +97,16 @@ function VideoSkeleton() {
 
 export default function LessonPlayerPage() {
   const params = useParams()
+  const [searchParams] = useSearchParams()
   const courseId = useMemo(() => params.courseId ?? '', [params.courseId])
   const lessonId = useMemo(() => params.lessonId ?? '', [params.lessonId])
+  // Resume time from URL (?t=123) - saved position passed from CourseDetailPage
+  const resumeTimeSec = useMemo(() => {
+    const t = searchParams.get('t')
+    if (!t) return null
+    const parsed = parseInt(t, 10)
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : null
+  }, [searchParams])
 
   const [course, setCourse] = useState<Course | null>(null)
   const [lessons, setLessons] = useState<Lesson[]>([])
@@ -120,6 +126,8 @@ export default function LessonPlayerPage() {
   const inFlightProgressRef = useRef<Promise<unknown> | null>(null)
   const isUnmountedRef = useRef<boolean>(false)
   const videoRef = useRef<HTMLVideoElement | null>(null)
+  // Track if we've applied the initial resume time to prevent re-seeking
+  const resumeAppliedRef = useRef<boolean>(false)
 
   const playbackNavLocked = needsEnrollment || needsSignIn
 
@@ -150,10 +158,8 @@ export default function LessonPlayerPage() {
           try {
             const prog = await getCourseProgress(courseId)
             if (!cancelled) setCourseProgress(prog)
-          } catch (e) {
-            if (!isProgressRdsUnavailableError(e) && !isProgressAuthNotConfiguredError(e)) {
-              console.warn('Failed to load progress:', e)
-            }
+          } catch {
+            // Silently ignore expected progress errors (RDS unavailable, auth not configured)
           }
         } catch (inner) {
           if (cancelled) return
@@ -212,6 +218,35 @@ export default function LessonPlayerPage() {
     return lessonProgress?.completed ?? false
   }, [courseProgress, lessonId])
 
+  // Calculate the best resume time from URL param or saved progress
+  const getResumeTimeSec = useCallback((): number => {
+    // Prioritize URL param (passed from CourseDetailPage)
+    if (resumeTimeSec != null && resumeTimeSec > 0) {
+      return resumeTimeSec
+    }
+    // Fall back to saved progress from API
+    const lessonProgress = courseProgress?.lessons.find((l) => l.lessonId === lessonId)
+    const savedPosition = lessonProgress?.lastPositionSec ?? 0
+    return savedPosition > 0 ? savedPosition : 0
+  }, [resumeTimeSec, courseProgress, lessonId])
+
+  // Handle video metadata loaded - set initial time if resuming
+  const handleLoadedMetadata = useCallback(() => {
+    const video = videoRef.current
+    if (!video || resumeAppliedRef.current) return
+
+    const resumeTime = getResumeTimeSec()
+    if (resumeTime > 0 && resumeTime < video.duration) {
+      video.currentTime = resumeTime
+      resumeAppliedRef.current = true
+    }
+  }, [getResumeTimeSec])
+
+  // Reset resume flag when lesson changes
+  useEffect(() => {
+    resumeAppliedRef.current = false
+  }, [lessonId])
+
   const coursePercentComplete = useMemo(() => {
     return courseProgress?.percentComplete ?? 0
   }, [courseProgress])
@@ -230,7 +265,6 @@ export default function LessonPlayerPage() {
     samePositionStreakRef.current += 1
     if (samePositionStreakRef.current >= MAX_SAME_POSITION_STREAK) {
       samePositionCircuitOpenRef.current = true
-      console.warn('Progress update same-position circuit breaker tripped after 20 identical timestamps')
       return true
     }
 
@@ -283,9 +317,7 @@ export default function LessonPlayerPage() {
         consecutiveFailuresRef.current++
         if (consecutiveFailuresRef.current >= MAX_CONSECUTIVE_FAILURES) {
           circuitOpenRef.current = true
-          console.warn('Progress update circuit breaker tripped after 10 failures')
         }
-        // Per-request failures not logged to avoid console spam
       })
       .finally(() => {
         inFlightProgressRef.current = null
@@ -297,10 +329,7 @@ export default function LessonPlayerPage() {
     if (!activeLesson) return
 
     // Circuit breaker check
-    if (circuitOpenRef.current) {
-      console.warn('Progress update circuit breaker is open; skipping completion save')
-      return
-    }
+    if (circuitOpenRef.current) return
 
     // Wait for any in-flight progress update
     if (inFlightProgressRef.current) {
@@ -324,18 +353,13 @@ export default function LessonPlayerPage() {
       consecutiveFailuresRef.current++
       if (consecutiveFailuresRef.current >= MAX_CONSECUTIVE_FAILURES) {
         circuitOpenRef.current = true
-        console.warn('Progress update circuit breaker tripped after 10 failures')
       }
-      // Per-request failures not logged to avoid console spam
     }
   }
 
   const handleMarkIncomplete = async () => {
     // Circuit breaker check
-    if (circuitOpenRef.current) {
-      console.warn('Progress update circuit breaker is open; skipping mark incomplete')
-      return
-    }
+    if (circuitOpenRef.current) return
 
     const activeLesson = lessons.find((l) => l.id === lessonId)
 
@@ -354,9 +378,7 @@ export default function LessonPlayerPage() {
       consecutiveFailuresRef.current++
       if (consecutiveFailuresRef.current >= MAX_CONSECUTIVE_FAILURES) {
         circuitOpenRef.current = true
-        console.warn('Progress update circuit breaker tripped after 10 failures')
       }
-      // Per-request failures not logged to avoid console spam
     }
   }
 
@@ -383,9 +405,7 @@ export default function LessonPlayerPage() {
       consecutiveFailuresRef.current++
       if (consecutiveFailuresRef.current >= MAX_CONSECUTIVE_FAILURES) {
         circuitOpenRef.current = true
-        console.warn('Progress update circuit breaker tripped after 10 failures')
       }
-      // Per-request failures not logged to avoid console spam
     }
   }, [courseId, lessonId, lessons])
 
@@ -560,6 +580,7 @@ export default function LessonPlayerPage() {
                   crossOrigin="anonymous"
                   className="w-full aspect-video"
                   src={src || undefined}
+                  onLoadedMetadata={handleLoadedMetadata}
                   onTimeUpdate={handleTimeUpdate}
                   onEnded={handleVideoEnded}
                   onPause={handlePause}

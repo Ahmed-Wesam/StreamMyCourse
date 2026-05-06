@@ -5,9 +5,6 @@ import {
   getCourse,
   getCourseProgress,
   hasSignedInIdToken,
-  isEnrollmentRequiredError,
-  isProgressAuthNotConfiguredError,
-  isProgressRdsUnavailableError,
   listLessons,
   type Course,
   type CourseProgress,
@@ -94,6 +91,93 @@ function CourseDetailHero({
       </div>
     </section>
   )
+}
+
+function ResumeLearningButton({
+  courseId,
+  lessons,
+  courseProgress,
+  disabled,
+}: {
+  courseId: string
+  lessons: Lesson[]
+  courseProgress: CourseProgress | null
+  disabled: boolean
+}) {
+  const resumeInfo = getResumeLesson(lessons, courseProgress)
+  const label =
+    lessons.length === 0
+      ? 'No lessons'
+      : resumeInfo?.startTimeSec && resumeInfo.startTimeSec > 0
+        ? 'Resume Learning'
+        : 'Start Learning'
+
+  if (disabled || !resumeInfo) {
+    return (
+      <span className="inline-flex w-full cursor-not-allowed items-center justify-center rounded-lg bg-blue-600 px-4 py-3 font-medium text-white opacity-50">
+        <svg className="mr-2 h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeWidth={2}
+            d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"
+          />
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+        </svg>
+        {label}
+      </span>
+    )
+  }
+
+  const { lesson, startTimeSec } = resumeInfo
+  const toPath =
+    startTimeSec > 0
+      ? { pathname: `/courses/${courseId}/lessons/${lesson.id}`, search: `?t=${startTimeSec}` }
+      : `/courses/${courseId}/lessons/${lesson.id}`
+
+  return (
+    <Link
+      to={toPath}
+      className="inline-flex w-full items-center justify-center rounded-lg bg-blue-600 px-4 py-3 font-medium text-white transition-colors hover:bg-blue-700"
+    >
+      <svg className="mr-2 h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          strokeWidth={2}
+          d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"
+        />
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+      </svg>
+      {label}
+    </Link>
+  )
+}
+
+/** Find the best lesson to resume from, or null if none available.
+ * Returns first incomplete lesson with progress, or first lesson if all completed.
+ */
+function getResumeLesson(
+  lessons: Lesson[],
+  courseProgress: CourseProgress | null,
+): { lesson: Lesson; startTimeSec: number } | null {
+  if (lessons.length === 0) return null
+
+  // Sort by order to ensure correct sequence
+  const sortedLessons = [...lessons].sort((a, b) => a.order - b.order)
+
+  // Find first incomplete lesson
+  for (const lesson of sortedLessons) {
+    const progress = courseProgress?.lessons.find((p) => p.lessonId === lesson.id)
+    if (!progress || !progress.completed) {
+      // Resume from saved position if available, otherwise from start
+      const startTimeSec = progress?.lastPositionSec ?? 0
+      return { lesson, startTimeSec }
+    }
+  }
+
+  // All lessons completed - go to first lesson
+  return { lesson: sortedLessons[0], startTimeSec: 0 }
 }
 
 function CourseDetailBody({
@@ -213,30 +297,12 @@ function CourseDetailBody({
                     to enroll and watch lessons.
                   </p>
                 )}
-                <Link
-                  to={`/courses/${courseId}/lessons/${lessons[0]?.id}`}
-                  className={`inline-flex w-full items-center justify-center rounded-lg bg-blue-600 px-4 py-3 font-medium text-white transition-colors hover:bg-blue-700 ${
-                    lessons.length === 0 || previewOnly || needsEnrollment
-                      ? 'pointer-events-none cursor-not-allowed opacity-50'
-                      : ''
-                  }`}
-                >
-                  <svg className="mr-2 h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"
-                    />
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-                    />
-                  </svg>
-                  {lessons.length > 0 ? 'Start Learning' : 'No lessons'}
-                </Link>
+                <ResumeLearningButton
+                  courseId={courseId}
+                  lessons={lessons}
+                  courseProgress={courseProgress}
+                  disabled={lessons.length === 0 || previewOnly || needsEnrollment}
+                />
               </div>
             </div>
           </div>
@@ -352,15 +418,9 @@ export default function CourseDetailPage() {
         try {
           const prog = await getCourseProgress(courseId)
           setCourseProgress(prog)
-        } catch (e) {
+        } catch {
+          // Silently ignore expected progress errors (RDS unavailable, auth not configured, enrollment required)
           setCourseProgress(null)
-          if (
-            !isProgressRdsUnavailableError(e) &&
-            !isProgressAuthNotConfiguredError(e) &&
-            !isEnrollmentRequiredError(e)
-          ) {
-            console.warn('Failed to load course progress:', e)
-          }
         }
       }
     } catch (e) {
