@@ -4,6 +4,19 @@
 
 ---
 
+## 2026-05-05 — Integration suite: CORS, lesson delete latency, scoped S3 cleanup
+
+### Completed
+
+- [x] **HTTP integration** — `INTEGRATION_EXPECTED_CORS_ORIGIN` (CI resolves first `CorsAllowOrigin` CSV segment in `deploy-backend.yml`; local runner can resolve from stack). OPTIONS CORS assertions use that value (`tests/integration/test_bootstrap_edges.py`).
+- [x] **S3 integration** — Lesson delete test waits for async worker (`test_s3_cleanup.py`).
+- [x] **Catalog** — Lesson delete enqueues media cleanup like course delete when the queue is configured (`services/course_management/service.py`); avoids API Gateway timeouts from synchronous S3 on the request path.
+- [x] **Deploy scripts** — `deploy-backend.sh` / `deploy-media-cleanup.sh`: Python `zipfile` fallback when `zip(1)` is missing (Git Bash on Windows); `validate-template` uses `cygpath -m` for media-cleanup on MSYS.
+- [x] **Session safety net** — `tests/integration/helpers/cleanup.py`: S3 deletes only under `{courseId}/` for courses whose titles matched `integration-test-` on that sweep (no full dev bucket wipe). `log_integration_cleanup_error` logs at ERROR and emits GitHub `::error::` when cleanup is skipped or fails, so CI surfaces it without failing pytest.
+- [x] **Docs / operator hints** — `AGENTS.md` links `scripts/run-local-integration-tests.sh`; added `.env.local.example` for local Cognito env.
+
+---
+
 ## 2026-05-05 — DynamoDB Catalog Fully Removed (RDS-Only)
 
 ### Completed
