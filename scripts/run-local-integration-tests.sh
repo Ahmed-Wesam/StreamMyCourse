@@ -15,11 +15,14 @@
 #   ./scripts/run-local-integration-tests.sh -v        # Verbose output
 #   ./scripts/run-local-integration-tests.sh -k smoke  # Filter tests
 #
-# Environment variables:
+# Environment variables (all 3 passwords are REQUIRED):
 #   LOCAL_COGNITO_USERNAME    - default: ci-rds-verify@noreply.local
 #   LOCAL_COGNITO_PASSWORD    - required (the CI user's permanent password)
+#   LOCAL_COGNITO_USERNAME_ALT - alternate teacher username (default: ci-rds-verify-2@noreply.local)
+#   LOCAL_COGNITO_PASSWORD_ALT - alternate teacher password (required)
+#   LOCAL_COGNITO_USERNAME_STUDENT - student username (default: ci-student@noreply.local)
+#   LOCAL_COGNITO_PASSWORD_STUDENT - student password (required)
 #   AWS_REGION / AWS_DEFAULT_REGION - default: eu-west-1
-#   SKIP_JWT                  - set to "1" to skip JWT minting (auth tests will skip)
 #   INTEGRATION_EXPECTED_CORS_ORIGIN - optional; if unset, derived from API stack CorsAllowOrigin (first CSV segment)
 
 set +H
@@ -39,6 +42,10 @@ fi
 REGION="${AWS_REGION:-${AWS_DEFAULT_REGION:-eu-west-1}}"
 USERNAME="${LOCAL_COGNITO_USERNAME:-ci-rds-verify@noreply.local}"
 PASSWORD="${LOCAL_COGNITO_PASSWORD:-}"
+USERNAME_ALT="${LOCAL_COGNITO_USERNAME_ALT:-ci-rds-verify-2@noreply.local}"
+PASSWORD_ALT="${LOCAL_COGNITO_PASSWORD_ALT:-}"
+USERNAME_STUDENT="${LOCAL_COGNITO_USERNAME_STUDENT:-ci-student@noreply.local}"
+PASSWORD_STUDENT="${LOCAL_COGNITO_PASSWORD_STUDENT:-}"
 SKIP_JWT="${SKIP_JWT:-}"
 
 # Stack names (dev defaults)
@@ -113,54 +120,111 @@ log_info "API endpoint: $API_BASE_URL"
 log_info "Video bucket: $VIDEO_BUCKET"
 log_info "Expected CORS first origin: $INTEGRATION_EXPECTED_CORS_ORIGIN"
 
-# --- Mint Cognito JWT (unless skipped) ---------------------------------------
+# --- Mint Cognito JWT (required) -------------------------------------------
 
 export INTEGRATION_COGNITO_JWT=""
+export INTEGRATION_COGNITO_JWT_ALT=""
+export INTEGRATION_COGNITO_JWT_STUDENT=""
 
 if [[ "$SKIP_JWT" == "1" ]]; then
-    log_info "SKIP_JWT=1 - skipping JWT minting (auth-required tests will be skipped)"
-elif [[ -z "$PASSWORD" ]]; then
-    log_info "LOCAL_COGNITO_PASSWORD not set - skipping JWT minting (auth-required tests will be skipped)"
-    log_info "To enable auth tests, set LOCAL_COGNITO_PASSWORD and re-run"
-else
-    log_info "Minting Cognito JWT for user: $USERNAME"
+    log_error "SKIP_JWT=1 is not supported - all 3 JWTs are required for integration tests"
+    exit 1
+fi
 
-    USER_POOL_ID="$(aws cloudformation describe-stacks \
+if [[ -z "$PASSWORD" ]]; then
+    log_error "LOCAL_COGNITO_PASSWORD is required (primary teacher)"
+    exit 1
+fi
+
+if [[ -z "$PASSWORD_ALT" ]]; then
+    log_error "LOCAL_COGNITO_PASSWORD_ALT is required (alternate teacher)"
+    exit 1
+fi
+
+if [[ -z "$PASSWORD_STUDENT" ]]; then
+    log_error "LOCAL_COGNITO_PASSWORD_STUDENT is required (student)"
+    exit 1
+fi
+
+log_info "Minting Cognito JWT for user: $USERNAME"
+
+USER_POOL_ID="$(aws cloudformation describe-stacks \
         --stack-name "$AUTH_STACK" \
         --region "$REGION" \
         --query "Stacks[0].Outputs[?OutputKey=='UserPoolId'].OutputValue" \
         --output text 2>/dev/null || true)"
 
-    CLIENT_ID="$(aws cloudformation describe-stacks \
+CLIENT_ID="$(aws cloudformation describe-stacks \
         --stack-name "$AUTH_STACK" \
         --region "$REGION" \
         --query "Stacks[0].Outputs[?OutputKey=='TeacherUserPoolClientId'].OutputValue" \
         --output text 2>/dev/null || true)"
 
-    if [[ -z "$USER_POOL_ID" || "$USER_POOL_ID" == "None" || -z "$CLIENT_ID" || "$CLIENT_ID" == "None" ]]; then
-        log_error "Could not resolve UserPoolId or TeacherUserPoolClientId from stack $AUTH_STACK"
-        exit 1
-    fi
+if [[ -z "$USER_POOL_ID" || "$USER_POOL_ID" == "None" || -z "$CLIENT_ID" || "$CLIENT_ID" == "None" ]]; then
+    log_error "Could not resolve UserPoolId or TeacherUserPoolClientId from stack $AUTH_STACK"
+    exit 1
+fi
 
-    # Build auth input JSON inline (avoids temp file path issues on Windows bash/WSL)
-    # Escape password for JSON (handle " and \ characters)
-    PASSWORD_ESCAPED="${PASSWORD//\\/\\\\}"
-    PASSWORD_ESCAPED="${PASSWORD_ESCAPED//\"/\\\"}"
-    AUTH_JSON="{\"UserPoolId\":\"$USER_POOL_ID\",\"ClientId\":\"$CLIENT_ID\",\"AuthFlow\":\"ADMIN_USER_PASSWORD_AUTH\",\"AuthParameters\":{\"USERNAME\":\"$USERNAME\",\"PASSWORD\":\"$PASSWORD_ESCAPED\"}}"
+# Build auth input JSON inline (avoids temp file path issues on Windows bash/WSL)
+# Escape password for JSON (handle " and \ characters)
+PASSWORD_ESCAPED="${PASSWORD//\\/\\\\}"
+PASSWORD_ESCAPED="${PASSWORD_ESCAPED//\"/\\\"}"
+AUTH_JSON="{\"UserPoolId\":\"$USER_POOL_ID\",\"ClientId\":\"$CLIENT_ID\",\"AuthFlow\":\"ADMIN_USER_PASSWORD_AUTH\",\"AuthParameters\":{\"USERNAME\":\"$USERNAME\",\"PASSWORD\":\"$PASSWORD_ESCAPED\"}}"
 
-    TOKEN="$(aws cognito-idp admin-initiate-auth \
+TOKEN="$(aws cognito-idp admin-initiate-auth \
         --cli-input-json "$AUTH_JSON" \
         --region "$REGION" \
         --query 'AuthenticationResult.IdToken' \
         --output text 2>/dev/null || true)"
 
-    if [[ -n "$TOKEN" && "$TOKEN" != "None" ]]; then
-        export INTEGRATION_COGNITO_JWT="$TOKEN"
-        log_info "JWT minted successfully"
-    else
-        log_error "Failed to mint Cognito JWT - check your LOCAL_COGNITO_PASSWORD"
-        exit 1
-    fi
+if [[ -n "$TOKEN" && "$TOKEN" != "None" ]]; then
+    export INTEGRATION_COGNITO_JWT="$TOKEN"
+    log_info "JWT minted successfully (primary teacher)"
+else
+    log_error "Failed to mint Cognito JWT - check your LOCAL_COGNITO_PASSWORD"
+    exit 1
+fi
+
+# --- Mint alternate teacher JWT (required) -------------------------------
+log_info "Minting Cognito JWT for alternate teacher: $USERNAME_ALT"
+
+PASSWORD_ALT_ESCAPED="${PASSWORD_ALT//\\/\\\\}"
+PASSWORD_ALT_ESCAPED="${PASSWORD_ALT_ESCAPED//\"/\\\"}"
+AUTH_JSON_ALT="{\"UserPoolId\":\"$USER_POOL_ID\",\"ClientId\":\"$CLIENT_ID\",\"AuthFlow\":\"ADMIN_USER_PASSWORD_AUTH\",\"AuthParameters\":{\"USERNAME\":\"$USERNAME_ALT\",\"PASSWORD\":\"$PASSWORD_ALT_ESCAPED\"}}"
+
+TOKEN_ALT="$(aws cognito-idp admin-initiate-auth \
+        --cli-input-json "$AUTH_JSON_ALT" \
+        --region "$REGION" \
+        --query 'AuthenticationResult.IdToken' \
+        --output text 2>/dev/null || true)"
+
+if [[ -n "$TOKEN_ALT" && "$TOKEN_ALT" != "None" ]]; then
+    export INTEGRATION_COGNITO_JWT_ALT="$TOKEN_ALT"
+    log_info "JWT minted successfully (alternate teacher)"
+else
+    log_error "Failed to mint Cognito JWT for alternate teacher - check your LOCAL_COGNITO_PASSWORD_ALT"
+    exit 1
+fi
+
+# --- Mint student JWT (required) -----------------------------------------
+log_info "Minting Cognito JWT for student: $USERNAME_STUDENT"
+
+PASSWORD_STUDENT_ESCAPED="${PASSWORD_STUDENT//\\/\\\\}"
+PASSWORD_STUDENT_ESCAPED="${PASSWORD_STUDENT_ESCAPED//\"/\\\"}"
+AUTH_JSON_STUDENT="{\"UserPoolId\":\"$USER_POOL_ID\",\"ClientId\":\"$CLIENT_ID\",\"AuthFlow\":\"ADMIN_USER_PASSWORD_AUTH\",\"AuthParameters\":{\"USERNAME\":\"$USERNAME_STUDENT\",\"PASSWORD\":\"$PASSWORD_STUDENT_ESCAPED\"}}"
+
+TOKEN_STUDENT="$(aws cognito-idp admin-initiate-auth \
+        --cli-input-json "$AUTH_JSON_STUDENT" \
+        --region "$REGION" \
+        --query 'AuthenticationResult.IdToken' \
+        --output text 2>/dev/null || true)"
+
+if [[ -n "$TOKEN_STUDENT" && "$TOKEN_STUDENT" != "None" ]]; then
+    export INTEGRATION_COGNITO_JWT_STUDENT="$TOKEN_STUDENT"
+    log_info "JWT minted successfully (student)"
+else
+    log_error "Failed to mint Cognito JWT for student - check your LOCAL_COGNITO_PASSWORD_STUDENT"
+    exit 1
 fi
 
 # --- Export environment and run pytest ----------------------------------------

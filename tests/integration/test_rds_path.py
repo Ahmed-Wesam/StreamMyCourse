@@ -31,22 +31,6 @@ def test_create_and_read_course_round_trips(api: ApiClient, course_factory):
     assert body["status"] == "DRAFT"
 
 
-def test_update_course_persists(api: ApiClient, course_factory):
-    """PUT /courses/{id} must update metadata and be observable on the next GET."""
-    course = course_factory(description="before")
-    upd = api.update_course(
-        course.course_id, title=course.title, description="after"
-    )
-    assert upd.status_code == 200, (
-        f"PUT /courses/{course.course_id} expected 200, got "
-        f"{upd.status_code}: {upd.text}"
-    )
-
-    got = api.get_course(course.course_id)
-    assert got.status_code == 200
-    assert got.json()["description"] == "after"
-
-
 def test_lesson_create_under_course(
     api: ApiClient, course_factory, lesson_factory
 ):

@@ -71,3 +71,24 @@ def test_delete_course_removes_it_and_cascades_to_lessons(
     after = api.list_lessons(course.course_id)
     assert after.status_code == 404
     assert after.json().get("code") == "not_found"
+
+
+def test_update_lesson_title_is_reflected(api: ApiClient, course_factory, lesson_factory):
+    course = course_factory()
+    lesson = lesson_factory(course.course_id)
+    new_title = f"{TEST_TITLE_PREFIX}updated-lesson-{uuid.uuid4()}"
+    upd = api.update_lesson(course.course_id, lesson.lesson_id, title=new_title)
+    assert upd.status_code == 200
+    got = api.list_lessons(course.course_id)
+    assert got.status_code == 200
+    lessons = got.json()
+    updated = next(item for item in lessons if item["id"] == lesson.lesson_id)
+    assert updated["title"] == new_title
+
+
+def test_update_lesson_unknown_returns_404(api: ApiClient, course_factory):
+    course = course_factory()
+    unknown_lesson_id = "00000000-0000-0000-0000-000000000000"
+    resp = api.update_lesson(course.course_id, unknown_lesson_id, title="New Title")
+    assert resp.status_code == 404
+    assert resp.json().get("code") == "not_found"

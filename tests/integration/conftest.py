@@ -22,7 +22,11 @@ from helpers.factories import (
     build_course_factory,
     build_lesson_factory,
 )
-from helpers.cleanup import log_integration_cleanup_error, run_safety_net
+from helpers.cleanup import (
+    CleanupReport,
+    delete_orphan_media_for_course_prefixes,
+    log_integration_cleanup_error,
+)
 
 
 def _required_env(name: str) -> str:
@@ -77,6 +81,53 @@ def api(http_client: httpx.Client) -> ApiClient:
     return ApiClient(http_client)
 
 
+# --- Multi-principal HTTP clients (for cross-user access control tests) -------
+
+
+# Environment variable names for multi-principal JWTs
+_ALT_JWT_ENV = "INTEGRATION_COGNITO_JWT_ALT"
+_STUDENT_JWT_ENV = "INTEGRATION_COGNITO_JWT_STUDENT"
+
+
+@pytest.fixture(scope="session")
+def alt_http_client(api_base_url: str) -> Iterator[httpx.Client]:
+    """HTTP client authenticated as an alternate teacher (teacher B).
+
+    Requires INTEGRATION_COGNITO_JWT_ALT to be set.
+    """
+    token = _required_env(_ALT_JWT_ENV)
+    headers = {"Authorization": f"Bearer {token}"}
+    with httpx.Client(base_url=api_base_url, timeout=30.0, headers=headers) as client:
+        yield client
+
+
+@pytest.fixture(scope="session")
+def student_http_client(api_base_url: str) -> Iterator[httpx.Client]:
+    """HTTP client authenticated as a student.
+
+    Requires INTEGRATION_COGNITO_JWT_STUDENT to be set.
+    """
+    token = _required_env(_STUDENT_JWT_ENV)
+    headers = {"Authorization": f"Bearer {token}"}
+    with httpx.Client(base_url=api_base_url, timeout=30.0, headers=headers) as client:
+        yield client
+
+
+# --- Multi-principal ApiClient wrappers ----------------------------------------
+
+
+@pytest.fixture
+def alt_api(alt_http_client: httpx.Client) -> ApiClient:
+    """ApiClient wrapping alt_http_client (alternate teacher / teacher B)."""
+    return ApiClient(alt_http_client)
+
+
+@pytest.fixture
+def student_api(student_http_client: httpx.Client) -> ApiClient:
+    """ApiClient wrapping student_http_client (student principal)."""
+    return ApiClient(student_http_client)
+
+
 # --- Per-test course/lesson factories with auto-cleanup -------------------------
 
 
@@ -110,31 +161,158 @@ def lesson_factory(api: ApiClient):
     return build_lesson_factory(api)
 
 
+@pytest.fixture
+def alt_course_factory(alt_api: ApiClient, request: pytest.FixtureRequest):
+    """Create courses via alt_api (Teacher B); deleted at test teardown via DELETE /courses/{id}."""
+    created_course_ids: List[str] = []
+
+    def register(course_id: str) -> None:
+        created_course_ids.append(course_id)
+
+    factory = build_course_factory(alt_api, register)
+
+    def cleanup() -> None:
+        for course_id in created_course_ids:
+            try:
+                alt_api.delete_course(course_id)
+            except Exception:
+                pass
+
+    request.addfinalizer(cleanup)
+    return factory
+
+
+@pytest.fixture
+def alt_lesson_factory(alt_api: ApiClient):
+    """Create lessons as alternate teacher (Teacher B); cleanup happens transitively when the parent course is deleted."""
+    return build_lesson_factory(alt_api)
+
+
+# --- Enrolled course factory (creates published course and enrolls student) -----
+
+
+@pytest.fixture
+def enrolled_course(
+    api: ApiClient,
+    student_api: ApiClient,
+    course_factory,
+    lesson_factory,
+    request: pytest.FixtureRequest,
+):
+    """Factory that creates a published course with a lesson, then enrolls the student.
+
+    Returns a tuple (course_id, lesson_id).
+
+    Uses the existing course_factory and lesson_factory patterns, plus calls
+    api.enroll_course() using the student_api client.
+    """
+
+    created_enrollments: List[tuple[str, str]] = []
+
+    def _make_enrolled_course() -> tuple[str, str]:
+        # 1. Create a course
+        course_resp = course_factory(label="Enrolled Course Test")
+        course_id = course_resp.course_id
+
+        # 2. Create a lesson
+        lesson_resp = lesson_factory(course_id, label="Enrolled Course Lesson")
+        lesson_id = lesson_resp.lesson_id
+
+        # 3. Get upload URL to set videoKey (required before marking video ready)
+        upload_resp = api.get_upload_url(course_id=course_id, lesson_id=lesson_id)
+        assert upload_resp.status_code == 200, f"Failed to get upload URL: {upload_resp.text}"
+
+        # 4. Mark video ready (required for publish)
+        api.mark_video_ready(course_id, lesson_id)
+
+        # 4. Publish the course
+        api.publish_course(course_id)
+
+        # 5. Enroll the student
+        enroll_resp = student_api.enroll_course(course_id)
+        if enroll_resp.status_code not in (200, 201):
+            # Best-effort: if enrollment fails, note it but don't crash the factory
+            pass
+
+        created_enrollments.append((course_id, lesson_id))
+        return (course_id, lesson_id)
+
+    # The factory function itself doesn't need cleanup - course_factory handles it
+    return _make_enrolled_course
+
+
 # --- Session-end safety net -----------------------------------------------------
 
 
-def pytest_sessionfinish(session: pytest.Session, exitstatus: int) -> None:
-    """Sweep test-prefixed leftover courses (HTTP) and their S3 prefixes only.
+def _run_cleanup_for_token(api_base: str, token: str, title_prefixes: list[str]) -> tuple[list[str], list[str]]:
+    """Run safety net cleanup for a specific JWT token with multiple prefixes. Returns (deleted_ids, matched_ids)."""
+    from helpers.cleanup import delete_prefixed_teacher_courses_via_http
+    all_deleted: list[str] = []
+    all_matched: list[str] = []
+    for prefix in title_prefixes:
+        try:
+            deleted, matched = delete_prefixed_teacher_courses_via_http(
+                api_base_url=api_base,
+                auth_token=token,
+                title_prefix=prefix,
+            )
+            all_deleted.extend(deleted)
+            all_matched.extend(matched)
+        except Exception as e:
+            log_integration_cleanup_error(f"Cleanup for prefix '{prefix}' failed: {e!r}")
+    return all_deleted, all_matched
 
-    Courses: ``GET /courses/mine`` + ``DELETE /courses/{id}`` when
-    ``INTEGRATION_API_BASE_URL`` and ``INTEGRATION_COGNITO_JWT`` are set.
+
+def pytest_sessionfinish(session: pytest.Session, exitstatus: int) -> None:
+    """Sweep test-prefixed leftover courses for ALL principals (HTTP) and their S3 prefixes.
+
+    Cleans up courses for: primary teacher, alt teacher, and student.
+    Handles both old '[TEST]' prefix and new 'integration-test-' prefix.
     S3: deletes objects only under ``{courseId}/`` for matched integration-test
     courses (shared dev buckets are not fully emptied). Never fails CI."""
     bucket = os.environ.get("INTEGRATION_VIDEO_BUCKET", "").strip()
     region = os.environ.get("INTEGRATION_AWS_REGION", "eu-west-1")
-    if not bucket:
+    api_base = os.environ.get("INTEGRATION_API_BASE_URL", "").strip().rstrip("/")
+
+    if not bucket or not api_base:
         return
 
+    all_deleted_ids: list[str] = []
+    all_matched_ids: list[str] = []
+
+    # Clean up for each principal that has a JWT configured
+    tokens = [
+        ("primary", os.environ.get("INTEGRATION_COGNITO_JWT", "").strip()),
+        ("alt_teacher", os.environ.get("INTEGRATION_COGNITO_JWT_ALT", "").strip()),
+        ("student", os.environ.get("INTEGRATION_COGNITO_JWT_STUDENT", "").strip()),
+    ]
+
+    # Support both old '[TEST]' prefix and new 'integration-test-' prefix
+    prefixes = [TEST_TITLE_PREFIX, "[TEST]"]
+
+    for principal, token in tokens:
+        if not token:
+            continue
+        deleted, matched = _run_cleanup_for_token(api_base, token, prefixes)
+        all_deleted_ids.extend(deleted)
+        all_matched_ids.extend(matched)
+        if deleted:
+            sys.stderr.write(f"Cleaned up {len(deleted)} courses for {principal}\n")
+
+    # S3 cleanup for all matched course IDs
+    leftover_objects: list[str] = []
     try:
-        report = run_safety_net(
-            bucket=bucket,
-            region=region,
-            title_prefix=TEST_TITLE_PREFIX,
+        leftover_objects = delete_orphan_media_for_course_prefixes(
+            bucket, region=region, course_ids=all_matched_ids
         )
-    except Exception as e:  # broad: never let cleanup raise from a session hook
-        log_integration_cleanup_error(f"session safety-net raised: {e!r}")
-        return
+    except Exception as e:
+        log_integration_cleanup_error(f"S3 safety-net cleanup failed: {e!r}")
 
+    # Report summary
+    report = CleanupReport(
+        courses_removed_via_api=all_deleted_ids,
+        leftover_objects=leftover_objects,
+    )
     summary = report.render_summary()
     sys.stderr.write(summary + "\n")
 
@@ -145,3 +323,23 @@ def pytest_sessionfinish(session: pytest.Session, exitstatus: int) -> None:
                 fh.write(summary + "\n")
         except Exception:
             pass
+
+
+# --- Slow test skip mechanism ---------------------------------------------------
+
+
+def pytest_configure(config: pytest.Config) -> None:
+    """Register the 'slow' marker for S3-heavy tests."""
+    config.addinivalue_line(
+        "markers",
+        "slow: marks tests as slow (S3-heavy); skipped when SKIP_SLOW_S3_TESTS=1",
+    )
+
+
+@pytest.fixture(autouse=True)
+def skip_slow_tests(request: pytest.FixtureRequest) -> None:
+    """Skip tests marked 'slow' when SKIP_SLOW_S3_TESTS=1 is set."""
+    if os.environ.get("SKIP_SLOW_S3_TESTS", "") == "1":
+        marker = request.node.get_closest_marker("slow")
+        if marker is not None:
+            pytest.skip("SKIP_SLOW_S3_TESTS=1: skipping slow S3 test")

@@ -1,6 +1,6 @@
 # StreamMyCourse — Full Architecture Roadmap
 
-> **Status:** **Post-MVP evolution** (MVP baseline shipped; Phase 2+ ahead) · **Last updated:** 2026-05-04
+> **Status:** **Post-MVP evolution** (MVP baseline shipped; Phase 2+ ahead) · **Last updated:** 2026-05-06
 
 This document is the **long-range** product and architecture vision (Phase 2 onward). The current **MVP contract** (what is built, APIs, data model, deployment) lives in [design.md](./design.md). **Near-term engineering priorities** (CloudFront, SPA hosting, auth) are listed there as §13 and mirrored below so this file stays navigable without opening multiple docs.
 
