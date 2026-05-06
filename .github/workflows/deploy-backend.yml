@@ -231,6 +231,112 @@ jobs:
             exit 1
           fi
 
+      - name: Mint Cognito JWT ALT (teacher B) - conditional
+        if: ${{ secrets.COGNITO_RDS_VERIFY_TEST_PASSWORD_ALT != '' }}
+        env:
+          COGNITO_TEST_PASSWORD_ALT: ${{ secrets.COGNITO_RDS_VERIFY_TEST_PASSWORD_ALT }}
+          COGNITO_TEST_USERNAME_ALT: ${{ vars.COGNITO_RDS_VERIFY_TEST_USERNAME_ALT }}
+          AUTH_STACK: StreamMyCourse-Auth-dev
+        run: |
+          set -euo pipefail
+          REGION="${{ env.AWS_REGION }}"
+          USERNAME="${COGNITO_TEST_USERNAME_ALT:-ci-rds-verify-2@noreply.local}"
+          TOKEN=""
+
+          if [[ -n "${COGNITO_TEST_PASSWORD_ALT:-}" ]]; then
+            pool="$(aws cloudformation describe-stacks \
+              --stack-name "$AUTH_STACK" \
+              --region "$REGION" \
+              --query "Stacks[0].Outputs[?OutputKey=='UserPoolId'].OutputValue" \
+              --output text)"
+            client="$(aws cloudformation describe-stacks \
+              --stack-name "$AUTH_STACK" \
+              --region "$REGION" \
+              --query "Stacks[0].Outputs[?OutputKey=='TeacherUserPoolClientId'].OutputValue" \
+              --output text)"
+            if [[ -n "$pool" && "$pool" != "None" && -n "$client" && "$client" != "None" ]]; then
+              tmp_json="$(mktemp)"
+              jq -n \
+                --arg pool "$pool" \
+                --arg client "$client" \
+                --arg user "$USERNAME" \
+                --arg pass "$COGNITO_TEST_PASSWORD_ALT" \
+                '{UserPoolId:$pool,ClientId:$client,AuthFlow:"ADMIN_USER_PASSWORD_AUTH",AuthParameters:{USERNAME:$user,PASSWORD:$pass}}' \
+                >"$tmp_json"
+              if TOKEN="$(aws cognito-idp admin-initiate-auth \
+                --cli-input-json "file://$tmp_json" \
+                --region "$REGION" \
+                --query 'AuthenticationResult.IdToken' \
+                --output text 2>/dev/null)"; then
+                :
+              else
+                TOKEN=""
+              fi
+              rm -f "$tmp_json"
+            fi
+          fi
+
+          if [[ -n "${TOKEN:-}" && "$TOKEN" != "None" ]]; then
+            echo "::add-mask::$TOKEN"
+            echo "INTEGRATION_COGNITO_JWT_ALT=$TOKEN" >> "$GITHUB_ENV"
+            echo "Minted Cognito IdToken ALT for integration HTTP tests (dev; user: $USERNAME)"
+          else
+            echo "::warning::Could not mint Cognito IdToken ALT (teacher B)"
+          fi
+
+      - name: Mint Cognito JWT STUDENT - conditional
+        if: ${{ secrets.COGNITO_RDS_VERIFY_TEST_PASSWORD_STUDENT != '' }}
+        env:
+          COGNITO_TEST_PASSWORD_STUDENT: ${{ secrets.COGNITO_RDS_VERIFY_TEST_PASSWORD_STUDENT }}
+          COGNITO_TEST_USERNAME_STUDENT: ${{ vars.COGNITO_RDS_VERIFY_TEST_USERNAME_STUDENT }}
+          AUTH_STACK: StreamMyCourse-Auth-dev
+        run: |
+          set -euo pipefail
+          REGION="${{ env.AWS_REGION }}"
+          USERNAME="${COGNITO_TEST_USERNAME_STUDENT:-ci-student@noreply.local}"
+          TOKEN=""
+
+          if [[ -n "${COGNITO_TEST_PASSWORD_STUDENT:-}" ]]; then
+            pool="$(aws cloudformation describe-stacks \
+              --stack-name "$AUTH_STACK" \
+              --region "$REGION" \
+              --query "Stacks[0].Outputs[?OutputKey=='UserPoolId'].OutputValue" \
+              --output text)"
+            client="$(aws cloudformation describe-stacks \
+              --stack-name "$AUTH_STACK" \
+              --region "$REGION" \
+              --query "Stacks[0].Outputs[?OutputKey=='StudentUserPoolClientId'].OutputValue" \
+              --output text)"
+            if [[ -n "$pool" && "$pool" != "None" && -n "$client" && "$client" != "None" ]]; then
+              tmp_json="$(mktemp)"
+              jq -n \
+                --arg pool "$pool" \
+                --arg client "$client" \
+                --arg user "$USERNAME" \
+                --arg pass "$COGNITO_TEST_PASSWORD_STUDENT" \
+                '{UserPoolId:$pool,ClientId:$client,AuthFlow:"ADMIN_USER_PASSWORD_AUTH",AuthParameters:{USERNAME:$user,PASSWORD:$pass}}' \
+                >"$tmp_json"
+              if TOKEN="$(aws cognito-idp admin-initiate-auth \
+                --cli-input-json "file://$tmp_json" \
+                --region "$REGION" \
+                --query 'AuthenticationResult.IdToken' \
+                --output text 2>/dev/null)"; then
+                :
+              else
+                TOKEN=""
+              fi
+              rm -f "$tmp_json"
+            fi
+          fi
+
+          if [[ -n "${TOKEN:-}" && "$TOKEN" != "None" ]]; then
+            echo "::add-mask::$TOKEN"
+            echo "INTEGRATION_COGNITO_JWT_STUDENT=$TOKEN" >> "$GITHUB_ENV"
+            echo "Minted Cognito IdToken STUDENT for integration HTTP tests (dev; user: $USERNAME)"
+          else
+            echo "::warning::Could not mint Cognito IdToken STUDENT"
+          fi
+
       - name: Run pytest
         id: pytest
         working-directory: tests/integration

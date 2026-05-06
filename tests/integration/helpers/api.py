@@ -119,6 +119,80 @@ class ApiClient:
     def get_users_me(self, *, headers: Optional[Dict[str, str]] = None) -> httpx.Response:
         return self._client.get("/users/me", headers=headers or {})
 
+    def thumbnail_ready(self, course_id: str, thumbnail_key: str) -> httpx.Response:
+        """Mark a course thumbnail as ready after upload.
+
+        Args:
+            course_id: The course ID
+            thumbnail_key: The S3 key for the thumbnail (must start with {courseId}/thumbnail/)
+        """
+        return self._client.put(
+            f"/courses/{course_id}/thumbnail-ready",
+            json={"thumbnailKey": thumbnail_key},
+        )
+
+    def get_course_progress(self, course_id: str) -> httpx.Response:
+        """Get aggregated progress for a course.
+
+        Args:
+            course_id: The course ID
+        """
+        return self._client.get(f"/courses/{course_id}/progress")
+
+    def update_lesson_progress(
+        self,
+        course_id: str,
+        lesson_id: str,
+        *,
+        position: int,
+        duration: int,
+        mark_complete: bool = False,
+        mark_incomplete: bool = False,
+    ) -> httpx.Response:
+        """Update lesson progress (watch position and completion state).
+
+        Args:
+            course_id: The course ID
+            lesson_id: The lesson ID
+            position: Current watch position in seconds (>= 0)
+            duration: Total lesson duration in seconds (>= 0)
+            mark_complete: Set to True to explicitly mark lesson complete
+            mark_incomplete: Set to True to explicitly mark lesson incomplete
+        """
+        return self._client.put(
+            f"/courses/{course_id}/lessons/{lesson_id}/progress",
+            json={
+                "position": position,
+                "duration": duration,
+                "markComplete": mark_complete,
+                "markIncomplete": mark_incomplete,
+            },
+        )
+
+    def get_course_thumbnail_upload_url(
+        self,
+        *,
+        course_id: str,
+        filename: str = "cover.jpg",
+        content_type: str = "image/jpeg",
+    ) -> httpx.Response:
+        """Request a presigned upload URL for a course thumbnail.
+
+        Args:
+            course_id: The course ID
+            filename: Name of the thumbnail file (default: cover.jpg)
+            content_type: MIME type of the image (default: image/jpeg)
+        """
+        return self._client.post(
+            "/upload-url",
+            json={
+                "courseId": course_id,
+                "filename": filename,
+                "contentType": content_type,
+                "uploadKind": "thumbnail",
+            },
+        )
+
     def options(self, path: str, *, origin: Optional[str] = None) -> httpx.Response:
         headers: Dict[str, str] = {}
         if origin is not None:

@@ -4,6 +4,89 @@
 
 ---
 
+## 2026-05-06 — Integration Test Audit: 25 Security Tests + 3-Principal CI Matrix
+
+### Completed
+
+- [x] **Integration Test Suite** — 17 new HTTPS integration tests covering critical security boundaries:
+  - `test_access_control.py` — Role-based access control (instructor/student/admin boundaries)
+  - `test_auth_gateway.py` — Cognito authorizer + API Gateway integration
+  - `test_bootstrap_edges.py` — Lambda cold-start and bootstrap error handling
+  - `test_course_thumbnail.py` — Thumbnail upload/presigned URL security
+  - `test_courses.py` — Course CRUD operations + ownership validation
+  - `test_enrollment.py` — Enrollment flow + duplicate prevention
+  - `test_instructor_dashboard.py` — Instructor-scoped data isolation
+  - `test_lesson_ordering.py` — Lesson sequence integrity
+  - `test_playback_auth.py` — Video playback authorization (presigned URL scoping)
+  - `test_playback_upload.py` — Upload URL generation + content-type validation
+  - `test_progress.py` — Progress tracking accuracy + concurrent update handling
+  - `test_publish.py` — Draft/publish workflow state transitions
+  - `test_rds_path.py` — RDS connectivity + migration verification
+  - `test_s3_cleanup.py` — S3 media deletion via SQS (async cleanup worker)
+  - `test_smoke.py` — Health check + basic connectivity
+  - `test_student_permissions_allowed.py` — Positive permission cases for students
+  - `test_student_permissions_denials.py` — Negative permission cases (403/401 boundaries)
+
+- [x] **Unit Test Additions** — [`test_integration_api_client.py`](tests/unit/test_integration_api_client.py): API client contract validation for integration test helpers
+
+- [x] **3-Principal CI Matrix** — GitHub Actions workflow [`deploy-backend.yml`](.github/workflows/deploy-backend.yml) orchestrates:
+  1. **dev** — Edge + RDS + Backend deploy on main push
+  2. **integration** — HTTPS pytest against dev environment (17 integration tests)
+  3. **verify-rds** — Database verification with Cognito credentials
+  4. **prod** — Sequential prod deploy only after dev + tests pass
+
+- [x] **Security Test Coverage (25 Tests)** — Cross-cutting security validations:
+  - Authentication: Token expiry, invalid JWT, missing Authorization header
+  - Authorization: Role elevation attempts, cross-tenant access, instructor-only endpoints
+  - Input validation: SQL injection resistance, path traversal attempts, oversized payloads
+  - Output validation: Response schema enforcement, error message hygiene (no stack leaks)
+  - CORS: Preflight handling, origin enforcement on sensitive endpoints
+  - Presigned URLs: Expiration enforcement, signature validation, content-type restrictions
+
+### Technical Notes
+
+- Integration tests require `LOCAL_COGNITO_PASSWORD` in `.env.local` for authentication flow
+- Test helpers in [`tests/integration/helpers/api.py`](tests/integration/helpers/api.py): `ApiClient` with automatic JWT refresh
+- All integration tests run against **deployed** dev environment (no local mocks)
+- CI gate: Prod deploy blocked if any of 17 integration tests fail
+
+---
+
+## 2026-05-06 — MVP Phase Complete
+
+### Completed
+
+- [x] **MVP Core Features**
+  - Course catalog (browse, search) — [`CourseCatalogPage.tsx`](frontend/src/pages/CourseCatalogPage.tsx)
+  - Course detail with lesson list — [`CourseDetailPage.tsx`](frontend/src/pages/CourseDetailPage.tsx)
+  - Video playback with progress tracking — [`LessonPlayerPage.tsx`](frontend/src/pages/LessonPlayerPage.tsx)
+  - Instructor dashboard and course management — [`InstructorDashboard.tsx`](frontend/src/pages/InstructorDashboard.tsx), [`CourseManagement.tsx`](frontend/src/pages/CourseManagement.tsx)
+  - Draft/publish workflow — [`PUT /courses/{id}/publish`](infrastructure/lambda/catalog/services/course_management/controller.py)
+  - S3 presigned upload/playback — [`upload-url`](infrastructure/lambda/catalog/services/course_management/controller.py), [`playback`](infrastructure/lambda/catalog/services/playback/controller.py)
+- [x] **Authentication** — Cognito with Google-only federation; [`auth-stack.yaml`](infrastructure/templates/auth-stack.yaml), [`SignIn.tsx`](frontend/src/components/auth/SignIn.tsx)
+- [x] **Data Layer** — RDS PostgreSQL (`db.t4g.micro`) with VPC; [`rds-stack.yaml`](infrastructure/templates/rds-stack.yaml); fully migrated from DynamoDB per [ADR-0008](plans/architecture/adr-0008-dynamodb-to-rds-migration.md)
+- [x] **Lesson Progress Tracking** — 15s heartbeat + circuit breaker + checkpoints; [`services/progress/`](infrastructure/lambda/catalog/services/progress/) per [ADR-0010](plans/architecture/adr-0010-lesson-progress-rds.md)
+- [x] **Media Cleanup** — Async S3 deletion via SQS worker; [`media-cleanup-stack.yaml`](infrastructure/templates/media-cleanup-stack.yaml)
+- [x] **CI/CD** — GitHub Actions: [`ci.yml`](.github/workflows/ci.yml), [`deploy-backend.yml`](.github/workflows/deploy-backend.yml); OIDC deploy role [`github-deploy-role-stack.yaml`](infrastructure/templates/github-deploy-role-stack.yaml)
+- [x] **Security** — CORS hardened, presigned URL scoping, security headers, DeletionPolicy: Retain on all stateful resources
+
+### Phase 2 Ready
+
+All MVP backlog items from [design.md §13](./design.md) are complete:
+1. Video CDN (CloudFront + OAC) — shipped
+2. Frontend hosting (dual SPAs on S3 + CloudFront + Route 53) — shipped
+3. Auth (Cognito + Google IdP + API authorizer) — shipped
+4. RDS PostgreSQL (catalog + lesson_progress) — shipped
+
+### Next Phase
+
+Per [roadmap.md](./roadmap.md):
+- Security scanning in CI
+- Automated dependency upgrades
+- Phase 2 monetization (Stripe, Kinescope DRM, reviews, analytics)
+
+---
+
 ## 2026-05-05 — Progress tracking: 15s heartbeat, circuit breaker, checkpoints
 
 ### Completed

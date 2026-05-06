@@ -8,7 +8,6 @@ HTTPS-driven tests that exercise a deployed backend (API Gateway + Lambda + Post
 
 Every test creates state through the public API, asserts on the API responses, and deletes its state at teardown. Lesson and course cleanup happens via `DELETE /courses/{id}` (course delete cascades to lessons). S3 objects from upload-url tests are removed via boto3 in a session-end safety net (warn-only, never fails CI).
 
-See [`integration_testing_strategy_e5a09a54.plan.md`](../../.cursor/plans/integration_testing_strategy_e5a09a54.plan.md) for the full plan.
 
 ## Running locally
 
@@ -122,6 +121,7 @@ SKIP_JWT=1 ./scripts/run-local-integration-tests.sh
 | `LOCAL_COGNITO_USERNAME` | `ci-rds-verify@noreply.local` | No | Username for the CI test user |
 | `AWS_REGION` | `eu-west-1` | No | AWS region for all API calls |
 | `SKIP_JWT` | — | No | Set to `1` to skip JWT minting (auth tests skip) |
+| `SKIP_SLOW_S3_TESTS` | — | No | Set to `1` to skip S3-heavy tests (faster local runs) |
 
 ### What the script does
 
@@ -151,11 +151,21 @@ The HTTP test calls themselves only need **`INTEGRATION_COGNITO_JWT`** when rout
 
 GitHub Deploy workflow **Integration HTTP tests** attaches **`environment: dev`**. Resolve stack outputs against **streammycourse-api** and **StreamMyCourse-Video-dev**, then mint **`INTEGRATION_COGNITO_JWT`** exactly like **`verify-rds-reusable.yml`**: **`StreamMyCourse-Auth-dev`** outputs, **`ADMIN_USER_PASSWORD_AUTH`**, **`TeacherUserPoolClientId`**.
 
+**3-Principal CI Matrix:** The CI runs tests against three distinct Cognito principals to validate authorization boundaries:
+
+| Principal | Env Var | Role | Typical Test Files |
+|-----------|---------|------|-------------------|
+| Primary Teacher | `INTEGRATION_COGNITO_JWT` | Course owner, full mutating access | `test_courses.py`, `test_publish.py`, `test_lesson_ordering.py` |
+| Alt Teacher | `INTEGRATION_COGNITO_JWT_ALT` | Second teacher (cross-user access control) | `test_access_control.py` |
+| Student | `INTEGRATION_COGNITO_JWT_STUDENT` | Enrolled student (limited read/playback) | `test_enrollment.py`, `test_student_permissions_allowed.py`, `test_student_permissions_denials.py`, `test_progress.py`, `test_playback_auth.py` |
+
 **On GitHub Environment `dev`** (reuse for both Integration HTTP tests and Verify dev RDS):
 
 - **Secret** `COGNITO_RDS_VERIFY_TEST_PASSWORD`
 - **Variable** `COGNITO_RDS_VERIFY_TEST_USERNAME` (optional; defaults to `ci-rds-verify@noreply.local`)
 - **Secret** `COGNITO_RDS_VERIFY_JWT` (optional fallback if minting fails)
+
+**For multi-principal tests**, the same user pool credentials can mint tokens for different test users (configured in the Cognito pool) via `INTEGRATION_COGNITO_JWT_ALT` and `INTEGRATION_COGNITO_JWT_STUDENT`.
 
 **OIDC:** The Configure AWS Credentials step assumes the **repository** IAM role via job output **`resolve-oidc-deploy-role`** (pins **`vars.AWS_DEPLOY_ROLE_ARN`** in a job without `environment:`) so **`environment: dev`** does not shadow the deploy-role variable.
 
@@ -175,13 +185,26 @@ Focused checks for catalog round-trips (create/read/update, lesson FK). Same fix
 
 ```
 tests/integration/
-  conftest.py            -- fixtures (api, http_client, course_factory, lesson_factory) + session safety net
+  conftest.py                       -- fixtures (api, http_client, course_factory, lesson_factory) + session safety net
   helpers/
-    api.py               -- ApiClient wrapping httpx.Client with one method per route
-    factories.py         -- course/lesson factory builders + TEST_TITLE_PREFIX
-    cleanup.py           -- HTTP + S3 safety-net cleanup utilities
-  test_auth_gateway.py   -- `/users/me`, CORS preflight, POST /courses vs Cognito (optional JWT)
-  test_*.py              -- one module per scenario group (S1-S5 in the plan)
+    api.py                          -- ApiClient wrapping httpx.Client with one method per route
+  test_access_control.py            -- cross-teacher access restrictions (owner vs non-owner)
+  test_auth_gateway.py              -- `/users/me`, CORS preflight, POST /courses vs Cognito (optional JWT)
+  test_bootstrap_edges.py           -- cold-start and initialization edge cases
+  test_courses.py                   -- course CRUD operations
+  test_course_thumbnail.py          -- thumbnail upload and retrieval
+  test_enrollment.py                -- student enrollment flows
+  test_instructor_dashboard.py      -- instructor analytics and dashboard endpoints
+  test_lesson_ordering.py           -- lesson sequence management
+  test_playback_auth.py             -- video playback authorization (teacher + student principals)
+  test_playback_upload.py           -- video upload and processing
+  test_progress.py                  -- student progress tracking
+  test_publish.py                   -- course publish/unpublish lifecycle
+  test_rds_path.py                  -- catalog database round-trips (also used for Verify RDS)
+  test_s3_cleanup.py                -- S3 object lifecycle and cleanup verification
+  test_smoke.py                     -- basic connectivity and health checks
+  test_student_permissions_allowed.py -- student-positive authorization tests
+  test_student_permissions_denials.py -- student-negative authorization tests
 ```
 
 ## Cleanup contract

@@ -41,12 +41,18 @@ def test_users_me_contract_matches_auth_deployment(api: ApiClient) -> None:
         pytest.fail(f"Unexpected GET /users/me status {resp.status_code}: {resp.text}")
 
 
-@pytest.mark.skipif(
-    not os.environ.get("INTEGRATION_COGNITO_JWT", "").strip(),
-    reason="Set INTEGRATION_COGNITO_JWT to an ID or access JWT for Cognito-backed environments.",
-)
 def test_users_me_with_bearer_returns_profile_when_enforced(api: ApiClient) -> None:
-    token = os.environ["INTEGRATION_COGNITO_JWT"].strip()
+    """Test that /users/me returns profile when authenticated with a valid JWT.
+
+    This test requires INTEGRATION_COGNITO_JWT to be set. If not set, the test
+    will fail rather than skip, ensuring the auth flow is properly tested.
+    """
+    token = os.environ.get("INTEGRATION_COGNITO_JWT", "").strip()
+    if not token:
+        pytest.fail(
+            "INTEGRATION_COGNITO_JWT environment variable is required for this test. "
+            "Set it to a valid Cognito ID or access token for Cognito-backed environments."
+        )
     resp = api.get_users_me(headers={"Authorization": f"Bearer {token}"})
     assert resp.status_code == 200, resp.text
     data = resp.json()

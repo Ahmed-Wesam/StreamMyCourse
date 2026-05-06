@@ -5,6 +5,8 @@ from __future__ import annotations
 
 import os
 
+import pytest
+
 from helpers.api import ApiClient
 
 
@@ -98,30 +100,28 @@ def test_json_array_body_returns_400(api: ApiClient):
 # --- 400 missing required fields on /upload-url --------------------------------
 
 
-def test_upload_url_missing_course_id_returns_400(api: ApiClient, lesson_factory, course_factory):
-    # Create a real course and lesson so we have valid IDs
+@pytest.mark.parametrize("missing_field", ["courseId", "lessonId"])
+def test_upload_url_missing_required_field_returns_400(api, course_factory, lesson_factory, missing_field):
+    """Parameterized test for missing courseId or lessonId on /upload-url."""
+    # Create real resources to get valid IDs for the field that IS provided
     course = course_factory()
     lesson = lesson_factory(course.course_id)
-    # Omit courseId but include lessonId to test validation
-    resp = api.raw.post(
-        "/upload-url",
-        json={"lessonId": lesson.lesson_id, "filename": "x.mp4", "contentType": "video/mp4"},
-    )
+
+    payload = {"filename": "x.mp4", "contentType": "video/mp4"}
+    if missing_field == "courseId":
+        # Missing courseId, provide valid lessonId
+        payload["lessonId"] = lesson.lesson_id
+    else:
+        # Missing lessonId, provide valid courseId
+        payload["courseId"] = course.course_id
+
+    resp = api.raw.post("/upload-url", json=payload)
     assert resp.status_code == 400
     body = resp.json()
     assert body.get("code") == "bad_request"
-    assert "courseId" in body.get("message", "")
+    # Check for field name in message (case-insensitive check for lessonId variants)
+    message = body.get("message", "").lower()
+    field_key = missing_field.lower()
+    assert field_key in message or missing_field in body.get("message", "")
 
 
-def test_upload_url_missing_lesson_id_returns_400(api: ApiClient, course_factory):
-    # Create a real course so we have a valid courseId
-    course = course_factory()
-    # Omit lessonId but include courseId to test validation
-    resp = api.raw.post(
-        "/upload-url",
-        json={"courseId": course.course_id, "filename": "x.mp4", "contentType": "video/mp4"},
-    )
-    assert resp.status_code == 400
-    body = resp.json()
-    assert body.get("code") == "bad_request"
-    assert "lessonId" in body.get("message", "")

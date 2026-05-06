@@ -138,11 +138,76 @@ def test_full_publish_flow_appears_in_catalog(
         assert "X-Amz-Signature" in url
 
 
-@pytest.mark.skipif(
-    not os.environ.get("INTEGRATION_COGNITO_JWT", "").strip(),
-    reason="Set INTEGRATION_COGNITO_JWT to test draft course visibility (requires auth to distinguish anonymous users)",
-)
+def test_double_publish_is_idempotent(
+    api: ApiClient, course_factory, lesson_factory
+):
+    """Publishing an already-published course returns 200 (idempotent)."""
+    course = course_factory()
+    lesson = lesson_factory(course.course_id)
+
+    # Get upload URL to set videoKey
+    upload_resp = api.get_upload_url(course_id=course.course_id, lesson_id=lesson.lesson_id)
+    assert upload_resp.status_code == 200
+
+    # Mark video ready
+    ready_resp = api.mark_video_ready(course.course_id, lesson.lesson_id)
+    assert ready_resp.status_code == 200
+
+    # First publish should succeed
+    publish_resp = api.publish_course(course.course_id)
+    assert publish_resp.status_code == 200
+    assert publish_resp.json()["status"] == "PUBLISHED"
+
+    # Second publish should also succeed (idempotent)
+    second_publish = api.publish_course(course.course_id)
+    assert second_publish.status_code == 200
+    assert second_publish.json()["status"] == "PUBLISHED"
+
+
+def test_publish_with_only_pending_lessons_fails(
+    api: ApiClient, course_factory, lesson_factory
+):
+    """All lessons pending (none ready) returns 400."""
+    course = course_factory()
+
+    # Create multiple lessons, all pending (no video uploaded/ready)
+    lesson_factory(course.course_id, label="pending-lesson-1")
+    lesson_factory(course.course_id, label="pending-lesson-2")
+    lesson_factory(course.course_id, label="pending-lesson-3")
+
+    resp = api.publish_course(course.course_id)
+    assert resp.status_code == 400
+    body = resp.json()
+    assert body.get("code") == "bad_request"
+    assert "ready" in body.get("message", "").lower()
+
+
+def test_video_ready_with_wrong_lesson_returns_404(
+    api: ApiClient, course_factory, lesson_factory
+):
+    """video-ready for lesson in wrong course returns 404."""
+    course_a = course_factory(label="course-a")
+    course_b = course_factory(label="course-b")
+
+    # Create lesson in course A
+    lesson_in_a = lesson_factory(course_a.course_id, label="lesson-in-a")
+
+    # Get upload URL for the lesson in course A
+    upload_resp = api.get_upload_url(course_id=course_a.course_id, lesson_id=lesson_in_a.lesson_id)
+    assert upload_resp.status_code == 200
+
+    # Try to mark video ready using course B's ID with lesson A's ID
+    resp = api.mark_video_ready(course_b.course_id, lesson_in_a.lesson_id)
+    assert resp.status_code == 404
+    assert resp.json().get("code") == "not_found"
+
+
 def test_anonymous_get_draft_course_returns_404(api: ApiClient, course_factory):
+    """Anonymous users should receive 404 when accessing draft courses.
+
+    Uses an anonymous httpx client (no auth headers) to verify that
+    draft course endpoints return 404 for unauthenticated requests.
+    """
     course = course_factory()
     base = str(api.raw.base_url).rstrip("/")
     with httpx.Client(base_url=base, timeout=30.0) as anon:
