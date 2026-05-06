@@ -11,15 +11,30 @@ from __future__ import annotations
 
 import logging
 import os
+import re
+import sys
 from collections.abc import Mapping
 from dataclasses import dataclass
-from typing import Any, List
+from typing import Any, List, Tuple
 
 import boto3
 import httpx
 from botocore.exceptions import ClientError
 
 logger = logging.getLogger(__name__)
+
+
+def log_integration_cleanup_error(message: str) -> None:
+    """Log at ERROR and emit a GitHub Actions ``::error::`` so skipped S3 cleanup surfaces in CI."""
+    logger.error("integration_cleanup: %s", message)
+    if os.environ.get("GITHUB_ACTIONS", "").lower() == "true":
+        safe = (
+            message.replace("%", "%25")
+            .replace("\r", "%0D")
+            .replace("\n", "%0A")
+        )
+        sys.stderr.write(f"::error::integration_cleanup: {safe}\n")
+        sys.stderr.flush()
 
 
 @dataclass
@@ -52,43 +67,53 @@ class CleanupReport:
         return "\n".join(lines)
 
 
+_UUID_COURSE_ID = re.compile(
+    r"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+)
+
+
 def delete_prefixed_teacher_courses_via_http(
     *,
     api_base_url: str,
     auth_token: str,
     title_prefix: str,
     timeout_s: float = 30.0,
-) -> List[str]:
+) -> Tuple[List[str], List[str]]:
     """DELETE every course owned by the token user whose title starts with *title_prefix*
     (``GET /courses/mine``, then ``DELETE /courses/{id}``). No direct DB access.
 
-    Returns ids for which DELETE returned HTTP 200 (or 404 — already absent)."""
+    Returns ``(deleted_ids, matched_ids)`` where *matched_ids* are every course id whose
+    title matched the prefix (used to scope S3 prefix cleanup). *deleted_ids* are ids for
+    which DELETE returned HTTP 200 (or 404 — already absent)."""
     base = api_base_url.strip().rstrip("/")
     token = auth_token.strip()
     if not base or not token:
-        return []
+        return [], []
 
     deleted_ids: List[str] = []
+    matched_ids: List[str] = []
     headers = {"Authorization": f"Bearer {token}"}
     with httpx.Client(base_url=base, headers=headers, timeout=timeout_s) as client:
         resp = client.get("/courses/mine")
         if resp.status_code != 200:
-            logger.warning(
-                "API safety-net list failed: GET /courses/mine -> %s %s",
-                resp.status_code,
-                (resp.text or "")[:500],
+            log_integration_cleanup_error(
+                f"API safety-net list failed: GET /courses/mine -> {resp.status_code} "
+                f"{(resp.text or '')[:500]!r}; no S3 prefix cleanup will run for matched courses."
             )
-            return []
+            return [], []
         try:
             body: Any = resp.json()
         except Exception as e:
-            logger.warning("API safety-net list: invalid JSON body: %s", e)
-            return []
-        if not isinstance(body, list):
-            logger.warning(
-                "API safety-net list: expected a JSON array, got %s", type(body).__name__
+            log_integration_cleanup_error(
+                f"API safety-net list: invalid JSON body ({e!r}); no S3 prefix cleanup will run."
             )
-            return []
+            return [], []
+        if not isinstance(body, list):
+            log_integration_cleanup_error(
+                "API safety-net list: expected a JSON array, got "
+                f"{type(body).__name__}; no S3 prefix cleanup will run."
+            )
+            return [], []
 
         for item in body:
             if not isinstance(item, Mapping):
@@ -102,16 +127,89 @@ def delete_prefixed_teacher_courses_via_http(
             course_id = str(raw_id).strip()
             if not course_id:
                 continue
+            matched_ids.append(course_id)
             del_resp = client.delete(f"/courses/{course_id}")
             if del_resp.status_code in (200, 404):
                 deleted_ids.append(course_id)
             else:
-                logger.warning(
-                    "API safety-net delete failed for %s: HTTP %s",
-                    course_id,
-                    del_resp.status_code,
+                log_integration_cleanup_error(
+                    f"API safety-net DELETE /courses/{course_id} failed with HTTP "
+                    f"{del_resp.status_code}; catalog row may remain and S3 prefix cleanup still runs."
                 )
-    return deleted_ids
+    return deleted_ids, matched_ids
+
+
+def _assert_dev_integration_video_bucket(bucket: str) -> None:
+    """Raise if *bucket* is not the known dev integration video-bucket name pattern."""
+    if not bucket:
+        raise RuntimeError("REFUSING: empty bucket name")
+
+    dev_pattern = re.compile(r"^streammycourse-video-dev-.*videobucket")
+
+    if "-prod-" in bucket:
+        raise RuntimeError(
+            f"REFUSING to operate on bucket '{bucket}': "
+            "This appears to be a prod bucket. "
+            "Integration cleanup must not run against production."
+        )
+
+    if dev_pattern.match(bucket):
+        return
+
+    raise RuntimeError(
+        f"REFUSING to operate on bucket '{bucket}': "
+        "Bucket must match 'streammycourse-video-dev-*videobucket*'. "
+        "Integration S3 cleanup is only for the non-prod dev video bucket."
+    )
+
+
+def delete_all_objects_under_prefix(bucket: str, *, region: str, prefix: str) -> List[str]:
+    """List and delete every object whose key starts with *prefix* (prefix must be non-empty)."""
+    if not bucket or not prefix or ".." in prefix or prefix.startswith("/"):
+        return []
+    s3 = boto3.client("s3", region_name=region)
+    deleted_keys: List[str] = []
+    continuation: str | None = None
+    while True:
+        kwargs: dict[str, Any] = {"Bucket": bucket, "Prefix": prefix}
+        if continuation:
+            kwargs["ContinuationToken"] = continuation
+        resp = s3.list_objects_v2(**kwargs)
+        contents = resp.get("Contents", []) or []
+        if contents:
+            objects = [{"Key": obj["Key"]} for obj in contents]
+            s3.delete_objects(Bucket=bucket, Delete={"Objects": objects, "Quiet": True})
+            deleted_keys.extend(o["Key"] for o in objects)
+        if not resp.get("IsTruncated"):
+            break
+        continuation = resp.get("NextContinuationToken")
+    return deleted_keys
+
+
+def delete_orphan_media_for_course_prefixes(
+    bucket: str, *, region: str, course_ids: List[str]
+) -> List[str]:
+    """Delete S3 objects only under ``{courseId}/`` for each UUID in *course_ids*.
+
+    Used after the HTTP safety net so shared dev buckets keep non-test objects.
+    """
+    if not course_ids:
+        return []
+    _assert_dev_integration_video_bucket(bucket)
+    deleted: List[str] = []
+    skipped_non_uuid: List[str] = []
+    for raw in course_ids:
+        cid = (raw or "").strip()
+        if not _UUID_COURSE_ID.match(cid):
+            skipped_non_uuid.append(repr(raw))
+            continue
+        deleted.extend(delete_all_objects_under_prefix(bucket, region=region, prefix=f"{cid}/"))
+    if skipped_non_uuid:
+        log_integration_cleanup_error(
+            "S3 safety-net refused to delete objects for non-UUID course id(s) "
+            f"(cannot use course-scoped S3 prefix): {', '.join(skipped_non_uuid)}"
+        )
+    return deleted
 
 
 def s3_object_exists(bucket: str, key: str, *, region: str) -> bool:
@@ -131,11 +229,11 @@ def s3_object_exists(bucket: str, key: str, *, region: str) -> bool:
 
 
 def empty_entire_bucket(bucket: str, *, region: str) -> List[str]:
-    """Delete every object in the integration-test video bucket (no prefix filter).
+    """Delete every object in the bucket (no prefix filter).
 
-    CI targets non-prod **dev** buckets. There are no real users on these tiers,
-    so a full-bucket sweep is acceptable after course-scoped S3 keys
-    (`{courseId}/lessons/...`, `{courseId}/thumbnail/...`).
+    .. warning::
+        **Destructive.** Session cleanup uses :func:`delete_orphan_media_for_course_prefixes`
+        instead so shared dev buckets are not wiped. Keep this for rare manual recovery only.
 
     SAFETY: Only empties buckets that match the StreamMyCourse **dev** video-bucket naming.
     **Production** is always refused.
@@ -143,25 +241,10 @@ def empty_entire_bucket(bucket: str, *, region: str) -> List[str]:
     if not bucket:
         return []
 
-    import re
-
-    dev_pattern = re.compile(r"^streammycourse-video-dev-.*videobucket")
-
-    if "-prod-" in bucket:
-        raise RuntimeError(
-            f"REFUSING to empty bucket '{bucket}': "
-            "This appears to be a prod bucket. "
-            "Full-bucket cleanup must not run against production."
-        )
-
-    if dev_pattern.match(bucket):
-        logger.info("Confirmed dev video bucket pattern. Proceeding with cleanup: %s", bucket)
-    else:
-        raise RuntimeError(
-            f"REFUSING to empty bucket '{bucket}': "
-            "Bucket must match 'streammycourse-video-dev-*videobucket*'. "
-            "Full-bucket cleanup is only for non-prod integration test buckets."
-        )
+    _assert_dev_integration_video_bucket(bucket)
+    logger.warning(
+        "empty_entire_bucket: full-bucket delete on %s (prefer scoped cleanup)", bucket
+    )
     s3 = boto3.client("s3", region_name=region)
     deleted_keys: List[str] = []
     continuation: str | None = None
@@ -182,9 +265,9 @@ def empty_entire_bucket(bucket: str, *, region: str) -> List[str]:
 
 
 def empty_uploads_prefix(bucket: str, *, region: str, prefix: str = "uploads/") -> List[str]:
-    """Deprecated: use ``empty_entire_bucket``. Kept for callers that still pass a prefix."""
-    _ = prefix
-    return empty_entire_bucket(bucket, region=region)
+    """Delete only objects under *prefix* (default ``uploads/``) in the dev integration bucket."""
+    _assert_dev_integration_video_bucket(bucket)
+    return delete_all_objects_under_prefix(bucket, region=region, prefix=prefix)
 
 
 def run_safety_net(
@@ -199,25 +282,36 @@ def run_safety_net(
     api_base = os.environ.get("INTEGRATION_API_BASE_URL", "").strip().rstrip("/")
     jwt = os.environ.get("INTEGRATION_COGNITO_JWT", "").strip()
 
+    matched_course_ids: List[str] = []
     if api_base and jwt:
         try:
-            courses_api = delete_prefixed_teacher_courses_via_http(
+            courses_api, matched_course_ids = delete_prefixed_teacher_courses_via_http(
                 api_base_url=api_base,
                 auth_token=jwt,
                 title_prefix=title_prefix,
             )
         except Exception as e:
-            logger.warning("HTTP safety-net course cleanup failed: %s", e)
+            log_integration_cleanup_error(
+                f"HTTP safety-net course cleanup raised ({e!r}); "
+                "matched course ids unknown — no scoped S3 prefix cleanup."
+            )
+            courses_api = []
+            matched_course_ids = []
     else:
-        logger.warning(
+        log_integration_cleanup_error(
             "INTEGRATION_API_BASE_URL and INTEGRATION_COGNITO_JWT must both be set "
-            "for session course cleanup; skipping API sweep."
+            f"for session cleanup (bucket={bucket!r} is configured); "
+            "skipping API sweep and scoped S3 deletes — leftover test objects may remain."
         )
+        courses_api = []
+        matched_course_ids = []
 
     try:
-        leftover_objects = empty_entire_bucket(bucket, region=region)
+        leftover_objects = delete_orphan_media_for_course_prefixes(
+            bucket, region=region, course_ids=matched_course_ids
+        )
     except Exception as e:
-        logger.warning("S3 safety-net cleanup failed: %s", e)
+        log_integration_cleanup_error(f"S3 safety-net cleanup failed: {e!r}")
     return CleanupReport(
         courses_removed_via_api=courses_api,
         leftover_objects=leftover_objects,
