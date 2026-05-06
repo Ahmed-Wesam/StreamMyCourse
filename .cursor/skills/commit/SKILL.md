@@ -1,6 +1,6 @@
 ---
 name: commit
-description: Commit local changes in small logical groupings with conventional commit messages. Use when the user asks to commit changes, save work, or create commits from modified files. Before committing, run CI-parity checks from ci.yml (frontend, lambda, cloudformation, actionlint, lambda unit tests) except integration-tests-static. After committing, follow /update-docs (design.md, roadmap.md, ImplementationHistory.md) when the session warrants it. Does not push unless the user explicitly asks to push.
+description: Commit local changes in small logical groupings with conventional commit messages. Use when the user asks to commit changes, save work, or create commits from modified files. Before committing, run CI-parity checks from ci.yml (frontend, lambda, cloudformation, actionlint, lambda unit tests, integration-tests-static) plus local HTTPS integration against dev when the diff is not doc-only. After committing, follow /update-docs (design.md, roadmap.md, ImplementationHistory.md) when the session warrants it. Does not push unless the user explicitly asks to push.
 disable-model-invocation: true
 ---
 
@@ -13,7 +13,7 @@ Commit unstaged and staged changes as small, logical commits using conventional 
 ## Workflow
 
 1. **Analyze changes** - Check git status and diff to understand what changed
-2. **Run pre-deploy checks (CI parity)** - Run the same gates as GitHub Actions **CI** (see [`.github/workflows/ci.yml`](../../../.github/workflows/ci.yml)) for every job. That means: **frontend**, **lambda**, **cloudformation**, **workflow-lint** (actionlint on `.github/workflows`), **lambda-unit-tests**, and **local-integration-tests** (if `.env.local` with `LOCAL_COGNITO_PASSWORD` exists). Fix failures before committing. Skip individual commands that clearly do not apply to the touched files only when it saves time and risk is low (e.g. skip frontend installs if the diff is doc-only); otherwise run the full set.
+2. **Run pre-deploy checks (CI parity)** - Run the same gates as GitHub Actions **CI** (see [`.github/workflows/ci.yml`](../../../.github/workflows/ci.yml)) for every job. That means: **frontend**, **lambda**, **cloudformation**, **workflow-lint** (actionlint on `.github/workflows`), **lambda-unit-tests**, **integration-tests-static**, and **local HTTPS integration against dev** whenever Step 2’s **Local HTTPS integration** subsection applies (inspect **`.env.local`** first—do not commit around a missing **`LOCAL_COGNITO_PASSWORD`** when that subsection applies). Fix failures before committing. Skip individual commands that clearly do not apply to the touched files only when it saves time and risk is low (e.g. skip frontend installs if the diff is doc-only); otherwise run the full set.
 3. **Group logically** - Organize files into related groups (by feature, module, or change type)
 4. **Stage and commit each group** - Create focused commits with conventional commit messages
 5. **Update project docs (`/update-docs`)** - After commits, follow [`.cursor/skills/update-docs/SKILL.md`](../update-docs/SKILL.md): refresh `design.md`, `roadmap.md`, and `ImplementationHistory.md` when the session’s changes warrant it (features, APIs, infra, CI/CD, security, shipped behavior). If you edit those files, commit them (e.g. `docs: sync project docs` or a scoped `docs(...)`). Skip when nothing material changed (e.g. typo-only or the three files were already the only commits).
@@ -31,11 +31,11 @@ git diff --stat
 git diff HEAD
 ```
 
-### Step 2: Pre-deploy checks (matches CI, plus local integration tests when available)
+### Step 2: Pre-deploy checks (matches CI, plus local HTTPS integration when warranted)
 
-Run from the **repository root** unless noted. Mirrors [`.github/workflows/ci.yml`](../../../.github/workflows/ci.yml) jobs **`frontend`**, **`lambda`**, **`cloudformation`**, **`workflow-lint`**, **`lambda-unit-tests`**, and **`integration-tests-static`**. Additionally runs **local integration tests** against the deployed dev environment if credentials are available.
+Run from the **repository root** unless noted. Mirrors [`.github/workflows/ci.yml`](../../../.github/workflows/ci.yml) jobs **`frontend`**, **`lambda`**, **`cloudformation`**, **`workflow-lint`**, **`lambda-unit-tests`**, and **`integration-tests-static`**.
 
-**Prerequisites:** Node 20+, Python 3.11+, `pip` available, **bash** (for actionlint install script; Git Bash on Windows is fine).
+**Prerequisites:** Node 20+, Python 3.11+, `pip` available, **bash** (for actionlint install script, **`run-local-integration-tests.sh`**, and the actionlint downloader; Git Bash on Windows is fine).
 
 **Frontend** (same as CI job `frontend`; working directory `frontend/`):
 
@@ -110,15 +110,15 @@ python -c "import glob, py_compile; [py_compile.compile(p, doraise=True) for p i
 cd tests/integration && python -m pytest --collect-only -q
 ```
 
-**Local integration tests against dev** (run if credentials available):
+**Local HTTPS integration tests (deployed dev)** — Run after static integration checks when the pending commit touches **`frontend/`**, **`infrastructure/`**, **`tests/`**, **`.github/workflows/`**, **`scripts/`** used at deploy or runtime, or API- or auth-related behavior—**omit** for typo-only or pure markdown under `docs/`, `plans/`, or root docs that do not change commands or contracts.
 
-If `.env.local` exists with `LOCAL_COGNITO_PASSWORD` set, run the full HTTPS integration test suite against the deployed dev environment:
+When this section applies: **open** repo-root **`.env.local`** and confirm it defines a non-empty **`LOCAL_COGNITO_PASSWORD`** (do not log or echo the value). If the file or assignment is missing, **stop**; tell the user to add **`LOCAL_COGNITO_PASSWORD`** per **`.env.local.example`** and [`tests/integration/README.md`](../../../tests/integration/README.md). **Do not commit** until configured or the user explicitly rescopes to a change that does not warrant this run. Requires **bash**, **AWS CLI**, and dev stacks deployed.
 
 ```bash
 ./scripts/run-local-integration-tests.sh -q
 ```
 
-This ensures the changes work end-to-end against the real AWS dev stack (API Gateway + Lambda + PostgreSQL + S3 + Cognito). If `.env.local` is not present or lacks the password, skip this step (the CI will catch integration issues on push to main).
+If the script exits non-zero, **do not commit** until the failure is resolved or the user explicitly waives with a documented reason. **Do not** treat “CI on `main` will catch it” as permission to skip this check when the diff warrants running it here.
 
 **IAM policy JSON / GitHub deploy stack (before `git push`):** If the diff touches [`infrastructure/iam-policy-github-deploy-backend.json`](../../../infrastructure/iam-policy-github-deploy-backend.json), [`infrastructure/iam-policy-github-deploy-web.json`](../../../infrastructure/iam-policy-github-deploy-web.json), [`infrastructure/templates/github-deploy-role-stack.yaml`](../../../infrastructure/templates/github-deploy-role-stack.yaml), or [`infrastructure/iam-trust-github-oidc.json`](../../../infrastructure/iam-trust-github-oidc.json), or adds/changes workflow steps that need **new AWS permissions**, run locally (admin credentials) **before** pushing so GitHub Actions does not fail mid-**Deploy**:
 

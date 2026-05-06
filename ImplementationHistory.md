@@ -16,6 +16,15 @@
 
 ---
 
+## 2026-05-06 — Agent tooling: `/commit` local HTTPS gate
+
+### Completed
+
+- [x] **Skills** — [`.cursor/skills/commit/SKILL.md`](.cursor/skills/commit/SKILL.md) and [`.cursor/skills/review-and-commit/SKILL.md`](.cursor/skills/review-and-commit/SKILL.md): when material changes warrant [`./scripts/run-local-integration-tests.sh`](scripts/run-local-integration-tests.sh), verify **`.env.local`** at the repo root defines **`LOCAL_COGNITO_PASSWORD`** (see **`.env.local.example`**) before running (no silent skip on missing credentials); narrow omit only for typo-only / non-runtime markdown paths per skill text.
+- [x] **`AGENTS.md`** — “Before merging” aligned with that expectation (local HTTPS against dev).
+
+---
+
 ## 2026-05-05 — RDS: lesson_progress DDL folded into 001_initial_schema
 
 ### Completed
