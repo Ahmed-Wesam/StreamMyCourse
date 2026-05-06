@@ -1,7 +1,8 @@
 """Safety tests for integration test cleanup functions.
 
-These tests verify that empty_entire_bucket() only targets the dev video-bucket
-pattern and refuses production and unknown names.
+These tests verify that destructive S3 helpers only target the dev video-bucket
+pattern and refuse production and unknown names, and that the session safety net
+scopes S3 deletes to test course prefixes.
 """
 
 from __future__ import annotations
@@ -84,12 +85,22 @@ class TestApiCourseCleanupSafetyNet:
                 return httpx.Response(
                     200,
                     json=[
-                        {"id": "c-keep", "title": "Production title"},
-                        {"id": "c-wipe", "title": "integration-test-leftover"},
+                        {
+                            "id": "aaaaaaaa-bbbb-4ccc-dddd-eeeeeeeeeeee",
+                            "title": "Production title",
+                        },
+                        {
+                            "id": "11111111-2222-4333-8444-555555555555",
+                            "title": "integration-test-leftover",
+                        },
                     ],
                 )
-            if request.method == "DELETE" and "/courses/c-wipe" in str(request.url.path):
-                return httpx.Response(200, json={"id": "c-wipe", "deleted": True})
+            if request.method == "DELETE" and "/courses/11111111-2222-4333-8444-555555555555" in str(
+                request.url.path
+            ):
+                return httpx.Response(
+                    200, json={"id": "11111111-2222-4333-8444-555555555555", "deleted": True}
+                )
             return httpx.Response(404, text="unexpected")
 
         transport = httpx.MockTransport(handler)
@@ -99,13 +110,14 @@ class TestApiCourseCleanupSafetyNet:
             return RealHttpxClient(transport=transport, **kwargs)
 
         with mock.patch("helpers.cleanup.httpx.Client", side_effect=client_factory):
-            deleted = delete_prefixed_teacher_courses_via_http(
+            deleted, matched = delete_prefixed_teacher_courses_via_http(
                 api_base_url="https://api.example/dev",
                 auth_token="tok",
                 title_prefix="integration-test-",
             )
 
-        assert deleted == ["c-wipe"]
+        assert deleted == ["11111111-2222-4333-8444-555555555555"]
+        assert matched == ["11111111-2222-4333-8444-555555555555"]
 
     def test_run_safety_net_calls_api_and_s3(self, monkeypatch: pytest.MonkeyPatch) -> None:
         import unittest.mock as mock
@@ -113,11 +125,15 @@ class TestApiCourseCleanupSafetyNet:
         monkeypatch.setenv("INTEGRATION_API_BASE_URL", "https://api.example/dev")
         monkeypatch.setenv("INTEGRATION_COGNITO_JWT", "jwt")
 
+        uid = "aaaaaaaa-bbbb-4ccc-dddd-000000000001"
         with mock.patch(
             "helpers.cleanup.delete_prefixed_teacher_courses_via_http",
-            return_value=["a1"],
+            return_value=(["a1"], [uid]),
         ) as api_fn:
-            with mock.patch("helpers.cleanup.empty_entire_bucket", return_value=["k1"]) as s3_fn:
+            with mock.patch(
+                "helpers.cleanup.delete_orphan_media_for_course_prefixes",
+                return_value=["k1"],
+            ) as s3_fn:
                 report = run_safety_net(
                     bucket="streammycourse-video-dev-videobucket-abc123",
                     region="eu-west-1",
@@ -125,6 +141,10 @@ class TestApiCourseCleanupSafetyNet:
                 )
 
         api_fn.assert_called_once()
-        s3_fn.assert_called_once()
+        s3_fn.assert_called_once_with(
+            "streammycourse-video-dev-videobucket-abc123",
+            region="eu-west-1",
+            course_ids=[uid],
+        )
         assert report.courses_removed_via_api == ["a1"]
         assert report.leftover_objects == ["k1"]

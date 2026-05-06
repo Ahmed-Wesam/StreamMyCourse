@@ -22,7 +22,7 @@ from helpers.factories import (
     build_course_factory,
     build_lesson_factory,
 )
-from helpers.cleanup import run_safety_net
+from helpers.cleanup import log_integration_cleanup_error, run_safety_net
 
 
 def _required_env(name: str) -> str:
@@ -114,11 +114,12 @@ def lesson_factory(api: ApiClient):
 
 
 def pytest_sessionfinish(session: pytest.Session, exitstatus: int) -> None:
-    """Sweep test-prefixed leftover courses (HTTP) and objects in the video bucket.
+    """Sweep test-prefixed leftover courses (HTTP) and their S3 prefixes only.
 
     Courses: ``GET /courses/mine`` + ``DELETE /courses/{id}`` when
     ``INTEGRATION_API_BASE_URL`` and ``INTEGRATION_COGNITO_JWT`` are set.
-    S3: full-bucket sweep for the configured dev video bucket only. Never fails CI."""
+    S3: deletes objects only under ``{courseId}/`` for matched integration-test
+    courses (shared dev buckets are not fully emptied). Never fails CI."""
     bucket = os.environ.get("INTEGRATION_VIDEO_BUCKET", "").strip()
     region = os.environ.get("INTEGRATION_AWS_REGION", "eu-west-1")
     if not bucket:
@@ -131,7 +132,7 @@ def pytest_sessionfinish(session: pytest.Session, exitstatus: int) -> None:
             title_prefix=TEST_TITLE_PREFIX,
         )
     except Exception as e:  # broad: never let cleanup raise from a session hook
-        sys.stderr.write(f"[integration] safety-net cleanup raised: {e}\n")
+        log_integration_cleanup_error(f"session safety-net raised: {e!r}")
         return
 
     summary = report.render_summary()

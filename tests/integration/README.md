@@ -189,8 +189,9 @@ tests/integration/
 - **Per-test cleanup** is the primary path. The `course_factory` fixture registers a finalizer that calls `DELETE /courses/{id}` for every course it created. Lessons are deleted transitively.
 - **Session-end safety net** runs in `pytest_sessionfinish`.
   - **Courses:** lists the CI user's courses with `GET /courses/mine` (requires `INTEGRATION_COGNITO_JWT`) and `DELETE`s any whose title still starts with `integration-test-`. No direct Postgres from the runner.
-  - **S3:** empties **all objects** in the configured **non-prod dev** video bucket only (see **`helpers.cleanup.empty_entire_bucket`**). Prod is always refused.
+  - **S3:** deletes objects only under ``{courseId}/`` for each course whose title matched ``integration-test-`` on that sweep (see **`helpers.cleanup.delete_orphan_media_for_course_prefixes`**). The dev video-bucket name pattern is still enforced; prod is refused. Other teachers' keys in the same bucket are left intact.
   - Findings go to stderr and `$GITHUB_STEP_SUMMARY` when present but **never fail** CI.
+  - If API credentials are missing, the HTTP/S3 safety net cannot run: **`log_integration_cleanup_error`** logs at **ERROR** and emits a GitHub Actions **`::error::`** annotation when **`GITHUB_ACTIONS=true`**, so skipped deletes surface in the workflow log without failing pytest.
 
 ## Writing new tests
 
