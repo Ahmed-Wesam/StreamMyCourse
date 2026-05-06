@@ -95,7 +95,7 @@ Manual upload (local) → S3 (MP4) → Browser <video> (presigned GET; Range-cap
 
 ## 6. Data (MVP)
 
-**RDS PostgreSQL (deployed dev/prod):** Managed **dev** and **prod** APIs use **only** the relational path (`USE_RDS=true`). Schema: [`001_initial_schema.sql`](infrastructure/database/migrations/001_initial_schema.sql) — tables `courses`, `lessons`, `enrollments`, `users` (see [ADR-0008](plans/architecture/adr-0008-dynamodb-to-rds-migration.md)). **DynamoDB catalog tables are deprecated** in these environments and are **not** used for application reads/writes.
+**RDS PostgreSQL (deployed dev/prod):** Managed **dev** and **prod** APIs use **only** the relational path (`USE_RDS=true`). Schema: [`001_initial_schema.sql`](infrastructure/database/migrations/001_initial_schema.sql) — tables `courses`, `lessons`, `enrollments`, `users`, `lesson_progress` (see [ADR-0008](plans/architecture/adr-0008-dynamodb-to-rds-migration.md), [ADR-0010](plans/architecture/adr-0010-lesson-progress-rds.md)). **DynamoDB catalog tables are deprecated** in these environments and are **not** used for application reads/writes.
 
 **Misconfiguration:** When RDS is not wired (missing `RdsStackName` or incomplete DB env), catalog routes return **503** with `code: catalog_unconfigured` (OPTIONS still returns CORS preflight). When `ALLOWED_ORIGINS` is unset or parses to an empty allowlist, the handler returns **503** with `code: cors_misconfigured` and **no** `Access-Control-Allow-*` headers (fail-secure); set `ALLOWED_ORIGINS=*` only for deliberate local/dev tooling. Local UI must call a deployed API or a stack with persistence and CORS env set.
 

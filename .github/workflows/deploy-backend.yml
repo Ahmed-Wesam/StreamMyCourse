@@ -443,7 +443,7 @@ jobs:
         if: success()
         run: |
           echo "## PostgreSQL schema (dev)" >> "$GITHUB_STEP_SUMMARY"
-          echo "Invoked **StreamMyCourse-RdsSchemaApplier-dev** (001_initial_schema.sql via VPC Lambda)." >> "$GITHUB_STEP_SUMMARY"
+          echo "Invoked **StreamMyCourse-RdsSchemaApplier-dev** (bundled \`001_initial_schema.sql\` → schema.sql, includes \`lesson_progress\`, via VPC Lambda)." >> "$GITHUB_STEP_SUMMARY"
 
   deploy-backend-dev:
     name: Backend (dev) — Video + API
@@ -846,7 +846,7 @@ jobs:
         if: success()
         run: |
           echo "## PostgreSQL schema (prod)" >> "$GITHUB_STEP_SUMMARY"
-          echo "Invoked **StreamMyCourse-RdsSchemaApplier-prod** (001_initial_schema.sql via VPC Lambda)." >> "$GITHUB_STEP_SUMMARY"
+          echo "Invoked **StreamMyCourse-RdsSchemaApplier-prod** (bundled \`001_initial_schema.sql\` → schema.sql, includes \`lesson_progress\`, via VPC Lambda)." >> "$GITHUB_STEP_SUMMARY"
 
   deploy-backend-prod:
     name: Backend (prod) — Video + API
