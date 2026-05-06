@@ -129,28 +129,49 @@ class LessonProgressService:
                 code="enrollment_required",
             )
 
-        rows = self._progress_repo.get_progress_for_course(
+        # Get all lessons in the course
+        all_lessons = self._course_repo.list_lessons(course_id)
+
+        # Get user's progress records for this course
+        progress_rows = self._progress_repo.get_progress_for_course(
             user_sub=user_sub,
             course_id=course_id,
         )
 
-        total_lessons = len(rows)
-        completed_count = sum(1 for row in rows if row.completed)
+        # Create lookup dict for progress by lesson_id
+        progress_by_lesson: Dict[str, LessonProgressRow] = {
+            row.lesson_id: row for row in progress_rows
+        }
 
+        # Build progress list for all lessons (merging with progress data)
+        lessons: List[LessonProgressItem] = []
+        completed_count = 0
+
+        for lesson in all_lessons:
+            row = progress_by_lesson.get(lesson.id)
+            if row:
+                item: LessonProgressItem = {
+                    "lessonId": row.lesson_id,
+                    "completed": row.completed,
+                    "lastPositionSec": row.last_position_sec,
+                }
+                if row.completed and row.completed_at:
+                    item["completedAt"] = row.completed_at
+                if row.completed:
+                    completed_count += 1
+            else:
+                # No progress record yet - return default "not started" state
+                item = {
+                    "lessonId": lesson.id,
+                    "completed": False,
+                    "lastPositionSec": 0,
+                }
+            lessons.append(item)
+
+        total_lessons = len(all_lessons)
         percent_complete = 0.0
         if total_lessons > 0:
             percent_complete = round((completed_count / total_lessons) * 100, 2)
-
-        lessons: List[LessonProgressItem] = []
-        for row in rows:
-            item: LessonProgressItem = {
-                "lessonId": row.lesson_id,
-                "completed": row.completed,
-                "lastPositionSec": row.last_position_sec,
-            }
-            if row.completed and row.completed_at:
-                item["completedAt"] = row.completed_at
-            lessons.append(item)
 
         return {
             "courseId": course_id,
