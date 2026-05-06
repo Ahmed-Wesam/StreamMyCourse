@@ -4,6 +4,31 @@
 
 ---
 
+## 2026-05-05 — Progress tracking: 15s heartbeat, circuit breaker, checkpoints
+
+### Completed
+
+- [x] **15-second heartbeat throttle** — Changed from 12s to 15s minimum between progress update attempts; tracks last attempt time (not success time) to prevent failure-induced Lambda spam ([`LessonPlayerPage.tsx`](frontend/src/pages/LessonPlayerPage.tsx)).
+- [x] **Circuit breaker** — After 10 consecutive failures, progress updates stop until page refresh; prevents runaway Lambda costs during outages ([`LessonPlayerPage.tsx`](frontend/src/pages/LessonPlayerPage.tsx)).
+- [x] **Pause checkpoint** — Video `pause` event triggers immediate progress save (ignores 15s throttle, respects circuit breaker) ([`LessonPlayerPage.tsx`](frontend/src/pages/LessonPlayerPage.tsx)).
+- [x] **Visibility checkpoint** — `visibilitychange` to `hidden` triggers immediate save (tab switch / minimize) ([`LessonPlayerPage.tsx`](frontend/src/pages/LessonPlayerPage.tsx)).
+- [x] **Pagehide checkpoint** — `pagehide` event triggers best-effort save on tab close ([`LessonPlayerPage.tsx`](frontend/src/pages/LessonPlayerPage.tsx)).
+- [x] **Consistent failure handling** — `handleVideoEnded` and `handleMarkIncomplete` now use same circuit breaker pattern as heartbeat/checkpoints ([`LessonPlayerPage.tsx`](frontend/src/pages/LessonPlayerPage.tsx)).
+- [x] **Tests** — 6 new Vitest DOM tests: circuit breaker (2 tests), 15s throttle, pause checkpoint, visibility checkpoint, pagehide checkpoint, markIncomplete failure path ([`LessonPlayerPage.dom.test.tsx`](frontend/src/pages/LessonPlayerPage.dom.test.tsx)).
+
+### Technical notes
+
+- CORS verified working for progress endpoint (`OPTIONS` at `/courses/{id}/lessons/{lid}/progress` returns proper headers)
+- Used `useCallback` for checkpoint handlers to satisfy React hooks lint rules
+- All progress update paths (`timeUpdate`, `videoEnded`, `markIncomplete`, checkpoints) now respect both circuit breakers
+- Same-position circuit breaker: stops after 20 identical timestamps (handles "paused for 24h" case)
+- Failure circuit breaker: stops after 10 consecutive failures
+- Console hygiene: only operational warnings kept (breaker trips), per-request spam removed
+- Code consistency: using captured `now` variable for timestamp instead of duplicate `Date.now()` calls
+- 75 tests pass (18 LessonPlayerPage tests); lint clean
+
+---
+
 ## 2026-05-06 — Ops: catalog TRUNCATE (keep users), schema applier, API stage refresh
 
 ### Completed
