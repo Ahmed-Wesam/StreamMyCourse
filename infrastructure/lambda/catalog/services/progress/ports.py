@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime
 from typing import List, Optional, Protocol
 
 
@@ -12,9 +13,9 @@ class LessonProgressRow:
     lesson_id: str
     course_id: str
     completed: bool
-    completed_at: Optional[str]
+    completed_at: Optional[datetime]
     last_position_sec: int
-    updated_at: str
+    updated_at: datetime
 
 
 class LessonProgressRepositoryPort(Protocol):
