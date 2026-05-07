@@ -650,28 +650,45 @@ jobs:
         run: |
           set -euo pipefail
           STACK="StreamMyCourse-Auth-dev"
+          # When GitHub Environment vars override Cognito callback/logout lists, they often omit
+          # local Vite origins (see frontend/src/lib/auth.ts); missing entries → redirect_mismatch.
+          student_cb="${STUDENT_COGNITO_CALLBACK_URLS:-}"
+          student_lo="${STUDENT_COGNITO_LOGOUT_URLS:-}"
+          teacher_cb="${TEACHER_COGNITO_CALLBACK_URLS:-}"
+          teacher_lo="${TEACHER_COGNITO_LOGOUT_URLS:-}"
+          # Merge local Vite URLs even when GH vars are unset (empty would skip overrides and omit dev redirects).
+          [[ "$student_cb" != *"http://localhost:5173/"* ]] && student_cb="${student_cb:+$student_cb,}http://localhost:5173/"
+          [[ "$student_cb" != *"http://127.0.0.1:5173/"* ]] && student_cb="${student_cb:+$student_cb,}http://127.0.0.1:5173/"
+          [[ "$student_lo" != *"http://localhost:5173/"* ]] && student_lo="${student_lo:+$student_lo,}http://localhost:5173/"
+          [[ "$student_lo" != *"http://127.0.0.1:5173/"* ]] && student_lo="${student_lo:+$student_lo,}http://127.0.0.1:5173/"
+          [[ "$teacher_cb" != *"http://localhost:5174/"* ]] && teacher_cb="${teacher_cb:+$teacher_cb,}http://localhost:5174/"
+          [[ "$teacher_cb" != *"http://127.0.0.1:5174/"* ]] && teacher_cb="${teacher_cb:+$teacher_cb,}http://127.0.0.1:5174/"
+          [[ "$teacher_lo" != *"http://localhost:5174/"* ]] && teacher_lo="${teacher_lo:+$teacher_lo,}http://localhost:5174/"
+          [[ "$teacher_lo" != *"http://127.0.0.1:5174/"* ]] && teacher_lo="${teacher_lo:+$teacher_lo,}http://127.0.0.1:5174/"
           aws cloudformation validate-template \
             --template-body "file://${{ github.workspace }}/infrastructure/templates/auth-stack.yaml" \
             --region "${{ env.AWS_REGION }}"
+          auth_params=(
+            "Environment=dev"
+            "CognitoDomainPrefix=${{ vars.COGNITO_DOMAIN_PREFIX }}"
+            "GoogleClientId=${GOOGLE_OAUTH_CLIENT_ID}"
+            "GoogleClientSecret=${GOOGLE_OAUTH_CLIENT_SECRET}"
+            "RdsStackName=StreamMyCourse-Rds-dev"
+            "EnableUserProfileSync=true"
+            "CognitoUserProfileSyncCodeS3Bucket=${{ steps.cognito_sync_pkg.outputs.bucket }}"
+            "CognitoUserProfileSyncCodeS3Key=${{ steps.cognito_sync_pkg.outputs.key }}"
+          )
+          [[ -n "$student_cb" ]] && auth_params+=("StudentCallbackUrls=$student_cb")
+          [[ -n "$student_lo" ]] && auth_params+=("StudentLogoutUrls=$student_lo")
+          [[ -n "$teacher_cb" ]] && auth_params+=("TeacherCallbackUrls=$teacher_cb")
+          [[ -n "$teacher_lo" ]] && auth_params+=("TeacherLogoutUrls=$teacher_lo")
           aws cloudformation deploy \
             --template-file "${{ github.workspace }}/infrastructure/templates/auth-stack.yaml" \
             --stack-name "$STACK" \
             --capabilities CAPABILITY_IAM CAPABILITY_NAMED_IAM \
             --region "${{ env.AWS_REGION }}" \
             --no-fail-on-empty-changeset \
-            --parameter-overrides \
-              "Environment=dev" \
-              "CognitoDomainPrefix=${{ vars.COGNITO_DOMAIN_PREFIX }}" \
-              ${STUDENT_COGNITO_CALLBACK_URLS:+StudentCallbackUrls=${STUDENT_COGNITO_CALLBACK_URLS}} \
-              ${STUDENT_COGNITO_LOGOUT_URLS:+StudentLogoutUrls=${STUDENT_COGNITO_LOGOUT_URLS}} \
-              ${TEACHER_COGNITO_CALLBACK_URLS:+TeacherCallbackUrls=${TEACHER_COGNITO_CALLBACK_URLS}} \
-              ${TEACHER_COGNITO_LOGOUT_URLS:+TeacherLogoutUrls=${TEACHER_COGNITO_LOGOUT_URLS}} \
-              "GoogleClientId=${GOOGLE_OAUTH_CLIENT_ID}" \
-              "GoogleClientSecret=${GOOGLE_OAUTH_CLIENT_SECRET}" \
-              "RdsStackName=StreamMyCourse-Rds-dev" \
-              "EnableUserProfileSync=true" \
-              "CognitoUserProfileSyncCodeS3Bucket=${{ steps.cognito_sync_pkg.outputs.bucket }}" \
-              "CognitoUserProfileSyncCodeS3Key=${{ steps.cognito_sync_pkg.outputs.key }}"
+            --parameter-overrides "${auth_params[@]}"
 
           USER_POOL_ARN="$(aws cloudformation describe-stacks \
             --stack-name "$STACK" \
