@@ -417,6 +417,33 @@ if ($Template -eq "edge-hosting") {
     $cfDeployArgs += '--parameter-overrides'
     $cfDeployArgs += $edgeOverrides
 } elseif ($Template -eq "auth") {
+    # Match deploy-backend dev merge: ensure local Vite OAuth redirects exist (including when callback env vars are empty).
+    if ($Environment -eq "dev") {
+        if (-not $StudentCallbackUrls.Contains('http://localhost:5173/')) {
+            $StudentCallbackUrls = $(if ([string]::IsNullOrWhiteSpace($StudentCallbackUrls)) { 'http://localhost:5173/' } else { "$StudentCallbackUrls,http://localhost:5173/" })
+        }
+        if (-not $StudentCallbackUrls.Contains('http://127.0.0.1:5173/')) {
+            $StudentCallbackUrls = $(if ([string]::IsNullOrWhiteSpace($StudentCallbackUrls)) { 'http://127.0.0.1:5173/' } else { "$StudentCallbackUrls,http://127.0.0.1:5173/" })
+        }
+        if (-not $StudentLogoutUrls.Contains('http://localhost:5173/')) {
+            $StudentLogoutUrls = $(if ([string]::IsNullOrWhiteSpace($StudentLogoutUrls)) { 'http://localhost:5173/' } else { "$StudentLogoutUrls,http://localhost:5173/" })
+        }
+        if (-not $StudentLogoutUrls.Contains('http://127.0.0.1:5173/')) {
+            $StudentLogoutUrls = $(if ([string]::IsNullOrWhiteSpace($StudentLogoutUrls)) { 'http://127.0.0.1:5173/' } else { "$StudentLogoutUrls,http://127.0.0.1:5173/" })
+        }
+        if (-not $TeacherCallbackUrls.Contains('http://localhost:5174/')) {
+            $TeacherCallbackUrls = $(if ([string]::IsNullOrWhiteSpace($TeacherCallbackUrls)) { 'http://localhost:5174/' } else { "$TeacherCallbackUrls,http://localhost:5174/" })
+        }
+        if (-not $TeacherCallbackUrls.Contains('http://127.0.0.1:5174/')) {
+            $TeacherCallbackUrls = $(if ([string]::IsNullOrWhiteSpace($TeacherCallbackUrls)) { 'http://127.0.0.1:5174/' } else { "$TeacherCallbackUrls,http://127.0.0.1:5174/" })
+        }
+        if (-not $TeacherLogoutUrls.Contains('http://localhost:5174/')) {
+            $TeacherLogoutUrls = $(if ([string]::IsNullOrWhiteSpace($TeacherLogoutUrls)) { 'http://localhost:5174/' } else { "$TeacherLogoutUrls,http://localhost:5174/" })
+        }
+        if (-not $TeacherLogoutUrls.Contains('http://127.0.0.1:5174/')) {
+            $TeacherLogoutUrls = $(if ([string]::IsNullOrWhiteSpace($TeacherLogoutUrls)) { 'http://127.0.0.1:5174/' } else { "$TeacherLogoutUrls,http://127.0.0.1:5174/" })
+        }
+    }
     $authOverrides = @(
         "Environment=$Environment",
         "CognitoDomainPrefix=$CognitoDomainPrefix"
