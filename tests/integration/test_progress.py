@@ -13,6 +13,8 @@ from __future__ import annotations
 
 import os
 
+import httpx
+
 from helpers.api import ApiClient
 from helpers.factories import CourseHandle, LessonHandle
 
@@ -59,6 +61,33 @@ def _create_enrolled_course(
     # 5. Enroll the student
     enroll_resp = student_api.enroll_course(course.course_id)
     assert enroll_resp.status_code in (200, 201), f"enroll failed: {enroll_resp.text}"
+
+    return (course.course_id, lesson.lesson_id)
+
+
+def _create_published_course_with_lesson(
+    api: ApiClient,
+    course_factory,
+    lesson_factory,
+    *,
+    course_label: str,
+    lesson_label: str,
+) -> tuple[str, str]:
+    """Helper to create a published course with one ready lesson.
+
+    Returns (course_id, lesson_id).
+    """
+    course = course_factory(label=course_label)
+    lesson = lesson_factory(course.course_id, label=lesson_label)
+
+    upload_resp = api.get_upload_url(course_id=course.course_id, lesson_id=lesson.lesson_id)
+    assert upload_resp.status_code == 200, f"get_upload_url failed: {upload_resp.text}"
+
+    ready_resp = api.mark_video_ready(course.course_id, lesson.lesson_id)
+    assert ready_resp.status_code == 200, f"mark_video_ready failed: {ready_resp.text}"
+
+    publish_resp = api.publish_course(course.course_id)
+    assert publish_resp.status_code == 200, f"publish_course failed: {publish_resp.text}"
 
     return (course.course_id, lesson.lesson_id)
 
@@ -343,3 +372,438 @@ def test_auto_complete_threshold(
     assert resp_95.status_code == 200
     body_95 = resp_95.json()
     assert body_95["lessonProgress"]["completed"] is True
+
+
+def test_cannot_record_progress_for_lesson_in_other_course(
+    api: ApiClient,
+    alt_api: ApiClient,
+    student_api: ApiClient,
+    course_factory,
+    lesson_factory,
+    alt_course_factory,
+    alt_lesson_factory,
+) -> None:
+    """Student enrolled in Course A cannot update progress for a lesson in Course B via (A, B_lesson) pair."""
+    _require_jwts()
+
+    course_a_id, _lesson_a1_id = _create_published_course_with_lesson(
+        api,
+        course_factory,
+        lesson_factory,
+        course_label="cross-course-hack-A",
+        lesson_label="cross-course-hack-A-L1",
+    )
+    course_b_id, lesson_b1_id = _create_published_course_with_lesson(
+        alt_api,
+        alt_course_factory,
+        alt_lesson_factory,
+        course_label="cross-course-hack-B",
+        lesson_label="cross-course-hack-B-L1",
+    )
+
+    enroll_resp = student_api.enroll_course(course_a_id)
+    assert enroll_resp.status_code in (200, 201), enroll_resp.text
+
+    resp = student_api.update_lesson_progress(
+        course_a_id,
+        lesson_b1_id,
+        position=10,
+        duration=100,
+    )
+    assert resp.status_code == 404, f"Expected 404, got {resp.status_code}: {resp.text}"
+    body = resp.json()
+    assert body.get("code") == "not_found"
+    assert "lesson" in body.get("message", "").lower() or body.get("message")
+
+    # Ensure the B course exists to avoid false positives in this test.
+    assert course_b_id
+
+
+def test_cannot_record_progress_using_other_instructors_lesson_id(
+    api: ApiClient,
+    alt_api: ApiClient,
+    course_factory,
+    lesson_factory,
+    alt_course_factory,
+    alt_lesson_factory,
+) -> None:
+    """Course owner cannot update progress for their course using another instructor's lesson ID."""
+    _require_jwts()
+
+    course_m_id, _lesson_m1_id = _create_published_course_with_lesson(
+        alt_api,
+        alt_course_factory,
+        alt_lesson_factory,
+        course_label="cross-instructor-course-M",
+        lesson_label="cross-instructor-course-M-L1",
+    )
+    _course_v_id, lesson_v1_id = _create_published_course_with_lesson(
+        api,
+        course_factory,
+        lesson_factory,
+        course_label="cross-instructor-course-V",
+        lesson_label="cross-instructor-course-V-L1",
+    )
+
+    resp = alt_api.update_lesson_progress(
+        course_m_id,
+        lesson_v1_id,
+        position=10,
+        duration=100,
+    )
+    assert resp.status_code == 404, f"Expected 404, got {resp.status_code}: {resp.text}"
+    body = resp.json()
+    assert body.get("code") == "not_found"
+
+
+def test_progress_update_does_not_leak_to_real_owning_course(
+    api: ApiClient,
+    alt_api: ApiClient,
+    student_api: ApiClient,
+    course_factory,
+    lesson_factory,
+    alt_course_factory,
+    alt_lesson_factory,
+) -> None:
+    """Rejected cross-course update must not write progress into the lesson's real owning course."""
+    _require_jwts()
+
+    course_a_id, _lesson_a1_id = _create_published_course_with_lesson(
+        api,
+        course_factory,
+        lesson_factory,
+        course_label="no-leak-A",
+        lesson_label="no-leak-A-L1",
+    )
+    course_b_id, lesson_b1_id = _create_published_course_with_lesson(
+        alt_api,
+        alt_course_factory,
+        alt_lesson_factory,
+        course_label="no-leak-B",
+        lesson_label="no-leak-B-L1",
+    )
+
+    enroll_a = student_api.enroll_course(course_a_id)
+    assert enroll_a.status_code in (200, 201), enroll_a.text
+
+    hack_resp = student_api.update_lesson_progress(
+        course_a_id,
+        lesson_b1_id,
+        position=10,
+        duration=100,
+    )
+    assert hack_resp.status_code == 404
+    assert hack_resp.json().get("code") == "not_found"
+
+    # To prove "no side-effect write" on the student principal, we enroll in Course B AFTER the rejected hack.
+    # If the server had accidentally written a progress row for lesson_b1_id, it would surface here.
+    enroll_b = student_api.enroll_course(course_b_id)
+    assert enroll_b.status_code in (200, 201), enroll_b.text
+
+    get_b = student_api.get_course_progress(course_b_id)
+    assert get_b.status_code == 200, get_b.text
+    body_b = get_b.json()
+    lp = next((x for x in body_b["lessons"] if x["lessonId"] == lesson_b1_id), None)
+    assert lp is not None
+    assert lp["completed"] is False
+    assert lp["lastPositionSec"] == 0
+
+
+def test_unauthenticated_request_to_update_progress(
+    api_base_url: str,
+    api: ApiClient,
+    course_factory,
+    lesson_factory,
+) -> None:
+    """PUT progress without Authorization header returns 401 (gateway-enforced)."""
+    _require_jwts()
+
+    course_id, lesson_id = _create_published_course_with_lesson(
+        api,
+        course_factory,
+        lesson_factory,
+        course_label="unauth-progress",
+        lesson_label="unauth-progress-L1",
+    )
+
+    with httpx.Client(base_url=api_base_url, timeout=30.0) as client:
+        resp = client.put(
+            f"/courses/{course_id}/lessons/{lesson_id}/progress",
+            json={"position": 10, "duration": 100, "markComplete": False, "markIncomplete": False},
+            headers={},  # explicit: no Authorization
+        )
+    assert resp.status_code == 401, f"Expected 401, got {resp.status_code}: {resp.text}"
+
+
+def test_unenrolled_non_owner_cannot_update_progress(
+    api: ApiClient,
+    student_api: ApiClient,
+    course_factory,
+    lesson_factory,
+) -> None:
+    """Student not enrolled (and not owner) cannot update progress (403 enrollment_required)."""
+    _require_jwts()
+
+    course_id, lesson_id = _create_published_course_with_lesson(
+        api,
+        course_factory,
+        lesson_factory,
+        course_label="unenrolled-update",
+        lesson_label="unenrolled-update-L1",
+    )
+
+    resp = student_api.update_lesson_progress(
+        course_id,
+        lesson_id,
+        position=10,
+        duration=100,
+    )
+    assert resp.status_code == 403, f"Expected 403, got {resp.status_code}: {resp.text}"
+    body = resp.json()
+    assert body.get("code") == "enrollment_required"
+
+
+def test_random_lesson_id_returns_not_found(
+    api: ApiClient,
+    student_api: ApiClient,
+    course_factory,
+    lesson_factory,
+) -> None:
+    """Valid-but-random lesson UUID returns 404 not_found (no existence leakage)."""
+    _require_jwts()
+
+    course_id, _lesson_id = _create_enrolled_course(api, student_api, course_factory, lesson_factory)
+    random_lesson_id = "00000000-0000-0000-0000-000000000099"
+
+    resp = student_api.update_lesson_progress(
+        course_id,
+        random_lesson_id,
+        position=10,
+        duration=100,
+    )
+    assert resp.status_code == 404, f"Expected 404, got {resp.status_code}: {resp.text}"
+    body = resp.json()
+    assert body.get("code") == "not_found"
+
+
+def test_invalid_uuid_in_path_params_returns_404(
+    student_api: ApiClient,
+) -> None:
+    """Malformed UUIDs in either course_id or lesson_id return 404 (service guard)."""
+    _require_jwts()
+
+    resp_course = student_api.update_lesson_progress(
+        "not-a-uuid",
+        "00000000-0000-0000-0000-000000000099",
+        position=10,
+        duration=100,
+    )
+    assert resp_course.status_code == 404, f"Expected 404, got {resp_course.status_code}: {resp_course.text}"
+    assert resp_course.json().get("code") == "not_found"
+
+    resp_lesson = student_api.update_lesson_progress(
+        "00000000-0000-0000-0000-000000000099",
+        "not-a-uuid",
+        position=10,
+        duration=100,
+    )
+    assert resp_lesson.status_code == 404, f"Expected 404, got {resp_lesson.status_code}: {resp_lesson.text}"
+    assert resp_lesson.json().get("code") == "not_found"
+
+
+def test_idempotent_upsert(
+    api: ApiClient,
+    student_api: ApiClient,
+    course_factory,
+    lesson_factory,
+) -> None:
+    """Sending the same update payload twice is idempotent and results are stable."""
+    _require_jwts()
+
+    course_id, lesson_id = _create_enrolled_course(api, student_api, course_factory, lesson_factory)
+
+    resp1 = student_api.update_lesson_progress(
+        course_id,
+        lesson_id,
+        position=45,
+        duration=100,
+    )
+    assert resp1.status_code == 200, resp1.text
+    body1 = resp1.json()
+    assert body1.get("ok") is True
+
+    resp2 = student_api.update_lesson_progress(
+        course_id,
+        lesson_id,
+        position=45,
+        duration=100,
+    )
+    assert resp2.status_code == 200, resp2.text
+    body2 = resp2.json()
+    assert body2.get("ok") is True
+
+    assert body1["lessonProgress"] == body2["lessonProgress"]
+
+    get_resp = student_api.get_course_progress(course_id)
+    assert get_resp.status_code == 200, get_resp.text
+    get_body = get_resp.json()
+    lp = next((x for x in get_body["lessons"] if x["lessonId"] == lesson_id), None)
+    assert lp is not None
+    assert lp["lastPositionSec"] == 45
+    assert lp["completed"] is False
+
+
+def test_mark_complete_then_incomplete_clears_completed_at(
+    api: ApiClient,
+    student_api: ApiClient,
+    course_factory,
+    lesson_factory,
+) -> None:
+    """Explicit complete then explicit incomplete clears completedAt in the persisted state."""
+    _require_jwts()
+
+    course_id, lesson_id = _create_enrolled_course(api, student_api, course_factory, lesson_factory)
+
+    complete_resp = student_api.update_lesson_progress(
+        course_id,
+        lesson_id,
+        position=100,
+        duration=100,
+        mark_complete=True,
+    )
+    assert complete_resp.status_code == 200, complete_resp.text
+    complete_body = complete_resp.json()
+    lp1 = complete_body["lessonProgress"]
+    assert lp1["completed"] is True
+    assert "completedAt" in lp1 and lp1["completedAt"]
+
+    incomplete_resp = student_api.update_lesson_progress(
+        course_id,
+        lesson_id,
+        position=0,
+        duration=100,
+        mark_incomplete=True,
+    )
+    assert incomplete_resp.status_code == 200, incomplete_resp.text
+    incomplete_body = incomplete_resp.json()
+    lp2 = incomplete_body["lessonProgress"]
+    assert lp2["completed"] is False
+    assert "completedAt" not in lp2 or lp2["completedAt"] is None
+
+    get_resp = student_api.get_course_progress(course_id)
+    assert get_resp.status_code == 200, get_resp.text
+    get_body = get_resp.json()
+    lp3 = next((x for x in get_body["lessons"] if x["lessonId"] == lesson_id), None)
+    assert lp3 is not None
+    assert lp3["completed"] is False
+    assert "completedAt" not in lp3
+
+
+def test_get_course_progress_unenrolled_returns_403(
+    api: ApiClient,
+    student_api: ApiClient,
+    course_factory,
+    lesson_factory,
+) -> None:
+    """Student not enrolled (and not owner) cannot read progress (403 enrollment_required)."""
+    _require_jwts()
+
+    course_id, _lesson_id = _create_published_course_with_lesson(
+        api,
+        course_factory,
+        lesson_factory,
+        course_label="unenrolled-read-progress",
+        lesson_label="unenrolled-read-progress-L1",
+    )
+
+    resp = student_api.get_course_progress(course_id)
+    assert resp.status_code == 403, f"Expected 403, got {resp.status_code}: {resp.text}"
+    assert resp.json().get("code") == "enrollment_required"
+
+
+def test_get_course_progress_for_random_course_returns_4xx(
+    student_api: ApiClient,
+) -> None:
+    """Random course_id returns 403 due to auth check firing before course existence checks."""
+    _require_jwts()
+
+    # Judgment call (based on LessonProgressService.get_course_progress):
+    # The service checks enrollment/ownership first and does NOT raise NotFound for missing courses.
+    random_course_id = "00000000-0000-0000-0000-000000000199"
+    resp = student_api.get_course_progress(random_course_id)
+    assert resp.status_code == 403, f"Expected 403, got {resp.status_code}: {resp.text}"
+    assert resp.json().get("code") == "enrollment_required"
+
+
+def test_owner_can_view_own_course_progress(
+    api: ApiClient,
+    course_factory,
+    lesson_factory,
+) -> None:
+    """Teacher owner can view their own course progress without enrolling (200, empty progress)."""
+    _require_jwts()
+
+    course_id, _lesson_id = _create_published_course_with_lesson(
+        api,
+        course_factory,
+        lesson_factory,
+        course_label="owner-view-progress",
+        lesson_label="owner-view-progress-L1",
+    )
+
+    resp = api.get_course_progress(course_id)
+    assert resp.status_code == 200, f"Expected 200, got {resp.status_code}: {resp.text}"
+    body = resp.json()
+    assert body["courseId"] == course_id
+    assert body["totalReadyLessons"] >= 1
+    assert body["completedCount"] == 0
+
+
+def test_get_course_progress_does_not_include_other_courses_lessons(
+    api: ApiClient,
+    alt_api: ApiClient,
+    student_api: ApiClient,
+    course_factory,
+    lesson_factory,
+    alt_course_factory,
+    alt_lesson_factory,
+) -> None:
+    """Progress read is scoped to course_id: lessons from other courses must not appear."""
+    _require_jwts()
+
+    course_a_id, lesson_a1_id = _create_published_course_with_lesson(
+        api,
+        course_factory,
+        lesson_factory,
+        course_label="progress-scope-A",
+        lesson_label="progress-scope-A-L1",
+    )
+    course_b_id, lesson_b1_id = _create_published_course_with_lesson(
+        alt_api,
+        alt_course_factory,
+        alt_lesson_factory,
+        course_label="progress-scope-B",
+        lesson_label="progress-scope-B-L1",
+    )
+
+    enroll_a = student_api.enroll_course(course_a_id)
+    assert enroll_a.status_code in (200, 201), enroll_a.text
+    enroll_b = student_api.enroll_course(course_b_id)
+    assert enroll_b.status_code in (200, 201), enroll_b.text
+
+    upd_a = student_api.update_lesson_progress(course_a_id, lesson_a1_id, position=10, duration=100)
+    assert upd_a.status_code == 200, upd_a.text
+    upd_b = student_api.update_lesson_progress(course_b_id, lesson_b1_id, position=20, duration=100)
+    assert upd_b.status_code == 200, upd_b.text
+
+    get_a = student_api.get_course_progress(course_a_id)
+    assert get_a.status_code == 200, get_a.text
+    lessons_a = {x["lessonId"] for x in get_a.json()["lessons"]}
+    assert lesson_a1_id in lessons_a
+    assert lesson_b1_id not in lessons_a
+
+    get_b = student_api.get_course_progress(course_b_id)
+    assert get_b.status_code == 200, get_b.text
+    lessons_b = {x["lessonId"] for x in get_b.json()["lessons"]}
+    assert lesson_b1_id in lessons_b
+    assert lesson_a1_id not in lessons_b
