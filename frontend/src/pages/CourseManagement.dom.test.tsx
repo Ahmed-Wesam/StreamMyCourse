@@ -104,11 +104,27 @@ describe('CourseManagement', () => {
       status: 'DRAFT',
     })
     api.listLessons.mockResolvedValue([
-      { id: 'l1', title: 'Lesson 1', order: 1, videoStatus: 'ready', duration: 100 },
-      { id: 'l2', title: 'Lesson 2', order: 2, videoStatus: 'pending', duration: 0 },
+      {
+        id: 'l1',
+        title: 'Lesson 1',
+        order: 1,
+        moduleId: 'm1',
+        moduleOrder: 0,
+        videoStatus: 'ready',
+        duration: 100,
+      },
+      {
+        id: 'l2',
+        title: 'Lesson 2',
+        order: 2,
+        moduleId: 'm1',
+        moduleOrder: 0,
+        videoStatus: 'pending',
+        duration: 0,
+      },
     ])
     api.updateCourse.mockResolvedValue({ ok: true })
-    api.createLesson.mockResolvedValue({ lessonId: 'l3' })
+    api.createLesson.mockResolvedValue({ lessonId: 'l3', moduleId: 'm1', order: 3 })
     api.getUploadUrl.mockResolvedValue({ uploadUrl: 'https://example.com/upload', thumbnailKey: 'thumb-key' })
     api.markLessonVideoReady.mockResolvedValue({ ok: true })
     api.markCourseThumbnailReady.mockResolvedValue({ ok: true })

@@ -81,7 +81,15 @@ describe('InstructorDashboard', () => {
       },
     ])
     api.listLessons.mockResolvedValue([
-      { id: 'l1', title: 'Lesson 1', order: 1, videoStatus: 'ready', duration: 100 },
+      {
+        id: 'l1',
+        title: 'Lesson 1',
+        order: 1,
+        moduleId: 'm1',
+        moduleOrder: 0,
+        videoStatus: 'ready',
+        duration: 100,
+      },
     ])
     api.createCourse.mockResolvedValue({ id: 'c3' })
     api.publishCourse.mockResolvedValue({ ok: true })

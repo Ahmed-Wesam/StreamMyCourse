@@ -60,8 +60,24 @@ describe('LessonPlayerPage', () => {
       status: 'PUBLISHED',
     })
     api.listLessons.mockResolvedValue([
-      { id: 'l1', title: 'Lesson 1', order: 1, videoStatus: 'ready', duration: 400 },
-      { id: 'l2', title: 'Lesson 2', order: 2, videoStatus: 'ready', duration: 300 },
+      {
+        id: 'l1',
+        title: 'Lesson 1',
+        order: 1,
+        moduleId: 'm1',
+        moduleOrder: 0,
+        videoStatus: 'ready',
+        duration: 400,
+      },
+      {
+        id: 'l2',
+        title: 'Lesson 2',
+        order: 2,
+        moduleId: 'm1',
+        moduleOrder: 0,
+        videoStatus: 'ready',
+        duration: 300,
+      },
     ])
     api.getPlaybackUrl.mockResolvedValue({ url: 'https://example.com/lesson.mp4' })
     api.getCourseProgress.mockResolvedValue({

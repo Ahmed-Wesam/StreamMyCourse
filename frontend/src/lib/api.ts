@@ -149,6 +149,9 @@ export type Lesson = {
   id: string
   title: string
   order: number
+  moduleId: string
+  /** Display order of the parent module within the course */
+  moduleOrder: number
   videoStatus: 'pending' | 'ready'
   duration?: number
   /** Presigned GET when a lesson thumbnail exists. */
@@ -171,6 +174,8 @@ type CreateCourseInput = {
 
 type CreateLessonInput = {
   title: string
+  /** When omitted the API attaches the lesson to the first module by order. */
+  moduleId?: string
 }
 
 type Playback = {
@@ -317,8 +322,11 @@ export async function publishCourse(courseId: string): Promise<{ id: string; sta
 export async function createLesson(
   courseId: string,
   input: CreateLessonInput,
-): Promise<{ lessonId: string; order: number }> {
-  return httpPost<{ lessonId: string; order: number }>(`/courses/${courseId}/lessons`, input)
+): Promise<{ lessonId: string; moduleId: string; order: number }> {
+  return httpPost<{ lessonId: string; moduleId: string; order: number }>(
+    `/courses/${courseId}/lessons`,
+    input,
+  )
 }
 
 export async function deleteLesson(
