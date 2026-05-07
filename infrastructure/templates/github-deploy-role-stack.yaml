@@ -191,6 +191,12 @@ Resources:
               - rds:DeleteDBSubnetGroup
               - rds:DescribeDBSubnetGroups
               - rds:ModifyDBSubnetGroup
+              - rds:CreateDBParameterGroup
+              - rds:DeleteDBParameterGroup
+              - rds:DescribeDBParameterGroups
+              - rds:DescribeDBParameters
+              - rds:ModifyDBParameterGroup
+              - rds:ResetDBParameterGroup
               - rds:AddTagsToResource
               - rds:RemoveTagsFromResource
               - rds:ListTagsForResource
