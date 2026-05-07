@@ -4,9 +4,9 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "vite --config vite.student.config.ts",
-    "dev:student": "vite --config vite.student.config.ts",
-    "dev:teacher": "vite --config vite.teacher.config.ts",
+    "dev": "vite --mode student --config vite.student.config.ts",
+    "dev:student": "vite --mode student --config vite.student.config.ts",
+    "dev:teacher": "vite --mode teacher --config vite.teacher.config.ts",
     "build": "tsc && vite build --config vite.student.config.ts",
     "prebuild:student": "node ../scripts/check-cognito-spa-env.mjs",
     "prebuild:teacher": "node ../scripts/check-cognito-spa-env.mjs",
