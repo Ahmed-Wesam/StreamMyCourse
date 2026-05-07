@@ -401,7 +401,9 @@ Resources:
       Runtime: python3.11
       Handler: index.handler
       Role: !GetAtt SchemaApplierLambdaRole.Arn
-      Timeout: 120
+      # 300s gives headroom for cold starts plus the in-Lambda lock_timeout
+      # (30s per statement) to surface a clear error before the runtime kill.
+      Timeout: 300
       MemorySize: 256
       Architectures:
         - x86_64

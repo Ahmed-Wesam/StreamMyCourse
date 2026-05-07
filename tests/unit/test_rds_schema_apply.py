@@ -188,6 +188,10 @@ def test_handler_applies_schema_and_commits(schema_apply, monkeypatch, tmp_path)
     assert mock_cur.execute.call_count >= 1
     args = [c[0][0] for c in mock_cur.execute.call_args_list]
     assert any("CREATE TABLE" in str(s) for s in args)
+    # Schema apply must SET lock_timeout before any DDL so a held AccessShareLock
+    # surfaces as a fast `lock_timeout` error (clear stack pointing at the
+    # blocked statement) instead of silently consuming the Lambda runtime.
+    assert any("SET lock_timeout" in str(s) for s in args)
     mock_conn.commit.assert_called_once()
     mock_conn.close.assert_called_once()
 
