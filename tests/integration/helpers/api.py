@@ -52,8 +52,25 @@ class ApiClient:
     def list_lessons(self, course_id: str) -> httpx.Response:
         return self._client.get(f"/courses/{course_id}/lessons")
 
-    def create_lesson(self, course_id: str, *, title: str) -> httpx.Response:
-        return self._client.post(f"/courses/{course_id}/lessons", json={"title": title})
+    def list_course_modules(self, course_id: str) -> httpx.Response:
+        return self._client.get(f"/courses/{course_id}/modules")
+
+    def create_course_module(
+        self, course_id: str, *, title: str, description: str = ""
+    ) -> httpx.Response:
+        return self._client.post(
+            f"/courses/{course_id}/modules",
+            json={"title": title, "description": description},
+        )
+
+    def delete_course_module(self, course_id: str, module_id: str) -> httpx.Response:
+        return self._client.delete(f"/courses/{course_id}/modules/{module_id}")
+
+    def create_lesson(self, course_id: str, *, title: str, module_id: str | None = None) -> httpx.Response:
+        body: Dict[str, Any] = {"title": title}
+        if module_id:
+            body["moduleId"] = module_id
+        return self._client.post(f"/courses/{course_id}/lessons", json=body)
 
     def update_lesson(self, course_id: str, lesson_id: str, *, title: str) -> httpx.Response:
         return self._client.put(

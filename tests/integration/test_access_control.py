@@ -8,6 +8,12 @@ from __future__ import annotations
 import pytest
 
 from helpers.api import ApiClient
+from helpers.factories import make_test_title
+from helpers.module_contract import (
+    EXPECTED_CATALOG_FORBIDDEN_403,
+    require_course_modules_list,
+    response_json_dict,
+)
 
 
 @pytest.mark.parametrize("operation_name,api_method,needs_lesson,needs_video", [
@@ -19,6 +25,8 @@ from helpers.api import ApiClient
     ("delete_lesson", "delete_lesson", True, False),
     ("mark_video_ready", "mark_video_ready", True, True),
     ("get_upload_url", "get_upload_url", True, False),
+    ("create_course_module", "create_course_module", False, False),
+    ("delete_course_module", "delete_course_module", False, False),
 ])
 def test_teacher_cannot_access_other_teacher_resources(
     request: pytest.FixtureRequest,
@@ -64,9 +72,17 @@ def test_teacher_cannot_access_other_teacher_resources(
         resp = method(course_id, title="[TEST] Hijacked by Teacher A", description="This should not be allowed")
     elif api_method == "publish_course":
         resp = method(course_id)
+    elif api_method == "create_course_module":
+        resp = method(course_id, title=make_test_title(f"idor-{operation_name}"), description="")
+    elif api_method == "delete_course_module":
+        mod_rows = require_course_modules_list(alt_api.list_course_modules(course_id))
+        assert len(mod_rows) >= 1
+        victim = mod_rows[0]["id"]
+        resp = method(course_id, victim)
     else:
         resp = method(course_id)
 
     assert resp.status_code == 403, f"Expected 403, got {resp.status_code}: {resp.text}"
-    body = resp.json()
-    assert body.get("code") == "forbidden", f"Expected code 'forbidden', got {body.get('code')}"
+    body = response_json_dict(resp)
+    if body.get("code") != "forbidden":
+        pytest.fail(f"{EXPECTED_CATALOG_FORBIDDEN_403} Got: {body!r}")

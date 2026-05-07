@@ -8,6 +8,12 @@ HTTPS-driven tests that exercise a deployed backend (API Gateway + Lambda + Post
 
 Every test creates state through the public API, asserts on the API responses, and deletes its state at teardown. Lesson and course cleanup happens via `DELETE /courses/{id}` (course delete cascades to lessons). S3 objects from upload-url tests are removed via boto3 in a session-end safety net (warn-only, never fails CI).
 
+Course **modules**: `tests/integration/test_course_modules.py` covers `GET/POST/DELETE …/courses/{id}/modules`, lesson targeting via optional `moduleId`, ordering across modules vs `GET …/lessons`, delete guard when only one module remains, draft parity (404 for non-owning teachers and students, matching lessons), enrolled students listing modules on published courses, and negatives (`POST /lessons` with unknown `moduleId`, `DELETE …/modules/{unknown}` → 404). IDOR/student-role denials extend `test_access_control.py` and `test_student_permissions_denials.py`.
+
+**Troubleshooting (module tests):** If `GET …/modules` returns API Gateway JWT/IAM authorization errors (`Invalid key=value pair … Authorization header`), or lesson JSON lacks `moduleId` / `moduleOrder`, the deployed **`streammycourse-api`** + **catalog Lambda** are behind the repo (PostgreSQL modules + `infrastructure/templates/api-stack.yaml`). Redeploy the dev/prod backends to match `main`; CI deploys Lambda before HTTPS tests for this reason.
+
+**Module delete + media:** `DELETE …/modules/{id}` with lessons carrying **video or thumbnail keys** returns **503** when **`MEDIA_CLEANUP_QUEUE_URL`** is unset (catalog refuses orphan S3 references). Prefer video-free lessons in module-delete tests unless the **`StreamMyCourse-MediaCleanup-*`** stack is deployed.
+
 
 ## Running locally
 
