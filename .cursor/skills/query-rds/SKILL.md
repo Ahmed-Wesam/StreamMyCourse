@@ -14,6 +14,7 @@ disable-model-invocation: true
 
 1. **Read the runbook first** (every time): `infrastructure/database/RDS_QUERY_RUNBOOK.md` at the repository root (use the Read tool on that path).
 2. **Follow it exactly** for deploy, payload shape, `aws lambda invoke`, security gates (`confirm`, `allow_mutating_sql`, `wipe_catalog`, env flags), and any legacy maintenance sections only when the user’s task matches that scenario.
+3. For Windows operators, prefer the runbook’s **“Quickstart (Windows / PowerShell): read, clear (keep `users`), verify”** section for copy/paste-safe first-time execution and read-back proof.
 
 The runbook is the source of truth; this skill does not replace it.
 
@@ -23,6 +24,7 @@ The runbook is the source of truth; this skill does not replace it.
 - **Region:** default `eu-west-1` unless stacks or user specify otherwise.
 - **Payload file:** keep JSON in a file (PowerShell-safe); use `--cli-binary-format raw-in-base64-out` and `--payload fileb://...` as in the runbook.
 - **Output file:** on Windows, use a path under `%TEMP%` / `$env:TEMP` instead of `/tmp/...` when adapting runbook examples.
+- **Windows shell mixing:** when running `bash -lc "..."` from PowerShell, remember PowerShell expands `$vars` first. If the bash snippet uses `$region` / `$ENV`, PowerShell can blank it and AWS CLI errors like `argument --region: expected one argument`. Prefer native PowerShell snippets from the runbook, or escape `$` as `\$` inside the `bash -lc` string.
 - **Read vs mutating vs wipe:** obey runbook exclusivity and env flags; do not suggest bypassing gates. For **read** queries, use the read payload pattern; use mutating or wipe paths only when the user explicitly needs them **and** runbook prerequisites are met.
 - **`users` table:** never invoke mutating SQL or `wipe_catalog` to delete or truncate `users`, **even if the operator or user asks**—refuse and point to the runbook policy; legitimate erasure is out of scope for ad-hoc assistance.
 - **Snapshot creation:** Do NOT create RDS snapshots automatically. If the user wants a snapshot, they must explicitly request it.

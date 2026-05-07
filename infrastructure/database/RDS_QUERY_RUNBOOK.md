@@ -49,6 +49,96 @@ aws lambda invoke --function-name StreamMyCourse-RdsQuery-dev \
 cat /tmp/rds-query-dev-out.json
 ```
 
+## Quickstart (Windows / PowerShell): read, clear (keep `users`), verify
+
+This is the **copy/paste** path for operators running from Windows PowerShell.
+
+### 0) One helper function (invoke + show response)
+
+```powershell
+$ErrorActionPreference = 'Stop'
+$region = 'eu-west-1'
+$tmp = $env:TEMP
+
+function Invoke-RdsQuery([string]$envName, $payloadObj) {
+  $payloadPath = Join-Path $tmp ("rds-query-{0}-payload.json" -f $envName)
+  $outPath = Join-Path $tmp ("rds-query-{0}-out.json" -f $envName)
+
+  ($payloadObj | ConvertTo-Json -Compress) |
+    Set-Content -Encoding UTF8 -NoNewline $payloadPath
+
+  aws --no-cli-pager lambda invoke `
+    --function-name ("StreamMyCourse-RdsQuery-{0}" -f $envName) `
+    --cli-binary-format raw-in-base64-out `
+    --payload ("fileb://{0}" -f $payloadPath) `
+    $outPath `
+    --region $region `
+    --cli-read-timeout 300 | Out-Null
+
+  Get-Content $outPath -Raw
+}
+```
+
+### 1) First-time read probe (safe)
+
+```powershell
+Invoke-RdsQuery 'dev'  @{ confirm='dev';  sql='SELECT 1 AS ok' }
+Invoke-RdsQuery 'prod' @{ confirm='prod'; sql='SELECT 1 AS ok' }
+```
+
+### 2) Read-only counts (before/after)
+
+Avoid aliasing a column as `table` (reserved keyword). Use `tbl`.
+
+```powershell
+$countsSql = @'
+SELECT 'courses' AS tbl, COUNT(*)::int AS count FROM courses
+UNION ALL SELECT 'lessons', COUNT(*)::int FROM lessons
+UNION ALL SELECT 'enrollments', COUNT(*)::int FROM enrollments
+UNION ALL SELECT 'users', COUNT(*)::int FROM users
+ORDER BY tbl;
+'@
+
+Invoke-RdsQuery 'dev'  @{ confirm='dev';  sql=$countsSql }
+Invoke-RdsQuery 'prod' @{ confirm='prod'; sql=$countsSql }
+```
+
+### 3) Selective clear (keep `users`)
+
+This clears **`enrollments`**, **`lessons`**, and **`courses`** only.
+
+#### Option A: TRUNCATE (fast when it succeeds)
+
+```powershell
+$truncateSql = 'TRUNCATE enrollments, lessons, courses RESTART IDENTITY CASCADE'
+
+Invoke-RdsQuery 'dev'  @{ confirm='dev';  sql=$truncateSql; allow_mutating_sql=$true }
+Invoke-RdsQuery 'prod' @{ confirm='prod'; sql=$truncateSql; allow_mutating_sql=$true }
+```
+
+If you get `canceling statement due to statement timeout`, use Option B.
+
+#### Option B: DELETE fallback (slower, more reliable under locks)
+
+Run as **three separate invokes** (one statement per invoke), FK-safe order:
+
+```powershell
+Invoke-RdsQuery 'dev' @{ confirm='dev'; sql='DELETE FROM enrollments'; allow_mutating_sql=$true }
+Invoke-RdsQuery 'dev' @{ confirm='dev'; sql='DELETE FROM lessons';      allow_mutating_sql=$true }
+Invoke-RdsQuery 'dev' @{ confirm='dev'; sql='DELETE FROM courses';      allow_mutating_sql=$true }
+
+Invoke-RdsQuery 'prod' @{ confirm='prod'; sql='DELETE FROM enrollments'; allow_mutating_sql=$true }
+Invoke-RdsQuery 'prod' @{ confirm='prod'; sql='DELETE FROM lessons';      allow_mutating_sql=$true }
+Invoke-RdsQuery 'prod' @{ confirm='prod'; sql='DELETE FROM courses';      allow_mutating_sql=$true }
+```
+
+### 4) Verify (read-back)
+
+```powershell
+Invoke-RdsQuery 'dev'  @{ confirm='dev';  sql=$countsSql }
+Invoke-RdsQuery 'prod' @{ confirm='prod'; sql=$countsSql }
+```
+
 **Catalog wipe** (only after deploy with `AllowCatalogWipe=true` / `ALLOW_CATALOG_WIPE=true`):
 
 ```json
@@ -84,6 +174,26 @@ Response includes `counts_before` and `counts_after` per table when `ok` is true
    aws lambda get-function-configuration --function-name StreamMyCourse-RdsQuery-dev \
      --query "Environment.Variables.ALLOW_MUTATING_SQL" --region eu-west-1
    ```
+
+   **PowerShell equivalent (recommended on Windows):**
+
+   ```powershell
+   $region = 'eu-west-1'
+
+   aws --no-cli-pager cloudformation describe-stacks `
+     --stack-name StreamMyCourse-RdsQuery-dev `
+     --query "Stacks[0].Parameters[?ParameterKey=='AllowMutatingSql']" `
+     --output json `
+     --region $region
+
+   aws --no-cli-pager lambda get-function-configuration `
+     --function-name StreamMyCourse-RdsQuery-dev `
+     --query "Environment.Variables.ALLOW_MUTATING_SQL" `
+     --output text `
+     --region $region
+   ```
+
+   **Windows gotcha (PowerShell → `bash -lc`):** if you run a bash command from PowerShell like `bash -lc "region=eu-west-1; aws ... --region $region"`, PowerShell will expand `$region` *before* bash runs, often leaving `--region` blank. Prefer native PowerShell commands above, or escape `$` (e.g. `--region \$region`) when embedding bash in a PowerShell string.
 
 3. **Prefer one mutating statement** (the handler allows a single SQL string per invoke):
 
