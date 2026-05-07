@@ -134,6 +134,15 @@ def handler(event, context):
         statements = _split_sql_statements(sql)
         total = len(statements)
         with conn.cursor() as cur:
+            # Fail fast on lock contention instead of consuming the full Lambda
+            # timeout silently. ALTER TABLE statements in migrations need
+            # AccessExclusiveLock; if a long-running idle-in-transaction
+            # connection (e.g. the catalog Lambda's persistent connection) holds
+            # AccessShareLock, the apply hangs until the Lambda runtime kills
+            # the process. Failing in 30s with a clear `lock_timeout` error
+            # gives the operator a clean signal and a stack trace identifying
+            # which statement was blocked.
+            cur.execute("SET lock_timeout = '30s'")
             for i, stmt in enumerate(statements, start=1):
                 # Do not log statement text — future migrations could include literals.
                 logger.info(
