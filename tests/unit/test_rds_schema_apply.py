@@ -61,12 +61,78 @@ def test_split_real_migration_file_contains_expected_ddl(schema_apply):
     assert "last_position_sec" in joined
     assert "updated_at" in joined
     assert "REFERENCES users(user_sub)" in joined
-    assert "REFERENCES lessons(id)" in joined
+    assert "UNIQUE (course_id, id)" in joined
+    # The composite FK on lesson_progress must be named explicitly so 003 can
+    # drop+re-add it idempotently by a stable name on fresh and existing DBs.
+    assert (
+        "CONSTRAINT lesson_progress_course_lesson_fkey FOREIGN KEY (course_id, lesson_id) REFERENCES lessons"
+        in joined
+    )
+    assert "REFERENCES lessons (course_id, id)" in joined
     assert "REFERENCES courses(id)" in joined
     assert "CREATE INDEX IF NOT EXISTS idx_lesson_progress_course_user" in joined
     assert "PRIMARY KEY (user_sub, lesson_id)" in joined
     assert "CONSTRAINT chk_lesson_progress_position_nonneg" in joined
     assert len(parts) >= 11
+
+
+def test_split_real_migration_003_contains_expected_upgrade_ddl(schema_apply):
+    """003_progress_course_lesson_fk.sql is the in-place upgrade bundled alongside
+    001 (see scripts/deploy-rds-stack.sh and .github/workflows/deploy-backend.yml).
+
+    The schema-applier Lambda's ``_split_sql_statements`` is a naive ``;`` split,
+    so 003 must contain only plain DDL — no ``DO $$ ... $$;`` blocks. This test
+    verifies the file remains splitter-safe and idempotent (DROP IF EXISTS + ADD).
+    """
+    path = (
+        _ROOT
+        / "infrastructure"
+        / "database"
+        / "migrations"
+        / "003_progress_course_lesson_fk.sql"
+    )
+    sql = path.read_text(encoding="utf-8")
+    parts = schema_apply._split_sql_statements(sql)
+    joined = "\n".join(parts)
+    assert "CREATE UNIQUE INDEX IF NOT EXISTS lessons_course_id_id_key" in joined
+    assert "DROP CONSTRAINT IF EXISTS lesson_progress_lesson_id_fkey" in joined
+    assert "DROP CONSTRAINT IF EXISTS lesson_progress_course_lesson_fkey" in joined
+    assert "ADD CONSTRAINT lesson_progress_course_lesson_fkey" in joined
+    assert "FOREIGN KEY (course_id, lesson_id)" in joined
+    assert "REFERENCES lessons (course_id, id)" in joined
+    assert "ON DELETE CASCADE" in joined
+    # Splitter-safety: the executable SQL (post-comment-strip) must not
+    # introduce DO blocks, which would fool the naive `;` split because they
+    # contain inner `;` characters. Comment-only mentions of "DO $$" in the
+    # file header are fine; they get stripped by `_split_sql_statements`.
+    executable_sql = "\n".join(
+        line for line in sql.splitlines() if not line.strip().startswith("--")
+    )
+    assert "DO $$" not in executable_sql
+    assert len(parts) == 4
+
+
+def test_concatenated_001_and_003_bundle_is_splittable_and_complete(schema_apply):
+    """The deploy script and CI workflow concatenate 001 and 003 into a single
+    schema.sql before zipping the Lambda. Verify the concatenation is splittable
+    end-to-end and surfaces both the canonical schema and the upgrade DDL.
+    """
+    migrations_dir = _ROOT / "infrastructure" / "database" / "migrations"
+    sql_001 = (migrations_dir / "001_initial_schema.sql").read_text(encoding="utf-8")
+    sql_003 = (migrations_dir / "003_progress_course_lesson_fk.sql").read_text(
+        encoding="utf-8"
+    )
+    bundle = sql_001 + sql_003
+    parts = schema_apply._split_sql_statements(bundle)
+    joined = "\n".join(parts)
+    # 001 markers
+    assert "CREATE TABLE IF NOT EXISTS lesson_progress" in joined
+    # 003 markers
+    assert "CREATE UNIQUE INDEX IF NOT EXISTS lessons_course_id_id_key" in joined
+    assert "DROP CONSTRAINT IF EXISTS lesson_progress_lesson_id_fkey" in joined
+    assert "ADD CONSTRAINT lesson_progress_course_lesson_fkey" in joined
+    # Sanity: 001 alone gave >=11 statements; 003 adds 4 more.
+    assert len(parts) >= 15
 
 
 def test_handler_returns_error_when_secret_arn_missing(schema_apply, monkeypatch) -> None:
