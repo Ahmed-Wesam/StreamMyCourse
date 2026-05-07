@@ -197,6 +197,7 @@ Resources:
               - rds:DescribeDBParameters
               - rds:ModifyDBParameterGroup
               - rds:ResetDBParameterGroup
+              - rds:DescribeEngineDefaultParameters
               - rds:AddTagsToResource
               - rds:RemoveTagsFromResource
               - rds:ListTagsForResource
