@@ -17,22 +17,22 @@ Parameters:
   StudentCallbackUrls:
     Type: String
     Description: Comma-separated OAuth callback URLs for the student SPA (must match app client)
-    Default: 'http://localhost:5173/'
+    Default: 'http://localhost:5173/,http://127.0.0.1:5173/'
 
   StudentLogoutUrls:
     Type: String
     Description: Comma-separated sign-out URLs for the student SPA
-    Default: 'http://localhost:5173/'
+    Default: 'http://localhost:5173/,http://127.0.0.1:5173/'
 
   TeacherCallbackUrls:
     Type: String
     Description: Comma-separated OAuth callback URLs for the teacher SPA
-    Default: 'http://localhost:5174/'
+    Default: 'http://localhost:5174/,http://127.0.0.1:5174/'
 
   TeacherLogoutUrls:
     Type: String
     Description: Comma-separated sign-out URLs for the teacher SPA
-    Default: 'http://localhost:5174/'
+    Default: 'http://localhost:5174/,http://127.0.0.1:5174/'
 
   GoogleClientId:
     Type: String
