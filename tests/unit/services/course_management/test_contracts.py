@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import pytest
+
 from services.course_management.contracts import (
     as_course_dto,
     as_course_list,
@@ -68,6 +70,8 @@ class TestAsLessonDto:
                 "id": "l1",
                 "title": "Intro",
                 "order": 1,
+                "moduleId": "m1",
+                "moduleOrder": 0,
                 "videoKey": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa/lessons/bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb/video/11111111-1111-4111-8111-111111111111.mp4",
                 "videoStatus": "ready",
                 "duration": 42,
@@ -77,34 +81,44 @@ class TestAsLessonDto:
             "id": "l1",
             "title": "Intro",
             "order": 1,
+            "moduleId": "m1",
+            "moduleOrder": 0,
             "videoStatus": "ready",
             "duration": 42,
         }
 
     def test_clamps_unknown_video_status_to_pending(self) -> None:
-        dto = as_lesson_dto({"id": "l1", "title": "x", "order": 1, "videoStatus": "uploading"})
+        dto = as_lesson_dto(
+            {"id": "l1", "title": "x", "order": 1, "moduleId": "m", "moduleOrder": 1, "videoStatus": "uploading"}
+        )
         assert dto["videoStatus"] == "pending"
 
-    def test_defaults_when_fields_missing(self) -> None:
-        dto = as_lesson_dto({})
-        assert dto["id"] == ""
-        assert dto["title"] == ""
-        assert dto["order"] == 0
-        assert dto["videoStatus"] == "pending"
-        # videoKey is never exposed; duration only when explicitly present.
-        assert "videoKey" not in dto
-        assert "duration" not in dto
+    def test_rejects_when_module_id_missing(self) -> None:
+        with pytest.raises(ValueError, match="moduleId"):
+            as_lesson_dto({})
+
+    def test_rejects_when_module_id_empty_string(self) -> None:
+        with pytest.raises(ValueError, match="moduleId"):
+            as_lesson_dto(
+                {"id": "l1", "title": "x", "order": 1, "moduleId": "", "moduleOrder": 0}
+            )
+
+    def test_rejects_when_module_order_missing(self) -> None:
+        with pytest.raises(ValueError, match="moduleOrder"):
+            as_lesson_dto({"id": "l1", "title": "x", "order": 1, "moduleId": "m1"})
 
     def test_videokey_present_but_none_is_omitted(self) -> None:
-        dto = as_lesson_dto({"id": "l1", "title": "x", "order": 1, "videoKey": None})
+        dto = as_lesson_dto({"id": "l1", "title": "x", "order": 1, "moduleId": "m", "moduleOrder": 0, "videoKey": None})
         assert "videoKey" not in dto
 
     def test_order_coerces_to_int(self) -> None:
-        dto = as_lesson_dto({"id": "l1", "title": "x", "order": "3"})
+        dto = as_lesson_dto(
+            {"id": "l1", "title": "x", "order": "3", "moduleId": "m1", "moduleOrder": 0}
+        )
         assert dto["order"] == 3
-        # Falsy values fall back to 0 via `or 0`.
-        dto2 = as_lesson_dto({"id": "l1", "title": "x", "order": None})
+        dto2 = as_lesson_dto({"id": "l1", "title": "x", "order": None, "moduleId": "m1", "moduleOrder": 0})
         assert dto2["order"] == 0
+        assert dto2["moduleOrder"] == 0
 
 
 class TestAsCourseList:
@@ -124,8 +138,8 @@ class TestAsCourseList:
 class TestAsLessonList:
     def test_maps_each_item(self) -> None:
         items = [
-            {"id": "l1", "title": "A", "order": 1, "videoStatus": "pending"},
-            {"id": "l2", "title": "B", "order": 2, "videoStatus": "ready"},
+            {"id": "l1", "title": "A", "order": 1, "moduleId": "m", "moduleOrder": 0, "videoStatus": "pending"},
+            {"id": "l2", "title": "B", "order": 2, "moduleId": "m", "moduleOrder": 0, "videoStatus": "ready"},
         ]
         result = as_lesson_list(items)
         assert [l["videoStatus"] for l in result] == ["pending", "ready"]

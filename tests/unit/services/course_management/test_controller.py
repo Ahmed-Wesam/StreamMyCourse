@@ -291,7 +291,11 @@ class TestHandleDispatch:
     def test_create_lesson_201_status(
         self, svc: MagicMock, make_lambda_event
     ) -> None:
-        svc.create_lesson.return_value = {"lessonId": "lid", "order": 1}
+        svc.create_lesson.return_value = {
+            "lessonId": "lid",
+            "moduleId": "mid",
+            "order": 1,
+        }
         evt = make_lambda_event(
             method="POST",
             path="/courses/c1/lessons",
@@ -300,7 +304,7 @@ class TestHandleDispatch:
         resp = handle(evt, origin="*", svc=svc, video_bucket="b", auth_svc=MagicMock())
         assert resp["statusCode"] == 201
         body = json.loads(resp["body"])
-        assert body == {"lessonId": "lid", "order": 1}
+        assert body == {"lessonId": "lid", "moduleId": "mid", "order": 1}
 
     def test_upload_url_requires_course_and_lesson_ids(
         self, svc: MagicMock, make_lambda_event
@@ -474,7 +478,14 @@ class TestHandleDispatchPerAction:
 
     def test_list_lessons_200(self, svc: MagicMock, make_lambda_event) -> None:
         svc.list_lessons_public.return_value = [
-            {"id": "lid", "title": "T", "order": 1, "videoStatus": "pending"}
+            {
+                "id": "lid",
+                "title": "T",
+                "order": 1,
+                "moduleId": "m1",
+                "moduleOrder": 0,
+                "videoStatus": "pending",
+            }
         ]
         evt = make_lambda_event(method="GET", path="/courses/c1/lessons")
         resp = handle(evt, origin="*", svc=svc, video_bucket="b", auth_svc=MagicMock())
@@ -584,7 +595,14 @@ class TestHandleDispatchPerAction:
         self, svc: MagicMock, make_lambda_event
     ) -> None:
         svc.list_lessons_public.return_value = [
-            {"id": "lid", "title": "L", "order": 1, "videoStatus": "ready"}
+            {
+                "id": "lid",
+                "title": "L",
+                "order": 1,
+                "moduleId": "m1",
+                "moduleOrder": 0,
+                "videoStatus": "ready",
+            }
         ]
         evt = make_lambda_event(method="GET", path="/courses/c1/lessons")
         resp = handle(

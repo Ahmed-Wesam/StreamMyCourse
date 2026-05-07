@@ -28,7 +28,7 @@ except Exception:  # pragma: no cover - surface at first DB call instead
     psycopg2 = None  # type: ignore[assignment]
 
 from services.common.errors import Conflict
-from services.course_management.models import Course, Lesson
+from services.course_management.models import Course, CourseModule, Lesson
 
 
 logger = logging.getLogger(__name__)
@@ -66,18 +66,43 @@ def _row_to_course(row: Tuple[Any, ...]) -> Course:
     )
 
 
+def _row_to_course_module(row: Tuple[Any, ...]) -> CourseModule:
+    """``id, course_id, title, description, module_order, created_at, updated_at``."""
+    (mid, course_id, title, description, module_order, created_at, updated_at) = row
+    return CourseModule(
+        id=str(mid),
+        courseId=str(course_id),
+        title=str(title or ""),
+        description=str(description or ""),
+        order=int(module_order or 0),
+        createdAt=_to_iso(created_at),
+        updatedAt=_to_iso(updated_at),
+    )
+
+
 def _row_to_lesson(row: Tuple[Any, ...]) -> Lesson:
-    """Map a ``lessons`` row tuple to the camelCase domain type.
+    """Map a lesson row from ``lessons`` + ``course_modules`` join.
 
-    Column order must match every SELECT in this module::
-
-        id, title, lesson_order, video_key, video_status, thumbnail_key, duration
+        id, title, lesson_order, video_key, video_status, thumbnail_key, duration,
+        module_id, module_order
     """
-    (lid, title, lesson_order, video_key, video_status, thumbnail_key, duration) = row
+    (
+        lid,
+        title,
+        lesson_order,
+        video_key,
+        video_status,
+        thumbnail_key,
+        duration,
+        module_id,
+        module_order,
+    ) = row
     return Lesson(
         id=str(lid),
         title=str(title or ""),
         order=int(lesson_order or 0),
+        moduleId=str(module_id or ""),
+        moduleOrder=int(module_order or 0),
         videoKey=str(video_key or ""),
         videoStatus=str(video_status or "pending"),
         duration=int(duration or 0),
@@ -88,9 +113,15 @@ def _row_to_lesson(row: Tuple[Any, ...]) -> Lesson:
 _COURSE_COLUMNS = (
     "id, title, description, status, created_by, thumbnail_key, created_at, updated_at"
 )
-_LESSON_COLUMNS = (
-    "id, title, lesson_order, video_key, video_status, thumbnail_key, duration"
+_MODULE_COLUMNS = "id, course_id, title, description, module_order, created_at, updated_at"
+_LESSON_SELECT = (
+    "l.id, l.title, l.lesson_order, l.video_key, l.video_status, l.thumbnail_key, "
+    "l.duration, l.module_id, m.module_order"
 )
+_LESSON_JOIN = """
+  FROM lessons l
+  INNER JOIN course_modules m ON m.id = l.module_id AND m.course_id = l.course_id
+"""
 
 
 class CourseCatalogRdsRepository:
@@ -173,19 +204,67 @@ class CourseCatalogRdsRepository:
     def create_course(
         self, title: str, description: str, *, created_by: str = ""
     ) -> Course:
-        cur = self._execute(
-            f"""
-            INSERT INTO courses (title, description, status, created_by)
-            VALUES (%s, %s, %s, %s)
-            RETURNING {_COURSE_COLUMNS}
-            """,
-            (title, description, "DRAFT", (created_by or "").strip()),
-            commit=True,
-        )
-        row = cur.fetchone()
-        if row is None:
-            raise RuntimeError("INSERT courses ... RETURNING returned no row")
-        return _row_to_course(row)
+        """Insert course plus a single default ``course_modules`` row (module_order 0).
+
+        Wrapped in one transaction so a course cannot exist without a module.
+        """
+        conn = self._connection()
+        try:
+            cur = conn.cursor()
+            cur.execute(
+                f"""
+                INSERT INTO courses (title, description, status, created_by)
+                VALUES (%s, %s, %s, %s)
+                RETURNING {_COURSE_COLUMNS}
+                """,
+                (title, description, "DRAFT", (created_by or "").strip()),
+            )
+            row = cur.fetchone()
+            if row is None:
+                raise RuntimeError("INSERT courses ... RETURNING returned no row")
+            course = _row_to_course(row)
+            cur.execute(
+                """
+                INSERT INTO course_modules (course_id, title, description, module_order)
+                VALUES (%s, %s, %s, %s)
+                """,
+                (course.id, "Overview", "", 0),
+            )
+            conn.commit()
+            return course
+        except Exception as exc:
+            conn.rollback()
+            if psycopg2 is not None and isinstance(exc, psycopg2.OperationalError):
+                logger.warning("RDS connection lost during create_course, reconnecting: %s", exc)
+                self._conn = None
+                conn = self._connection()
+                try:
+                    cur = conn.cursor()
+                    cur.execute(
+                        f"""
+                        INSERT INTO courses (title, description, status, created_by)
+                        VALUES (%s, %s, %s, %s)
+                        RETURNING {_COURSE_COLUMNS}
+                        """,
+                        (title, description, "DRAFT", (created_by or "").strip()),
+                    )
+                    row = cur.fetchone()
+                    if row is None:
+                        raise RuntimeError("INSERT courses ... RETURNING returned no row")
+                    course = _row_to_course(row)
+                    cur.execute(
+                        """
+                        INSERT INTO course_modules (course_id, title, description, module_order)
+                        VALUES (%s, %s, %s, %s)
+                        """,
+                        (course.id, "Overview", "", 0),
+                    )
+                    conn.commit()
+                    return course
+                except Exception:
+                    conn.rollback()
+                    raise
+            raise
 
     def update_course(self, course_id: str, title: str, description: str) -> None:
         self._execute(
@@ -209,10 +288,60 @@ class CourseCatalogRdsRepository:
         )
 
     def delete_course_and_lessons(self, course_id: str) -> None:
-        # enrollments.course_id and lessons.course_id use ON DELETE CASCADE from courses.
+        # enrollments, course_modules, and lessons CASCADE from courses.
         self._execute(
             "DELETE FROM courses WHERE id = %s",
             (course_id,),
+            commit=True,
+        )
+
+    # ------------------------------------------------------------------
+    # Course modules
+    # ------------------------------------------------------------------
+    def list_course_modules(self, course_id: str) -> List[CourseModule]:
+        cur = self._execute(
+            f"SELECT {_MODULE_COLUMNS} FROM course_modules WHERE course_id = %s ORDER BY module_order",
+            (course_id,),
+        )
+        return [_row_to_course_module(row) for row in cur.fetchall()]
+
+    def get_course_module(self, course_id: str, module_id: str) -> Optional[CourseModule]:
+        cur = self._execute(
+            f"SELECT {_MODULE_COLUMNS} FROM course_modules WHERE course_id = %s AND id = %s",
+            (course_id, module_id),
+        )
+        row = cur.fetchone()
+        return _row_to_course_module(row) if row else None
+
+    def create_course_module(
+        self, course_id: str, title: str, description: str = ""
+    ) -> CourseModule:
+        cur = self._execute(
+            "SELECT COALESCE(MAX(module_order), -1) FROM course_modules WHERE course_id = %s",
+            (course_id,),
+        )
+        row = cur.fetchone()
+        # Do NOT use `or -1` here: MAX(module_order) can be 0.
+        next_ord = int(row[0] if row and row[0] is not None else -1) + 1
+
+        cur = self._execute(
+            f"""
+            INSERT INTO course_modules (course_id, title, description, module_order)
+            VALUES (%s, %s, %s, %s)
+            RETURNING {_MODULE_COLUMNS}
+            """,
+            (course_id, title, description or "", next_ord),
+            commit=True,
+        )
+        created = cur.fetchone()
+        if created is None:
+            raise RuntimeError("INSERT course_modules ... RETURNING returned no row")
+        return _row_to_course_module(created)
+
+    def delete_course_module(self, course_id: str, module_id: str) -> None:
+        self._execute(
+            "DELETE FROM course_modules WHERE course_id = %s AND id = %s",
+            (course_id, module_id),
             commit=True,
         )
 
@@ -221,42 +350,49 @@ class CourseCatalogRdsRepository:
     # ------------------------------------------------------------------
     def list_lessons(self, course_id: str) -> List[Lesson]:
         cur = self._execute(
-            f"SELECT {_LESSON_COLUMNS} FROM lessons WHERE course_id = %s ORDER BY lesson_order",
+            f"""
+            SELECT {_LESSON_SELECT} {_LESSON_JOIN}
+             WHERE l.course_id = %s ORDER BY m.module_order, l.lesson_order
+            """,
             (course_id,),
         )
         return [_row_to_lesson(row) for row in cur.fetchall()]
 
     def get_lesson_by_id(self, course_id: str, lesson_id: str) -> Optional[Lesson]:
         cur = self._execute(
-            f"SELECT {_LESSON_COLUMNS} FROM lessons WHERE course_id = %s AND id = %s",
+            f"""
+            SELECT {_LESSON_SELECT} {_LESSON_JOIN}
+             WHERE l.course_id = %s AND l.id = %s
+            """,
             (course_id, lesson_id),
         )
         row = cur.fetchone()
         return _row_to_lesson(row) if row else None
 
-    def create_lesson(self, course_id: str, title: str) -> Lesson:
-        # Order = MAX(lesson_order) + 1. A separate SELECT keeps the INSERT
-        # simple (no CTE) and matches the DynamoDB implementation's contract.
+    def create_lesson(self, course_id: str, module_id: str, title: str) -> Lesson:
         cur = self._execute(
-            "SELECT COALESCE(MAX(lesson_order), 0) FROM lessons WHERE course_id = %s",
-            (course_id,),
+            "SELECT COALESCE(MAX(lesson_order), 0) FROM lessons WHERE course_id = %s AND module_id = %s",
+            (course_id, module_id),
         )
         row = cur.fetchone()
         next_order = int((row[0] if row else 0) or 0) + 1
 
         cur = self._execute(
-            f"""
-            INSERT INTO lessons (course_id, title, lesson_order)
-            VALUES (%s, %s, %s)
-            RETURNING {_LESSON_COLUMNS}
+            """
+            INSERT INTO lessons (course_id, module_id, title, lesson_order)
+            VALUES (%s, %s, %s, %s)
+            RETURNING id
             """,
-            (course_id, title, next_order),
+            (course_id, module_id, title, next_order),
             commit=True,
         )
         created = cur.fetchone()
         if created is None:
             raise RuntimeError("INSERT lessons ... RETURNING returned no row")
-        return _row_to_lesson(created)
+        loaded = self.get_lesson_by_id(course_id, str(created[0]))
+        if loaded is None:
+            raise RuntimeError("Lesson row missing after insert")
+        return loaded
 
     def update_lesson_title(
         self, course_id: str, lesson_id: str, title: str
@@ -363,9 +499,8 @@ class CourseCatalogRdsRepository:
         """Renumber lessons transactionally.
 
         A single transaction spans every UPDATE so the on-disk state never
-        contains partial reordering. ``UNIQUE (course_id, lesson_order)`` on
-        the table prevents two rows from colliding on the same order inside
-        the transaction.
+        contains partial reordering.         ``UNIQUE (course_id, module_id, lesson_order)`` prevents two rows
+        in the same module from colliding during the transaction.
         """
         if not orders:
             return

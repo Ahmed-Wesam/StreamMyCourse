@@ -224,7 +224,7 @@ class TestCourseCatalogRdsRepository:
     ) -> None:
         new_id = uuid.UUID("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee")
         now = datetime(2026, 5, 3, 12, 0, 0, tzinfo=timezone.utc)
-        # INSERT ... RETURNING style: one row comes back.
+        # INSERT courses RETURNING … then INSERT default course_modules.
         fake_conn.cursor_obj.rows_to_return.append(
             (new_id, "My Course", "Body", "DRAFT", "creator", "", now, now)
         )
@@ -235,14 +235,15 @@ class TestCourseCatalogRdsRepository:
         assert course.id == str(new_id)
         assert course.title == "My Course"
         assert course.status == "DRAFT"
-        # Verify parameterized INSERT + commit happened.
         assert fake_conn.committed >= 1
-        sql, params = fake_conn.cursor_obj.executions[-1]
-        assert "INSERT" in sql.upper()
-        assert "%s" in sql
-        assert "My Course" in params
-        assert "Body" in params
-        assert "creator" in params
+        inserts = [(s, p) for s, p in fake_conn.cursor_obj.executions if "INSERT" in s.upper()]
+        assert len(inserts) >= 2
+        assert any("courses" in s.lower() for s, _ in inserts)
+        assert any("course_modules" in s.lower() for s, _ in inserts)
+        assert any("My Course" in params for _, params in inserts)
+        assert any("Overview" in params for _, params in inserts), (
+            "default module row uses non-empty placeholder title"
+        )
 
     def test_update_course_issues_parameterized_update(
         self, repo, fake_conn: FakeConn
@@ -284,23 +285,26 @@ class TestCourseCatalogRdsRepository:
     ) -> None:
         l1_id = uuid.UUID("aaaaaaaa-0000-0000-0000-000000000001")
         l2_id = uuid.UUID("aaaaaaaa-0000-0000-0000-000000000002")
-        # Adapter should issue ORDER BY lesson_order in its SQL; test caller just
-        # returns rows in that order.
+        mid = uuid.UUID("dddddddd-dddd-dddd-dddd-dddddddddddd")
         fake_conn.cursor_obj.bulk_rows_to_return = [
-            (l1_id, "First", 1, "keys/1.mp4", "ready", "", 30),
-            (l2_id, "Second", 2, "", "pending", "thumbs/x.png", 0),
+            (l1_id, "First", 1, "keys/1.mp4", "ready", "", 30, mid, 0),
+            (l2_id, "Second", 2, "", "pending", "thumbs/x.png", 0, mid, 0),
         ]
         lessons = repo.list_lessons("course-id")
         assert len(lessons) == 2
         assert all(isinstance(l.id, str) for l in lessons)
         assert lessons[0].order == 1
+        assert lessons[0].moduleId == str(mid)
+        assert lessons[0].moduleOrder == 0
         assert lessons[0].videoKey == "keys/1.mp4"
         assert lessons[0].videoStatus == "ready"
         assert lessons[0].duration == 30
         assert lessons[1].thumbnailKey == "thumbs/x.png"
-        # ORDER BY must be present -- business rule depends on lesson order.
         joined_sql = " ".join(sql for sql, _ in fake_conn.cursor_obj.executions)
-        assert "order by lesson_order" in joined_sql.lower() or "ORDER BY lesson_order" in joined_sql
+        assert (
+            "order by m.module_order" in joined_sql.lower()
+            and "lesson_order" in joined_sql.lower()
+        )
 
     def test_get_lesson_by_id_missing_returns_none(
         self, repo, fake_conn: FakeConn
@@ -315,31 +319,34 @@ class TestCourseCatalogRdsRepository:
         self, repo, fake_conn: FakeConn
     ) -> None:
         lid = uuid.UUID("cccccccc-dddd-eeee-ffff-000000000001")
+        mid = uuid.UUID("dddddddd-dddd-dddd-dddd-dddddddddddd")
         fake_conn.cursor_obj.rows_to_return.append(
-            (lid, "Title", 3, "video.mp4", "ready", "thumb.png", 42)
+            (lid, "Title", 3, "video.mp4", "ready", "thumb.png", 42, mid, 1)
         )
         lesson = repo.get_lesson_by_id("course-id", str(lid))
         assert lesson is not None
         assert isinstance(lesson.id, str)
         assert lesson.order == 3
         assert lesson.videoKey == "video.mp4"
+        assert lesson.moduleId == str(mid)
 
     def test_create_lesson_assigns_next_order(
         self, repo, fake_conn: FakeConn
     ) -> None:
-        # Stage the next-order query first (MAX(lesson_order) -> 2), then the
-        # INSERT ... RETURNING row for the new lesson (order=3).
         new_id = uuid.UUID("bbbbbbbb-cccc-dddd-eeee-ffffffffffff")
+        mid = uuid.UUID("dddddddd-dddd-dddd-dddd-dddddddddddd")
         fake_conn.cursor_obj.rows_to_return.extend(
             [
-                (2,),  # SELECT COALESCE(MAX(lesson_order),0) -> 2
-                (new_id, "Lesson 3", 3, "", "pending", "", 0),
+                (2,),  # MAX(lesson_order) for module
+                (new_id,),  # INSERT RETURNING id
+                (new_id, "Lesson 3", 3, "", "pending", "", 0, mid, 0),  # get_lesson_by_id JOIN
             ]
         )
-        lesson = repo.create_lesson("course-id", "Lesson 3")
+        lesson = repo.create_lesson("course-id", str(mid), "Lesson 3")
         assert isinstance(lesson.id, str)
         assert lesson.title == "Lesson 3"
         assert lesson.order == 3
+        assert lesson.moduleId == str(mid)
         assert fake_conn.committed >= 1
 
     def test_update_lesson_title_parameterized(
@@ -448,12 +455,11 @@ class TestCourseCatalogRdsRepository:
     def test_create_lesson_raises_when_returning_empty(
         self, repo, fake_conn: FakeConn
     ) -> None:
-        """INSERT ... RETURNING with no row raises RuntimeError (line 258)."""
-        # Stage the MAX query result first, then empty for INSERT
+        """INSERT ... RETURNING id with no row raises RuntimeError."""
         fake_conn.cursor_obj.rows_to_return = [(0,)]  # MAX order query
-        # Next fetchone for INSERT will return None
+        mid = uuid.UUID("dddddddd-dddd-dddd-dddd-dddddddddddd")
         with pytest.raises(RuntimeError, match="RETURNING returned no row"):
-            repo.create_lesson("course-id", "Lesson Title")
+            repo.create_lesson("course-id", str(mid), "Lesson Title")
 
     def test_set_lesson_duration_skips_when_duration_zero_or_negative(
         self, repo, fake_conn: FakeConn

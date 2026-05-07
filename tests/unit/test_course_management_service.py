@@ -71,11 +71,14 @@ _L2 = "cccccccc-cccc-4ccc-8ccc-cccccccccccc"
 
 class TestSafePresignThumbnails:
     def test_list_lessons_omits_thumbnail_when_presign_rejected(self) -> None:
+        _mid = "99999999-9999-4999-8999-999999999999"
         lessons = [
             Lesson(
                 id=_L1,
                 title="Bad thumb",
                 order=1,
+                moduleId=_mid,
+                moduleOrder=0,
                 videoKey=f"{_CID}/lessons/{_L1}/video/11111111-1111-4111-8111-111111111111.mp4",
                 videoStatus="ready",
                 thumbnailKey="legacy/course-thumb.jpg",
@@ -84,6 +87,8 @@ class TestSafePresignThumbnails:
                 id=_L2,
                 title="Good thumb",
                 order=2,
+                moduleId=_mid,
+                moduleOrder=0,
                 videoKey="",
                 videoStatus="pending",
                 thumbnailKey=(
@@ -123,6 +128,8 @@ class TestSafePresignThumbnails:
                     id=lesson_id,
                     title="x",
                     order=1,
+                    moduleId="99999999-9999-4999-8999-999999999999",
+                    moduleOrder=0,
                     videoKey="legacy-video.mp4",
                     videoStatus="ready",
                 )

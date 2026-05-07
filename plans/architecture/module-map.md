@@ -21,7 +21,7 @@ This document is the “public surface” map for the Python Lambda under `infra
 | `rds_repo.py` | Persistence adapter (PostgreSQL) | psycopg2-based `CourseCatalogRepositoryPort` implementation |
 | `storage.py` | Infrastructure adapter | S3 presign generation |
 | `ports.py` | Contracts | `Protocol` interfaces for repo/storage |
-| `models.py` | Domain models | Persistence-agnostic domain types |
+| `models.py` | Domain models | `Course`, **`CourseModule`**, `Lesson`, `PresignResult` (lesson carries `moduleId` + module display order from join) |
 | `contracts.py` | API DTOs | TypedDicts for JSON shapes returned by controller |
 
 **Cross-context rule:** `course_management` must not import `services.auth` (enforced in CI).

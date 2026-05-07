@@ -12,14 +12,20 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from services.common.errors import BadRequest, Conflict, Forbidden, NotFound, ServiceUnavailable
-from services.course_management.models import Course, Lesson, PresignResult
+from services.course_management.models import Course, CourseModule, Lesson, PresignResult
 from services.course_management.service import CourseManagementService
+
+
+_MID_DEFAULT = "99999999-9999-4999-8999-999999999999"
+_VID_DEFAULT = "11111111-1111-4111-8111-111111111111"
 
 
 def _lesson(
     *,
     id_: str = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
     order: int = 1,
+    module_id: str = _MID_DEFAULT,
+    module_order: int = 0,
     video_key: str = "",
     video_status: str = "pending",
     title: str = "L",
@@ -29,10 +35,28 @@ def _lesson(
         id=id_,
         title=title,
         order=order,
+        moduleId=module_id,
+        moduleOrder=module_order,
         videoKey=video_key,
         videoStatus=video_status,
         duration=0,
         thumbnailKey=thumbnail_key,
+    )
+
+
+def _module(
+    *,
+    id_: str = _MID_DEFAULT,
+    course_id: str = _VID_DEFAULT,
+    order: int = 0,
+    title: str = "Module",
+) -> CourseModule:
+    return CourseModule(
+        id=id_,
+        courseId=course_id,
+        title=title,
+        description="",
+        order=order,
     )
 
 
@@ -264,10 +288,17 @@ class TestCreateLessonService:
     def test_returns_lesson_id_and_order(
         self, service: CourseManagementService, repo: MagicMock
     ) -> None:
+        repo.list_course_modules.return_value = [_module(course_id=_VID, id_=_MID_DEFAULT)]
         repo.create_lesson.return_value = _lesson(id_="bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb", order=1)
         out = service.create_lesson(_VID, "")
-        repo.create_lesson.assert_called_once_with(course_id=_VID, title="Lesson")
-        assert out == {"lessonId": "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb", "order": 1}
+        repo.create_lesson.assert_called_once_with(
+            course_id=_VID, module_id=_MID_DEFAULT, title="Lesson"
+        )
+        assert out == {
+            "lessonId": "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+            "moduleId": _MID_DEFAULT,
+            "order": 1,
+        }
 
 
 # --- delete_course ------------------------------------------------------------
@@ -482,8 +513,9 @@ class TestDeleteLessonOrderCompaction:
 
         storage.delete_objects.assert_not_called()
         repo.delete_lesson.assert_called_once_with(course_id=_VID, lesson_id=self._LID2)
+        # First lesson stays at order 1; only mismatched orders are patched.
         repo.set_lesson_orders.assert_called_once_with(
-            _VID, {self._LID1: 1, self._LID3: 2, self._LID4: 3}
+            _VID, {self._LID3: 2, self._LID4: 3}
         )
 
     def test_preserves_order_when_unsorted_input_returned(
@@ -500,9 +532,8 @@ class TestDeleteLessonOrderCompaction:
         service.delete_lesson(_VID, self._LID2)
 
         storage.delete_objects.assert_not_called()
-        # Mapping must reflect the *sorted* iteration, not the input order.
         repo.set_lesson_orders.assert_called_once_with(
-            _VID, {self._LID1: 1, self._LID3: 2, self._LID4: 3}
+            _VID, {self._LID3: 2, self._LID4: 3}
         )
 
     def test_no_remaining_lessons_skips_renumber(

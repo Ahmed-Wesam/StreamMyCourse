@@ -1,13 +1,14 @@
 from __future__ import annotations
 
 import logging
+from collections import defaultdict
 from dataclasses import asdict
 from typing import Any, Dict, List
 from uuid import UUID
 
 from services.common.errors import BadRequest, Conflict, Forbidden, NotFound, ServiceUnavailable
 from services.common.sqs_client import send_media_cleanup_job
-from services.course_management.models import Course, Lesson
+from services.course_management.models import Course, CourseModule, Lesson
 from services.course_management.ports import CourseCatalogRepositoryPort, CourseMediaStoragePort
 from services.enrollment.ports import EnrollmentRepositoryPort
 
@@ -82,7 +83,7 @@ class CourseManagementService:
         if public.get("thumbnailUrl") or self._storage is None:
             return
         lessons = self._repo.list_lessons(course_id)
-        for lesson in sorted(lessons, key=lambda l: l.order):
+        for lesson in sorted(lessons, key=lambda l: (l.moduleOrder, l.order)):
             tk = (lesson.thumbnailKey or "").strip()
             if tk:
                 url = self._safe_presign_get(tk, media="lesson_thumbnail_fallback")
@@ -338,13 +339,106 @@ class CourseManagementService:
             if not self._can_manage_course_unenrolled(course, cognito_sub=cognito_sub, role=role):
                 raise NotFound("Course not found")
         lessons = self._repo.list_lessons(course_id)
-        return [self._public_lesson_dict(l) for l in sorted(lessons, key=lambda x: x.order)]
+        return [
+            self._public_lesson_dict(l) for l in sorted(lessons, key=lambda x: (x.moduleOrder, x.order))
+        ]
 
-    def create_lesson(self, course_id: str, title: str) -> Dict[str, Any]:
+    def _resolve_module_for_new_lesson(self, course_id: str, module_id: str | None) -> str:
+        mid = (module_id or "").strip()
+        if mid:
+            if not _is_valid_uuid(mid):
+                raise NotFound("Module not found")
+            mod = self._repo.get_course_module(course_id, mid)
+            if not mod:
+                raise NotFound("Module not found")
+            return mod.id
+        modules = self._repo.list_course_modules(course_id)
+        if not modules:
+            raise BadRequest("Course has no modules")
+        return modules[0].id
+
+    def list_course_modules_public(
+        self,
+        course_id: str,
+        *,
+        cognito_sub: str,
+        role: str,
+        auth_enforced: bool,
+    ) -> List[Dict[str, Any]]:
         if not _is_valid_uuid(course_id):
             raise NotFound("Course not found")
-        lesson = self._repo.create_lesson(course_id=course_id, title=title or "Lesson")
-        return {"lessonId": lesson.id, "order": lesson.order}
+        course = self._repo.get_course(course_id)
+        if not course:
+            raise NotFound("Course not found")
+        if auth_enforced and course.status == "DRAFT":
+            if not self._can_manage_course_unenrolled(course, cognito_sub=cognito_sub, role=role):
+                raise NotFound("Course not found")
+        return [self._public_module_dict(m) for m in self._repo.list_course_modules(course_id)]
+
+    @staticmethod
+    def _public_module_dict(m: CourseModule) -> Dict[str, Any]:
+        return {
+            "id": m.id,
+            "title": m.title,
+            "description": m.description,
+            "order": m.order,
+            "createdAt": m.createdAt,
+            "updatedAt": m.updatedAt,
+        }
+
+    def create_course_module(self, course_id: str, title: str, description: str = "") -> Dict[str, Any]:
+        if not _is_valid_uuid(course_id):
+            raise NotFound("Course not found")
+        course = self._repo.get_course(course_id)
+        if not course:
+            raise NotFound("Course not found")
+        m = self._repo.create_course_module(course_id, title or "Untitled module", description or "")
+        return {"moduleId": m.id, "order": m.order}
+
+    def delete_course_module(self, course_id: str, module_id: str) -> Dict[str, Any]:
+        if not _is_valid_uuid(course_id):
+            raise NotFound("Course not found")
+        if not _is_valid_uuid(module_id):
+            raise NotFound("Module not found")
+        course = self._repo.get_course(course_id)
+        if not course:
+            raise NotFound("Course not found")
+        modules = self._repo.list_course_modules(course_id)
+        if module_id not in {m.id for m in modules}:
+            return {"moduleId": module_id, "deleted": False}
+        if len(modules) <= 1:
+            raise BadRequest("Cannot delete the last module in a course")
+        lesson_rows = [
+            l
+            for l in self._repo.list_lessons(course_id)
+            if l.moduleId == module_id
+        ]
+        media_keys: List[str] = []
+        for lesson in lesson_rows:
+            if lesson.videoKey.strip():
+                media_keys.append(lesson.videoKey.strip())
+            if lesson.thumbnailKey.strip():
+                media_keys.append(lesson.thumbnailKey.strip())
+        deduped = list(dict.fromkeys(k.strip() for k in media_keys if k and k.strip()))
+        if deduped and not self._media_cleanup_queue_url:
+            raise ServiceUnavailable(
+                "Media cleanup queue is not configured (MEDIA_CLEANUP_QUEUE_URL is empty)"
+            )
+        self._repo.delete_course_module(course_id, module_id)
+        if deduped:
+            send_media_cleanup_job(self._media_cleanup_queue_url, course_id, deduped)
+        return {"moduleId": module_id, "deleted": True}
+
+    def create_lesson(
+        self, course_id: str, title: str, *, module_id: str | None = None
+    ) -> Dict[str, Any]:
+        if not _is_valid_uuid(course_id):
+            raise NotFound("Course not found")
+        resolved_module = self._resolve_module_for_new_lesson(course_id, module_id)
+        lesson = self._repo.create_lesson(
+            course_id=course_id, module_id=resolved_module, title=title or "Lesson"
+        )
+        return {"lessonId": lesson.id, "moduleId": lesson.moduleId, "order": lesson.order}
 
     def update_lesson(self, course_id: str, lesson_id: str, title: str) -> Dict[str, Any]:
         if not _is_valid_uuid(course_id):
@@ -378,9 +472,17 @@ class CourseManagementService:
         self._repo.delete_lesson(course_id=course_id, lesson_id=lesson_id)
         if deduped:
             send_media_cleanup_job(self._media_cleanup_queue_url, course_id, deduped)
-        # Compact remaining orders to 1..N so display has no gaps.
-        remaining = sorted(self._repo.list_lessons(course_id), key=lambda l: l.order)
-        mapping = {l.id: i + 1 for i, l in enumerate(remaining) if l.id}
+        # Compact remaining orders to 1..N within each module.
+        remaining = self._repo.list_lessons(course_id)
+        by_module: defaultdict[str, List[Lesson]] = defaultdict(list)
+        for lesson in remaining:
+            by_module[lesson.moduleId].append(lesson)
+        mapping: Dict[str, int] = {}
+        for grp in by_module.values():
+            for i, lesson in enumerate(sorted(grp, key=lambda l: l.order)):
+                next_order = i + 1
+                if lesson.order != next_order and lesson.id:
+                    mapping[lesson.id] = next_order
         if mapping:
             self._repo.set_lesson_orders(course_id, mapping)
         return {"lessonId": lesson_id, "deleted": True}
