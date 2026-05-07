@@ -10,9 +10,11 @@ This module implements the LessonProgressService which handles:
 
 from __future__ import annotations
 
+import logging
 from typing import TYPE_CHECKING, Dict, List, Optional
+from uuid import UUID
 
-from services.common.errors import BadRequest, Forbidden
+from services.common.errors import BadRequest, Forbidden, NotFound
 from services.progress.contracts import (
     CourseProgressResponse,
     LessonProgressItem,
@@ -23,6 +25,17 @@ from services.progress.ports import LessonProgressRepositoryPort, LessonProgress
 if TYPE_CHECKING:
     from services.course_management.ports import CourseCatalogRepositoryPort
     from services.enrollment.ports import EnrollmentRepositoryPort
+
+
+logger = logging.getLogger(__name__)
+
+
+def _is_valid_uuid(value: str) -> bool:
+    try:
+        UUID(value)
+        return True
+    except Exception:
+        return False
 
 
 class LessonProgressService:
@@ -123,6 +136,9 @@ class LessonProgressService:
         Raises:
             Forbidden: If user is not enrolled and not course owner
         """
+        if not _is_valid_uuid(course_id):
+            raise NotFound("Course not found")
+
         if not self._check_authorization(user_sub, course_id):
             raise Forbidden(
                 "Enrollment required to view course progress",
@@ -137,6 +153,14 @@ class LessonProgressService:
             user_sub=user_sub,
             course_id=course_id,
         )
+
+        known_lesson_ids = {l.id for l in all_lessons}
+        drift = [r.lesson_id for r in progress_rows if r.lesson_id not in known_lesson_ids]
+        if drift:
+            logger.info(
+                "Drifted lesson_progress rows ignored",
+                extra={"course_id": course_id, "drift_count": len(drift)},
+            )
 
         # Create lookup dict for progress by lesson_id
         progress_by_lesson: Dict[str, LessonProgressRow] = {
@@ -216,6 +240,13 @@ class LessonProgressService:
                 code="mutually_exclusive_flags",
             )
 
+        # Validate path-param UUID shape before any repo I/O so malformed input
+        # returns a clean 404 instead of bubbling a psycopg InvalidTextRepresentation.
+        if not _is_valid_uuid(course_id):
+            raise NotFound("Course not found")
+        if not _is_valid_uuid(lesson_id):
+            raise NotFound("Lesson not found")
+
         # Check authorization
         if not self._check_authorization(user_sub, course_id):
             raise Forbidden(
@@ -225,6 +256,10 @@ class LessonProgressService:
 
         # Validate position
         self._validate_position(position, duration)
+
+        lesson = self._course_repo.get_lesson_by_id(course_id, lesson_id)
+        if lesson is None:
+            raise NotFound("Lesson not found")
 
         # Determine completion status
         completed: bool
