@@ -6,11 +6,14 @@ import {
   getCourseProgress,
   hasSignedInIdToken,
   listLessons,
+  listCourseModules,
   type Course,
+  type CourseModule,
   type CourseProgress,
   type Lesson,
   type LessonProgressItem,
 } from '../lib/api'
+import { groupLessonsByModule } from '../lib/lessonGrouping'
 
 /** 0–100 for the thumbnail bar, or null when no in-progress / completed state to show. */
 function lessonThumbnailProgressPercent(
@@ -163,8 +166,8 @@ function getResumeLesson(
 ): { lesson: Lesson; startTimeSec: number } | null {
   if (lessons.length === 0) return null
 
-  // Sort by order to ensure correct sequence
-  const sortedLessons = [...lessons].sort((a, b) => a.order - b.order)
+  // Sort by module sequence, then lesson order within module.
+  const sortedLessons = [...lessons].sort((a, b) => a.moduleOrder - b.moduleOrder || a.order - b.order)
 
   // Find first incomplete lesson
   for (const lesson of sortedLessons) {
@@ -185,6 +188,7 @@ function CourseDetailBody({
   error,
   loading,
   lessons,
+  modules,
   course,
   courseProgress,
   previewOnly,
@@ -196,6 +200,7 @@ function CourseDetailBody({
   error: string | null
   loading: boolean
   lessons: Lesson[]
+  modules: CourseModule[]
   course: Course | null
   courseProgress: CourseProgress | null
   previewOnly: boolean
@@ -203,6 +208,9 @@ function CourseDetailBody({
   enrolling: boolean
   onEnroll: () => void
 }) {
+  const lessonSections = useMemo(() => groupLessonsByModule(lessons, modules), [lessons, modules])
+  const lessonIndexById = useMemo(() => new Map(lessons.map((l, i) => [l.id, i])), [lessons])
+
   return (
     <div className="space-y-8 py-6 sm:py-8">
       {error && (
@@ -241,18 +249,28 @@ function CourseDetailBody({
                 </p>
               </div>
               <div className="divide-y divide-gray-100">
-                {lessons.map((lesson, index) => (
-                  <LessonItem
-                    key={lesson.id}
-                    lesson={lesson}
-                    courseId={courseId}
-                    index={index}
-                    linkDisabled={previewOnly || needsEnrollment}
-                    thumbnailProgressPercent={lessonThumbnailProgressPercent(
-                      lesson,
-                      courseProgress?.lessons.find((p) => p.lessonId === lesson.id),
-                    )}
-                  />
+                {lessonSections.map((section) => (
+                  <div key={section.id}>
+                    <div className="bg-gray-50 px-6 py-3">
+                      <div className="font-semibold text-gray-900">{section.title}</div>
+                      {section.description && (
+                        <div className="mt-1 text-sm text-gray-600">{section.description}</div>
+                      )}
+                    </div>
+                    {section.lessons.map((lesson) => (
+                      <LessonItem
+                        key={lesson.id}
+                        lesson={lesson}
+                        courseId={courseId}
+                        index={lessonIndexById.get(lesson.id) ?? 0}
+                        linkDisabled={previewOnly || needsEnrollment}
+                        thumbnailProgressPercent={lessonThumbnailProgressPercent(
+                          lesson,
+                          courseProgress?.lessons.find((p) => p.lessonId === lesson.id),
+                        )}
+                      />
+                    ))}
+                  </div>
                 ))}
               </div>
               {lessons.length === 0 && (
@@ -344,7 +362,6 @@ function LessonItem({
         <h3 className="text-gray-900 font-medium group-hover:text-blue-700 transition-colors">
           {lesson.title}
         </h3>
-        <p className="text-sm text-gray-500">Lesson {lesson.order}</p>
       </div>
       <div className="flex shrink-0 items-center text-blue-600 opacity-0 group-hover:opacity-100 transition-opacity">
         <span className="text-sm font-medium mr-2">{linkDisabled ? 'Locked' : 'Play'}</span>
@@ -408,6 +425,7 @@ export default function CourseDetailPage() {
 
   const [course, setCourse] = useState<Course | null>(null)
   const [lessons, setLessons] = useState<Lesson[]>([])
+  const [modules, setModules] = useState<CourseModule[]>([])
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [previewOnly, setPreviewOnly] = useState(false)
@@ -423,10 +441,17 @@ export default function CourseDetailPage() {
     setPreviewOnly(!signedIn)
     setNeedsEnrollment(false)
     try {
-      const c = await getCourse(courseId)
+      const [c, l, m] = await Promise.all([getCourse(courseId), listLessons(courseId), listCourseModules(courseId)])
+      if (!c) {
+        setCourse(null)
+        setLessons([])
+        setModules([])
+        setError('Course not found')
+        return
+      }
       setCourse(c)
-      const l = await listLessons(courseId)
-      setLessons([...l].sort((a, b) => a.order - b.order))
+      setModules([...m].sort((a, b) => a.order - b.order))
+      setLessons([...l].sort((a, b) => a.moduleOrder - b.moduleOrder || a.order - b.order))
       if (signedIn) {
         setNeedsEnrollment(c.enrolled === false)
       }
@@ -441,6 +466,9 @@ export default function CourseDetailPage() {
       }
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to load')
+      setCourse(null)
+      setLessons([])
+      setModules([])
     } finally {
       setLoading(false)
     }
@@ -472,6 +500,7 @@ export default function CourseDetailPage() {
           error={error}
           loading={loading}
           lessons={lessons}
+          modules={modules}
           course={course}
           courseProgress={courseProgress}
           previewOnly={previewOnly}

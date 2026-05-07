@@ -1,11 +1,12 @@
 /**
  * @vitest-environment jsdom
  */
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import CourseManagement from './CourseManagement'
+import { ApiError } from '../lib/api'
 
 const api = vi.hoisted(() => ({
   getCourse: vi.fn(),
@@ -13,6 +14,9 @@ const api = vi.hoisted(() => ({
   listLessons: vi.fn(),
   createLesson: vi.fn(),
   deleteLesson: vi.fn(),
+  listCourseModules: vi.fn(),
+  createCourseModule: vi.fn(),
+  deleteCourseModule: vi.fn(),
   getUploadUrl: vi.fn(),
   markLessonVideoReady: vi.fn(),
   markCourseThumbnailReady: vi.fn(),
@@ -21,13 +25,14 @@ const api = vi.hoisted(() => ({
 
 const mockNavigate = vi.fn()
 const mockConfirm = vi.fn()
+const mockRouteParams = vi.hoisted(() => ({ courseId: 'c1' }))
 
 vi.mock('react-router-dom', async (importOriginal) => {
   const mod = (await importOriginal()) as typeof import('react-router-dom')
   return {
     ...mod,
     useNavigate: () => mockNavigate,
-    useParams: () => ({ courseId: 'c1' }),
+    useParams: () => mockRouteParams,
   }
 })
 
@@ -40,12 +45,23 @@ vi.mock('../lib/api', async (importOriginal) => {
     listLessons: (...args: unknown[]) => api.listLessons(...args) as ReturnType<typeof mod.listLessons>,
     createLesson: (...args: unknown[]) => api.createLesson(...args) as ReturnType<typeof mod.createLesson>,
     deleteLesson: (...args: unknown[]) => api.deleteLesson(...args) as ReturnType<typeof mod.deleteLesson>,
+    listCourseModules: (...args: unknown[]) => api.listCourseModules(...args) as ReturnType<typeof mod.listCourseModules>,
+    createCourseModule: (...args: unknown[]) =>
+      api.createCourseModule(...args) as ReturnType<typeof mod.createCourseModule>,
+    deleteCourseModule: (...args: unknown[]) =>
+      api.deleteCourseModule(...args) as ReturnType<typeof mod.deleteCourseModule>,
     getUploadUrl: (...args: unknown[]) => api.getUploadUrl(...args) as ReturnType<typeof mod.getUploadUrl>,
     markLessonVideoReady: (...args: unknown[]) => api.markLessonVideoReady(...args) as ReturnType<typeof mod.markLessonVideoReady>,
     markCourseThumbnailReady: (...args: unknown[]) => api.markCourseThumbnailReady(...args) as ReturnType<typeof mod.markCourseThumbnailReady>,
     publishCourse: (...args: unknown[]) => api.publishCourse(...args) as ReturnType<typeof mod.publishCourse>,
   }
 })
+
+vi.mock('../lib/videoThumbnail', () => ({
+  captureFrameAtVideoPercent: vi.fn(async () => {
+    throw new Error('thumbnail generation skipped in tests')
+  }),
+}))
 
 // Mock window.confirm
 Object.defineProperty(window, 'confirm', {
@@ -73,9 +89,9 @@ Object.defineProperty(window, 'XMLHttpRequest', {
   value: MockXMLHttpRequest,
 })
 
-function renderCourseManagement() {
+function renderCourseManagement(initialEntries: string[] = ['/courses/c1']) {
   return render(
-    <MemoryRouter initialEntries={['/courses/c1']}>
+    <MemoryRouter initialEntries={initialEntries}>
       <Routes>
         <Route path="/courses/:courseId" element={<CourseManagement />} />
       </Routes>
@@ -94,8 +110,12 @@ describe('CourseManagement', () => {
     api.markLessonVideoReady.mockReset()
     api.markCourseThumbnailReady.mockReset()
     api.publishCourse.mockReset()
+    api.listCourseModules.mockReset()
+    api.createCourseModule.mockReset()
+    api.deleteCourseModule.mockReset()
     mockNavigate.mockReset()
     mockConfirm.mockReset()
+    mockRouteParams.courseId = 'c1'
 
     api.getCourse.mockResolvedValue({
       id: 'c1',
@@ -123,8 +143,14 @@ describe('CourseManagement', () => {
         duration: 0,
       },
     ])
+    api.listCourseModules.mockResolvedValue([
+      { id: 'm1', title: 'Section 1', description: '', order: 0 },
+      { id: 'm2', title: 'Section 2', description: 'More', order: 1 },
+    ])
     api.updateCourse.mockResolvedValue({ ok: true })
     api.createLesson.mockResolvedValue({ lessonId: 'l3', moduleId: 'm1', order: 3 })
+    api.createCourseModule.mockResolvedValue({ moduleId: 'm3', order: 2 })
+    api.deleteCourseModule.mockResolvedValue({ moduleId: 'm1', deleted: true })
     api.getUploadUrl.mockResolvedValue({ uploadUrl: 'https://example.com/upload', thumbnailKey: 'thumb-key' })
     api.markLessonVideoReady.mockResolvedValue({ ok: true })
     api.markCourseThumbnailReady.mockResolvedValue({ ok: true })
@@ -152,8 +178,12 @@ describe('CourseManagement', () => {
     renderCourseManagement()
 
     await waitFor(() => {
-      expect(screen.getByText(/Course not found/i)).toBeTruthy()
+      expect(screen.getByTestId('course-management-not-found')).toBeTruthy()
+      expect(screen.getByRole('heading', { name: /Course not found/i })).toBeTruthy()
     })
+    expect(screen.queryByTestId('course-management-load-error')).toBeNull()
+    expect(screen.queryByTestId('course-management-inline-error')).toBeNull()
+    expect(screen.queryByTestId('course-management-inline-info')).toBeNull()
   })
 
   it('renders course title and status', async () => {
@@ -237,12 +267,41 @@ describe('CourseManagement', () => {
     })
   })
 
+  it('does not navigate after publish when post-publish refresh fails', async () => {
+    let getCourseCalls = 0
+    api.getCourse.mockImplementation(() => {
+      getCourseCalls += 1
+      if (getCourseCalls >= 2) {
+        return Promise.reject(new Error('reload broke'))
+      }
+      return Promise.resolve({
+        id: 'c1',
+        title: 'Test Course',
+        description: 'Test Description',
+        status: 'DRAFT',
+      })
+    })
+
+    renderCourseManagement()
+
+    const publishButton = await waitFor(() => screen.getByText('Publish Course'))
+    fireEvent.click(publishButton)
+
+    await waitFor(() => {
+      expect(api.publishCourse).toHaveBeenCalledWith('c1')
+    })
+    await waitFor(() => {
+      expect(screen.getByTestId('course-management-load-error')).toBeTruthy()
+    })
+    expect(mockNavigate).not.toHaveBeenCalledWith('/')
+  })
+
   it('calls deleteLesson when Delete clicked and confirmed', async () => {
     mockConfirm.mockReturnValue(true)
 
     renderCourseManagement()
 
-    const deleteButtons = await waitFor(() => screen.getAllByText('Delete'))
+    const deleteButtons = await waitFor(() => screen.getAllByRole('button', { name: /Delete Lesson/i }))
     fireEvent.click(deleteButtons[0])
 
     await waitFor(() => {
@@ -328,5 +387,237 @@ describe('CourseManagement', () => {
     })
 
     expect(screen.queryByText('Delete')).toBeNull()
+  })
+
+  it('renders Modules / Sections panel and lists modules ordered by order', async () => {
+    renderCourseManagement()
+
+    await waitFor(() => {
+      expect(screen.getByText(/Modules/i)).toBeTruthy()
+    })
+
+    const panel = screen.getByText('Modules / Sections').closest('div')
+    expect(panel).toBeTruthy()
+    const titles = within(panel as HTMLElement).getAllByText(/Section [12]/i).map((el) => el.textContent)
+    expect(titles).toEqual(['Section 1', 'Section 2'])
+  })
+
+  it('creates a module from the inline form', async () => {
+    renderCourseManagement()
+
+    const titleInput = await waitFor(() => screen.getByLabelText(/Module Title/i))
+    fireEvent.change(titleInput, { target: { value: 'Intro' } })
+    const createBtn = screen.getByRole('button', { name: /Create Module/i })
+    fireEvent.click(createBtn)
+
+    await waitFor(() => {
+      expect(api.createCourseModule).toHaveBeenCalledWith('c1', { title: 'Intro', description: '' })
+    })
+  })
+
+  it('deletes a module and refreshes', async () => {
+    mockConfirm.mockReturnValue(true)
+    renderCourseManagement()
+
+    const deleteButtons = await waitFor(() => screen.getAllByRole('button', { name: /Delete Module/i }))
+    fireEvent.click(deleteButtons[0])
+
+    await waitFor(() => {
+      expect(api.deleteCourseModule).toHaveBeenCalledWith('c1', 'm1')
+    })
+  })
+
+  it('shows info when module delete is idempotent (deleted false)', async () => {
+    mockConfirm.mockReturnValue(true)
+    api.deleteCourseModule.mockResolvedValue({ moduleId: 'm1', deleted: false })
+    renderCourseManagement()
+
+    const deleteButtons = await waitFor(() => screen.getAllByRole('button', { name: /Delete Module/i }))
+    fireEvent.click(deleteButtons[0])
+
+    await waitFor(() => {
+      expect(screen.getByTestId('course-management-inline-info')).toBeTruthy()
+      expect(screen.getByText(/Module already removed; refreshing list/i)).toBeTruthy()
+    })
+    expect(api.deleteCourseModule).toHaveBeenCalledWith('c1', 'm1')
+    expect(api.getCourse).toHaveBeenCalledTimes(2)
+    expect(api.listLessons).toHaveBeenCalledTimes(2)
+    expect(api.listCourseModules).toHaveBeenCalledTimes(2)
+  })
+
+  it('shows combined load error when idempotent delete succeeds but refresh fails', async () => {
+    mockConfirm.mockReturnValue(true)
+    api.deleteCourseModule.mockResolvedValue({ moduleId: 'm1', deleted: false })
+    let getCourseLoads = 0
+    api.getCourse.mockImplementation(() => {
+      getCourseLoads += 1
+      if (getCourseLoads >= 2) {
+        return Promise.reject(new Error('refresh failed'))
+      }
+      return Promise.resolve({
+        id: 'c1',
+        title: 'Test Course',
+        description: 'Test Description',
+        status: 'DRAFT',
+      })
+    })
+
+    renderCourseManagement()
+
+    await waitFor(() => {
+      expect(screen.getByText('Manage Course')).toBeTruthy()
+    })
+
+    const deleteButtons = screen.getAllByRole('button', { name: /Delete Module/i })
+    fireEvent.click(deleteButtons[0])
+
+    await waitFor(() => {
+      expect(screen.getByTestId('course-management-load-error')).toBeTruthy()
+      expect(screen.getByText(/That module was already removed/i)).toBeTruthy()
+      expect(screen.getByText(/Could not refresh the course/i)).toBeTruthy()
+    })
+  })
+
+  it('shows friendly error when deleting last module fails (400 + message)', async () => {
+    mockConfirm.mockReturnValue(true)
+    api.deleteCourseModule.mockRejectedValue(new ApiError('Cannot delete the last module in a course', 400))
+    renderCourseManagement()
+
+    const deleteButtons = await waitFor(() => screen.getAllByRole('button', { name: /Delete Module/i }))
+    fireEvent.click(deleteButtons[0])
+
+    await waitFor(() => {
+      expect(screen.getByText(/can't delete the last module/i)).toBeTruthy()
+    })
+  })
+
+  it('shows media-cleanup guidance when deletion is blocked (503 + message)', async () => {
+    mockConfirm.mockReturnValue(true)
+    api.deleteCourseModule.mockRejectedValue(new ApiError('Media cleanup queue is not configured', 503))
+    renderCourseManagement()
+
+    const deleteButtons = await waitFor(() => screen.getAllByRole('button', { name: /Delete Module/i }))
+    fireEvent.click(deleteButtons[0])
+
+    await waitFor(() => {
+      expect(screen.getByText(/Media cleanup is not configured/i)).toBeTruthy()
+    })
+  })
+
+  it('when multiple modules exist, Add Lesson modal includes module selector and passes moduleId', async () => {
+    renderCourseManagement()
+
+    const addButton = await waitFor(() => screen.getByText(/Add Lesson/i))
+    fireEvent.click(addButton)
+
+    fireEvent.change(screen.getByLabelText(/Lesson Title/i), { target: { value: 'New Lesson' } })
+    const file = new File(['x'], 'video.mp4', { type: 'video/mp4' })
+    const fileInput = screen.getByLabelText(/Video File/i) as HTMLInputElement
+    Object.defineProperty(fileInput, 'files', { value: [file] })
+    fireEvent.change(fileInput)
+    await waitFor(() => {
+      expect(screen.getByText(/Selected:/i)).toBeTruthy()
+    })
+
+    const moduleSelect = screen.getByLabelText(/^Module$/i) as HTMLSelectElement
+    fireEvent.change(moduleSelect, { target: { value: 'm2' } })
+
+    const submit = screen.getByRole('button', { name: /^Add Lesson$/i })
+    await waitFor(() => {
+      expect((submit as HTMLButtonElement).disabled).toBe(false)
+    })
+    const form = submit.closest('form')
+    expect(form).toBeTruthy()
+    fireEvent.submit(form as HTMLFormElement)
+
+    await waitFor(() => {
+      expect(api.createLesson).toHaveBeenCalledWith('c1', { title: 'New Lesson', moduleId: 'm2' })
+    })
+  })
+
+  it('clears stale course UI when route courseId changes and reload fails', async () => {
+    const { rerender } = renderCourseManagement()
+
+    await waitFor(() => {
+      expect(screen.getByDisplayValue('Test Course')).toBeTruthy()
+    })
+    expect(screen.getByText('Lesson 1')).toBeTruthy()
+
+    mockRouteParams.courseId = 'c2'
+    api.getCourse.mockRejectedValueOnce(new ApiError('boom', 500))
+
+    rerender(
+      <MemoryRouter initialEntries={['/courses/c2']}>
+        <Routes>
+          <Route path="/courses/:courseId" element={<CourseManagement />} />
+        </Routes>
+      </MemoryRouter>,
+    )
+
+    await waitFor(() => {
+      expect(screen.getByText('boom')).toBeTruthy()
+    })
+    expect(screen.queryByDisplayValue('Test Course')).toBeNull()
+    expect(screen.queryByText('Lesson 1')).toBeNull()
+    expect(screen.queryByText('Save Changes')).toBeNull()
+  })
+
+  it('surfaces initial load failure as error banner, not Course not found', async () => {
+    api.getCourse.mockRejectedValue(new ApiError('boom', 500))
+
+    renderCourseManagement()
+
+    await waitFor(() => {
+      expect(screen.getByTestId('course-management-load-error')).toBeTruthy()
+      expect(screen.getByText('boom')).toBeTruthy()
+    })
+    expect(screen.queryByText(/^Course not found$/i)).toBeNull()
+    expect(screen.queryByTestId('course-management-inline-error')).toBeNull()
+    expect(screen.queryByTestId('course-management-inline-info')).toBeNull()
+  })
+
+  it('shows Course not found for 404 load errors without generic error layout', async () => {
+    api.getCourse.mockRejectedValue(new ApiError('Course not found', 404))
+
+    renderCourseManagement()
+
+    await waitFor(() => {
+      expect(screen.getByTestId('course-management-not-found')).toBeTruthy()
+      expect(screen.getByRole('heading', { name: /Course not found/i })).toBeTruthy()
+    })
+    expect(screen.queryByTestId('course-management-load-error')).toBeNull()
+    expect(screen.queryByTestId('course-management-inline-error')).toBeNull()
+    expect(screen.queryByTestId('course-management-inline-info')).toBeNull()
+  })
+
+  it('when one module exists, Add Lesson modal omits module selector and does not send moduleId', async () => {
+    api.listCourseModules.mockResolvedValue([{ id: 'm1', title: 'Only', description: '', order: 0 }])
+    renderCourseManagement()
+
+    const addButton = await waitFor(() => screen.getByText(/Add Lesson/i))
+    fireEvent.click(addButton)
+
+    expect(screen.queryByLabelText(/^Module$/i)).toBeNull()
+
+    fireEvent.change(screen.getByLabelText(/Lesson Title/i), { target: { value: 'New Lesson' } })
+    const file = new File(['x'], 'video.mp4', { type: 'video/mp4' })
+    const fileInput = screen.getByLabelText(/Video File/i) as HTMLInputElement
+    Object.defineProperty(fileInput, 'files', { value: [file] })
+    fireEvent.change(fileInput)
+    await waitFor(() => {
+      expect(screen.getByText(/Selected:/i)).toBeTruthy()
+    })
+
+    const submit = screen.getByRole('button', { name: /^Add Lesson$/i })
+    await waitFor(() => {
+      expect((submit as HTMLButtonElement).disabled).toBe(false)
+    })
+    const form = submit.closest('form')
+    expect(form).toBeTruthy()
+    fireEvent.submit(form as HTMLFormElement)
+
+    await waitFor(() => {
+      expect(api.createLesson).toHaveBeenCalledWith('c1', { title: 'New Lesson' })
+    })
   })
 })

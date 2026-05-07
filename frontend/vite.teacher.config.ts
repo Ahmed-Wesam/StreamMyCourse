@@ -1,10 +1,41 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { defineConfig, loadEnv } from 'vite'
+import { defineConfig, loadEnv, type Plugin } from 'vite'
 import react from '@vitejs/plugin-react'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
+
+/**
+ * Vite dev serves `/` from root `index.html`, which loads the student entry.
+ * Teacher builds use `teacher.html` only; this plugin makes dev match production
+ * (instructor shell for `/` and client-side routes like `/courses/:id`).
+ */
+function teacherDevSpaEntryPlugin(): Plugin {
+  return {
+    name: 'teacher-dev-spa-entry',
+    configureServer(server) {
+      server.middlewares.use((req, _res, next) => {
+        if (req.method !== 'GET' && req.method !== 'HEAD') return next()
+        const rawUrl = req.url
+        if (!rawUrl) return next()
+        const pathname = rawUrl.split('?')[0] ?? ''
+        if (!pathname) return next()
+        if (pathname.startsWith('/api')) return next()
+        if (pathname.startsWith('/@')) return next()
+        if (pathname.startsWith('/src/')) return next()
+        if (pathname.startsWith('/node_modules/')) return next()
+        if (pathname === '/teacher.html') return next()
+        if (/\.[a-zA-Z0-9]+$/.test(pathname)) return next()
+        const accept = req.headers.accept ?? ''
+        if (!accept.includes('text/html')) return next()
+        const q = rawUrl.includes('?') ? rawUrl.slice(rawUrl.indexOf('?')) : ''
+        req.url = '/teacher.html' + q
+        next()
+      })
+    },
+  }
+}
 
 // Vite config for TEACHER site (instructor dashboard)
 // Build: npm run build:teacher
@@ -25,6 +56,7 @@ export default defineConfig(({ mode, command }) => {
 
   return {
     plugins: [
+      teacherDevSpaEntryPlugin(),
       react(),
       {
         name: 'teacher-html-as-index',

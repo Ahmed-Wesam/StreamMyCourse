@@ -65,4 +65,11 @@ describe('StudentProfileBootstrap', () => {
     rerender(<StudentProfileBootstrap />)
     await waitFor(() => expect(fetchMe).toHaveBeenCalledTimes(2))
   })
+
+  it('ignores fetchMe rejection (non-fatal bootstrap)', async () => {
+    const fetchMe = vi.spyOn(api, 'fetchMe').mockRejectedValue(new Error('not provisioned'))
+    mockAuthStatus.mockReturnValue('authenticated')
+    render(<StudentProfileBootstrap />)
+    await waitFor(() => expect(fetchMe).toHaveBeenCalledTimes(1))
+  })
 })

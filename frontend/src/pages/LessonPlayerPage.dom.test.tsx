@@ -2,7 +2,7 @@
  * @vitest-environment jsdom
  */
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
-import { MemoryRouter, Route, Routes } from 'react-router-dom'
+import { createMemoryRouter, MemoryRouter, Route, RouterProvider, Routes } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { ApiError } from '../lib/api'
@@ -11,6 +11,7 @@ import LessonPlayerPage from './LessonPlayerPage'
 const api = vi.hoisted(() => ({
   getCourse: vi.fn(),
   listLessons: vi.fn(),
+  listCourseModules: vi.fn(),
   getPlaybackUrl: vi.fn(),
   enrollInCourse: vi.fn(),
   getCourseProgress: vi.fn(),
@@ -23,6 +24,8 @@ vi.mock('../lib/api', async (importOriginal) => {
     ...mod,
     getCourse: (...args: unknown[]) => api.getCourse(...args) as ReturnType<typeof mod.getCourse>,
     listLessons: (...args: unknown[]) => api.listLessons(...args) as ReturnType<typeof mod.listLessons>,
+    listCourseModules: (...args: unknown[]) =>
+      api.listCourseModules(...args) as ReturnType<typeof mod.listCourseModules>,
     getPlaybackUrl: (...args: unknown[]) =>
       api.getPlaybackUrl(...args) as ReturnType<typeof mod.getPlaybackUrl>,
     enrollInCourse: (...args: unknown[]) =>
@@ -48,6 +51,7 @@ describe('LessonPlayerPage', () => {
   beforeEach(() => {
     api.getCourse.mockReset()
     api.listLessons.mockReset()
+    api.listCourseModules.mockReset()
     api.getPlaybackUrl.mockReset()
     api.enrollInCourse.mockReset()
     api.getCourseProgress.mockReset()
@@ -62,7 +66,7 @@ describe('LessonPlayerPage', () => {
     api.listLessons.mockResolvedValue([
       {
         id: 'l1',
-        title: 'Lesson 1',
+        title: 'Alpha',
         order: 1,
         moduleId: 'm1',
         moduleOrder: 0,
@@ -71,23 +75,37 @@ describe('LessonPlayerPage', () => {
       },
       {
         id: 'l2',
-        title: 'Lesson 2',
+        title: 'Beta',
         order: 2,
         moduleId: 'm1',
         moduleOrder: 0,
         videoStatus: 'ready',
         duration: 300,
       },
+      {
+        id: 'l3',
+        title: 'Gamma',
+        order: 1,
+        moduleId: 'm2',
+        moduleOrder: 1,
+        videoStatus: 'ready',
+        duration: 200,
+      },
+    ])
+    api.listCourseModules.mockResolvedValue([
+      { id: 'm1', title: 'Section 1', description: '', order: 0 },
+      { id: 'm2', title: 'Section 2', description: '', order: 1 },
     ])
     api.getPlaybackUrl.mockResolvedValue({ url: 'https://example.com/lesson.mp4' })
     api.getCourseProgress.mockResolvedValue({
       courseId: 'c1',
-      totalReadyLessons: 2,
+      totalReadyLessons: 3,
       completedCount: 0,
       percentComplete: 0,
       lessons: [
         { lessonId: 'l1', completed: false, lastPositionSec: 0 },
         { lessonId: 'l2', completed: false, lastPositionSec: 0 },
+        { lessonId: 'l3', completed: false, lastPositionSec: 0 },
       ],
     })
     api.updateLessonProgress.mockResolvedValue({ ok: true })
@@ -108,6 +126,18 @@ describe('LessonPlayerPage', () => {
     })
 
     expect(video.playsInline).toBe(true)
+  })
+
+  it('shows course not found when getCourse returns null', async () => {
+    api.getCourse.mockResolvedValue(null as never)
+
+    renderLessonPlayer()
+
+    await waitFor(() => {
+      expect(screen.getByText(/Course not found/i)).toBeTruthy()
+    })
+    expect(api.listLessons).not.toHaveBeenCalled()
+    expect(api.getPlaybackUrl).not.toHaveBeenCalled()
   })
 
   it('shows Sign in to watch and locks sidebar when playback returns 401', async () => {
@@ -257,6 +287,102 @@ describe('LessonPlayerPage', () => {
         markIncomplete: true,
       })
     })
+  })
+
+  it('groups sidebar by module and shows module headings', async () => {
+    renderLessonPlayer('/courses/c1/lessons/l1')
+
+    await waitFor(() => {
+      expect(screen.getByText('Section 1')).toBeTruthy()
+    })
+    expect(screen.getByText('Section 2')).toBeTruthy()
+  })
+
+  it('shows Unsorted sidebar section when a lesson references an unknown module', async () => {
+    api.listLessons.mockResolvedValue([
+      {
+        id: 'l1',
+        title: 'In Module One',
+        order: 1,
+        moduleId: 'm1',
+        moduleOrder: 0,
+        videoStatus: 'ready',
+        duration: 400,
+      },
+      {
+        id: 'l2',
+        title: 'In Module Two',
+        order: 1,
+        moduleId: 'm2',
+        moduleOrder: 1,
+        videoStatus: 'ready',
+        duration: 300,
+      },
+      {
+        id: 'l3',
+        title: 'Orphan Lesson',
+        order: 1,
+        moduleId: 'm-unknown',
+        moduleOrder: 2,
+        videoStatus: 'ready',
+        duration: 200,
+      },
+    ])
+    api.listCourseModules.mockResolvedValue([
+      { id: 'm1', title: 'Section 1', description: '', order: 0 },
+      { id: 'm2', title: 'Section 2', description: '', order: 1 },
+    ])
+    api.getCourseProgress.mockResolvedValue({
+      courseId: 'c1',
+      totalReadyLessons: 3,
+      completedCount: 0,
+      percentComplete: 0,
+      lessons: [
+        { lessonId: 'l1', completed: false, lastPositionSec: 0 },
+        { lessonId: 'l2', completed: false, lastPositionSec: 0 },
+        { lessonId: 'l3', completed: false, lastPositionSec: 0 },
+      ],
+    })
+
+    renderLessonPlayer('/courses/c1/lessons/l1')
+
+    await waitFor(() => {
+      expect(screen.getByText('Section 1')).toBeTruthy()
+    })
+    expect(screen.getByText('Section 2')).toBeTruthy()
+    expect(screen.getByText('Unsorted')).toBeTruthy()
+    expect(screen.getByText('Orphan Lesson')).toBeTruthy()
+  })
+
+  it('navigates Next/Previous across modules in (moduleOrder, order) order', async () => {
+    renderLessonPlayer('/courses/c1/lessons/l2')
+
+    const next = await waitFor(() => screen.getByRole('link', { name: /Next/i }))
+    expect(next.getAttribute('href')).toBe('/courses/c1/lessons/l3')
+
+    cleanup()
+    renderLessonPlayer('/courses/c1/lessons/l3')
+    const prev = await waitFor(() => screen.getByRole('link', { name: /Previous/i }))
+    expect(prev.getAttribute('href')).toBe('/courses/c1/lessons/l2')
+  })
+
+  it('does not render Lesson N subtitle in sidebar items', async () => {
+    renderLessonPlayer('/courses/c1/lessons/l1')
+
+    await waitFor(() => {
+      expect(screen.getAllByText('Alpha').length).toBeGreaterThan(0)
+    })
+    expect(screen.queryByText('Lesson 1')).toBeNull()
+  })
+
+  it('shows error banner and does not render sidebar when listCourseModules fails', async () => {
+    api.listCourseModules.mockRejectedValue(new Error('Modules failed'))
+    renderLessonPlayer('/courses/c1/lessons/l1')
+
+    await waitFor(() => {
+      expect(screen.getByText(/Modules failed/i)).toBeTruthy()
+    })
+    expect(screen.queryByText('Alpha')).toBeNull()
   })
 
   it('counts failures when markIncomplete fails', async () => {
@@ -565,5 +691,53 @@ describe('LessonPlayerPage', () => {
     })
 
     vi.restoreAllMocks()
+  })
+
+  it('clears breadcrumb, lesson title, and video src when route changes and the new course fails to load', async () => {
+    api.getCourse.mockImplementation((courseId: string) => {
+      if (courseId === 'c1') {
+        return Promise.resolve({
+          id: 'c1',
+          title: 'Stale Breadcrumb Course',
+          description: 'Desc',
+          status: 'PUBLISHED',
+        })
+      }
+      return Promise.reject(new ApiError('boom', 500))
+    })
+
+    const router = createMemoryRouter(
+      [{ path: '/courses/:courseId/lessons/:lessonId', element: <LessonPlayerPage /> }],
+      { initialEntries: ['/courses/c1/lessons/l1'] },
+    )
+    render(<RouterProvider router={router} />)
+
+    await waitFor(() => {
+      expect(screen.getByRole('heading', { level: 1, name: 'Alpha' })).toBeTruthy()
+    })
+    expect(screen.getByRole('link', { name: 'Stale Breadcrumb Course' })).toBeTruthy()
+
+    const videoBeforeNav = await waitFor(() => {
+      const el = document.querySelector('video')
+      expect(el).not.toBeNull()
+      return el as HTMLVideoElement
+    })
+    expect(videoBeforeNav.getAttribute('src')).toBeTruthy()
+
+    await router.navigate('/courses/c2/lessons/l3')
+
+    await waitFor(() => {
+      expect(screen.getByText('boom')).toBeTruthy()
+    })
+    await waitFor(() => {
+      expect(screen.queryByRole('link', { name: 'Stale Breadcrumb Course' })).toBeNull()
+    })
+    await waitFor(() => {
+      expect(screen.queryByRole('heading', { level: 1, name: 'Alpha' })).toBeNull()
+    })
+
+    const videoAfter = document.querySelector('video')
+    const srcAfter = videoAfter?.getAttribute('src')
+    expect(srcAfter === null || srcAfter === '').toBe(true)
   })
 })
