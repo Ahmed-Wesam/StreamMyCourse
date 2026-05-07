@@ -4,6 +4,24 @@
 
 ---
 
+## 2026-05-07 — Course modules: HTTPS integration + API deploy + schema tightening
+
+### Completed
+
+- [x] **Integration coverage** — [`tests/integration/test_course_modules.py`](tests/integration/test_course_modules.py) (modules CRUD/sort, lesson `moduleId`, draft parity, publish + student `GET …/modules`, negatives). Helpers: [`tests/integration/helpers/module_contract.py`](tests/integration/helpers/module_contract.py). Extended [`tests/integration/test_access_control.py`](tests/integration/test_access_control.py), [`tests/integration/test_student_permissions_denials.py`](tests/integration/test_student_permissions_denials.py), [`tests/integration/test_rds_path.py`](tests/integration/test_rds_path.py); README module + troubleshooting bullets ([`tests/integration/README.md`](tests/integration/README.md)).
+
+- [x] **API Gateway** — [`infrastructure/templates/api-stack.yaml`](infrastructure/templates/api-stack.yaml): module REST resources/methods wired into **`CatalogApiDeploymentV10`** `DependsOn`; stage **`DeploymentId`** updated (`V9` → `V10`) so template-only route changes replace the stage snapshot.
+
+- [x] **Schema (`001`)** — [`infrastructure/database/migrations/001_initial_schema.sql`](infrastructure/database/migrations/001_initial_schema.sql): **`UNIQUE (course_id, id)`** on **`course_modules`**; **`lessons`** use **`FOREIGN KEY (course_id, module_id) REFERENCES course_modules (course_id, id)`**. Operator note in-file for older DBs.
+
+- [x] **Catalog** — Default module row title **`Overview`** on course create ([`rds_repo.py`](infrastructure/lambda/catalog/services/course_management/rds_repo.py)) and DynamoDB→RDS backfill ([`scripts/migrate-dynamodb-to-rds.py`](scripts/migrate-dynamodb-to-rds.py)). **`as_lesson_dto`** requires non-empty **`moduleId`** and **`moduleOrder`** ([`contracts.py`](infrastructure/lambda/catalog/services/course_management/contracts.py)).
+
+- [x] **Module delete semantics** — `DELETE /courses/{id}/modules/{mid}` is **idempotent** for unknown ids (`200` + `deleted: false`) and rejects deleting the last module (`400`).
+
+- [x] **Docs** — [`design.md`](design.md) **`CatalogApiDeploymentV10`** + module-delete / media-queue **503** note.
+
+---
+
 ## 2026-05-06 — Integration Test Suite: 95 Tests + UUID Validation + Multi-Principal Security
 
 ### Completed
