@@ -22,6 +22,44 @@
 
 ---
 
+## 2026-05-07 — Frontend: course modules in student + teacher SPA
+
+### Completed
+
+- [x] **API client** — [`frontend/src/lib/api.ts`](frontend/src/lib/api.ts): `listCourseModules`, `createCourseModule`, `deleteCourseModule`, lesson create body supports optional `moduleId` (ordering per API).
+- [x] **Teacher** — [`frontend/src/pages/CourseManagement.tsx`](frontend/src/pages/CourseManagement.tsx): draft-only **Modules / Sections** panel (create with title/description, delete non-last module); **Add Lesson** supports optional **`moduleId`** when the course has more than one module.
+- [x] **Student** — [`frontend/src/pages/CourseDetailPage.tsx`](frontend/src/pages/CourseDetailPage.tsx) and [`frontend/src/pages/LessonPlayerPage.tsx`](frontend/src/pages/LessonPlayerPage.tsx): lessons listed under module headers; ordering uses `moduleOrder` then `order`; combined course load surfaces an error if **`GET /courses/{id}/modules`** fails (empty lists + message); removed redundant per-row “Lesson N” subtitle so the title line is not duplicated.
+
+---
+
+## 2026-05-06 — Developer experience: Vitest coverage, teacher Vite parity, Cognito localhost callbacks
+
+### Completed
+
+- [x] **Vitest coverage (opt-in)** — [`frontend/package.json`](frontend/package.json) **`test:coverage`**, devDependency [`@vitest/coverage-v8`](frontend/package.json); [`frontend/vitest.config.ts`](frontend/vitest.config.ts): **`coverage.enabled: false`** by default (**`vitest run --coverage`** opt-in, v8 **text-summary** / **json-summary**); **`frontend/coverage/`** gitignored ([`frontend/.gitignore`](frontend/.gitignore)). Pre-merge note in [`AGENTS.md`](AGENTS.md).
+
+- [x] **Teacher dev server SPA entry** — [`frontend/vite.teacher.config.ts`](frontend/vite.teacher.config.ts): dev middleware serves **`teacher.html`** for document navigations (so **`/`** matches production teacher SPA instead of falling through to student **`index.html`**).
+
+- [x] **Cognito Hosted UI local URLs** — [`infrastructure/templates/auth-stack.yaml`](infrastructure/templates/auth-stack.yaml): default **student / teacher** **CallbackUrls** + **LogoutUrls** include **`127.0.0.1`** alongside **`localhost`** (ports **5173** / **5174**); runbook **§ `error=redirect_mismatch`** + LAN caveats in [`infrastructure/docs/admin-auth-runbook.md`](infrastructure/docs/admin-auth-runbook.md); **`frontend/.env.example`** Hosted UI bullets cross-reference [`frontend/src/lib/auth.ts`](frontend/src/lib/auth.ts).
+
+- [x] **Dispatch dev backend-only deploy via GitHub** — [`scripts/backend-dev/README.md`](scripts/backend-dev/README.md) + [`Backend-dev-via-GitHub.sh`](scripts/backend-dev/Backend-dev-via-GitHub.sh) / [`.ps1`](scripts/backend-dev/Backend-dev-via-GitHub.ps1): `gh workflow run` for **[`deploy-backend-dev-only.yml`](.github/workflows/deploy-backend-dev-only.yml)** (video + Cognito auth + `./scripts/deploy-backend.sh dev`), using Environment **dev** secrets on GitHub — no AWS creds pulled locally.
+
+---
+
+## 2026-05-06 — Frontend: course load hardening, Unsorted lessons, code-first API errors
+
+### Completed
+
+- [x] **CourseManagement loader** — [`frontend/src/pages/CourseManagement.tsx`](frontend/src/pages/CourseManagement.tsx): on failed load, clear course, lessons, modules, editor fields, and module selection so a `:courseId` change cannot leave stale form data; **404** uses `notFound` + existing not-found UI; other errors use a dedicated **`ErrorView`** (message + back) instead of masking as “Course not found”; **`void`**-wrap **`handleDeleteLesson`** in JSX. Coverage: [`CourseManagement.dom.test.tsx`](frontend/src/pages/CourseManagement.dom.test.tsx).
+
+- [x] **Student pages** — [`frontend/src/pages/CourseDetailPage.tsx`](frontend/src/pages/CourseDetailPage.tsx) and [`frontend/src/pages/LessonPlayerPage.tsx`](frontend/src/pages/LessonPlayerPage.tsx): **`setCourse(null)`** on load failure (player also clears video **`src`** where applicable) so failed navigation does not show the previous course in hero, breadcrumb, or player. Coverage: [`CourseDetailPage.dom.test.tsx`](frontend/src/pages/CourseDetailPage.dom.test.tsx), [`LessonPlayerPage.dom.test.tsx`](frontend/src/pages/LessonPlayerPage.dom.test.tsx).
+
+- [x] **`lessonGrouping` + Unsorted** — [`frontend/src/lib/lessonGrouping.ts`](frontend/src/lib/lessonGrouping.ts) groups lessons by known modules; lessons with a **`moduleId`** not returned by **`GET /courses/{id}/modules`** appear under an **Unsorted** section on detail and player (no silent drop). Unit tests: [`lessonGrouping.test.ts`](frontend/src/lib/lessonGrouping.test.ts).
+
+- [x] **Code-first error classification** — [`frontend/src/lib/api.ts`](frontend/src/lib/api.ts): **`isLastModuleDeleteError`** and **`isMediaCleanupUnavailableError`** check **`ApiError.code`** first (`last_module_required`, `media_cleanup_unavailable`), then fall back to status + message regex. Tests: [`api.test.ts`](frontend/src/lib/api.test.ts).
+
+---
+
 ## 2026-05-06 — Integration Test Suite: 95 Tests + UUID Validation + Multi-Principal Security
 
 ### Completed

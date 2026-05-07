@@ -1,6 +1,6 @@
 # StreamMyCourse — MVP Design Document
 
-> **Status:** The **MVP defined in this document is shipped** and running in dev/prod. Further product scope, Phase 2 work, and the **engineering quality bar** (clean, maintainable code—prefer supported APIs over brittle UI hacks) are tracked in **[roadmap.md](./roadmap.md)** and **[ImplementationHistory.md](./ImplementationHistory.md)**. **Last updated:** 2026-05-06 · **Stack:** React 19 + AWS (Serverless)
+> **Status:** The **MVP defined in this document is shipped** and running in dev/prod. Further product scope, Phase 2 work, and the **engineering quality bar** (clean, maintainable code—prefer supported APIs over brittle UI hacks) are tracked in **[roadmap.md](./roadmap.md)** and **[ImplementationHistory.md](./ImplementationHistory.md)**. **Last updated:** 2026-05-06 · **Stack:** React 19 + AWS (Serverless) · **Frontend tests:** Vitest (optional **`npm run test:coverage`** — v8 only when `--coverage`; see **`frontend/vitest.config.ts`**).
 
 A free video course platform where instructors upload content and students stream it. No payments in MVP — all courses are free.
 
@@ -181,13 +181,14 @@ frontend/                            # Vite project root
     │   ├── layout/                  # Footer, Layout (gradient + main + footer; optional `chromeHeader` for fixed app nav)
     │   └── course/                  # CourseCard, CourseGrid, skeletons, thumbnail editor
     ├── lib/
-    │   └── api.ts                   # API client (fetch + env base URL)
+    │   ├── api.ts                   # API client (fetch + env base URL); typed error helpers
+    │   └── lessonGrouping.ts        # Group lessons by module; orphan moduleIds → Unsorted (student UI)
     └── pages/
         ├── CourseCatalogPage.tsx
         ├── CourseDetailPage.tsx
         ├── LessonPlayerPage.tsx
         ├── InstructorDashboard.tsx  # Teacher dashboard
-        └── CourseManagement.tsx     # Course editing and upload
+        └── CourseManagement.tsx     # Course editing, modules, lessons, and upload
 ```
 
 ### Subdomain-Based Site Separation
@@ -218,6 +219,8 @@ The frontend is built as **two separate SPAs** deployed to different subdomains:
 - `npm run build:all` → Builds both sites
 
 **Local dev:** set `VITE_API_BASE_URL` (see `frontend/.env.example` — copy to `frontend/.env`). Typical pattern: `VITE_API_BASE_URL=/api` with Vite proxy **`VITE_API_PROXY_TARGET`** set to your API Gateway root (required for `npm run dev` / `dev:student` / `dev:teacher` when using `/api`; default **`npm run dev`** uses [`vite.student.config.ts`](frontend/vite.student.config.ts)). Production relies on API CORS configuration. Vite `server.host: true` exposes a **Network** URL so phones on the same LAN use `http://<PC-LAN-IP>:<port>` (not `127.0.0.1` on the phone).
+
+**Hosted UI / OAuth (local):** Amplify uses **`origin + '/'`** as the Cognito **`redirect_uri`**. **`streammycourse-student-*`** vs **`streammycourse-teacher-*`** app clients must list that exact URL (trailing slash) under **Hosted UI → Allowed callback URLs / sign-out URLs** — **`localhost` and `127.0.0.1` differ** (`auth-stack.yaml` defaults include both **5173** / **5174**); **`[::1]`** is normalized once to **`127.0.0.1`** in [`frontend/src/lib/auth.ts`](frontend/src/lib/auth.ts). GitHub **`STUDENT_COGNITO_*` / `TEACHER_COGNITO_*`** can override URLs; **`redirect_mismatch`** troubleshooting: [`infrastructure/docs/admin-auth-runbook.md`](infrastructure/docs/admin-auth-runbook.md).
 
 ---
 
@@ -309,7 +312,7 @@ cd infrastructure
 - Run: `cd infrastructure && .\deploy.ps1 -Template api -StackName <stack> -VideoBucketName <bucket>` (ensure `aws` is on PATH; full path `C:\Program Files\Amazon\AWSCLIV2\aws.exe` on Windows if needed)
 
 ### CI
-- GitHub Actions ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)): frontend `npm ci`, **ESLint** (`npm run lint`), **Knip** (`npm run knip`), **`npm run build:all`** (student + teacher production builds, including Cognito env contract), **`npm run test`** (Vitest SPA unit tests, including **jsdom** auth UI tests under `frontend/src/**/*.dom.test.tsx` such as [`SignIn.dom.test.tsx`](frontend/src/components/auth/SignIn.dom.test.tsx)); Lambda Python compile; **Vulture** (dead code); **Radon** `cc` (complexity, informational / `continue-on-error`); YAML parse for CloudFormation templates (including [`github-deploy-role-stack.yaml`](infrastructure/templates/github-deploy-role-stack.yaml) for CI sanity on the IAM bootstrap template); **actionlint** on `.github/workflows`; **boundary import check** ([`scripts/check_lambda_boundaries.py`](scripts/check_lambda_boundaries.py)); Lambda **unit tests** including a **`bash -n`** guard on [`scripts/deploy-edge.sh`](scripts/deploy-edge.sh) and [`tests/unit/test_cognito_spa_env_contract.py`](tests/unit/test_cognito_spa_env_contract.py) for [`scripts/check-cognito-spa-env.mjs`](scripts/check-cognito-spa-env.mjs)
+- GitHub Actions ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)): frontend `npm ci`, **ESLint** (`npm run lint`), **Knip** (`npm run knip`), **`npm run build:all`** (student + teacher production builds, including Cognito env contract), **`npm run test`** (Vitest SPA unit tests, including **jsdom** auth UI tests under `frontend/src/**/*.dom.test.tsx` such as [`SignIn.dom.test.tsx`](frontend/src/components/auth/SignIn.dom.test.tsx) — **`vitest.config.ts`** keeps **`coverage.enabled: false`** so CI does **not** instrument; optional local **`npm run test:coverage`** runs **`vitest run --coverage`** and writes summaries under **`frontend/coverage/`** (gitignored)); Lambda Python compile; **Vulture** (dead code); **Radon** `cc` (complexity, informational / `continue-on-error`); YAML parse for CloudFormation templates (including [`github-deploy-role-stack.yaml`](infrastructure/templates/github-deploy-role-stack.yaml) for CI sanity on the IAM bootstrap template); **actionlint** on `.github/workflows`; **boundary import check** ([`scripts/check_lambda_boundaries.py`](scripts/check_lambda_boundaries.py)); Lambda **unit tests** including a **`bash -n`** guard on [`scripts/deploy-edge.sh`](scripts/deploy-edge.sh) and [`tests/unit/test_cognito_spa_env_contract.py`](tests/unit/test_cognito_spa_env_contract.py) for [`scripts/check-cognito-spa-env.mjs`](scripts/check-cognito-spa-env.mjs)
 
 ### Architecture notes (repo)
 - Module map and ADRs: [`plans/architecture/`](plans/architecture/)
