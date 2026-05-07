@@ -180,12 +180,17 @@ Resources:
               StringEquals:
                 iam:AWSServiceName: rds.amazonaws.com
           # RDS + VPC + Secrets Manager for the rds-stack (ADR 0008)
+          # Permission set chosen to cover the full CloudFormation
+          # AWS::RDS::DBInstance + AWS::RDS::DBParameterGroup provider
+          # surface, so future param-group / instance modifications do not
+          # surface a new AccessDenied per CFN read-back path.
           - Sid: RdsStackManage
             Effect: Allow
             Action:
               - rds:CreateDBInstance
               - rds:DeleteDBInstance
               - rds:ModifyDBInstance
+              - rds:RebootDBInstance
               - rds:DescribeDBInstances
               - rds:CreateDBSubnetGroup
               - rds:DeleteDBSubnetGroup
@@ -198,6 +203,17 @@ Resources:
               - rds:ModifyDBParameterGroup
               - rds:ResetDBParameterGroup
               - rds:DescribeEngineDefaultParameters
+              - rds:CreateDBSnapshot
+              - rds:DeleteDBSnapshot
+              - rds:DescribeDBSnapshots
+              - rds:DescribeEvents
+              - rds:DescribePendingMaintenanceActions
+              - rds:DescribeOptionGroups
+              - rds:DescribeCertificates
+              - rds:DescribeDBLogFiles
+              - rds:DescribeDBClusters
+              - rds:DescribeDBClusterParameterGroups
+              - rds:DescribeDBClusterSnapshots
               - rds:AddTagsToResource
               - rds:RemoveTagsFromResource
               - rds:ListTagsForResource
