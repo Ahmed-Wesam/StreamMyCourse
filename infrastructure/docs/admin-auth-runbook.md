@@ -170,6 +170,12 @@ After a successful **Deploy** for an environment:
 3. In Cognito Console, confirm student/teacher app clients list **Google** only under **`Supported identity providers`**.
 4. **Callback allowlists:** Google Cloud client + Cognito app client callback URLs must **match exactly** hosted origins (no stray localhost on prod).
 
+### Cognito `error=redirect_mismatch` (local or wrong SPA)
+
+Amplify sends **`redirect_uri` = your SPA origin + `/`** (see [`frontend/src/lib/auth.ts`](../../frontend/src/lib/auth.ts)). That string must appear verbatim on the **correct** user pool app client (**`streammycourse-student-*`** vs **`streammycourse-teacher-*`**) under **Hosted UI → Allowed callback URLs** and **Allowed sign-out URLs**. Typical local values: **`http://localhost:5173/`** / **`http://127.0.0.1:5173/`** (student) and **`http://localhost:5174/`** / **`http://127.0.0.1:5174/`** (teacher). In dev, **`http://[::1]:…`** (including default ports) is normalized once to **`127.0.0.1`** in the SPA so Cognito does not need IPv6 literal callback URLs. **Separate topic:** if you open the Vite “Network” URL (**`http://10.x.x.x:5174`**, etc.), add that exact origin + `/` to the app client allowlists (the SPA does not rewrite LAN hosts to localhost).
+
+If GitHub **Environment** variables **`STUDENT_COGNITO_*`** / **`TEACHER_COGNITO_*`** override the auth stack but list only hosted HTTPS URLs, local sign-in fails until you add the localhost URLs (comma-separated) and redeploy **`StreamMyCourse-Auth-<env>`**. **Dev** deploys from [`.github/workflows/deploy-backend.yml`](../../.github/workflows/deploy-backend.yml) and **`deploy.ps1 -Template auth -Environment dev`** append those localhost entries automatically when the vars are non-empty but missing them.
+
 ---
 
 ## Rollback (Google-only issues)
