@@ -57,4 +57,18 @@ describe('StudentLoginPage', () => {
 
     expect(await screen.findByRole('button', { name: GOOGLE_SIGN_IN_LABEL })).toBeTruthy()
   })
+
+  it('shows unavailable message when Cognito env is incomplete', async () => {
+    vi.unstubAllEnvs()
+    vi.stubEnv('VITE_COGNITO_USER_POOL_ID', 'pool')
+    vi.stubEnv('VITE_COGNITO_USER_POOL_CLIENT_ID', 'client')
+    vi.stubEnv('VITE_COGNITO_DOMAIN', '')
+    useAuthenticatorMock.mockReturnValue({ authStatus: 'unauthenticated' })
+
+    render(<TestRoot />)
+
+    expect(
+      await screen.findByText(/Sign-in is not available/i),
+    ).toBeTruthy()
+  })
 })

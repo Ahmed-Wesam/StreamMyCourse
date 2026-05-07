@@ -21,8 +21,8 @@ async function failedResponseError(res: Response): Promise<ApiError> {
   let code: string | undefined
   try {
     const j = (await res.json()) as { message?: string; code?: string }
-    if (typeof j.message === 'string' && j.message.trim()) message = j.message
-    if (typeof j.code === 'string' && j.code.trim()) code = j.code
+    if (typeof j.message === 'string' && j.message.trim()) message = j.message.trim()
+    if (typeof j.code === 'string' && j.code.trim()) code = j.code.trim()
   } catch {
     /* ignore non-JSON */
   }
@@ -68,6 +68,22 @@ export function isPlaybackAuthRequiredError(e: unknown): boolean {
   if (!(e instanceof ApiError)) return false
   if (e.status === 401) return true
   if (e.code === 'unauthorized') return true
+  return false
+}
+
+/** True when module deletion failed because the course must keep at least one module. */
+export function isLastModuleDeleteError(e: unknown): boolean {
+  if (!(e instanceof ApiError)) return false
+  if (e.code === 'last_module_required' && e.status === 400) return true
+  if (e.status === 400 && /last module/i.test(e.message)) return true
+  return false
+}
+
+/** True when module deletion is blocked because the media cleanup queue is not configured. */
+export function isMediaCleanupUnavailableError(e: unknown): boolean {
+  if (!(e instanceof ApiError)) return false
+  if (e.code === 'media_cleanup_unavailable' && e.status === 503) return true
+  if (e.status === 503 && /media cleanup/i.test(e.message)) return true
   return false
 }
 
@@ -145,6 +161,15 @@ export type Course = {
   enrolled?: boolean
 }
 
+export type CourseModule = {
+  id: string
+  title: string
+  description: string
+  order: number
+  createdAt?: string
+  updatedAt?: string
+}
+
 export type Lesson = {
   id: string
   title: string
@@ -176,6 +201,11 @@ type CreateLessonInput = {
   title: string
   /** When omitted the API attaches the lesson to the first module by order. */
   moduleId?: string
+}
+
+type CreateCourseModuleInput = {
+  title: string
+  description?: string
 }
 
 type Playback = {
@@ -292,6 +322,10 @@ export async function listLessons(courseId: string): Promise<Lesson[]> {
   return httpGet<Lesson[]>(`/courses/${courseId}/lessons`)
 }
 
+export async function listCourseModules(courseId: string): Promise<CourseModule[]> {
+  return httpGet<CourseModule[]>(`/courses/${courseId}/modules`)
+}
+
 export async function getPlaybackUrl(courseId: string, lessonId: string): Promise<Playback> {
   return httpGet<Playback>(`/playback/${courseId}/${lessonId}`)
 }
@@ -317,6 +351,22 @@ export async function deleteCourse(courseId: string): Promise<{ id: string; dele
 
 export async function publishCourse(courseId: string): Promise<{ id: string; status: string }> {
   return httpPut<{ id: string; status: string }>(`/courses/${courseId}/publish`)
+}
+
+export async function createCourseModule(
+  courseId: string,
+  input: CreateCourseModuleInput,
+): Promise<{ moduleId: string; order: number }> {
+  const body: Record<string, string> = { title: input.title }
+  if (input.description !== undefined) body.description = input.description
+  return httpPost<{ moduleId: string; order: number }>(`/courses/${courseId}/modules`, body)
+}
+
+export async function deleteCourseModule(
+  courseId: string,
+  moduleId: string,
+): Promise<{ moduleId: string; deleted: boolean }> {
+  return httpDelete<{ moduleId: string; deleted: boolean }>(`/courses/${courseId}/modules/${moduleId}`)
 }
 
 export async function createLesson(

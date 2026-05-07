@@ -4,34 +4,48 @@ import {
   getCourse,
   updateCourse,
   listLessons,
-  createLesson,
   deleteLesson,
+  listCourseModules,
+  createCourseModule,
+  deleteCourseModule,
   getUploadUrl,
-  markLessonVideoReady,
   markCourseThumbnailReady,
   publishCourse,
+  ApiError,
   type Course,
+  type CourseModule,
   type Lesson,
 } from '../lib/api'
+import { createAndUploadDraftLesson } from '../lib/courseManagementLessonUpload'
+import { moduleDeleteFailureMessage } from '../lib/courseManagementModuleErrors'
 import { CourseThumbnailEditor } from '../components/course/CourseThumbnailEditor'
-import { captureFrameAtVideoPercent } from '../lib/videoThumbnail'
+import { CourseManagementAddLessonModal } from '../components/course/CourseManagementAddLessonModal'
+import { CourseManagementLessonsPanel } from '../components/course/CourseManagementLessonsPanel'
+import { CourseManagementModulesPanel } from '../components/course/CourseManagementModulesPanel'
+import {
+  CourseManagementLoadError,
+  CourseManagementLoadingSkeleton,
+  CourseManagementNotFound,
+} from '../components/course/CourseManagementPageStates'
 
 export default function CourseManagement() {
   const { courseId } = useParams<{ courseId: string }>()
   const navigate = useNavigate()
   const [course, setCourse] = useState<Course | null>(null)
   const [lessons, setLessons] = useState<Lesson[]>([])
+  const [modules, setModules] = useState<CourseModule[]>([])
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [notFound, setNotFound] = useState(false)
+  const [info, setInfo] = useState<string | null>(null)
 
-  // Edit course form
   const [editTitle, setEditTitle] = useState('')
   const [editDescription, setEditDescription] = useState('')
 
-  // Add lesson modal
   const [showAddLesson, setShowAddLesson] = useState(false)
   const [newLessonTitle, setNewLessonTitle] = useState('')
+  const [selectedModuleId, setSelectedModuleId] = useState<string>('')
   const [selectedFile, setSelectedFile] = useState<File | null>(null)
   const [uploading, setUploading] = useState(false)
   const [uploadProgress, setUploadProgress] = useState(0)
@@ -39,22 +53,56 @@ export default function CourseManagement() {
   const [thumbFile, setThumbFile] = useState<File | null>(null)
   const [thumbUploading, setThumbUploading] = useState(false)
 
-  const loadCourseData = useCallback(async () => {
-    if (!courseId) return
+  const [newModuleTitle, setNewModuleTitle] = useState('')
+  const [newModuleDescription, setNewModuleDescription] = useState('')
+
+  const loadCourseData = useCallback(async (): Promise<boolean> => {
+    if (!courseId) return false
 
     try {
       setLoading(true)
       setError(null)
-      const [courseData, lessonsData] = await Promise.all([
+      setNotFound(false)
+      setInfo(null)
+      const [courseData, lessonsData, modulesData] = await Promise.all([
         getCourse(courseId),
         listLessons(courseId),
+        listCourseModules(courseId),
       ])
-      setCourse(courseData)
-      setLessons(lessonsData)
-      setEditTitle(courseData.title)
-      setEditDescription(courseData.description)
+
+      if (!courseData) {
+        setCourse(null)
+        setLessons([])
+        setModules([])
+        setEditTitle('')
+        setEditDescription('')
+        setSelectedModuleId('')
+        setNotFound(true)
+        setError(null)
+      } else {
+        setCourse(courseData)
+        setLessons(lessonsData)
+        setModules(modulesData)
+        setEditTitle(courseData.title)
+        setEditDescription(courseData.description)
+        if (modulesData.length > 0) {
+          setSelectedModuleId((prev) => (prev && modulesData.some((m) => m.id === prev) ? prev : modulesData[0].id))
+        } else {
+          setSelectedModuleId('')
+        }
+      }
+      return true
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load course')
+      setCourse(null)
+      setLessons([])
+      setModules([])
+      setEditTitle('')
+      setEditDescription('')
+      setSelectedModuleId('')
+      const is404 = err instanceof ApiError && err.status === 404
+      setNotFound(is404)
+      setError(is404 ? null : err instanceof Error ? err.message : 'Failed to load course')
+      return false
     } finally {
       setLoading(false)
     }
@@ -94,79 +142,16 @@ export default function CourseManagement() {
     setError(null)
 
     try {
-      // Step 1: Create lesson
-      setUploadProgress(20)
-      const lessonResult = await createLesson(courseId, { title: newLessonTitle })
-
-      // Step 2: Get presigned URL (must match the Content-Type header on PUT; empty file.type breaks the signature)
-      setUploadProgress(30)
-      const contentType = selectedFile.type || 'video/mp4'
-      const { uploadUrl } = await getUploadUrl(selectedFile.name, contentType, {
+      const lessonInput =
+        modules.length > 1 && selectedModuleId
+          ? { title: newLessonTitle, moduleId: selectedModuleId }
+          : { title: newLessonTitle }
+      await createAndUploadDraftLesson({
         courseId,
-        lessonId: lessonResult.lessonId,
+        lessonInput,
+        videoFile: selectedFile,
+        onUploadProgress: setUploadProgress,
       })
-
-      // Step 3: Upload to S3
-      setUploadProgress(40)
-      const xhr = new XMLHttpRequest()
-
-      await new Promise((resolve, reject) => {
-        xhr.upload.addEventListener('progress', (event) => {
-          if (event.lengthComputable) {
-            const percent = Math.round((event.loaded / event.total) * 50) + 40
-            setUploadProgress(percent)
-          }
-        })
-
-        xhr.addEventListener('load', () => {
-          if (xhr.status >= 200 && xhr.status < 300) {
-            resolve(null)
-          } else {
-            reject(new Error(`Upload failed: ${xhr.statusText}`))
-          }
-        })
-
-        xhr.addEventListener('error', () => reject(new Error('Upload failed')))
-        xhr.addEventListener('abort', () => reject(new Error('Upload aborted')))
-
-        xhr.open('PUT', uploadUrl, true)
-        xhr.setRequestHeader('Content-Type', contentType)
-        xhr.send(selectedFile)
-      })
-
-      // Step 4: Auto thumbnail at 20% of duration (no separate image upload in MVP)
-      setUploadProgress(92)
-      let lessonThumbKey: string | undefined
-      try {
-        const jpeg = await captureFrameAtVideoPercent(selectedFile, 0.2)
-        const thumb = await getUploadUrl('lesson-thumb.jpg', 'image/jpeg', {
-          courseId,
-          lessonId: lessonResult.lessonId,
-          uploadKind: 'lessonThumbnail',
-        })
-        if (thumb.thumbnailKey) {
-          const putThumb = await fetch(thumb.uploadUrl, {
-            method: 'PUT',
-            body: jpeg,
-            headers: { 'Content-Type': 'image/jpeg' },
-          })
-          if (putThumb.ok) {
-            lessonThumbKey = thumb.thumbnailKey
-          }
-        }
-      } catch {
-        // Continue without lesson thumbnail if decode/seek fails (e.g. unsupported codec in browser)
-      }
-
-      // Step 5: Mark lesson video ready
-      setUploadProgress(95)
-      await markLessonVideoReady(
-        courseId,
-        lessonResult.lessonId,
-        lessonThumbKey ? { thumbnailKey: lessonThumbKey } : undefined,
-      )
-
-      setUploadProgress(100)
       setShowAddLesson(false)
       setNewLessonTitle('')
       setSelectedFile(null)
@@ -188,6 +173,43 @@ export default function CourseManagement() {
       await loadCourseData()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to delete lesson')
+    }
+  }
+
+  const handleCreateModule = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!courseId || !newModuleTitle.trim()) return
+
+    try {
+      setError(null)
+      setInfo(null)
+      await createCourseModule(courseId, { title: newModuleTitle.trim(), description: newModuleDescription })
+      setNewModuleTitle('')
+      setNewModuleDescription('')
+      await loadCourseData()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to create module')
+    }
+  }
+
+  const handleDeleteModule = async (moduleId: string) => {
+    if (!courseId || !confirm('Are you sure you want to delete this module?')) return
+
+    try {
+      setError(null)
+      setInfo(null)
+      const res = await deleteCourseModule(courseId, moduleId)
+      const reloadOk = await loadCourseData()
+      if (res.deleted === false) {
+        if (reloadOk) {
+          setInfo('Module already removed; refreshing list')
+        } else {
+          setError('That module was already removed. Could not refresh the course.')
+        }
+      }
+    } catch (err) {
+      const mapped = moduleDeleteFailureMessage(err)
+      setError(mapped ?? (err instanceof Error ? err.message : 'Failed to delete module'))
     }
   }
 
@@ -243,33 +265,26 @@ export default function CourseManagement() {
   }
 
   if (loading) {
-    return (
-      <div className="mx-auto max-w-4xl">
-        <div className="animate-pulse">
-          <div className="mb-8 h-8 w-1/3 rounded bg-gray-200" />
-          <div className="mb-6 h-32 rounded-lg bg-gray-200" />
-          <div className="h-64 rounded-lg bg-gray-200" />
-        </div>
-      </div>
-    )
+    return <CourseManagementLoadingSkeleton />
+  }
+
+  if (notFound) {
+    return <CourseManagementNotFound onBack={navigate} />
+  }
+
+  if (error && !course) {
+    return <CourseManagementLoadError error={error} onBack={navigate} />
   }
 
   if (!course) {
-    return (
-      <div className="mx-auto max-w-4xl text-center">
-        <h1 className="mb-4 text-2xl font-bold text-gray-900">Course not found</h1>
-        <button
-          type="button"
-          onClick={() => navigate('/')}
-          className="rounded-lg bg-blue-600 px-6 py-2 text-white transition-colors hover:bg-blue-700"
-        >
-          Back to Dashboard
-        </button>
-      </div>
-    )
+    return <CourseManagementNotFound onBack={navigate} />
   }
 
-  const readyLessons = lessons.filter((l) => l.videoStatus === 'ready').length
+  const sortedModules = [...modules].sort((a, b) => a.order - b.order)
+  const sortedLessons = [...lessons].sort((a, b) => a.moduleOrder - b.moduleOrder || a.order - b.order)
+  const moduleTitleById = new Map(sortedModules.map((m) => [m.id, m.title]))
+
+  const readyLessons = sortedLessons.filter((l) => l.videoStatus === 'ready').length
   const canPublish = course.status === 'DRAFT' && readyLessons > 0
 
   const handlePublishCourse = async () => {
@@ -277,232 +292,151 @@ export default function CourseManagement() {
     try {
       setError(null)
       await publishCourse(courseId)
-      await loadCourseData()
-      navigate('/')
+      const reloadOk = await loadCourseData()
+      if (reloadOk) {
+        navigate('/')
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to publish course')
     }
   }
 
+  const closeAddLessonModal = () => {
+    setShowAddLesson(false)
+    setNewLessonTitle('')
+    setSelectedModuleId(sortedModules[0]?.id ?? '')
+    setSelectedFile(null)
+    setUploadProgress(0)
+  }
+
   return (
     <div className="mx-auto max-w-4xl">
-        {/* Header */}
-        <div className="mb-8 flex items-center justify-between">
-          <div>
+      <div className="mb-8 flex items-center justify-between">
+        <div>
           <button
+            type="button"
             onClick={() => navigate('/')}
             className="text-blue-600 hover:text-blue-800 text-sm mb-2"
           >
             ← Back to Dashboard
           </button>
-            <h1 className="text-3xl font-bold text-gray-900">Manage Course</h1>
-          </div>
-          <span
-            className={`px-4 py-2 rounded-full text-sm font-medium ${
-              course.status === 'PUBLISHED'
-                ? 'bg-green-100 text-green-800'
-                : 'bg-yellow-100 text-yellow-800'
-            }`}
-          >
-            {course.status}
-          </span>
+          <h1 className="text-3xl font-bold text-gray-900">Manage Course</h1>
         </div>
+        <span
+          className={`px-4 py-2 rounded-full text-sm font-medium ${
+            course.status === 'PUBLISHED' ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'
+          }`}
+        >
+          {course.status}
+        </span>
+      </div>
 
-        {error && (
-          <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg text-red-700">
-            {error}
-          </div>
-        )}
-
-        {/* Course Info Section */}
-        <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6 mb-6">
-          <h2 className="text-xl font-semibold text-gray-900 mb-4">Course Information</h2>
-          <div className="space-y-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Title</label>
-              <input
-                type="text"
-                value={editTitle}
-                onChange={(e) => setEditTitle(e.target.value)}
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Description</label>
-              <textarea
-                value={editDescription}
-                onChange={(e) => setEditDescription(e.target.value)}
-                rows={3}
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              />
-            </div>
-            <div className="flex gap-3">
-              <button
-                onClick={handleSaveCourse}
-                disabled={saving}
-                className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50"
-              >
-                {saving ? 'Saving...' : 'Save Changes'}
-              </button>
-              {canPublish && (
-                <button
-                  onClick={handlePublishCourse}
-                  className="px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
-                >
-                  Publish Course
-                </button>
-              )}
-            </div>
-          </div>
+      {error && (
+        <div
+          className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg text-red-700"
+          data-testid="course-management-inline-error"
+          role="alert"
+        >
+          {error}
         </div>
+      )}
 
-        <CourseThumbnailEditor
-          course={course}
-          thumbFile={thumbFile}
-          thumbUploading={thumbUploading}
-          onThumbFileChange={handleThumbFileChange}
-          onUpload={() => void handleThumbnailUpload()}
-        />
+      {info && (
+        <div
+          className="mb-6 rounded-lg border border-blue-200 bg-blue-50 p-4 text-blue-700"
+          data-testid="course-management-inline-info"
+          role="status"
+        >
+          {info}
+        </div>
+      )}
 
-        {/* Lessons Section */}
-        <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-          <div className="flex items-center justify-between mb-6">
-            <h2 className="text-xl font-semibold text-gray-900">
-              Lessons ({lessons.length})
-            </h2>
-            {course.status === 'DRAFT' && (
+      <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6 mb-6">
+        <h2 className="text-xl font-semibold text-gray-900 mb-4">Course Information</h2>
+        <div className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Title</label>
+            <input
+              type="text"
+              value={editTitle}
+              onChange={(e) => setEditTitle(e.target.value)}
+              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Description</label>
+            <textarea
+              value={editDescription}
+              onChange={(e) => setEditDescription(e.target.value)}
+              rows={3}
+              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            />
+          </div>
+          <div className="flex gap-3">
+            <button
+              type="button"
+              onClick={() => void handleSaveCourse()}
+              disabled={saving}
+              className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50"
+            >
+              {saving ? 'Saving...' : 'Save Changes'}
+            </button>
+            {canPublish && (
               <button
-                onClick={() => setShowAddLesson(true)}
-                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm font-medium"
+                type="button"
+                onClick={() => void handlePublishCourse()}
+                className="px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
               >
-                + Add Lesson
+                Publish Course
               </button>
             )}
           </div>
-
-          {lessons.length === 0 ? (
-            <div className="rounded-lg bg-gray-50 py-12 text-center">
-              <p className="text-gray-600">No lessons yet</p>
-              {course.status === 'DRAFT' && (
-                <p className="text-sm text-gray-500 mt-1">Add your first lesson with a video</p>
-              )}
-            </div>
-          ) : (
-            <div className="space-y-3">
-              {lessons.map((lesson, index) => (
-                <div
-                  key={lesson.id}
-                  className="flex items-center justify-between p-4 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
-                >
-                  <div className="flex items-center gap-4">
-                    <span className="text-gray-400 font-medium">{index + 1}</span>
-                    <div>
-                      <h3 className="font-medium text-gray-900">{lesson.title}</h3>
-                      <div className="flex items-center gap-2 mt-1">
-                        <span
-                          className={`text-xs px-2 py-1 rounded ${
-                            lesson.videoStatus === 'ready'
-                              ? 'bg-green-100 text-green-700'
-                              : 'bg-yellow-100 text-yellow-700'
-                          }`}
-                        >
-                          {lesson.videoStatus === 'ready' ? '✓ Ready' : '⏳ Pending'}
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-                  {course.status === 'DRAFT' && (
-                    <button
-                      onClick={() => handleDeleteLesson(lesson.id)}
-                      className="text-red-600 hover:text-red-800 text-sm px-3 py-1 hover:bg-red-50 rounded transition-colors"
-                    >
-                      Delete
-                    </button>
-                  )}
-                </div>
-              ))}
-            </div>
-          )}
         </div>
+      </div>
 
-        {/* Add Lesson Modal */}
-        {showAddLesson && (
-          <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
-            <div className="bg-white rounded-lg max-w-md w-full p-6">
-              <h2 className="text-2xl font-bold text-gray-900 mb-4">Add New Lesson</h2>
-              <form onSubmit={handleAddLesson}>
-                <div className="mb-4">
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Lesson Title *
-                  </label>
-                  <input
-                    type="text"
-                    value={newLessonTitle}
-                    onChange={(e) => setNewLessonTitle(e.target.value)}
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    placeholder="e.g., Introduction"
-                    required
-                  />
-                </div>
-                <div className="mb-4">
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Video File *
-                  </label>
-                  <input
-                    type="file"
-                    accept="video/*"
-                    onChange={handleFileChange}
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    required
-                  />
-                  {selectedFile && (
-                    <p className="text-sm text-gray-600 mt-2">
-                      Selected: {selectedFile.name} ({Math.round(selectedFile.size / 1024 / 1024)}MB)
-                    </p>
-                  )}
-                </div>
+      <CourseThumbnailEditor
+        course={course}
+        thumbFile={thumbFile}
+        thumbUploading={thumbUploading}
+        onThumbFileChange={handleThumbFileChange}
+        onUpload={() => void handleThumbnailUpload()}
+      />
 
-                {uploading && (
-                  <div className="mb-4">
-                    <div className="flex justify-between text-sm text-gray-600 mb-1">
-                      <span>Uploading...</span>
-                      <span>{uploadProgress}%</span>
-                    </div>
-                    <div className="w-full bg-gray-200 rounded-full h-2">
-                      <div
-                        className="bg-blue-600 h-2 rounded-full transition-all"
-                        style={{ width: `${uploadProgress}%` }}
-                      ></div>
-                    </div>
-                  </div>
-                )}
+      {course.status === 'DRAFT' && (
+        <CourseManagementModulesPanel
+          sortedModules={sortedModules}
+          newModuleTitle={newModuleTitle}
+          newModuleDescription={newModuleDescription}
+          onNewModuleTitleChange={setNewModuleTitle}
+          onNewModuleDescriptionChange={setNewModuleDescription}
+          onCreateModule={handleCreateModule}
+          onDeleteModule={handleDeleteModule}
+        />
+      )}
 
-                <div className="flex gap-3">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setShowAddLesson(false)
-                      setNewLessonTitle('')
-                      setSelectedFile(null)
-                      setUploadProgress(0)
-                    }}
-                    disabled={uploading}
-                    className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors disabled:opacity-50"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="submit"
-                    disabled={uploading || !newLessonTitle.trim() || !selectedFile}
-                    className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50"
-                  >
-                    {uploading ? 'Uploading...' : 'Add Lesson'}
-                  </button>
-                </div>
-              </form>
-            </div>
-          </div>
-        )}
+      <CourseManagementLessonsPanel
+        course={course}
+        sortedLessons={sortedLessons}
+        moduleTitleById={moduleTitleById}
+        onAddLessonClick={() => setShowAddLesson(true)}
+        onDeleteLesson={handleDeleteLesson}
+      />
+
+      {showAddLesson && (
+        <CourseManagementAddLessonModal
+          sortedModules={sortedModules}
+          newLessonTitle={newLessonTitle}
+          selectedModuleId={selectedModuleId}
+          selectedFile={selectedFile}
+          uploading={uploading}
+          uploadProgress={uploadProgress}
+          onNewLessonTitleChange={setNewLessonTitle}
+          onSelectedModuleIdChange={setSelectedModuleId}
+          onFileChange={handleFileChange}
+          onSubmit={handleAddLesson}
+          onCancel={closeAddLessonModal}
+        />
+      )}
     </div>
   )
 }
