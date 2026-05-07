@@ -281,6 +281,24 @@ def _flush_courses(cur, rows: List[Tuple[Any, ...]], cfg: MigrationConfig) -> in
     return len(rows)
 
 
+def ensure_default_course_modules(cur, cfg: MigrationConfig) -> None:
+    """Ensure every course row has at least one ``course_modules`` row (module_order 0).
+
+    Required before migrating lessons: ``lessons.module_id`` is NOT NULL.
+    """
+    if cfg.dry_run:
+        logger.info("[dry-run] would INSERT default course_modules for courses without any")
+        return
+    cur.execute(
+        """
+        INSERT INTO course_modules (course_id, title, description, module_order)
+        SELECT c.id, 'Overview', '', 0
+          FROM courses c
+         WHERE NOT EXISTS (SELECT 1 FROM course_modules m WHERE m.course_id = c.id)
+        """
+    )
+
+
 def migrate_lessons(cur, table, cfg: MigrationConfig) -> Tuple[int, int]:
     inserted = skipped = 0
     rows: List[Tuple[Any, ...]] = []
@@ -302,6 +320,7 @@ def migrate_lessons(cur, table, cfg: MigrationConfig) -> Tuple[int, int]:
         rows.append(
             (
                 lesson_id,
+                course_id,
                 course_id,
                 str(item.get("title") or ""),
                 order_val,
@@ -327,8 +346,15 @@ def _flush_lessons(cur, rows: List[Tuple[Any, ...]], cfg: MigrationConfig) -> in
     psycopg2.extras.execute_batch(
         cur,
         """
-        INSERT INTO lessons (id, course_id, title, lesson_order, video_key, video_status, thumbnail_key, duration)
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+        INSERT INTO lessons (
+            id, course_id, module_id, title, lesson_order,
+            video_key, video_status, thumbnail_key, duration
+        )
+        VALUES (
+            %s, %s,
+            (SELECT m.id FROM course_modules m WHERE m.course_id = %s ORDER BY m.module_order LIMIT 1),
+            %s, %s, %s, %s, %s, %s
+        )
         ON CONFLICT (id) DO NOTHING
         """,
         rows,
@@ -422,6 +448,7 @@ def main(argv: Optional[List[str]] = None) -> int:
                 # users must land before enrollments (FK constraint).
                 migrate_users(cur, ddb_table, cfg)
                 migrate_courses(cur, ddb_table, cfg)
+                ensure_default_course_modules(cur, cfg)
                 migrate_lessons(cur, ddb_table, cfg)
                 migrate_enrollments(cur, ddb_table, cfg)
     finally:

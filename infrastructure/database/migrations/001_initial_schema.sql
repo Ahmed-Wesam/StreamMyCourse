@@ -38,24 +38,46 @@ CREATE TABLE IF NOT EXISTS courses (
 CREATE INDEX IF NOT EXISTS idx_courses_status ON courses(status);
 CREATE INDEX IF NOT EXISTS idx_courses_created_by ON courses(created_by);
 
+-- -------------------------- Course modules --------------------------
+-- Logical sections within a course. Every lesson belongs to exactly one module.
+CREATE TABLE IF NOT EXISTS course_modules (
+    id             UUID         PRIMARY KEY DEFAULT uuid_generate_v4(),
+    course_id      UUID         NOT NULL REFERENCES courses(id) ON DELETE CASCADE,
+    title          VARCHAR(255) NOT NULL,
+    description    TEXT         NOT NULL DEFAULT '',
+    module_order   INTEGER      NOT NULL,
+    created_at     TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+    updated_at     TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+    UNIQUE (course_id, module_order),
+    UNIQUE (course_id, id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_course_modules_course_order
+    ON course_modules (course_id, module_order);
+
 -- -------------------------- Lessons --------------------------
 -- ON DELETE CASCADE mirrors CourseCatalogRepository.delete_course_and_lessons
 -- (single batch delete of course row + all lesson rows).
--- UNIQUE (course_id, lesson_order) prevents accidental duplicate display positions
--- during reorder operations.
+-- ON DELETE CASCADE from course_modules: deleting a module removes its lessons.
+-- UNIQUE (course_id, module_id, lesson_order) prevents accidental duplicate display positions
+-- during reorder operations within a module.
+-- Composite FK guarantees lessons.module_id refers to a module_row for same course_id.
 CREATE TABLE IF NOT EXISTS lessons (
     id             UUID         PRIMARY KEY DEFAULT uuid_generate_v4(),
     course_id      UUID         NOT NULL REFERENCES courses(id) ON DELETE CASCADE,
+    module_id      UUID         NOT NULL,
     title          VARCHAR(255) NOT NULL,
     lesson_order   INTEGER      NOT NULL,
     video_key      VARCHAR(500) NOT NULL DEFAULT '',
     video_status   VARCHAR(20)  NOT NULL DEFAULT 'pending',
     thumbnail_key  VARCHAR(500) NOT NULL DEFAULT '',
     duration       INTEGER      NOT NULL DEFAULT 0,
-    UNIQUE (course_id, lesson_order)
+    UNIQUE (course_id, module_id, lesson_order),
+    FOREIGN KEY (course_id, module_id) REFERENCES course_modules (course_id, id) ON DELETE CASCADE
 );
 
-CREATE INDEX IF NOT EXISTS idx_lessons_course_order ON lessons(course_id, lesson_order);
+CREATE INDEX IF NOT EXISTS idx_lessons_course_module_order
+    ON lessons (course_id, module_id, lesson_order);
 
 -- -------------------------- Enrollments --------------------------
 -- The FK to users.user_sub means a profile row must exist before an enrollment.

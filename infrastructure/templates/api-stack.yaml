@@ -318,6 +318,22 @@ Resources:
       ParentId: !Ref CourseIdResource
       PathPart: enroll
 
+  # API Gateway Resource: /courses/{courseId}/modules
+  CourseModulesResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref CatalogApi
+      ParentId: !Ref CourseIdResource
+      PathPart: modules
+
+  # API Gateway Resource: /courses/{courseId}/modules/{moduleId}
+  CourseModuleIdResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref CatalogApi
+      ParentId: !Ref CourseModulesResource
+      PathPart: '{moduleId}'
+
   # API Gateway Resource: /courses/{courseId}/lessons
   LessonsResource:
     Type: AWS::ApiGateway::Resource
@@ -514,6 +530,73 @@ Resources:
     Properties:
       RestApiId: !Ref CatalogApi
       ResourceId: !Ref CourseEnrollResource
+      HttpMethod: OPTIONS
+      AuthorizationType: NONE
+      Integration:
+        IntegrationHttpMethod: POST
+        Type: AWS_PROXY
+        Uri: !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${CatalogLambda.Arn}/invocations'
+
+  # API Gateway Method: GET /courses/{courseId}/modules
+  CourseModulesGetMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref CatalogApi
+      ResourceId: !Ref CourseModulesResource
+      HttpMethod: GET
+      AuthorizationType: NONE
+      Integration:
+        IntegrationHttpMethod: POST
+        Type: AWS_PROXY
+        Uri: !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${CatalogLambda.Arn}/invocations'
+
+  # API Gateway Method: POST /courses/{courseId}/modules
+  CourseModulesPostMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref CatalogApi
+      ResourceId: !Ref CourseModulesResource
+      HttpMethod: POST
+      AuthorizationType: !If [HasCognitoAuthorizer, COGNITO_USER_POOLS, NONE]
+      AuthorizerId: !If [HasCognitoAuthorizer, !Ref CognitoAuthorizer, !Ref AWS::NoValue]
+      Integration:
+        IntegrationHttpMethod: POST
+        Type: AWS_PROXY
+        Uri: !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${CatalogLambda.Arn}/invocations'
+
+  # API Gateway Method: OPTIONS /courses/{courseId}/modules
+  CourseModulesOptionsMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref CatalogApi
+      ResourceId: !Ref CourseModulesResource
+      HttpMethod: OPTIONS
+      AuthorizationType: NONE
+      Integration:
+        IntegrationHttpMethod: POST
+        Type: AWS_PROXY
+        Uri: !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${CatalogLambda.Arn}/invocations'
+
+  # API Gateway Method: DELETE /courses/{courseId}/modules/{moduleId}
+  CourseModuleIdDeleteMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref CatalogApi
+      ResourceId: !Ref CourseModuleIdResource
+      HttpMethod: DELETE
+      AuthorizationType: !If [HasCognitoAuthorizer, COGNITO_USER_POOLS, NONE]
+      AuthorizerId: !If [HasCognitoAuthorizer, !Ref CognitoAuthorizer, !Ref AWS::NoValue]
+      Integration:
+        IntegrationHttpMethod: POST
+        Type: AWS_PROXY
+        Uri: !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${CatalogLambda.Arn}/invocations'
+
+  # API Gateway Method: OPTIONS /courses/{courseId}/modules/{moduleId}
+  CourseModuleIdOptionsMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref CatalogApi
+      ResourceId: !Ref CourseModuleIdResource
       HttpMethod: OPTIONS
       AuthorizationType: NONE
       Integration:
@@ -881,7 +964,7 @@ Resources:
   # Bump logical id when API methods/resources change so CloudFormation always
   # creates a new deployment; otherwise the stage can keep serving an old snapshot
   # (symptom: GET /courses/{id}/lessons returns API GW 403 Missing Authentication Token).
-  CatalogApiDeploymentV9:
+  CatalogApiDeploymentV10:
     Type: AWS::ApiGateway::Deployment
     DependsOn:
       - CatalogLambdaApiPermission
@@ -918,6 +1001,11 @@ Resources:
       - CourseProgressOptionsMethod
       - LessonProgressPutMethod
       - LessonProgressOptionsMethod
+      - CourseModulesGetMethod
+      - CourseModulesPostMethod
+      - CourseModulesOptionsMethod
+      - CourseModuleIdDeleteMethod
+      - CourseModuleIdOptionsMethod
     Properties:
       RestApiId: !Ref CatalogApi
       Description: !Sub 'catalog-${LambdaCodeS3Key}'
@@ -927,7 +1015,7 @@ Resources:
     Type: AWS::ApiGateway::Stage
     Properties:
       RestApiId: !Ref CatalogApi
-      DeploymentId: !Ref CatalogApiDeploymentV9
+      DeploymentId: !Ref CatalogApiDeploymentV10
       StageName: !Ref Environment
       Description: !Sub '${Environment} stage for Catalog API'
       MethodSettings:

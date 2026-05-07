@@ -93,6 +93,12 @@ def _route(method: str, path: str) -> Tuple[str, Dict[str, str]]:
         return "enroll_course", {"courseId": parts[1]}
     if method == "GET" and len(parts) == 2 and parts[0] == "courses" and parts[1] == "mine":
         return "list_instructor_courses", {}
+    if method == "GET" and len(parts) == 3 and parts[0] == "courses" and parts[2] == "modules":
+        return "list_modules", {"courseId": parts[1]}
+    if method == "POST" and len(parts) == 3 and parts[0] == "courses" and parts[2] == "modules":
+        return "create_module", {"courseId": parts[1]}
+    if method == "DELETE" and len(parts) == 4 and parts[0] == "courses" and parts[2] == "modules":
+        return "delete_module", {"courseId": parts[1], "moduleId": parts[3]}
     if method == "GET" and len(parts) == 2 and parts[0] == "courses":
         return "get_course", {"courseId": parts[1]}
     if method == "PUT" and len(parts) == 2 and parts[0] == "courses":
@@ -195,6 +201,39 @@ def handle(
                 auth_enforced=auth_enforced,
             )
             return json_response(200, dto.as_course_list(mine), origin)
+        if action == "list_modules":
+            rows = svc.list_course_modules_public(
+                params["courseId"],
+                cognito_sub=_actor_sub(claims),
+                role=_actor_role(claims),
+                auth_enforced=auth_enforced,
+            )
+            return json_response(200, dto.as_course_module_list(rows), origin)
+        if action == "create_module":
+            svc.ensure_can_modify_course(
+                params["courseId"],
+                cognito_sub=_actor_sub(claims),
+                role=_actor_role(claims),
+                auth_enforced=auth_enforced,
+            )
+            body = parse_json_body(event)
+            title_m = optional_str(body, "title", "Untitled module")
+            description_m = optional_str(body, "description", "")
+            created_module: dto.CreateCourseModuleResponse = svc.create_course_module(
+                params["courseId"], title_m, description_m
+            )  # type: ignore[assignment]
+            return json_response(201, created_module, origin)
+        if action == "delete_module":
+            svc.ensure_can_modify_course(
+                params["courseId"],
+                cognito_sub=_actor_sub(claims),
+                role=_actor_role(claims),
+                auth_enforced=auth_enforced,
+            )
+            deleted_module: dto.DeleteCourseModuleResponse = svc.delete_course_module(
+                params["courseId"], params["moduleId"]
+            )  # type: ignore[assignment]
+            return json_response(200, deleted_module, origin)
         if action == "get_course":
             detail = svc.get_course_detail_with_enrollment(
                 params["courseId"],
@@ -251,7 +290,10 @@ def handle(
             )
             body = parse_json_body(event)
             title = optional_str(body, "title", "Lesson")
-            created_lesson: dto.CreateLessonResponse = svc.create_lesson(params["courseId"], title)  # type: ignore[assignment]
+            module_id_body = optional_str(body, "moduleId", "").strip()
+            created_lesson: dto.CreateLessonResponse = svc.create_lesson(
+                params["courseId"], title, module_id=module_id_body or None
+            )  # type: ignore[assignment]
             return json_response(201, created_lesson, origin)
         if action == "update_lesson":
             svc.ensure_can_modify_course(
