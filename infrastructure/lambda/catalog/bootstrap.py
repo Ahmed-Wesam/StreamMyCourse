@@ -54,7 +54,15 @@ def _secretsmanager_client() -> Any:
 def _psycopg2_connect(**kwargs: Any) -> Any:
     import psycopg2
 
-    return psycopg2.connect(**kwargs)
+    conn = psycopg2.connect(**kwargs)
+    # Default to autocommit so a read-only `_execute(commit=False)` does not
+    # leave the connection idle in a transaction holding share locks across
+    # warm Lambda invocations. Repository methods that need multi-statement
+    # atomicity (e.g. CourseCatalogRdsRepository.create_course,
+    # set_lesson_orders) explicitly toggle autocommit off via
+    # `_atomic_transaction` for the duration of their block.
+    conn.autocommit = True
+    return conn
 
 
 def _rds_config_complete(cfg: AppConfig) -> bool:

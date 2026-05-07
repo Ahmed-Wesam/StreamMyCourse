@@ -233,3 +233,28 @@ class TestRdsConnectionFactory:
         assert connect_kwargs.get("dbname") == "smc"
         assert connect_kwargs.get("user") == "smc_app"
         assert connect_kwargs.get("password") == "hunter2"
+
+    def test_psycopg2_connect_sets_autocommit_true_on_connection(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The connection factory must enable autocommit on every fresh
+        connection so read-only queries do not leave the warm Lambda
+        container's connection idle in a transaction holding share locks
+        across invocations. This is the application-level half of the fix
+        for the deploy-blocking AccessExclusiveLock contention seen during
+        migration 003 rollouts; the RDS-level half is the
+        idle_in_transaction_session_timeout parameter group in
+        infrastructure/templates/rds-stack.yaml."""
+        import psycopg2 as psycopg2_mod
+
+        fake_conn = MagicMock(name="conn")
+        fake_psycopg2_connect = MagicMock(return_value=fake_conn)
+        monkeypatch.setattr(psycopg2_mod, "connect", fake_psycopg2_connect)
+
+        out = bootstrap_mod._psycopg2_connect(host="h", port=5432, dbname="d", user="u", password="p")
+
+        assert out is fake_conn
+        # autocommit was set to True on the returned connection (not just on
+        # any random connection — this exact one).
+        assert fake_conn.autocommit is True
+        fake_psycopg2_connect.assert_called_once()

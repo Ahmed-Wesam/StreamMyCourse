@@ -19,8 +19,9 @@ formatted into the SQL string (SQL-injection safe).
 from __future__ import annotations
 
 import logging
+from contextlib import contextmanager
 from datetime import datetime
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, Iterator, List, Optional, Tuple
 
 try:  # pragma: no cover - optional dependency path
     import psycopg2
@@ -29,6 +30,27 @@ except Exception:  # pragma: no cover - surface at first DB call instead
 
 from services.common.errors import Conflict
 from services.course_management.models import Course, CourseModule, Lesson
+
+
+@contextmanager
+def _atomic_transaction(conn: Any) -> Iterator[None]:
+    """Group multiple statements into a single transaction.
+
+    The bootstrap factory opens connections with ``autocommit=True`` so
+    read-only queries do not leak idle-in-transaction sessions. Methods that
+    need multi-statement atomicity wrap the block with this helper, which
+    flips ``autocommit`` off for the duration, commits on success, rolls
+    back on exception, and always restores ``autocommit=True`` afterward.
+    """
+    conn.autocommit = False
+    try:
+        yield
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.autocommit = True
 
 
 logger = logging.getLogger(__name__)
@@ -208,8 +230,20 @@ class CourseCatalogRdsRepository:
 
         Wrapped in one transaction so a course cannot exist without a module.
         """
-        conn = self._connection()
         try:
+            return self._create_course_atomic(title, description, created_by)
+        except Exception as exc:
+            if psycopg2 is not None and isinstance(exc, psycopg2.OperationalError):
+                logger.warning("RDS connection lost during create_course, reconnecting: %s", exc)
+                self._conn = None
+                return self._create_course_atomic(title, description, created_by)
+            raise
+
+    def _create_course_atomic(
+        self, title: str, description: str, created_by: str
+    ) -> Course:
+        conn = self._connection()
+        with _atomic_transaction(conn):
             cur = conn.cursor()
             cur.execute(
                 f"""
@@ -230,41 +264,7 @@ class CourseCatalogRdsRepository:
                 """,
                 (course.id, "Overview", "", 0),
             )
-            conn.commit()
-            return course
-        except Exception as exc:
-            conn.rollback()
-            if psycopg2 is not None and isinstance(exc, psycopg2.OperationalError):
-                logger.warning("RDS connection lost during create_course, reconnecting: %s", exc)
-                self._conn = None
-                conn = self._connection()
-                try:
-                    cur = conn.cursor()
-                    cur.execute(
-                        f"""
-                        INSERT INTO courses (title, description, status, created_by)
-                        VALUES (%s, %s, %s, %s)
-                        RETURNING {_COURSE_COLUMNS}
-                        """,
-                        (title, description, "DRAFT", (created_by or "").strip()),
-                    )
-                    row = cur.fetchone()
-                    if row is None:
-                        raise RuntimeError("INSERT courses ... RETURNING returned no row")
-                    course = _row_to_course(row)
-                    cur.execute(
-                        """
-                        INSERT INTO course_modules (course_id, title, description, module_order)
-                        VALUES (%s, %s, %s, %s)
-                        """,
-                        (course.id, "Overview", "", 0),
-                    )
-                    conn.commit()
-                    return course
-                except Exception:
-                    conn.rollback()
-                    raise
-            raise
+        return course
 
     def update_course(self, course_id: str, title: str, description: str) -> None:
         self._execute(
@@ -505,14 +505,10 @@ class CourseCatalogRdsRepository:
         if not orders:
             return
         conn = self._connection()
-        try:
+        with _atomic_transaction(conn):
             cur = conn.cursor()
             for lesson_id, order in orders.items():
                 cur.execute(
                     "UPDATE lessons SET lesson_order = %s WHERE course_id = %s AND id = %s",
                     (int(order), course_id, lesson_id),
                 )
-            conn.commit()
-        except Exception:
-            conn.rollback()
-            raise
