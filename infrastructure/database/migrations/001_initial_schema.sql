@@ -73,6 +73,7 @@ CREATE TABLE IF NOT EXISTS lessons (
     thumbnail_key  VARCHAR(500) NOT NULL DEFAULT '',
     duration       INTEGER      NOT NULL DEFAULT 0,
     UNIQUE (course_id, module_id, lesson_order),
+    UNIQUE (course_id, id),
     FOREIGN KEY (course_id, module_id) REFERENCES course_modules (course_id, id) ON DELETE CASCADE
 );
 
@@ -99,18 +100,24 @@ CREATE INDEX IF NOT EXISTS idx_enrollments_course ON enrollments(course_id);
 -- -------------------------- Lesson Progress --------------------------
 -- Tracks student progress through individual lessons. The composite
 -- primary key (user_sub, lesson_id) ensures one progress record per
--- user per lesson. ON DELETE CASCADE mirrors the enrollment behavior
--- when users or courses/lessons are removed.
+-- user per lesson. A composite FK enforces that the (course_id, lesson_id)
+-- pair is valid for the same course. ON DELETE CASCADE mirrors the enrollment
+-- behavior when users or courses/lessons are removed.
 CREATE TABLE IF NOT EXISTS lesson_progress (
     user_sub          VARCHAR(255) NOT NULL REFERENCES users(user_sub) ON DELETE CASCADE,
-    lesson_id         UUID NOT NULL REFERENCES lessons(id) ON DELETE CASCADE,
-    course_id         UUID NOT NULL REFERENCES courses(id) ON DELETE CASCADE,
+    lesson_id         UUID NOT NULL,
+    course_id         UUID NOT NULL,
     completed         BOOLEAN NOT NULL DEFAULT FALSE,
     completed_at      TIMESTAMPTZ,
     last_position_sec INTEGER NOT NULL DEFAULT 0,
     updated_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     PRIMARY KEY (user_sub, lesson_id),
-    CONSTRAINT chk_lesson_progress_position_nonneg CHECK (last_position_sec >= 0)
+    CONSTRAINT chk_lesson_progress_position_nonneg CHECK (last_position_sec >= 0),
+    -- Named explicitly so migration 003 can drop and re-add this FK by a stable
+    -- name (otherwise PostgreSQL auto-generates lesson_progress_course_id_lesson_id_fkey
+    -- on fresh DBs, leaving a redundant FK after 003 runs).
+    CONSTRAINT lesson_progress_course_lesson_fkey FOREIGN KEY (course_id, lesson_id) REFERENCES lessons (course_id, id) ON DELETE CASCADE,
+    FOREIGN KEY (course_id) REFERENCES courses (id) ON DELETE CASCADE
 );
 
 -- Index for efficient "get all progress for user in course" queries
