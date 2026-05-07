@@ -1,15 +1,15 @@
 import { useAuthenticator } from '@aws-amplify/ui-react'
 import { useEffect, useState, type ReactNode } from 'react'
-import { fetchMe, type UserProfile } from '../../lib/api'
+import { ApiError, fetchMe, type UserProfile } from '../../lib/api'
 import { isAuthConfigured } from '../../lib/auth'
 
 /**
  * After Cognito sign-in, loads `/users/me` and allows only teacher or admin roles.
  */
 export function TeacherRoleGate({ children }: { children: ReactNode }) {
-  const { authStatus } = useAuthenticator((ctx) => [ctx.authStatus])
+  const { authStatus, signOut } = useAuthenticator((ctx) => [ctx.authStatus, ctx.signOut])
   const [profile, setProfile] = useState<UserProfile | null>(null)
-  const [err, setErr] = useState<string | null>(null)
+  const [err, setErr] = useState<unknown>(null)
 
   useEffect(() => {
     if (authStatus !== 'authenticated') return
@@ -24,7 +24,7 @@ export function TeacherRoleGate({ children }: { children: ReactNode }) {
       } catch (e) {
         if (!cancelled) {
           setProfile(null)
-          setErr(e instanceof Error ? e.message : 'Failed to load profile')
+          setErr(e)
         }
       }
     })()
@@ -49,7 +49,56 @@ export function TeacherRoleGate({ children }: { children: ReactNode }) {
   }
 
   if (err) {
-    return <div className="p-8 text-center text-red-600">{err}</div>
+    // For auth/permission errors from /users/me:
+    // - 401: session not valid → prompt sign-in again (avoids masking auth wiring issues as "no instructor access").
+    // - 403: signed in but not allowed → show instructor access message.
+    if (err instanceof ApiError && err.status === 401) {
+      return (
+        <div className="mx-auto max-w-lg p-8 text-center">
+          <h1 className="text-xl font-semibold text-gray-900">Sign-in required</h1>
+          <p className="mt-2 text-gray-600">
+            Your session may have expired. Please sign out and sign in again. If the problem continues, contact{' '}
+            <a className="font-medium text-emerald-700 hover:text-emerald-800" href="mailto:streammycourse@gmail.com">
+              streammycourse@gmail.com
+            </a>
+            .
+          </p>
+          <button
+            type="button"
+            className="mt-6 inline-flex min-h-[44px] items-center justify-center rounded-md border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-emerald-700 hover:bg-emerald-50 active:bg-emerald-100"
+            onClick={() => void signOut()}
+          >
+            Sign out
+          </button>
+        </div>
+      )
+    }
+
+    if (err instanceof ApiError && err.status === 403) {
+      return (
+        <div className="mx-auto max-w-lg p-8 text-center">
+          <h1 className="text-xl font-semibold text-gray-900">Instructor access required</h1>
+          <p className="mt-2 text-gray-600">
+            This account doesn’t have access to the Instructor Dashboard. If you believe this is a mistake, please
+            contact{' '}
+            <a className="font-medium text-emerald-700 hover:text-emerald-800" href="mailto:streammycourse@gmail.com">
+              streammycourse@gmail.com
+            </a>
+            .
+          </p>
+          <button
+            type="button"
+            className="mt-6 inline-flex min-h-[44px] items-center justify-center rounded-md border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-emerald-700 hover:bg-emerald-50 active:bg-emerald-100"
+            onClick={() => void signOut()}
+          >
+            Sign out
+          </button>
+        </div>
+      )
+    }
+
+    const msg = err instanceof Error ? err.message : 'Failed to load profile'
+    return <div className="p-8 text-center text-red-600">{msg}</div>
   }
 
   if (!profile) {
@@ -62,11 +111,20 @@ export function TeacherRoleGate({ children }: { children: ReactNode }) {
       <div className="mx-auto max-w-lg p-8 text-center">
         <h1 className="text-xl font-semibold text-gray-900">Instructor access required</h1>
         <p className="mt-2 text-gray-600">
-          Your account does not have the instructor role. An admin must set the Cognito attribute{' '}
-          <code className="rounded bg-gray-100 px-1">custom:role</code> to{' '}
-          <code className="rounded bg-gray-100 px-1">teacher</code> (or <code className="rounded bg-gray-100 px-1">admin</code>
-          ).
+          This account doesn’t have access to the Instructor Dashboard. If you believe this is a mistake, please
+          contact{' '}
+          <a className="font-medium text-emerald-700 hover:text-emerald-800" href="mailto:streammycourse@gmail.com">
+            streammycourse@gmail.com
+          </a>
+          .
         </p>
+        <button
+          type="button"
+          className="mt-6 inline-flex min-h-[44px] items-center justify-center rounded-md border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-emerald-700 hover:bg-emerald-50 active:bg-emerald-100"
+          onClick={() => void signOut()}
+        >
+          Sign out
+        </button>
       </div>
     )
   }
