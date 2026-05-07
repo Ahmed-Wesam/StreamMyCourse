@@ -253,6 +253,28 @@ Resources:
       RouteTableId: !Ref PrivateRouteTable
       SubnetId: !Ref PrivateSubnetB
 
+  # Custom parameter group so we can set idle_in_transaction_session_timeout
+  # as a backstop against connection-pool bugs (see catalog Lambda's
+  # autocommit policy in infrastructure/lambda/catalog/bootstrap.py). The
+  # timeout fires only when a session sits inside an explicit transaction
+  # without progress for the configured window — PostgreSQL terminates that
+  # session, releasing any locks it held. Application code closes its own
+  # transactions; this parameter is purely defensive.
+  DbParameterGroup:
+    Type: AWS::RDS::DBParameterGroup
+    Properties:
+      Description: !Sub 'StreamMyCourse catalog parameters (${Environment})'
+      # postgres16 family matches DbEngineVersion default '16.13'. Bump in
+      # lockstep when changing DbEngineVersion across major versions.
+      Family: postgres16
+      Parameters:
+        # 60_000 ms = 60s. Long enough that no legitimate write transaction
+        # in the catalog Lambda could hit it (single-statement upserts and
+        # the 2-statement create_course block are sub-second under load),
+        # short enough that a leaked idle-in-transaction session does not
+        # block schema migrations for more than a minute.
+        idle_in_transaction_session_timeout: '60000'
+
   DbInstance:
     Type: AWS::RDS::DBInstance
     # Snapshot on delete so accidental stack deletes do not nuke data.
@@ -263,6 +285,7 @@ Resources:
       Engine: postgres
       EngineVersion: !Ref DbEngineVersion
       DBInstanceClass: !Ref DbInstanceClass
+      DBParameterGroupName: !Ref DbParameterGroup
       AllocatedStorage: !Ref DbAllocatedStorage
       StorageType: gp3
       StorageEncrypted: true

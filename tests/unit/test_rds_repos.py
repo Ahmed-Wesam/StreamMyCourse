@@ -89,6 +89,20 @@ class FakeConn:
     committed: int = 0
     rolled_back: int = 0
     closed: bool = False
+    # Mirrors the bootstrap factory's default (autocommit=True). Multi-statement
+    # repository methods (create_course, set_lesson_orders) flip this to False
+    # for the duration of their atomic block via _atomic_transaction; tests
+    # observe `autocommit_history` to assert the flag was toggled.
+    autocommit: bool = True
+    autocommit_history: List[bool] = field(default_factory=list)
+
+    def __post_init__(self) -> None:
+        self.autocommit_history.append(self.autocommit)
+
+    def __setattr__(self, name: str, value: Any) -> None:
+        super().__setattr__(name, value)
+        if name == "autocommit" and getattr(self, "autocommit_history", None) is not None:
+            self.autocommit_history.append(value)
 
     def cursor(self) -> FakeCursor:
         return self.cursor_obj
@@ -503,6 +517,50 @@ class TestCourseCatalogRdsRepository:
         fake_conn.cursor_obj.execute = fail  # type: ignore[assignment]
         with pytest.raises(ValueError, match="database error"):
             repo.set_lesson_orders("course-id", {"l1": 1})
+        assert fake_conn.rolled_back >= 1
+
+    def test_create_course_toggles_autocommit_off_for_atomic_block_then_restores(
+        self, repo, fake_conn: FakeConn
+    ) -> None:
+        """create_course must run its 2 INSERTs under an explicit transaction
+        (autocommit=False) and restore autocommit=True afterward, otherwise a
+        warm Lambda container would leak idle-in-transaction sessions on the
+        very paths that need atomicity."""
+        new_id = uuid.UUID("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee")
+        now = datetime(2026, 5, 3, 12, 0, 0, tzinfo=timezone.utc)
+        fake_conn.cursor_obj.rows_to_return.append(
+            (new_id, "T", "D", "DRAFT", "creator", "", now, now)
+        )
+        repo.create_course(title="T", description="D", created_by="creator")
+        # Autocommit was flipped False then back to True (full toggle).
+        assert False in fake_conn.autocommit_history
+        assert fake_conn.autocommit is True
+        # The False transition came BEFORE the True restoration.
+        first_false = fake_conn.autocommit_history.index(False)
+        assert any(
+            v is True
+            for v in fake_conn.autocommit_history[first_false + 1:]
+        ), "autocommit must be restored to True after the atomic block"
+
+    def test_set_lesson_orders_toggles_autocommit_off_for_atomic_block_then_restores(
+        self, repo, fake_conn: FakeConn
+    ) -> None:
+        """set_lesson_orders has the same atomic-block contract as create_course."""
+        repo.set_lesson_orders("course-id", {"l1": 1, "l2": 2})
+        assert False in fake_conn.autocommit_history
+        assert fake_conn.autocommit is True
+
+    def test_create_course_restores_autocommit_even_when_block_raises(
+        self, repo, fake_conn: FakeConn
+    ) -> None:
+        """If the INSERT fails, the finally clause must still restore
+        autocommit=True; otherwise the cached connection would re-enter the
+        idle-in-transaction state that triggered this whole class of bug."""
+        # No rows queued -> RuntimeError from "RETURNING returned no row".
+        fake_conn.cursor_obj.rows_to_return = []
+        with pytest.raises(RuntimeError, match="RETURNING returned no row"):
+            repo.create_course(title="T", description="D", created_by="creator")
+        assert fake_conn.autocommit is True
         assert fake_conn.rolled_back >= 1
 
     def test_list_courses_retries_once_on_operational_error(self) -> None:
