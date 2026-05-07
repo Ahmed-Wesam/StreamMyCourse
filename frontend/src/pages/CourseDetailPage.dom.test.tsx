@@ -56,8 +56,24 @@ describe('CourseDetailPage', () => {
       enrolled: true,
     })
     api.listLessons.mockResolvedValue([
-      { id: 'l1', title: 'First Lesson', order: 1, videoStatus: 'ready', duration: 100 },
-      { id: 'l2', title: 'Second Lesson', order: 2, videoStatus: 'ready', duration: 200 },
+      {
+        id: 'l1',
+        title: 'First Lesson',
+        order: 1,
+        moduleId: 'm1',
+        moduleOrder: 0,
+        videoStatus: 'ready',
+        duration: 100,
+      },
+      {
+        id: 'l2',
+        title: 'Second Lesson',
+        order: 2,
+        moduleId: 'm1',
+        moduleOrder: 0,
+        videoStatus: 'ready',
+        duration: 200,
+      },
     ])
     api.getCourseProgress.mockResolvedValue({
       courseId: 'c1',
