@@ -324,6 +324,19 @@ Resources:
       ProviderARNs:
         - !Ref CognitoUserPoolArn
 
+  # Permissive JWT authorizer for public catalog reads (GET course / modules / lessons).
+  # Always returns Allow: no Authorization, bad, or non–id-token JWT → anonymous context;
+  # valid Cognito Id token → sub/role/email in context for Lambda (same handler as token zip).
+  CatalogApiPublicReadAuthorizer:
+    Type: AWS::ApiGateway::Authorizer
+    Properties:
+      Name: !Sub 'StreamMyCourse-PublicCatalogRead-${Environment}'
+      Type: REQUEST
+      RestApiId: !Ref CatalogApi
+      AuthorizerUri: !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${TokenAuthorizerLambda.Arn}/invocations'
+      AuthorizerResultTtlInSeconds: 300
+      IdentitySource: method.request.header.Authorization
+
   # API Gateway GatewayResponses to guarantee CORS headers even on errors (e.g., 4XX/5XX)
   # Note: GatewayResponseAllowOrigin must be a single value (not CSV) for API Gateway to accept it
   ApiGatewayResponseDefault4XX:
@@ -558,14 +571,15 @@ Resources:
         Uri: !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${CatalogLambda.Arn}/invocations'
 
   # API Gateway Method: GET /courses/{courseId}
+  # Public read with optional identity: permissive REQUEST authorizer (anon allowed; valid Id token → claims).
   CourseIdGetMethod:
     Type: AWS::ApiGateway::Method
     Properties:
       RestApiId: !Ref CatalogApi
       ResourceId: !Ref CourseIdResource
       HttpMethod: GET
-      AuthorizationType: COGNITO_USER_POOLS
-      AuthorizerId: !Ref CatalogApiTokenAuthorizer
+      AuthorizationType: CUSTOM
+      AuthorizerId: !Ref CatalogApiPublicReadAuthorizer
       Integration:
         IntegrationHttpMethod: POST
         Type: AWS_PROXY
@@ -605,8 +619,8 @@ Resources:
       RestApiId: !Ref CatalogApi
       ResourceId: !Ref CourseModulesResource
       HttpMethod: GET
-      AuthorizationType: COGNITO_USER_POOLS
-      AuthorizerId: !Ref CatalogApiTokenAuthorizer
+      AuthorizationType: CUSTOM
+      AuthorizerId: !Ref CatalogApiPublicReadAuthorizer
       Integration:
         IntegrationHttpMethod: POST
         Type: AWS_PROXY
@@ -784,8 +798,8 @@ Resources:
       RestApiId: !Ref CatalogApi
       ResourceId: !Ref LessonsResource
       HttpMethod: GET
-      AuthorizationType: COGNITO_USER_POOLS
-      AuthorizerId: !Ref CatalogApiTokenAuthorizer
+      AuthorizationType: CUSTOM
+      AuthorizerId: !Ref CatalogApiPublicReadAuthorizer
       Integration:
         IntegrationHttpMethod: POST
         Type: AWS_PROXY
@@ -1027,11 +1041,12 @@ Resources:
   # Bump logical id when API methods/resources change so CloudFormation always
   # creates a new deployment; otherwise the stage can keep serving an old snapshot
   # (symptom: GET /courses/{id}/lessons returns API GW 403 Missing Authentication Token).
-  CatalogApiDeploymentV14:
+  CatalogApiDeploymentV15:
     Type: AWS::ApiGateway::Deployment
     DependsOn:
       - CatalogLambdaApiPermission
       - CatalogApiTokenAuthorizer
+      - CatalogApiPublicReadAuthorizer
       - CoursesGetMethod
       - CoursesPostMethod
       - CoursesOptionsMethod
@@ -1079,7 +1094,7 @@ Resources:
     Type: AWS::ApiGateway::Stage
     Properties:
       RestApiId: !Ref CatalogApi
-      DeploymentId: !Ref CatalogApiDeploymentV14
+      DeploymentId: !Ref CatalogApiDeploymentV15
       StageName: !Ref Environment
       Description: !Sub '${Environment} stage for Catalog API'
       MethodSettings:
