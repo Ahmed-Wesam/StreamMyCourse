@@ -233,6 +233,11 @@ class TestRdsConnectionFactory:
         assert connect_kwargs.get("dbname") == "smc"
         assert connect_kwargs.get("user") == "smc_app"
         assert connect_kwargs.get("password") == "hunter2"
+        assert connect_kwargs.get("keepalives") == 1
+        assert connect_kwargs.get("keepalives_idle") == 10
+        assert connect_kwargs.get("keepalives_interval") == 5
+        assert connect_kwargs.get("keepalives_count") == 2
+        assert connect_kwargs.get("options") == "-c statement_timeout=10000"
 
     def test_psycopg2_connect_sets_autocommit_true_on_connection(
         self, monkeypatch: pytest.MonkeyPatch
