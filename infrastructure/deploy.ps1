@@ -319,21 +319,28 @@ if ($Template -eq "rds") {
     $rdsSchemaKey = "rds-schema-apply-$Environment-$short.zip"
 
     $schemaHandler = "$PSScriptRoot\lambda\rds_schema_apply\index.py"
-    $schemaSql = "$PSScriptRoot\database\migrations\001_initial_schema.sql"
+    $schemaSqlFiles = @(
+        "$PSScriptRoot\database\migrations\001_initial_schema.sql",
+        "$PSScriptRoot\database\migrations\003_progress_course_lesson_fk.sql",
+        "$PSScriptRoot\database\migrations\004_enforce_course_created_by.sql"
+    )
     if (-not (Test-Path $schemaHandler)) {
         Write-Host "[X] Missing schema applier: $schemaHandler" -ForegroundColor Red
         exit 1
     }
-    if (-not (Test-Path $schemaSql)) {
-        Write-Host "[X] Missing migration SQL: $schemaSql" -ForegroundColor Red
-        exit 1
+    foreach ($schemaSql in $schemaSqlFiles) {
+        if (-not (Test-Path $schemaSql)) {
+            Write-Host "[X] Missing migration SQL: $schemaSql" -ForegroundColor Red
+            exit 1
+        }
     }
 
     $pkgRoot = Join-Path $env:TEMP "rds-schema-pkg-$Environment-$([System.Guid]::NewGuid().ToString('N').Substring(0,8))"
     $pkgDir = $pkgRoot
     New-Item -ItemType Directory -Path $pkgDir -Force | Out-Null
     Copy-Item -Path $schemaHandler -Destination (Join-Path $pkgDir "index.py") -Force
-    Copy-Item -Path $schemaSql -Destination (Join-Path $pkgDir "schema.sql") -Force
+    $schemaSql = (Get-Content -Path $schemaSqlFiles -Raw) -join [Environment]::NewLine
+    Set-Content -Path (Join-Path $pkgDir "schema.sql") -Value $schemaSql -Encoding UTF8
 
     Write-Host "Installing psycopg2-binary (Linux x86_64) into schema-applier bundle" -ForegroundColor Yellow
     & python -m pip install `

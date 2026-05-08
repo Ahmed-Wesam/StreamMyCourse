@@ -56,12 +56,14 @@ else
   PKG="${STAGE}/pkg"
   mkdir -p "$PKG"
   cp "${ROOT}/infrastructure/lambda/rds_schema_apply/index.py" "$PKG/"
-  # Bundle migrations 001 (canonical fresh-DB schema) and 003 (in-place
-  # upgrade for the (course_id, lesson_id) FK invariant) as one schema.sql.
+  # Bundle migrations 001 (canonical fresh-DB schema), 003 (in-place
+  # upgrade for the (course_id, lesson_id) FK invariant), and 004
+  # (created_by non-blank invariant) as one schema.sql.
   # Each migration is idempotent so re-running on every deploy is safe.
   cat \
     "${ROOT}/infrastructure/database/migrations/001_initial_schema.sql" \
     "${ROOT}/infrastructure/database/migrations/003_progress_course_lesson_fk.sql" \
+    "${ROOT}/infrastructure/database/migrations/004_enforce_course_created_by.sql" \
     > "$PKG/schema.sql"
   pip install psycopg2-binary==2.9.9 \
     --quiet \

@@ -463,12 +463,14 @@ jobs:
           PKG="${STAGE}/pkg"
           mkdir -p "$PKG"
           cp "${{ github.workspace }}/infrastructure/lambda/rds_schema_apply/index.py" "$PKG/"
-          # Bundle 001 (canonical fresh-DB schema) and 003 (in-place upgrade
-          # for the (course_id, lesson_id) FK invariant). Each migration is
-          # idempotent so re-running on every deploy is safe.
+          # Bundle 001 (canonical fresh-DB schema), 003 (in-place upgrade
+          # for the (course_id, lesson_id) FK invariant), and 004
+          # (created_by non-blank invariant). Each migration is idempotent so
+          # re-running on every deploy is safe.
           cat \
             "${{ github.workspace }}/infrastructure/database/migrations/001_initial_schema.sql" \
             "${{ github.workspace }}/infrastructure/database/migrations/003_progress_course_lesson_fk.sql" \
+            "${{ github.workspace }}/infrastructure/database/migrations/004_enforce_course_created_by.sql" \
             > "$PKG/schema.sql"
           pip install psycopg2-binary==2.9.9 \
             --quiet \
@@ -891,12 +893,14 @@ jobs:
           PKG="${STAGE}/pkg"
           mkdir -p "$PKG"
           cp "${{ github.workspace }}/infrastructure/lambda/rds_schema_apply/index.py" "$PKG/"
-          # Bundle 001 (canonical fresh-DB schema) and 003 (in-place upgrade
-          # for the (course_id, lesson_id) FK invariant). Each migration is
-          # idempotent so re-running on every deploy is safe.
+          # Bundle 001 (canonical fresh-DB schema), 003 (in-place upgrade
+          # for the (course_id, lesson_id) FK invariant), and 004
+          # (created_by non-blank invariant). Each migration is idempotent so
+          # re-running on every deploy is safe.
           cat \
             "${{ github.workspace }}/infrastructure/database/migrations/001_initial_schema.sql" \
             "${{ github.workspace }}/infrastructure/database/migrations/003_progress_course_lesson_fk.sql" \
+            "${{ github.workspace }}/infrastructure/database/migrations/004_enforce_course_created_by.sql" \
             > "$PKG/schema.sql"
           pip install psycopg2-binary==2.9.9 \
             --quiet \
