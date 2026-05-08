@@ -3,14 +3,13 @@ from __future__ import annotations
 import logging
 from typing import Any, Dict, Optional, Tuple
 
-from services.common.errors import Forbidden, HttpError, NotFound, Unauthorized
+from services.common.errors import HttpError, NotFound, Unauthorized
 from services.common.http import (
     apigw_cognito_claims,
     apigw_routing_path,
     json_response,
     options_response,
 )
-from services.common.jwt_verify import CognitoJwtConfig
 from services.common.runtime_context import set_upload_kind, update_action
 from services.common.validation import optional_str, parse_json_body, require_str
 from services.course_management import contracts as dto
@@ -40,11 +39,8 @@ def _method_and_path(event: Dict[str, Any]) -> Tuple[str, str]:
     return method, apigw_routing_path(event)
 
 
-def _jwt_claims(
-    event: Dict[str, Any],
-    jwt_config: Optional[CognitoJwtConfig] = None,
-) -> Dict[str, Any]:
-    return apigw_cognito_claims(event, jwt_config=jwt_config)
+def _jwt_claims(event: Dict[str, Any]) -> Dict[str, Any]:
+    return apigw_cognito_claims(event)
 
 
 def _actor_sub(claims: Dict[str, Any]) -> str:
@@ -66,17 +62,6 @@ def _audit_event(action: str, course_id: str, claims: Dict[str, Any]) -> None:
             "user_sub_prefix": prefix,
         },
     )
-
-
-def _require_authenticated(claims: Dict[str, Any]) -> None:
-    if not _actor_sub(claims):
-        raise Unauthorized("Authentication required")
-
-
-def _require_teacher_or_admin(claims: Dict[str, Any]) -> None:
-    _require_authenticated(claims)
-    if _actor_role(claims) not in ("teacher", "admin"):
-        raise Forbidden("Teacher or admin role required")
 
 
 def _route(method: str, path: str) -> Tuple[str, Dict[str, str]]:
@@ -135,7 +120,6 @@ def handle(
     svc: CourseManagementService,
     video_bucket: str,
     auth_svc: UserProfileProvisioner,
-    jwt_config: Optional[CognitoJwtConfig] = None,
 ) -> Dict[str, Any]:
     method, raw_path = _method_and_path(event)
     if method == "OPTIONS":
@@ -144,13 +128,33 @@ def handle(
     action, params = _route(method, raw_path)
     # Set action in context for correlation logging
     update_action(action)
-    claims = _jwt_claims(event, jwt_config=jwt_config)
+    claims = _jwt_claims(event)
 
     try:
+        # Authentication lives at the controller boundary. Public reads remain public;
+        # all mutations/private reads require a non-empty Cognito sub.
+        if action in {
+            "create_course",
+            "enroll_course",
+            "list_instructor_courses",
+            "create_module",
+            "delete_module",
+            "update_course",
+            "publish_course",
+            "delete_course",
+            "create_lesson",
+            "update_lesson",
+            "delete_lesson",
+            "mark_video_ready",
+            "mark_thumbnail_ready",
+            "get_playback",
+            "get_upload_url",
+        } and not _actor_sub(claims):
+            raise Unauthorized("Authentication required")
+
         if action == "list_courses":
             return json_response(200, dto.as_course_list(svc.list_published_courses()), origin)
         if action == "create_course":
-            _require_teacher_or_admin(claims)
             body = parse_json_body(event)
             title = optional_str(body, "title", "Untitled Course")
             description = optional_str(body, "description", "")
@@ -158,38 +162,23 @@ def handle(
                 title,
                 description,
                 created_by=_actor_sub(claims),
+                role=_actor_role(claims),
             )  # type: ignore[assignment]
             return json_response(201, created, origin)
         if action == "enroll_course":
-            _require_authenticated(claims)
             sub = _actor_sub(claims)
             email = str(claims.get("email", "") or "").strip()
             role = str(claims.get("custom:role") or claims.get("role") or "student").strip()
-            try:
-                auth_svc.get_or_create_profile(user_sub=sub, email=email, role=role)
-            except HttpError as e:
-                logger.info(
-                    "HTTP error",
-                    extra={
-                        "action": action,
-                        "status_code": e.status_code,
-                        "error_code": e.code,
-                    },
-                )
-                return _api_error_response(e, origin)
-            except Exception:
-                logger.exception("enroll profile upsert failed", extra={"action": action})
-                return json_response(
-                    500, {"message": "Internal error", "code": "internal_error"}, origin
-                )
-            enrolled_body = svc.enroll_in_published_course(
+            enrolled_body = svc.enroll_in_published_course_with_profile(
                 params["courseId"],
                 cognito_sub=sub,
+                email=email,
+                role=role,
+                profile_provisioner=auth_svc,
             )
             _audit_event("enrollment.create", params["courseId"], claims)
             return json_response(200, enrolled_body, origin)
         if action == "list_instructor_courses":
-            _require_teacher_or_admin(claims)
             mine = svc.list_instructor_courses(
                 cognito_sub=_actor_sub(claims),
                 role=_actor_role(claims),
@@ -325,7 +314,6 @@ def handle(
             )
             return json_response(200, thumb, origin)
         if action == "get_playback":
-            _require_authenticated(claims)
             svc.ensure_can_view_lessons_and_playback(
                 params["courseId"],
                 cognito_sub=_actor_sub(claims),

@@ -4,22 +4,8 @@ import json
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional
 
-from services.common.jwt_verify import CognitoJwtConfig, parse_jwt_claims_verified
-
 # Defense-in-depth for JSON API responses (limited effect on fetch/XHR; avoids silent removal).
 _CSP_API = "default-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'"
-
-
-def _extract_bearer_token(headers: Dict[str, Any]) -> str | None:
-    """Extract JWT from Authorization: Bearer <token> header."""
-    auth_header = headers.get("Authorization") or headers.get("authorization")
-    if not isinstance(auth_header, str):
-        return None
-    auth_header = auth_header.strip()
-    if auth_header.lower().startswith("bearer "):
-        token = auth_header[7:].strip()
-        return token if token else None
-    return None
 
 
 @dataclass(frozen=True)
@@ -149,25 +135,12 @@ _SKIP_AUTHORIZER_META = frozenset({"claims", "principalId", "integrationLatency"
 
 def apigw_cognito_claims(
     event: Dict[str, Any],
-    jwt_config: Optional[CognitoJwtConfig] = None,
 ) -> Dict[str, Any]:
-    """Cognito JWT claims forwarded by API Gateway (shape varies slightly by integration).
+    """Trusted JWT claims forwarded by API Gateway authorizers.
 
-    Falls back to parsing the Authorization header when API Gateway doesn't provide
-    claims (public routes like GET /courses/{id} with AuthorizationType: NONE).
-
-    When jwt_config is provided, the Authorization header token is verified using
-    Cognito's JWKS (signature + standard claims). This prevents forged JWTs from
-    affecting authorization decisions on public routes.
-
-    Args:
-        event: API Gateway Lambda event
-        jwt_config: Optional Cognito JWT configuration for signature verification.
-                   When provided and authorizer claims are absent, the bearer token
-                   in the Authorization header is verified using Cognito's public keys.
-
-    Returns:
-        Dict containing JWT claims (sub, custom:role, email, etc.) or empty dict.
+    This function intentionally **does not** parse `Authorization` headers or perform any
+    JWT verification. In this repo, the catalog Lambda runs in a VPC and must trust only
+    the already-authenticated `requestContext.authorizer` context set by API Gateway.
     """
     auth = event.get("requestContext", {}).get("authorizer") or {}
     claims: Dict[str, Any] | None = None
@@ -185,18 +158,6 @@ def apigw_cognito_claims(
                 pass
         if claims is None and isinstance(auth.get("sub"), str):
             claims = {k: v for k, v in auth.items() if k not in _SKIP_AUTHORIZER_META}
-
-    # Fallback: parse and verify JWT from Authorization header for public routes
-    # API Gateway already verified the token on protected routes (authorizer present)
-    # For public routes, we must verify signatures to prevent forged tokens
-    if claims is None:
-        headers = event.get("headers") or {}
-        token = _extract_bearer_token(headers)
-        if token and jwt_config is not None:
-            # Secure path: verify signature and standard claims. If verification
-            # fails (including JWKS fetch failures), treat as anonymous by
-            # returning {}.
-            claims = parse_jwt_claims_verified(token, jwt_config)
 
     return claims if claims is not None else {}
 

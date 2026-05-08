@@ -11,7 +11,6 @@ from config import load_config
 from services.auth.controller import handle_users_me
 from services.common.http import apigw_routing_path, json_response, options_response, pick_origin
 from services.progress.controller import handle_progress_request
-from services.common.jwt_verify import CognitoJwtConfig
 from services.common.logging_setup import configure_logging
 from services.common.runtime_context import bind_from_lambda_event, clear_request_context, set_request_path
 from services.course_management.controller import handle as course_management_handle
@@ -20,17 +19,6 @@ logger = logging.getLogger(__name__)
 
 # Configure logging on module load (cold start)
 configure_logging()
-
-
-def _build_jwt_config(cfg) -> Optional[CognitoJwtConfig]:
-    """Build Cognito JWT config from AppConfig if all required fields are present."""
-    if cfg.cognito_user_pool_id and cfg.cognito_region and cfg.cognito_client_ids:
-        return CognitoJwtConfig(
-            user_pool_id=cfg.cognito_user_pool_id,
-            client_ids=cfg.cognito_client_ids,
-            region=cfg.cognito_region,
-        )
-    return None
 
 
 def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
@@ -93,7 +81,6 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                     )
             else:
                 parts = [p for p in raw_path.split("/") if p]
-                jwt_config = _build_jwt_config(cfg)
 
                 if (
                     len(parts) == 3
@@ -105,7 +92,6 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                         event,
                         origin=origin,
                         progress_svc=progress_service,
-                        jwt_config=jwt_config,
                     )
                 elif (
                     len(parts) == 5
@@ -118,14 +104,12 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                         event,
                         origin=origin,
                         progress_svc=progress_service,
-                        jwt_config=jwt_config,
                     )
                 elif method == "GET" and parts == ["users", "me"]:
                     response = handle_users_me(
                         event,
                         origin=origin,
                         auth_svc=auth_service,
-                        jwt_config=jwt_config,
                     )
                 else:
                     response = course_management_handle(
@@ -134,7 +118,6 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                         svc=service,
                         video_bucket=cfg.video_bucket,
                         auth_svc=auth_service,
-                        jwt_config=jwt_config,
                     )
 
         # Calculate duration and log request completion
