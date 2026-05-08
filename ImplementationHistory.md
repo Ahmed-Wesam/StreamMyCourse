@@ -10,8 +10,8 @@
 
 - **`CatalogApiPublicReadAuthorizer`** — `REQUEST` Lambda authorizer (same **`catalog_token_authorizer`** zip as **`TokenAuthorizerLambda`**): permissive **`Allow`** with anonymous context when `Authorization` missing/invalid/non–id-token; valid Cognito Id token → **`sub`** / **`role`** / **`email`** in API Gateway **`context`**.
 - **GET wiring** — `GET /courses/{courseId}`, `GET …/modules`, `GET …/lessons` use **`AuthorizationType: CUSTOM`** + **`AuthorizerId`** above (replacing pool-only auth on those reads so anonymous catalog works without Gateway 401, while Bearer still hydrates Lambda claims).
-- **Deployment** — Logical id bump **`CatalogApiDeploymentV14` → `CatalogApiDeploymentV15`** with **`DependsOn`** including the new authorizer.
-- **`IdentitySource`** — Scalar string **`method.request.header.Authorization`** for **`Type: REQUEST`** (matches Cognito pool authorizer form; satisfies **cfn-lint** schema).
+- **Deployment** — Logical id bumps **`CatalogApiDeploymentV14` → … → `V18`** with **`DependsOn`** including the public-read authorizer so the stage picks up snapshot changes.
+- **`IdentitySource`** (**follow-up**) — **`method.request.header.Authorization`** caused API Gateway to return **401** without invoking the Lambda when the header was absent (anonymous catalog). **`method.request.path.courseId`** is **not allowed** by API Gateway REQUEST authorizers (only header/query/stage/context). Use **`method.request.header.Host`** (always present); handler still reads **`Authorization`** from the full request when present. **`AuthorizerResultTtlInSeconds: 0`** — cache key uses identity sources only (**Host** alone would otherwise collapse TTL>0 caches across callers) (**cfn-lint** clean).
 
 ### Cursor
 

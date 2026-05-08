@@ -14,6 +14,8 @@
 #   ./scripts/run-local-integration-tests.sh           # Uses .env.local
 #   ./scripts/run-local-integration-tests.sh -v        # Verbose output
 #   ./scripts/run-local-integration-tests.sh -k smoke  # Filter tests
+#   ./scripts/run-local-integration-tests.sh -v tests/integration/test_publish.py::test_anonymous_get_draft_course_returns_404
+#     # Pass explicit paths/nodeids (otherwise defaults to the whole tests/integration package)
 #
 # Environment variables (all 3 passwords are REQUIRED):
 #   LOCAL_COGNITO_USERNAME    - default: ci-rds-verify@noreply.local
@@ -243,5 +245,9 @@ if ! python -c "import pytest, httpx, boto3" 2>/dev/null; then
     pip install -q -r tests/integration/requirements.txt
 fi
 
-# Run pytest with any extra args
-python -m pytest tests/integration "${PYTEST_ARGS[@]}"
+# Run pytest: default whole package, or only what the caller passed (nodeids, -k, etc.)
+if [[ ${#PYTEST_ARGS[@]} -eq 0 ]]; then
+    python -m pytest tests/integration
+else
+    python -m pytest "${PYTEST_ARGS[@]}"
+fi
