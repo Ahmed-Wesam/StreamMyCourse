@@ -133,6 +133,27 @@ def apigw_routing_path(event: Dict[str, Any]) -> str:
 _SKIP_AUTHORIZER_META = frozenset({"claims", "principalId", "integrationLatency", "scopes"})
 
 
+def _claims_with_principal_fallback(claims: Dict[str, Any], authorizer: Dict[str, Any]) -> Dict[str, Any]:
+    """Ensure ``sub`` is populated when API Gateway exposes only ``principalId``.
+
+    Lambda CUSTOM authorizers set ``principalId`` to the authenticated Cognito ``sub``.
+    ``sub`` sometimes arrives empty in proxy events; callers must not spoof ``principalId`` (it is
+    gateway-controlled, not a client header).
+    """
+    sub = str(claims.get("sub") or "").strip()
+    if sub:
+        return claims
+    pid_raw = authorizer.get("principalId")
+    if not isinstance(pid_raw, str):
+        return claims
+    pid = pid_raw.strip()
+    if not pid or pid.lower() == "anonymous":
+        return claims
+    merged = dict(claims)
+    merged["sub"] = pid
+    return merged
+
+
 def apigw_cognito_claims(
     event: Dict[str, Any],
 ) -> Dict[str, Any]:
@@ -140,25 +161,25 @@ def apigw_cognito_claims(
 
     Prefer API Gateway authorizer claims when present (already-authenticated).
     """
-    auth = event.get("requestContext", {}).get("authorizer") or {}
+    auth_raw = event.get("requestContext", {}).get("authorizer") or {}
+    auth = auth_raw if isinstance(auth_raw, dict) else {}
     claims: Dict[str, Any] | None = None
 
-    if isinstance(auth, dict):
-        nested = auth.get("claims")
-        if isinstance(nested, dict) and nested:
-            claims = nested
-        elif isinstance(nested, str) and nested.strip():
-            try:
-                parsed = json.loads(nested)
-                if isinstance(parsed, dict) and parsed:
-                    claims = parsed
-            except json.JSONDecodeError:
-                pass
-        if claims is None and isinstance(auth.get("sub"), str):
-            claims = {k: v for k, v in auth.items() if k not in _SKIP_AUTHORIZER_META}
+    nested = auth.get("claims")
+    if isinstance(nested, dict) and nested:
+        claims = nested
+    elif isinstance(nested, str) and nested.strip():
+        try:
+            parsed = json.loads(nested)
+            if isinstance(parsed, dict) and parsed:
+                claims = parsed
+        except json.JSONDecodeError:
+            pass
+    if claims is None and isinstance(auth.get("sub"), str):
+        claims = {k: v for k, v in auth.items() if k not in _SKIP_AUTHORIZER_META}
 
     if claims is not None:
-        return claims
+        return _claims_with_principal_fallback(claims, auth)
 
     return {}
 
