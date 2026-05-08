@@ -12,9 +12,6 @@ from unittest.mock import MagicMock
 import pytest
 
 from services.auth.controller import handle_users_me
-from services.common.jwt_verify import CognitoJwtConfig
-
-
 class TestHandleUsersMeRealEventStructure:
     """Tests using real API Gateway v2 event structures (no _claims_dict mocking)."""
 
@@ -151,48 +148,16 @@ class TestHandleUsersMeRealEventStructure:
             role="student",
         )
 
-    def test_real_event_with_jwt_config_verified_path(self, monkeypatch) -> None:
-        """Test with JWT config provided (verified path instead of unverified fallback)."""
-        event = self._make_api_gateway_v2_event()
-        # Add Authorization header for fallback path
+    def test_real_event_with_authorization_header_but_no_authorizer_returns_401(self) -> None:
+        """Defense-in-depth: Authorization headers are ignored; only authorizer context is trusted."""
+        event = self._make_api_gateway_v2_event(include_authorizer=False)
         event["headers"]["Authorization"] = "Bearer fake.token.here"
-
-        # Remove authorizer to force fallback to header parsing
-        del event["requestContext"]["authorizer"]
-
-        jwt_config = CognitoJwtConfig(
-            user_pool_id="us-east-1_TEST",
-            client_ids=["test-client"],
-            region="us-east-1",
-        )
-
-        # Mock the verified parser in the http module (imported by controller)
-        expected_claims = {
-            "sub": "verified-user",
-            "email": "verified@example.com",
-            "custom:role": "teacher",
-        }
-        monkeypatch.setattr(
-            "services.common.http.parse_jwt_claims_verified",
-            lambda token, cfg: expected_claims,
-        )
-
         auth_svc = MagicMock()
-        auth_svc.get_or_create_profile.return_value = {"userId": "verified-user"}
 
-        resp = handle_users_me(
-            event,
-            origin="*",
-            auth_svc=auth_svc,
-            jwt_config=jwt_config,
-        )
+        resp = handle_users_me(event, origin="*", auth_svc=auth_svc)
 
-        assert resp["statusCode"] == 200
-        auth_svc.get_or_create_profile.assert_called_once_with(
-            user_sub="verified-user",
-            email="verified@example.com",
-            role="teacher",
-        )
+        assert resp["statusCode"] == 401
+        auth_svc.get_or_create_profile.assert_not_called()
 
     def test_real_event_missing_sub_in_claims_returns_401(self) -> None:
         """Test that claims without sub field returns 401."""

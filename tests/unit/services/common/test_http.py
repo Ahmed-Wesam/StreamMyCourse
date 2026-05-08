@@ -89,26 +89,9 @@ class TestApigwCognitoClaims:
         evt = {"requestContext": {"authorizer": {"claims": payload}}}
         assert apigw_cognito_claims(evt) == {"sub": "abc", "email": "u@example.com"}
 
-    def test_does_not_parse_authorization_header_without_jwt_config(self) -> None:
-        # Public routes may include an Authorization header, but without Cognito config
-        # we must not trust or parse claims.
+    def test_authorization_header_alone_returns_empty(self) -> None:
         token = "a.eyJzdWIiOiJhYmMifQ.c"
         evt = {"headers": {"Authorization": f"Bearer {token}"}}
-        assert apigw_cognito_claims(evt) == {}
-
-    def test_falls_back_to_authorization_header_verified_when_jwt_config_provided(self, monkeypatch) -> None:
-        token = "a.b.c"
-        evt = {"headers": {"authorization": f"Bearer {token}"}}
-        expected = {"sub": "verified"}
-        monkeypatch.setattr(
-            "services.common.http.parse_jwt_claims_verified",
-            lambda t, cfg: expected,
-        )
-        out = apigw_cognito_claims(evt, jwt_config=object())  # type: ignore[arg-type]
-        assert out == expected
-
-    def test_authorization_header_malformed_returns_empty(self) -> None:
-        evt = {"headers": {"Authorization": "Basic abc"}}
         assert apigw_cognito_claims(evt) == {}
 
     def test_stringified_claims_invalid_json_is_ignored(self) -> None:

@@ -81,6 +81,8 @@ def service(
 
 
 class TestAuthorization:
+    # Authentication (non-empty sub) is enforced in the controller layer.
+
     def test_rejects_unenrolled_user(
         self,
         service: "LessonProgressService",

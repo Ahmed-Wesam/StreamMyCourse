@@ -17,7 +17,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from services.common.errors import BadRequest, Conflict, HttpError, NotFound
+from services.common.errors import BadRequest, Conflict, Forbidden, HttpError, NotFound, Unauthorized
 from services.course_management.controller import (
     _api_error_response,
     _route,
@@ -215,7 +215,11 @@ class TestHandleDispatch:
         self, svc: MagicMock, make_lambda_event
     ) -> None:
         svc.delete_course.side_effect = Conflict("clash")
-        evt = make_lambda_event(method="DELETE", path="/courses/c1")
+        evt = make_lambda_event(
+            method="DELETE",
+            path="/courses/c1",
+            authorizer={"claims": {"sub": "t1", "custom:role": "teacher"}},
+        )
         resp = handle(evt, origin="*", svc=svc, video_bucket="b", auth_svc=MagicMock())
         assert resp["statusCode"] == 409
         body = json.loads(resp["body"])
@@ -272,6 +276,7 @@ class TestHandleDispatch:
     def test_list_instructor_courses_forbidden_for_student(
         self, svc: MagicMock, make_lambda_event
     ) -> None:
+        svc.list_instructor_courses.side_effect = Forbidden("Teacher or admin role required")
         evt = make_lambda_event(method="GET", path="/courses/mine")
         evt["requestContext"]["authorizer"] = {
             "claims": {"sub": "s1", "custom:role": "student"}
@@ -284,7 +289,7 @@ class TestHandleDispatch:
             auth_svc=MagicMock(),
         )
         assert resp["statusCode"] == 403
-        svc.list_instructor_courses.assert_not_called()
+        svc.list_instructor_courses.assert_called_once_with(cognito_sub="s1", role="student")
 
     def test_create_lesson_201_status(
         self, svc: MagicMock, make_lambda_event
@@ -298,6 +303,7 @@ class TestHandleDispatch:
             method="POST",
             path="/courses/c1/lessons",
             body={"title": "Intro"},
+            authorizer={"claims": {"sub": "t1", "custom:role": "teacher"}},
         )
         resp = handle(evt, origin="*", svc=svc, video_bucket="b", auth_svc=MagicMock())
         assert resp["statusCode"] == 201
@@ -308,7 +314,12 @@ class TestHandleDispatch:
         self, svc: MagicMock, make_lambda_event
     ) -> None:
         # Missing courseId/lessonId → 400 before svc is ever called.
-        evt = make_lambda_event(method="POST", path="/upload-url", body={})
+        evt = make_lambda_event(
+            method="POST",
+            path="/upload-url",
+            body={},
+            authorizer={"claims": {"sub": "t1", "custom:role": "teacher"}},
+        )
         resp = handle(evt, origin="*", svc=svc, video_bucket="b", auth_svc=MagicMock())
         assert resp["statusCode"] == 400
         body = json.loads(resp["body"])
@@ -337,6 +348,7 @@ class TestHandleDispatch:
                 "filename": "thumb.jpg",
                 "contentType": "image/jpeg",
             },
+            authorizer={"claims": {"sub": "t1", "custom:role": "teacher"}},
         )
         resp = handle(evt, origin="*", svc=svc, video_bucket="b", auth_svc=MagicMock())
         assert resp["statusCode"] == 200
@@ -366,6 +378,7 @@ class TestHandleDispatch:
                 "filename": "pic.jpg",
                 "contentType": "image/jpeg",
             },
+            authorizer={"claims": {"sub": "t1", "custom:role": "teacher"}},
         )
         resp = handle(evt, origin="*", svc=svc, video_bucket="b", auth_svc=MagicMock())
         assert resp["statusCode"] == 200
@@ -387,6 +400,7 @@ class TestHandleDispatch:
             method="POST",
             path="/upload-url",
             body={"courseId": "c1", "lessonId": "lid", "contentType": ""},
+            authorizer={"claims": {"sub": "t1", "custom:role": "teacher"}},
         )
         resp = handle(evt, origin="*", svc=svc, video_bucket="b", auth_svc=MagicMock())
         assert resp["statusCode"] == 200
@@ -424,7 +438,7 @@ class TestHandleDispatchPerAction:
         evt["requestContext"]["authorizer"] = {"claims": {"sub": "t1", "custom:role": "teacher"}}
         resp = handle(evt, origin="*", svc=svc, video_bucket="b", auth_svc=MagicMock())
         assert resp["statusCode"] == 201
-        svc.create_course.assert_called_once_with("T", "D", created_by="t1")
+        svc.create_course.assert_called_once_with("T", "D", created_by="t1", role="teacher")
 
     def test_get_course_200(self, svc: MagicMock, make_lambda_event) -> None:
         svc.get_course_detail_with_enrollment.return_value = {
@@ -449,6 +463,7 @@ class TestHandleDispatchPerAction:
             method="PUT",
             path="/courses/c1",
             body={"title": "T2", "description": "D2"},
+            authorizer={"claims": {"sub": "t1", "custom:role": "teacher"}},
         )
         resp = handle(evt, origin="*", svc=svc, video_bucket="b", auth_svc=MagicMock())
         assert resp["statusCode"] == 200
@@ -456,21 +471,33 @@ class TestHandleDispatchPerAction:
 
     def test_publish_course_200(self, svc: MagicMock, make_lambda_event) -> None:
         svc.publish_course.return_value = {"id": "c1", "status": "PUBLISHED"}
-        evt = make_lambda_event(method="PUT", path="/courses/c1/publish")
+        evt = make_lambda_event(
+            method="PUT",
+            path="/courses/c1/publish",
+            authorizer={"claims": {"sub": "t1", "custom:role": "teacher"}},
+        )
         resp = handle(evt, origin="*", svc=svc, video_bucket="b", auth_svc=MagicMock())
         assert resp["statusCode"] == 200
         svc.publish_course.assert_called_once_with("c1")
 
     def test_delete_course_200(self, svc: MagicMock, make_lambda_event) -> None:
         svc.delete_course.return_value = {"id": "c1", "deleted": True}
-        evt = make_lambda_event(method="DELETE", path="/courses/c1")
+        evt = make_lambda_event(
+            method="DELETE",
+            path="/courses/c1",
+            authorizer={"claims": {"sub": "t1", "custom:role": "teacher"}},
+        )
         resp = handle(evt, origin="*", svc=svc, video_bucket="b", auth_svc=MagicMock())
         assert resp["statusCode"] == 200
         svc.delete_course.assert_called_once_with("c1")
 
     def test_delete_course_404_not_found(self, svc: MagicMock, make_lambda_event) -> None:
         svc.delete_course.side_effect = NotFound("Course not found")
-        evt = make_lambda_event(method="DELETE", path="/courses/missing")
+        evt = make_lambda_event(
+            method="DELETE",
+            path="/courses/missing",
+            authorizer={"claims": {"sub": "t1", "custom:role": "teacher"}},
+        )
         resp = handle(evt, origin="*", svc=svc, video_bucket="b", auth_svc=MagicMock())
         assert resp["statusCode"] == 404
 
@@ -502,6 +529,7 @@ class TestHandleDispatchPerAction:
             method="PUT",
             path="/courses/c1/lessons/lid",
             body={"title": "T"},
+            authorizer={"claims": {"sub": "t1", "custom:role": "teacher"}},
         )
         resp = handle(evt, origin="*", svc=svc, video_bucket="b", auth_svc=MagicMock())
         assert resp["statusCode"] == 200
@@ -509,7 +537,11 @@ class TestHandleDispatchPerAction:
 
     def test_delete_lesson_200(self, svc: MagicMock, make_lambda_event) -> None:
         svc.delete_lesson.return_value = {"lessonId": "lid", "deleted": True}
-        evt = make_lambda_event(method="DELETE", path="/courses/c1/lessons/lid")
+        evt = make_lambda_event(
+            method="DELETE",
+            path="/courses/c1/lessons/lid",
+            authorizer={"claims": {"sub": "t1", "custom:role": "teacher"}},
+        )
         resp = handle(evt, origin="*", svc=svc, video_bucket="b", auth_svc=MagicMock())
         assert resp["statusCode"] == 200
         svc.delete_lesson.assert_called_once_with("c1", "lid")
@@ -520,7 +552,9 @@ class TestHandleDispatchPerAction:
             "videoStatus": "ready",
         }
         evt = make_lambda_event(
-            method="PUT", path="/courses/c1/lessons/lid/video-ready"
+            method="PUT",
+            path="/courses/c1/lessons/lid/video-ready",
+            authorizer={"claims": {"sub": "t1", "custom:role": "teacher"}},
         )
         resp = handle(evt, origin="*", svc=svc, video_bucket="b", auth_svc=MagicMock())
         assert resp["statusCode"] == 200
@@ -538,6 +572,7 @@ class TestHandleDispatchPerAction:
             method="PUT",
             path="/courses/c1/lessons/lid/video-ready",
             body={"thumbnailKey": tk},
+            authorizer={"claims": {"sub": "t1", "custom:role": "teacher"}},
         )
         resp = handle(evt, origin="*", svc=svc, video_bucket="b", auth_svc=MagicMock())
         assert resp["statusCode"] == 200
@@ -618,6 +653,7 @@ class TestHandleDispatchPerAction:
     def test_get_playback_401_when_auth_enforced_and_no_claims(
         self, svc: MagicMock, make_lambda_event
     ) -> None:
+        svc.ensure_can_view_lessons_and_playback.side_effect = Unauthorized("Authentication required")
         evt = make_lambda_event(method="GET", path="/playback/c1/lid")
         resp = handle(
             evt,
@@ -634,8 +670,7 @@ class TestHandleDispatchPerAction:
 
     def test_enroll_course_200(self, svc: MagicMock, make_lambda_event) -> None:
         auth = MagicMock()
-        auth.get_or_create_profile.return_value = {"userId": "user-1"}
-        svc.enroll_in_published_course.return_value = {"courseId": "c1", "enrolled": True}
+        svc.enroll_in_published_course_with_profile.return_value = {"courseId": "c1", "enrolled": True}
         evt = make_lambda_event(method="POST", path="/courses/c1/enroll")
         evt["requestContext"]["authorizer"] = {
             "claims": {"sub": "user-1", "email": "a@b.com", "custom:role": "student"}
@@ -648,38 +683,23 @@ class TestHandleDispatchPerAction:
             auth_svc=auth,
         )
         assert resp["statusCode"] == 200
-        auth.get_or_create_profile.assert_called_once_with(
-            user_sub="user-1", email="a@b.com", role="student"
+        svc.enroll_in_published_course_with_profile.assert_called_once_with(
+            "c1",
+            cognito_sub="user-1",
+            email="a@b.com",
+            role="student",
+            profile_provisioner=auth,
         )
-        svc.enroll_in_published_course.assert_called_once_with("c1", cognito_sub="user-1")
 
     def test_enroll_calls_get_or_create_profile_before_enroll_in_published_course(
         self, svc: MagicMock, make_lambda_event
     ) -> None:
-        """Defense-in-depth: ensure users row exists before enroll FK insert."""
         auth = MagicMock()
-        order: list[str] = []
-
-        def _prof(**kwargs):
-            order.append("profile")
-            return {}
-
-        def _enroll(*a, **k):
-            order.append("enroll")
-            return {"courseId": "c1", "enrolled": True}
-
-        auth.get_or_create_profile.side_effect = _prof
-        svc.enroll_in_published_course.side_effect = _enroll
+        svc.enroll_in_published_course_with_profile.return_value = {"courseId": "c1", "enrolled": True}
         evt = make_lambda_event(method="POST", path="/courses/c1/enroll")
         evt["requestContext"]["authorizer"] = {"claims": {"sub": "u1"}}
-        handle(
-            evt,
-            origin="*",
-            svc=svc,
-            video_bucket="b",
-            auth_svc=auth,
-        )
-        assert order == ["profile", "enroll"]
+        handle(evt, origin="*", svc=svc, video_bucket="b", auth_svc=auth)
+        svc.enroll_in_published_course_with_profile.assert_called_once()
 
     def test_upload_url_happy_path_passes_kwargs(
         self, svc: MagicMock, make_lambda_event
@@ -697,6 +717,7 @@ class TestHandleDispatchPerAction:
                 "filename": "intro.mp4",
                 "contentType": "video/mp4",
             },
+            authorizer={"claims": {"sub": "t1", "custom:role": "teacher"}},
         )
         resp = handle(evt, origin="*", svc=svc, video_bucket="b", auth_svc=MagicMock())
         assert resp["statusCode"] == 200
@@ -718,6 +739,7 @@ class TestHandleDispatchPerAction:
             body={
                 "thumbnailKey": "c1/thumbnail/55555555-5555-4555-8555-555555555555.jpg"
             },
+            authorizer={"claims": {"sub": "t1", "custom:role": "teacher"}},
         )
         resp = handle(evt, origin="*", svc=svc, video_bucket="b", auth_svc=MagicMock())
         assert resp["statusCode"] == 200
