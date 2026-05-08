@@ -51,6 +51,8 @@ def test_split_real_migration_file_contains_expected_ddl(schema_apply):
     assert "CREATE EXTENSION IF NOT EXISTS" in joined
     assert "CREATE TABLE IF NOT EXISTS users" in joined
     assert "CREATE TABLE IF NOT EXISTS courses" in joined
+    assert "created_by     VARCHAR(255) NOT NULL" in joined
+    assert "CONSTRAINT courses_created_by_not_blank CHECK (btrim(created_by) <> '')" in joined
     assert "CREATE TABLE IF NOT EXISTS lessons" in joined
     assert "CREATE TABLE IF NOT EXISTS enrollments" in joined
     assert "CREATE TABLE IF NOT EXISTS lesson_progress" in joined
@@ -76,13 +78,53 @@ def test_split_real_migration_file_contains_expected_ddl(schema_apply):
     assert len(parts) >= 11
 
 
+def test_split_sql_dollar_quote_preserves_inner_semicolons(schema_apply):
+    """Semicolons inside $$ ... $$ dollar-quoted blocks must not split the statement."""
+    sql = """\
+DO $$
+DECLARE
+    n INT;
+BEGIN
+    SELECT COUNT(*) INTO n FROM courses;
+    IF n > 0 THEN
+        RAISE WARNING 'found %', n;
+    END IF;
+END;
+$$;
+"""
+    parts = schema_apply._split_sql_statements(sql)
+    assert len(parts) == 1
+    assert "DO $$" in parts[0]
+    assert "RAISE WARNING" in parts[0]
+    assert parts[0].endswith(";")
+
+
+def test_split_sql_dollar_quote_mixed_with_plain_statements(schema_apply):
+    """Plain DDL before and after a dollar-quoted block should produce 3 statements."""
+    sql = """\
+ALTER TABLE t ALTER COLUMN c DROP DEFAULT;
+
+DO $$
+BEGIN
+    RAISE WARNING 'hi';
+END;
+$$;
+
+ALTER TABLE t ADD CONSTRAINT c_check CHECK (c <> '');
+"""
+    parts = schema_apply._split_sql_statements(sql)
+    assert len(parts) == 3
+    assert "ALTER TABLE t ALTER COLUMN" in parts[0]
+    assert "DO $$" in parts[1]
+    assert "ADD CONSTRAINT c_check" in parts[2]
+
+
 def test_split_real_migration_003_contains_expected_upgrade_ddl(schema_apply):
     """003_progress_course_lesson_fk.sql is the in-place upgrade bundled alongside
     001 (see scripts/deploy-rds-stack.sh and .github/workflows/deploy-backend.yml).
 
-    The schema-applier Lambda's ``_split_sql_statements`` is a naive ``;`` split,
-    so 003 must contain only plain DDL — no ``DO $$ ... $$;`` blocks. This test
-    verifies the file remains splitter-safe and idempotent (DROP IF EXISTS + ADD).
+    Verifies the file is idempotent (DROP IF EXISTS + ADD) and produces the expected
+    number of statements when split.
     """
     path = (
         _ROOT
@@ -101,28 +143,50 @@ def test_split_real_migration_003_contains_expected_upgrade_ddl(schema_apply):
     assert "FOREIGN KEY (course_id, lesson_id)" in joined
     assert "REFERENCES lessons (course_id, id)" in joined
     assert "ON DELETE CASCADE" in joined
-    # Splitter-safety: the executable SQL (post-comment-strip) must not
-    # introduce DO blocks, which would fool the naive `;` split because they
-    # contain inner `;` characters. Comment-only mentions of "DO $$" in the
-    # file header are fine; they get stripped by `_split_sql_statements`.
-    executable_sql = "\n".join(
-        line for line in sql.splitlines() if not line.strip().startswith("--")
-    )
-    assert "DO $$" not in executable_sql
     assert len(parts) == 4
 
 
-def test_concatenated_001_and_003_bundle_is_splittable_and_complete(schema_apply):
-    """The deploy script and CI workflow concatenate 001 and 003 into a single
+def test_split_real_migration_004_contains_expected_upgrade_ddl(schema_apply):
+    """004_enforce_course_created_by.sql uses a DO block to apply ADD CONSTRAINT
+    safely — skipping with a WARNING if blank-owner rows would cause it to fail.
+
+    The splitter must handle the $$ ... $$ block as a single statement and not
+    split on the semicolons inside the PL/pgSQL body.
+    """
+    path = (
+        _ROOT
+        / "infrastructure"
+        / "database"
+        / "migrations"
+        / "004_enforce_course_created_by.sql"
+    )
+    sql = path.read_text(encoding="utf-8")
+    parts = schema_apply._split_sql_statements(sql)
+    joined = "\n".join(parts)
+    assert "ALTER COLUMN created_by DROP DEFAULT" in joined
+    assert "DROP CONSTRAINT IF EXISTS courses_created_by_not_blank" in joined
+    assert "ADD CONSTRAINT courses_created_by_not_blank" in joined
+    assert "CHECK (btrim(created_by) <> " in joined
+    assert "DO $$" in joined
+    assert "RAISE WARNING" in joined
+    # 1 plain ALTER TABLE + 1 DO $$ block
+    assert len(parts) == 2
+
+
+def test_concatenated_001_003_and_004_bundle_is_splittable_and_complete(schema_apply):
+    """The deploy script and CI workflow concatenate 001, 003, and 004 into a single
     schema.sql before zipping the Lambda. Verify the concatenation is splittable
-    end-to-end and surfaces both the canonical schema and the upgrade DDL.
+    end-to-end and surfaces the canonical schema and upgrade DDL.
     """
     migrations_dir = _ROOT / "infrastructure" / "database" / "migrations"
     sql_001 = (migrations_dir / "001_initial_schema.sql").read_text(encoding="utf-8")
     sql_003 = (migrations_dir / "003_progress_course_lesson_fk.sql").read_text(
         encoding="utf-8"
     )
-    bundle = sql_001 + sql_003
+    sql_004 = (migrations_dir / "004_enforce_course_created_by.sql").read_text(
+        encoding="utf-8"
+    )
+    bundle = sql_001 + sql_003 + sql_004
     parts = schema_apply._split_sql_statements(bundle)
     joined = "\n".join(parts)
     # 001 markers
@@ -131,8 +195,11 @@ def test_concatenated_001_and_003_bundle_is_splittable_and_complete(schema_apply
     assert "CREATE UNIQUE INDEX IF NOT EXISTS lessons_course_id_id_key" in joined
     assert "DROP CONSTRAINT IF EXISTS lesson_progress_lesson_id_fkey" in joined
     assert "ADD CONSTRAINT lesson_progress_course_lesson_fkey" in joined
-    # Sanity: 001 alone gave >=11 statements; 003 adds 4 more.
-    assert len(parts) >= 15
+    # 004 markers
+    assert "ALTER COLUMN created_by DROP DEFAULT" in joined
+    assert "ADD CONSTRAINT courses_created_by_not_blank" in joined
+    # Sanity: 001 alone gave >=11 statements; 003 adds 4 and 004 adds 2 more.
+    assert len(parts) >= 17
 
 
 def test_handler_returns_error_when_secret_arn_missing(schema_apply, monkeypatch) -> None:

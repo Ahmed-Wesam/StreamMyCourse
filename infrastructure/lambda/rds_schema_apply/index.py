@@ -75,22 +75,45 @@ logger = logging.getLogger(__name__)
 
 
 def _split_sql_statements(sql: str) -> list[str]:
-    """Split DDL on semicolons after stripping full-line SQL comments.
+    """Split DDL on semicolons, respecting $$ dollar-quoted blocks.
 
-    Sufficient for our migration file (no semicolons inside string literals).
+    Strips full-line SQL comments first, then scans character-by-character so
+    that semicolons inside $$ ... $$ blocks (e.g. DO $$ ... $$; PL/pgSQL) are
+    not treated as statement terminators.  Only plain $$ quoting is supported;
+    named dollar-quotes ($tag$...$tag$) are not required by our migrations.
     """
     lines: list[str] = []
     for line in sql.splitlines():
-        stripped = line.strip()
-        if stripped.startswith("--"):
+        if line.strip().startswith("--"):
             continue
         lines.append(line)
     body = "\n".join(lines)
+
     out: list[str] = []
-    for chunk in body.split(";"):
-        piece = chunk.strip()
-        if piece:
-            out.append(piece + ";")
+    buf: list[str] = []
+    in_dollar_quote = False
+    i = 0
+    while i < len(body):
+        if body[i : i + 2] == "$$":
+            in_dollar_quote = not in_dollar_quote
+            buf.append("$$")
+            i += 2
+            continue
+        if body[i] == ";" and not in_dollar_quote:
+            piece = "".join(buf).strip()
+            if piece:
+                out.append(piece + ";")
+            buf = []
+            i += 1
+            continue
+        buf.append(body[i])
+        i += 1
+
+    # Flush any trailing non-terminated content (no-op for well-formed SQL).
+    piece = "".join(buf).strip()
+    if piece:
+        out.append(piece)
+
     return out
 
 
