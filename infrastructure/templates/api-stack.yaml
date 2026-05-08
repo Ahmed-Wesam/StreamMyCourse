@@ -196,10 +196,9 @@ Resources:
       FunctionName: !Sub 'StreamMyCourse-Catalog-${Environment}'
       Runtime: python3.11
       Handler: index.lambda_handler
-      # Fail fast on stuck paths (integration CI): connect/query bounds are enforced
-      # in bootstrap (connect_timeout, TCP keepalives, statement_timeout). Cold path
-      # (VPC ENI + Secrets Manager + first connect) should stay well under this cap.
-      Timeout: 15
+      # Bumped from 15s to 30s to absorb VPC cold-start (~1-2s ENI attach) and
+      # Secrets Manager fetch (~0.5-1s on cold start).
+      Timeout: 30
       MemorySize: 512
       Role: !GetAtt CatalogLambdaRole.Arn
       Code:

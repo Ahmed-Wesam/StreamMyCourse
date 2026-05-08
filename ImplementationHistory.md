@@ -4,16 +4,6 @@
 
 ---
 
-## 2026-05-08 — Catalog Lambda: RDS keepalives, `statement_timeout`, 15s function cap
-
-### Completed
-
-- [x] **Connection hardening** — [`infrastructure/lambda/catalog/bootstrap.py`](infrastructure/lambda/catalog/bootstrap.py) `_build_rds_connection_factory`: libpq **TCP keepalives** (`keepalives*`) + `options=-c statement_timeout=10000` on `psycopg2.connect` (with existing `connect_timeout=5`, `sslmode=require`, autocommit in `_psycopg2_connect`). Unit contract: [`tests/unit/test_bootstrap.py`](tests/unit/test_bootstrap.py) `TestRdsConnectionFactory.test_factory_reads_secret_and_calls_psycopg2_connect`.
-- [x] **IaC** — [`infrastructure/templates/api-stack.yaml`](infrastructure/templates/api-stack.yaml) `CatalogLambda` **Timeout: 15** (was 30) with comment aligned to bootstrap bounds and fail-fast integration runs.
-- [x] **Docs** — [`design.md`](design.md) §10 RDS bullet: 15s + pointer to `bootstrap.py` connection guards.
-
----
-
 ## 2026-05-07 — Course modules: HTTPS integration + API deploy + schema tightening
 
 ### Completed

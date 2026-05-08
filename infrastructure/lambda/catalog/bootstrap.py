@@ -105,14 +105,6 @@ def _build_rds_connection_factory(cfg: AppConfig) -> ConnectionFactory:
             password=password,
             sslmode="require",
             connect_timeout=5,
-            # TCP keepalives: detect dropped RDS peers before Lambda hits its timeout.
-            keepalives=1,
-            keepalives_idle=10,
-            keepalives_interval=5,
-            keepalives_count=2,
-            # Bound single-statement duration so a wedged query fails closed and the
-            # repo-layer OperationalError retry can open a fresh connection.
-            options="-c statement_timeout=10000",
         )
 
     return factory
