@@ -65,10 +65,10 @@ def _course(
     id_: str = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
     status: str = "DRAFT",
     thumbnail_key: str = "",
-    created_by: str = "",
+    created_by: str = "test-owner",
 ) -> Course:
     return Course(
-        id=id_, title="T", description="D", status=status, thumbnailKey=thumbnail_key, createdBy=created_by
+        id=id_, title="T", description="D", status=status, createdBy=created_by, thumbnailKey=thumbnail_key
     )
 
 
@@ -230,6 +230,14 @@ class TestCreateCourse:
         repo.create_course.return_value = _course(id_=_VID)
         with pytest.raises(Forbidden):
             service.create_course("T", "D", created_by="sub-a", role="student")
+        repo.create_course.assert_not_called()
+
+    @pytest.mark.parametrize("created_by", ["", "  ", None])
+    def test_blank_created_by_raises_bad_request(
+        self, service: CourseManagementService, repo: MagicMock, created_by: str
+    ) -> None:
+        with pytest.raises(BadRequest, match="created_by must not be empty"):
+            service.create_course("T", "D", created_by=created_by, role="teacher")
         repo.create_course.assert_not_called()
 
     def test_falls_back_to_untitled_for_blank_title(
@@ -1019,6 +1027,7 @@ class TestPublicCourseThumbnailUrl:
             title="T",
             description="D",
             status="PUBLISHED",
+            createdBy="teacher-sub",
             thumbnailKey=_course_thumb_key(self._CID1, "10101010-1010-4101-8101-101010101010"),
         )
         storage.presign_get.return_value = "https://signed-thumb"
@@ -1040,6 +1049,7 @@ class TestPublicCourseThumbnailUrl:
                 title="T",
                 description="D",
                 status="PUBLISHED",
+                createdBy="teacher-sub",
                 thumbnailKey=_course_thumb_key(_CID_LIST, "12121212-1212-4121-8121-121212121212"),
             ),
         ]
@@ -1127,6 +1137,29 @@ class TestGetCourseDetailPublicCatalog:
         assert out["id"] == _VID
         assert out["status"] == "DRAFT"
 
+    def test_non_owner_teacher_draft_raises_not_found(
+        self, service: CourseManagementService, repo: MagicMock
+    ) -> None:
+        repo.get_course.return_value = _course(id_=_VID, status="DRAFT", created_by="owner-sub")
+        with pytest.raises(NotFound):
+            service.get_course_detail_with_enrollment(
+                _VID, cognito_sub="other-sub", role="teacher"
+            )
+
+    def test_admin_sees_draft_detail_with_enrollment_bypass(
+        self, service: CourseManagementService, repo: MagicMock, enrollments: MagicMock
+    ) -> None:
+        repo.get_course.return_value = _course(id_=_VID, status="DRAFT", created_by="owner-sub")
+        repo.list_lessons.return_value = []
+        out = service.get_course_detail_with_enrollment(
+            _VID, cognito_sub="admin-sub", role="admin"
+        )
+        assert out["id"] == _VID
+        assert out["status"] == "DRAFT"
+        # Admin can manage so viewer_has_lesson_access returns True, enrolled reflects that.
+        assert out["enrolled"] is True
+        enrollments.has_enrollment.assert_not_called()
+
 
 class TestListLessonsPublic:
     _LID = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
@@ -1201,8 +1234,96 @@ class TestListLessonsPublic:
         assert "thumbnailUrl" not in out[0]
         assert "videoKey" not in out[0]
 
+    def test_non_owner_teacher_draft_raises_not_found(
+        self, service: CourseManagementService, repo: MagicMock
+    ) -> None:
+        repo.get_course.return_value = _course(id_=_VID, status="DRAFT", created_by="owner-sub")
+        with pytest.raises(NotFound):
+            service.list_lessons_public(
+                _VID, cognito_sub="other-sub", role="teacher"
+            )
+        repo.list_lessons.assert_not_called()
+
+    def test_admin_draft_returns_lessons(
+        self, service: CourseManagementService, repo: MagicMock
+    ) -> None:
+        _L1 = "dddddddd-dddd-4ddd-8ddd-dddddddddddd"
+        repo.get_course.return_value = _course(id_=_VID, status="DRAFT", created_by="owner-sub")
+        repo.list_lessons.return_value = [_lesson(id_=_L1, order=1)]
+        out = service.list_lessons_public(
+            _VID, cognito_sub="admin-sub", role="admin"
+        )
+        assert len(out) == 1
+        assert out[0]["id"] == _L1
+        assert "videoKey" not in out[0]
+
+
+class TestListCourseModulesPublic:
+    def test_anonymous_published_returns_modules(
+        self, service: CourseManagementService, repo: MagicMock
+    ) -> None:
+        repo.get_course.return_value = _course(id_=_VID, status="PUBLISHED")
+        repo.list_course_modules.return_value = [_module(id_=_MID_DEFAULT, course_id=_VID)]
+        out = service.list_course_modules_public(_VID, cognito_sub="", role="")
+        assert len(out) == 1
+        assert out[0]["id"] == _MID_DEFAULT
+        assert "thumbnailKey" not in out[0]
+
+    def test_anonymous_draft_raises_not_found(
+        self, service: CourseManagementService, repo: MagicMock
+    ) -> None:
+        repo.get_course.return_value = _course(id_=_VID, status="DRAFT")
+        with pytest.raises(NotFound):
+            service.list_course_modules_public(_VID, cognito_sub="", role="")
+        repo.list_course_modules.assert_not_called()
+
+    def test_non_owner_teacher_draft_raises_not_found(
+        self, service: CourseManagementService, repo: MagicMock
+    ) -> None:
+        repo.get_course.return_value = _course(id_=_VID, status="DRAFT", created_by="owner-sub")
+        with pytest.raises(NotFound):
+            service.list_course_modules_public(_VID, cognito_sub="other-sub", role="teacher")
+        repo.list_course_modules.assert_not_called()
+
+    def test_owner_teacher_draft_returns_modules(
+        self, service: CourseManagementService, repo: MagicMock
+    ) -> None:
+        repo.get_course.return_value = _course(id_=_VID, status="DRAFT", created_by="owner-sub")
+        repo.list_course_modules.return_value = [_module(id_=_MID_DEFAULT, course_id=_VID)]
+        out = service.list_course_modules_public(_VID, cognito_sub="owner-sub", role="teacher")
+        assert len(out) == 1
+        assert out[0]["id"] == _MID_DEFAULT
+
+    def test_admin_draft_returns_modules(
+        self, service: CourseManagementService, repo: MagicMock
+    ) -> None:
+        repo.get_course.return_value = _course(id_=_VID, status="DRAFT", created_by="owner-sub")
+        repo.list_course_modules.return_value = [_module(id_=_MID_DEFAULT, course_id=_VID)]
+        out = service.list_course_modules_public(_VID, cognito_sub="admin-sub", role="admin")
+        assert len(out) == 1
+        assert out[0]["id"] == _MID_DEFAULT
+
+    def test_invalid_uuid_raises_not_found(
+        self, service: CourseManagementService, repo: MagicMock
+    ) -> None:
+        with pytest.raises(NotFound):
+            service.list_course_modules_public("bad-id", cognito_sub="", role="")
+        repo.get_course.assert_not_called()
+
 
 class TestEnsureCanViewLessonsAndPlayback:
+    def test_anonymous_blank_sub_raises_forbidden(
+        self, service: CourseManagementService, repo: MagicMock, enrollments: MagicMock
+    ) -> None:
+        """Unauthenticated callers must never reach video playback."""
+        repo.get_course.return_value = _course(id_=_VID, status="PUBLISHED")
+        with pytest.raises(Forbidden) as ei:
+            service.ensure_can_view_lessons_and_playback(
+                _VID, cognito_sub="", role=""
+            )
+        assert ei.value.code == "enrollment_required"
+        enrollments.has_enrollment.assert_not_called()
+
     def test_published_requires_enrollment_when_auth_on(
         self, service: CourseManagementService, repo: MagicMock, enrollments: MagicMock
     ) -> None:
@@ -1250,6 +1371,16 @@ class TestEnsureCanViewLessonsAndPlayback:
         )
         assert c.id == _VID
 
+    def test_teacher_with_blank_owner_course_is_denied(
+        self, service: CourseManagementService, repo: MagicMock, enrollments: MagicMock
+    ) -> None:
+        repo.get_course.return_value = _course(id_=_VID, status="PUBLISHED", created_by="")
+        enrollments.has_enrollment.return_value = False
+        with pytest.raises(Forbidden):
+            service.ensure_can_view_lessons_and_playback(
+                _VID, cognito_sub="teacher-sub", role="teacher"
+            )
+
 
 class TestEnrollInPublishedCourse:
     def test_writes_enrollment(
@@ -1296,6 +1427,51 @@ class TestSetLessonDuration:
         if duration > 0:
             repo.set_lesson_duration(_VID, self._LID, duration)
         repo.set_lesson_duration.assert_not_called()
+
+
+class TestEnsureCanModifyCourse:
+    def test_blank_owner_raises_bad_request(
+        self, service: CourseManagementService, repo: MagicMock
+    ) -> None:
+        repo.get_course.return_value = _course(id_=_VID, created_by="")
+        with pytest.raises(BadRequest, match="Course has no owner"):
+            service.ensure_can_modify_course(
+                _VID, cognito_sub="teacher-sub", role="teacher"
+            )
+
+    def test_whitespace_only_owner_raises_bad_request(
+        self, service: CourseManagementService, repo: MagicMock
+    ) -> None:
+        repo.get_course.return_value = _course(id_=_VID, created_by="   ")
+        with pytest.raises(BadRequest, match="Course has no owner"):
+            service.ensure_can_modify_course(
+                _VID, cognito_sub="teacher-sub", role="teacher"
+            )
+
+    def test_non_owner_teacher_raises_forbidden(
+        self, service: CourseManagementService, repo: MagicMock
+    ) -> None:
+        repo.get_course.return_value = _course(id_=_VID, created_by="owner-sub")
+        with pytest.raises(Forbidden):
+            service.ensure_can_modify_course(
+                _VID, cognito_sub="other-sub", role="teacher"
+            )
+
+    def test_owner_teacher_passes(
+        self, service: CourseManagementService, repo: MagicMock
+    ) -> None:
+        repo.get_course.return_value = _course(id_=_VID, created_by="teacher-sub")
+        service.ensure_can_modify_course(
+            _VID, cognito_sub="teacher-sub", role="teacher"
+        )
+
+    def test_admin_bypasses_ownership_check(
+        self, service: CourseManagementService, repo: MagicMock
+    ) -> None:
+        service.ensure_can_modify_course(
+            _VID, cognito_sub="admin-sub", role="admin"
+        )
+        repo.get_course.assert_not_called()
 
 
 class TestUuidValidation:

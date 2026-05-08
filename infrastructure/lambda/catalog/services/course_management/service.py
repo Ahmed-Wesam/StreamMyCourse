@@ -183,7 +183,8 @@ class CourseManagementService:
             return False
         owner = (course.createdBy or "").strip()
         if not owner:
-            return True
+            logger.warning("course %s has blank createdBy — denying modify", course.id)
+            return False
         return owner == cognito_sub.strip()
 
     def viewer_has_lesson_access(
@@ -229,6 +230,9 @@ class CourseManagementService:
         if course.status == "DRAFT":
             if not self._can_manage_course_unenrolled(course, cognito_sub=cognito_sub, role=role):
                 raise NotFound("Course not found")
+        # `enrolled` means "has lesson access" — True for enrolled students, owner-teachers,
+        # and admins. Admins and owner-teachers get True without an enrollment record because
+        # they can manage the course. The frontend uses this flag to show Watch vs Enroll.
         has_lessons = self.viewer_has_lesson_access(
             course, course_id=course_id, cognito_sub=cognito_sub, role=role
         )
@@ -268,13 +272,15 @@ class CourseManagementService:
         title: str,
         description: str,
         *,
-        created_by: str = "",
+        created_by: str,
         role: str = "",
     ) -> Dict[str, Any]:
         sub = (created_by or "").strip()
         # Authentication is enforced at the controller boundary.
         if not self._teacher_or_admin(role):
             raise Forbidden("Teacher or admin role required")
+        if not sub:
+            raise BadRequest("created_by must not be empty")
         course = self._repo.create_course(
             title=title or "Untitled Course",
             description=description or "",
@@ -303,7 +309,7 @@ class CourseManagementService:
             raise NotFound("Course not found")
         owner = (course.createdBy or "").strip()
         if not owner:
-            return
+            raise BadRequest("Course has no owner (created_by is blank)")
         if owner != sub:
             raise Forbidden("Not allowed to modify this course")
 

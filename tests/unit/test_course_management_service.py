@@ -113,6 +113,7 @@ class TestSafePresignThumbnails:
                 title="T",
                 description="",
                 status="PUBLISHED",
+                createdBy="teacher-sub",
                 thumbnailKey="not-under/valid/prefix.jpg",
             )
         ]

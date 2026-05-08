@@ -9,10 +9,10 @@ class Course:
     title: str
     description: str
     status: str
+    createdBy: str
     createdAt: str = ""
     updatedAt: str = ""
     thumbnailKey: str = ""
-    createdBy: str = ""
 
 
 @dataclass(frozen=True)

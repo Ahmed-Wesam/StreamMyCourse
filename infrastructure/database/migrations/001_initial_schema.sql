@@ -1,19 +1,19 @@
 -- 001_initial_schema.sql
 --
 -- StreamMyCourse RDS PostgreSQL initial schema (matches the domain models under
--- infrastructure/lambda/catalog/services/course_management/models.py and the
--- existing DynamoDB repository contracts).
+-- infrastructure/lambda/catalog/services/course_management/models.py).
 --
 -- Column naming: snake_case in SQL; the Python adapter (rds_repo.py) maps to the
 -- camelCase fields on the domain objects (createdAt, thumbnailKey, etc.).
--- Timestamps use TIMESTAMPTZ so UTC semantics from DynamoDB ISO strings survive
--- the migration unambiguously.
+-- Timestamps use TIMESTAMPTZ for unambiguous UTC semantics.
+-- courses.created_by is NOT NULL with no default; a CHECK constraint enforces
+-- non-blank values (btrim(created_by) <> '').
 
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
 -- -------------------------- Users --------------------------
--- Mirrors the DynamoDB USER#<sub>/METADATA row. user_sub is the Cognito sub
--- (opaque string) and is the primary key for joins (enrollments.user_sub).
+-- user_sub is the Cognito sub (opaque string) and is the primary key for
+-- joins (enrollments.user_sub).
 CREATE TABLE IF NOT EXISTS users (
     user_sub     VARCHAR(255) PRIMARY KEY,
     email        VARCHAR(255) NOT NULL DEFAULT '',
@@ -29,10 +29,11 @@ CREATE TABLE IF NOT EXISTS courses (
     title          VARCHAR(255) NOT NULL,
     description    TEXT         NOT NULL DEFAULT '',
     status         VARCHAR(20)  NOT NULL DEFAULT 'DRAFT',
-    created_by     VARCHAR(255) NOT NULL DEFAULT '',
+    created_by     VARCHAR(255) NOT NULL,
     thumbnail_key  VARCHAR(500) NOT NULL DEFAULT '',
     created_at     TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
-    updated_at     TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+    updated_at     TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+    CONSTRAINT courses_created_by_not_blank CHECK (btrim(created_by) <> '')
 );
 
 CREATE INDEX IF NOT EXISTS idx_courses_status ON courses(status);
