@@ -89,10 +89,66 @@ class TestApigwCognitoClaims:
         evt = {"requestContext": {"authorizer": {"claims": payload}}}
         assert apigw_cognito_claims(evt) == {"sub": "abc", "email": "u@example.com"}
 
+    def test_nested_claims_fill_sub_from_principal_when_sub_empty(self) -> None:
+        evt = {
+            "requestContext": {
+                "authorizer": {
+                    "principalId": "fallback-sub-from-gateway",
+                    "claims": {"sub": "", "email": "nested@example.com", "custom:role": "teacher"},
+                }
+            }
+        }
+        assert apigw_cognito_claims(evt) == {
+            "sub": "fallback-sub-from-gateway",
+            "email": "nested@example.com",
+            "custom:role": "teacher",
+        }
+
     def test_authorization_header_alone_returns_empty(self) -> None:
         token = "a.eyJzdWIiOiJhYmMifQ.c"
         evt = {"headers": {"Authorization": f"Bearer {token}"}}
         assert apigw_cognito_claims(evt) == {}
+
+    def test_fills_sub_from_principal_when_sub_empty_after_flatten(self) -> None:
+        evt = {
+            "requestContext": {
+                "authorizer": {
+                    "principalId": "cognito-sub-uuid",
+                    "sub": "",
+                    "role": "teacher",
+                    "email": "t@example.com",
+                }
+            }
+        }
+        assert apigw_cognito_claims(evt) == {
+            "sub": "cognito-sub-uuid",
+            "role": "teacher",
+            "email": "t@example.com",
+        }
+
+    def test_principal_id_fallback_ignores_anonymous_principal(self) -> None:
+        evt = {
+            "requestContext": {
+                "authorizer": {
+                    "principalId": "anonymous",
+                    "sub": "",
+                    "role": "",
+                }
+            }
+        }
+        assert apigw_cognito_claims(evt) == {"sub": "", "role": ""}
+
+    def test_nonempty_sub_beats_principal_id(self) -> None:
+        evt = {
+            "requestContext": {
+                "authorizer": {
+                    "principalId": "other-id",
+                    "sub": "real-sub",
+                    "role": "student",
+                }
+            }
+        }
+        assert apigw_cognito_claims(evt)["sub"] == "real-sub"
 
     def test_stringified_claims_invalid_json_is_ignored(self) -> None:
         evt = {"requestContext": {"authorizer": {"claims": "{not-json"}}}

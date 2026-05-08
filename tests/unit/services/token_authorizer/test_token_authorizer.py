@@ -98,7 +98,30 @@ def test_valid_token_allow_populated_context(mock_fetch, env):
 
 
 @patch.object(authorizer, "_fetch_jwks")
-def test_token_use_not_id_allow_empty_context(mock_fetch, env):
+def test_access_token_allow_empty_context(mock_fetch, env):
+    """Pool access tokens omit ``custom:role``; we only authorize IdTokens for correct RBAC."""
+    mock_fetch.return_value = {
+        "keys": [{"kid": "kid-1", "kty": "RSA", "n": "x", "e": "AQAB"}]
+    }
+    payload = {
+        "sub": "user-123",
+        "username": "u@example.com",
+        "iss": "https://cognito-idp.us-east-1.amazonaws.com/us-east-1_ABC123DEF",
+        "client_id": "client-a",
+        "exp": 9999999999,
+        "token_use": "access",
+        "scope": "openid email",
+    }
+    token = _make_token(payload)
+    with patch.object(authorizer, "_verify_signature", return_value=True):
+        resp = _invoke(f"Bearer {token}")
+
+    _assert_allow(resp)
+    assert resp["context"] == {"sub": "", "role": "", "email": ""}
+
+
+@patch.object(authorizer, "_fetch_jwks")
+def test_token_use_unknown_allow_empty_context(mock_fetch, env):
     mock_fetch.return_value = {
         "keys": [{"kid": "kid-1", "kty": "RSA", "n": "x", "e": "AQAB"}]
     }
@@ -109,7 +132,7 @@ def test_token_use_not_id_allow_empty_context(mock_fetch, env):
         "iss": "https://cognito-idp.us-east-1.amazonaws.com/us-east-1_ABC123DEF",
         "aud": "client-a",
         "exp": 9999999999,
-        "token_use": "access",
+        "token_use": "refresh",
     }
     token = _make_token(payload)
     with patch.object(authorizer, "_verify_signature", return_value=True):
