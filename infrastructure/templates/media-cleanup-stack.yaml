@@ -40,6 +40,7 @@ Resources:
     Type: AWS::SQS::Queue
     # Retain DLQ on stack delete to preserve any failed cleanup messages for forensic review.
     DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
     Properties:
       QueueName: !Sub 'StreamMyCourse-MediaCleanup-DLQ-${Environment}'
       MessageRetentionPeriod: !Ref MessageRetentionPeriod
@@ -53,6 +54,7 @@ Resources:
     Type: AWS::SQS::Queue
     # Retain main queue on stack delete to preserve any in-flight cleanup jobs.
     DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
     Properties:
       QueueName: !Sub 'StreamMyCourse-MediaCleanup-${Environment}'
       VisibilityTimeout: 300
@@ -95,11 +97,10 @@ Resources:
               - Effect: Allow
                 Action:
                   - s3:DeleteObject
-                  - s3:DeleteObjects
                 Resource: !If
                   - HasBucket
                   - !Sub 'arn:aws:s3:::${VideoBucketName}/*'
-                  - !Sub 'arn:aws:s3:::streammycourse-no-bucket-configured/NEVER_MATCH/*'
+                  - 'arn:aws:s3:::streammycourse-no-bucket-configured/NEVER_MATCH/*'
         - PolicyName: SqsConsumeCleanupQueue
           PolicyDocument:
             Version: '2012-10-17'

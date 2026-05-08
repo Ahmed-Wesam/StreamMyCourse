@@ -1,0 +1,10 @@
+ignore_checks:
+  # These templates use required-at-deploy parameters (e.g., LambdaCodeS3Bucket/Key)
+  # whose defaults are intentionally empty, which triggers false-positive "Ref resolved"
+  # warnings in static analysis.
+  - W1030
+  # Some stacks keep historical Conditions that may not be referenced in every template version.
+  - W8001
+  # Redundant DependsOn warnings (benign; dependencies implied via Ref/GetAtt).
+  - W3005
+

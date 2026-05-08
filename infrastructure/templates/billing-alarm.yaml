@@ -21,6 +21,7 @@ Resources:
     Type: AWS::SNS::Topic
     # Retain on stack delete so existing email subscriptions and operator pager wiring survive.
     DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
     Properties:
       TopicName: StreamMyCourse-BillingAlerts
       DisplayName: StreamMyCourse Billing Alerts
