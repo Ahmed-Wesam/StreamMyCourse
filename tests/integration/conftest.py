@@ -9,9 +9,12 @@ Required environment variables (set by CI; for local runs see README.md):
 
 from __future__ import annotations
 
+import datetime
 import os
 import sys
+import time
 from typing import Iterator, List
+from urllib.parse import urlparse
 
 import httpx
 import pytest
@@ -38,6 +41,64 @@ def _required_env(name: str) -> str:
             returncode=2,
         )
     return value
+
+
+def _integration_diag(msg: str) -> None:
+    """stderr line for CI/local when pytest appears hung (never logs secrets)."""
+    sys.stderr.write(msg + "\n")
+    sys.stderr.flush()
+
+
+_SESSION_T0_MONO = 0.0
+
+
+def pytest_sessionstart(session: pytest.Session) -> None:
+    global _SESSION_T0_MONO
+    _SESSION_T0_MONO = time.monotonic()
+    api = os.environ.get("INTEGRATION_API_BASE_URL", "").strip()
+    host = urlparse(api).netloc or "(invalid-url)"
+    bucket = os.environ.get("INTEGRATION_VIDEO_BUCKET", "").strip()
+    region = os.environ.get("INTEGRATION_AWS_REGION", "eu-west-1").strip()
+    j1 = len(os.environ.get("INTEGRATION_COGNITO_JWT", "").strip())
+    j2 = len(os.environ.get("INTEGRATION_COGNITO_JWT_ALT", "").strip())
+    j3 = len(os.environ.get("INTEGRATION_COGNITO_JWT_STUDENT", "").strip())
+    run_id = os.environ.get("GITHUB_RUN_ID", "").strip()
+    job = os.environ.get("GITHUB_JOB", "").strip()
+    now = datetime.datetime.now(datetime.UTC).isoformat(timespec="seconds")
+    _integration_diag(
+        f"[integration-diag] session_start utc={now} run_id={run_id or 'n/a'} job={job or 'n/a'} "
+        f"api_host={host} bucket_set={bool(bucket)} region={region} "
+        f"jwt_lens(primary,alt,student)=({j1},{j2},{j3})"
+    )
+
+
+def pytest_collection_finish(session: pytest.Session) -> None:
+    n = session.testscollected
+    _integration_diag(f"[integration-diag] collected {n} tests")
+
+
+def pytest_runtest_logstart(nodeid: str, location: tuple) -> None:
+    # Streams the moment a test STARTS so a hang (no matching test_done line)
+    # pinpoints the responsible nodeid in CI logs without waiting for completion.
+    _integration_diag(f"[integration-diag] test_start nodeid={nodeid}")
+
+
+def pytest_runtest_logreport(report: pytest.TestReport) -> None:
+    # Always log the call phase (one line per test), and surface non-passed
+    # setup/teardown reports so a failed fixture is not mistaken for a hang
+    # (we'd otherwise see test_start with no test_done line).
+    if report.when == "call":
+        dur = getattr(report, "duration", None) or 0.0
+        _integration_diag(
+            f"[integration-diag] test_done duration_sec={dur:.2f} "
+            f"outcome={report.outcome} nodeid={report.nodeid}"
+        )
+    elif report.outcome != "passed":
+        dur = getattr(report, "duration", None) or 0.0
+        _integration_diag(
+            f"[integration-diag] phase_{report.when}_failed duration_sec={dur:.2f} "
+            f"outcome={report.outcome} nodeid={report.nodeid}"
+        )
 
 
 # --- Session-scoped configuration ------------------------------------------------
@@ -270,6 +331,11 @@ def pytest_sessionfinish(session: pytest.Session, exitstatus: int) -> None:
     Handles both old '[TEST]' prefix and new 'integration-test-' prefix.
     S3: deletes objects only under ``{courseId}/`` for matched integration-test
     courses (shared dev buckets are not fully emptied). Never fails CI."""
+    elapsed = time.monotonic() - _SESSION_T0_MONO if _SESSION_T0_MONO else 0.0
+    _integration_diag(
+        f"[integration-diag] sessionfinish exit={exitstatus} "
+        f"elapsed_wall_sec={elapsed:.1f} starting safety-net cleanup"
+    )
     bucket = os.environ.get("INTEGRATION_VIDEO_BUCKET", "").strip()
     region = os.environ.get("INTEGRATION_AWS_REGION", "eu-west-1")
     api_base = os.environ.get("INTEGRATION_API_BASE_URL", "").strip().rstrip("/")
