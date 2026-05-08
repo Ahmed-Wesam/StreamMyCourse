@@ -39,12 +39,15 @@ def make_lambda_event() -> Callable[..., Dict[str, Any]]:
         body: Any = None,
         headers: Optional[Dict[str, str]] = None,
         is_base64: bool = False,
+        authorizer: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
         evt: Dict[str, Any] = {
             "requestContext": {"http": {"method": method}},
             "rawPath": path,
             "headers": headers or {},
         }
+        if authorizer is not None:
+            evt["requestContext"]["authorizer"] = authorizer
         if body is not None:
             if isinstance(body, (dict, list)):
                 evt["body"] = json.dumps(body)

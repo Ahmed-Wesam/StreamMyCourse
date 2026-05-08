@@ -5,6 +5,7 @@ from typing import Any, Dict, Optional
 import pytest
 
 from services.auth.service import UserProfileService
+from services.common.errors import BadRequest
 
 
 class _FakeRepo:
@@ -54,6 +55,14 @@ def test_get_or_create_profile_normalizes_role_on_create(
     assert body["email"] == "a@b.com"
     assert body["role"] == expected
     assert repo.put_calls[-1]["role"] == expected
+
+
+def test_get_or_create_profile_empty_user_sub_raises_bad_request() -> None:
+    repo = _FakeRepo(initial=None)
+    svc = UserProfileService(repo)
+    with pytest.raises(BadRequest):
+        svc.get_or_create_profile(user_sub="   ", email="a@b.com", role="student")
+    assert repo.put_calls == []
 
 
 def test_existing_profile_role_unchanged_does_not_write() -> None:

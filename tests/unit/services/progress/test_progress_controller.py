@@ -102,7 +102,6 @@ class TestHandleProgressRequest:
             evt,
             origin="*",
             progress_svc=progress_svc,
-            jwt_config=None,
         )
 
         assert resp["statusCode"] == 200
@@ -141,7 +140,6 @@ class TestHandleProgressRequest:
             evt,
             origin="*",
             progress_svc=progress_svc,
-            jwt_config=None,
         )
 
         assert resp["statusCode"] == 200
@@ -182,7 +180,6 @@ class TestHandleProgressRequest:
             evt,
             origin="*",
             progress_svc=progress_svc,
-            jwt_config=None,
         )
 
         assert resp["statusCode"] == 200
@@ -211,7 +208,6 @@ class TestHandleProgressRequest:
             evt,
             origin="*",
             progress_svc=progress_svc,
-            jwt_config=None,
         )
 
         assert resp["statusCode"] == 200
@@ -235,7 +231,6 @@ class TestHandleProgressRequest:
             evt,
             origin="*",
             progress_svc=progress_svc,
-            jwt_config=None,
         )
 
         assert resp["statusCode"] == 403
@@ -264,7 +259,6 @@ class TestHandleProgressRequest:
             evt,
             origin="*",
             progress_svc=progress_svc,
-            jwt_config=None,
         )
 
         assert resp["statusCode"] == 400
@@ -284,7 +278,6 @@ class TestHandleProgressRequest:
             evt,
             origin="*",
             progress_svc=progress_svc,
-            jwt_config=None,
         )
 
         assert resp["statusCode"] == 404
@@ -308,7 +301,6 @@ class TestHandleProgressRequest:
             evt,
             origin="*",
             progress_svc=progress_svc,
-            jwt_config=None,
         )
 
         assert resp["statusCode"] == 400
@@ -328,7 +320,6 @@ class TestHandleProgressRequest:
             evt,
             origin="https://app.example",
             progress_svc=progress_svc,
-            jwt_config=None,
         )
 
         assert resp["statusCode"] == 204
@@ -350,7 +341,6 @@ class TestHandleProgressRequest:
             evt,
             origin="*",
             progress_svc=progress_svc,
-            jwt_config=None,
         )
 
         assert resp["statusCode"] == 500

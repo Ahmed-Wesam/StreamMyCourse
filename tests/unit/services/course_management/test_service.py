@@ -185,16 +185,16 @@ class TestListInstructorCourses:
         repo.list_courses_by_instructor.assert_not_called()
         assert {c["id"] for c in out} == {"eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee", "ffffffff-ffff-4fff-8fff-ffffffffffff"}
 
-    def test_missing_sub_raises_unauthorized(
+    # Authentication (non-empty sub) is enforced in the controller layer.
+
+    def test_student_role_raises_forbidden(
         self, service: CourseManagementService, repo: MagicMock
     ) -> None:
         repo.list_courses.return_value = []
         repo.list_lessons.return_value = []
-        from services.common.errors import Unauthorized
-
-        with pytest.raises(Unauthorized) as ei:
-            service.list_instructor_courses(cognito_sub="", role="teacher")
-        assert ei.value.code == "unauthorized"
+        with pytest.raises(Forbidden) as ei:
+            service.list_instructor_courses(cognito_sub="sub-a", role="student")
+        assert ei.value.code == "forbidden"
 
 
 # --- get_course ---------------------------------------------------------------
@@ -222,20 +222,30 @@ class TestGetCourse:
 
 
 class TestCreateCourse:
+    # Authentication (non-empty sub) is enforced in the controller layer.
+
+    def test_student_role_raises_forbidden(
+        self, service: CourseManagementService, repo: MagicMock
+    ) -> None:
+        repo.create_course.return_value = _course(id_=_VID)
+        with pytest.raises(Forbidden):
+            service.create_course("T", "D", created_by="sub-a", role="student")
+        repo.create_course.assert_not_called()
+
     def test_falls_back_to_untitled_for_blank_title(
         self, service: CourseManagementService, repo: MagicMock
     ) -> None:
         repo.create_course.return_value = _course(id_=_VID)
-        service.create_course("", "")
+        service.create_course("", "", created_by="sub-a", role="teacher")
         repo.create_course.assert_called_once_with(
-            title="Untitled Course", description="", created_by=""
+            title="Untitled Course", description="", created_by="sub-a"
         )
 
     def test_returns_id_and_status(
         self, service: CourseManagementService, repo: MagicMock
     ) -> None:
         repo.create_course.return_value = _course(id_=_VID, status="DRAFT")
-        out = service.create_course("Title", "Desc")
+        out = service.create_course("Title", "Desc", created_by="sub-a", role="teacher")
         assert out == {"id": _VID, "status": "DRAFT"}
 
 
