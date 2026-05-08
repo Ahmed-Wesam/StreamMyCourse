@@ -1,14 +1,10 @@
 from __future__ import annotations
 
-import base64
 import json
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional
 
-from services.common.jwt_verify import (
-    CognitoJwtConfig,
-    parse_jwt_claims_verified,
-)
+from services.common.jwt_verify import CognitoJwtConfig, parse_jwt_claims_verified
 
 # Defense-in-depth for JSON API responses (limited effect on fetch/XHR; avoids silent removal).
 _CSP_API = "default-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'"
@@ -24,32 +20,6 @@ def _extract_bearer_token(headers: Dict[str, Any]) -> str | None:
         token = auth_header[7:].strip()
         return token if token else None
     return None
-
-
-def _parse_jwt_claims_unverified(token: str) -> Dict[str, Any]:
-    """Parse JWT payload (claims) without signature verification.
-
-    This is safe for public routes where API Gateway doesn't enforce Cognito:
-    - For ownership checks (DRAFT course access), we compare sub against createdBy.
-    - A forged JWT would only allow seeing that specific user's DRAFT courses.
-    - API Gateway still verifies JWT on protected routes; this is a fallback.
-    """
-    try:
-        parts = token.split(".")
-        if len(parts) != 3:
-            return {}
-        # JWT payload is base64url encoded; add padding if needed
-        payload_b64 = parts[1]
-        padding_needed = 4 - len(payload_b64) % 4
-        if padding_needed != 4:
-            payload_b64 += "=" * padding_needed
-        payload_bytes = base64.urlsafe_b64decode(payload_b64)
-        parsed = json.loads(payload_bytes.decode("utf-8"))
-        if isinstance(parsed, dict):
-            return parsed
-    except Exception:
-        pass
-    return {}
 
 
 @dataclass(frozen=True)
@@ -222,13 +192,11 @@ def apigw_cognito_claims(
     if claims is None:
         headers = event.get("headers") or {}
         token = _extract_bearer_token(headers)
-        if token:
-            if jwt_config is not None:
-                # Secure path: verify signature and standard claims
-                claims = parse_jwt_claims_verified(token, jwt_config)
-            else:
-                # Backward compatibility: unverified parse (for tests without full authorizer config)
-                claims = _parse_jwt_claims_unverified(token)
+        if token and jwt_config is not None:
+            # Secure path: verify signature and standard claims. If verification
+            # fails (including JWKS fetch failures), treat as anonymous by
+            # returning {}.
+            claims = parse_jwt_claims_verified(token, jwt_config)
 
     return claims if claims is not None else {}
 

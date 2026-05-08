@@ -31,7 +31,6 @@ import {
   isLastModuleDeleteError,
   isMediaCleanupUnavailableError,
   isPlaybackAuthRequiredError,
-  isProgressAuthNotConfiguredError,
   isProgressRdsUnavailableError,
   listCourseModules,
   listCourses,
@@ -313,27 +312,6 @@ describe('isProgressRdsUnavailableError', () => {
 
   it('returns false for non-ApiError', () => {
     expect(isProgressRdsUnavailableError(new Error('fail'))).toBe(false)
-  })
-})
-
-describe('isProgressAuthNotConfiguredError', () => {
-  it('returns true for 503 with code auth_not_configured', () => {
-    expect(isProgressAuthNotConfiguredError(new ApiError('Auth not configured', 503, 'auth_not_configured'))).toBe(
-      true,
-    )
-  })
-
-  it('returns false for other codes', () => {
-    expect(isProgressAuthNotConfiguredError(new ApiError('Other error', 503, 'other_code'))).toBe(false)
-    expect(isProgressAuthNotConfiguredError(new ApiError('No code', 503))).toBe(false)
-  })
-
-  it('returns false for non-503 errors even with correct code', () => {
-    expect(isProgressAuthNotConfiguredError(new ApiError('Not 503', 500, 'auth_not_configured'))).toBe(false)
-  })
-
-  it('returns false for non-ApiError', () => {
-    expect(isProgressAuthNotConfiguredError(new Error('fail'))).toBe(false)
   })
 })
 

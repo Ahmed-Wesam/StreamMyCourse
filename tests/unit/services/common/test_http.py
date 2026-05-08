@@ -89,11 +89,12 @@ class TestApigwCognitoClaims:
         evt = {"requestContext": {"authorizer": {"claims": payload}}}
         assert apigw_cognito_claims(evt) == {"sub": "abc", "email": "u@example.com"}
 
-    def test_falls_back_to_authorization_header_unverified_when_no_authorizer(self) -> None:
-        # Token with payload {"sub":"abc"} and no signature verification (unverified parse).
+    def test_does_not_parse_authorization_header_without_jwt_config(self) -> None:
+        # Public routes may include an Authorization header, but without Cognito config
+        # we must not trust or parse claims.
         token = "a.eyJzdWIiOiJhYmMifQ.c"
         evt = {"headers": {"Authorization": f"Bearer {token}"}}
-        assert apigw_cognito_claims(evt) == {"sub": "abc"}
+        assert apigw_cognito_claims(evt) == {}
 
     def test_falls_back_to_authorization_header_verified_when_jwt_config_provided(self, monkeypatch) -> None:
         token = "a.b.c"

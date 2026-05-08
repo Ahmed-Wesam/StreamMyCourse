@@ -261,13 +261,12 @@ class TestHandleDispatch:
             svc=svc,
             video_bucket="b",
             auth_svc=MagicMock(),
-            auth_enforced=True,
         )
         assert resp["statusCode"] == 200
         body = json.loads(resp["body"])
         assert body[0]["id"] == "d1"
         svc.list_instructor_courses.assert_called_once_with(
-            cognito_sub="t1", role="teacher", auth_enforced=True
+            cognito_sub="t1", role="teacher"
         )
 
     def test_list_instructor_courses_forbidden_for_student(
@@ -283,7 +282,6 @@ class TestHandleDispatch:
             svc=svc,
             video_bucket="b",
             auth_svc=MagicMock(),
-            auth_enforced=True,
         )
         assert resp["statusCode"] == 403
         svc.list_instructor_courses.assert_not_called()
@@ -423,9 +421,10 @@ class TestHandleDispatchPerAction:
             path="/courses",
             body={"title": "T", "description": "D"},
         )
+        evt["requestContext"]["authorizer"] = {"claims": {"sub": "t1", "custom:role": "teacher"}}
         resp = handle(evt, origin="*", svc=svc, video_bucket="b", auth_svc=MagicMock())
         assert resp["statusCode"] == 201
-        svc.create_course.assert_called_once_with("T", "D", created_by="")
+        svc.create_course.assert_called_once_with("T", "D", created_by="t1")
 
     def test_get_course_200(self, svc: MagicMock, make_lambda_event) -> None:
         svc.get_course_detail_with_enrollment.return_value = {
@@ -442,7 +441,6 @@ class TestHandleDispatchPerAction:
             "c1",
             cognito_sub="",
             role="student",
-            auth_enforced=False,
         )
 
     def test_update_course_200(self, svc: MagicMock, make_lambda_event) -> None:
@@ -496,7 +494,6 @@ class TestHandleDispatchPerAction:
             "c1",
             cognito_sub="",
             role="student",
-            auth_enforced=False,
         )
 
     def test_update_lesson_200(self, svc: MagicMock, make_lambda_event) -> None:
@@ -551,13 +548,13 @@ class TestHandleDispatchPerAction:
     ) -> None:
         svc.get_playback_url.return_value = {"url": "https://signed/x"}
         evt = make_lambda_event(method="GET", path="/playback/c1/lid")
+        evt["requestContext"]["authorizer"] = {"claims": {"sub": "s1", "custom:role": "student"}}
         resp = handle(evt, origin="*", svc=svc, video_bucket="my-bucket", auth_svc=MagicMock())
         assert resp["statusCode"] == 200
         svc.ensure_can_view_lessons_and_playback.assert_called_once_with(
             "c1",
-            cognito_sub="",
+            cognito_sub="s1",
             role="student",
-            auth_enforced=False,
         )
         svc.get_playback_url.assert_called_once_with(
             "c1", "lid", video_bucket="my-bucket"
@@ -580,7 +577,6 @@ class TestHandleDispatchPerAction:
             svc=svc,
             video_bucket="b",
             auth_svc=MagicMock(),
-            auth_enforced=True,
         )
         assert resp["statusCode"] == 200
         assert resp["headers"]["Access-Control-Allow-Origin"] == "https://app.example"
@@ -588,7 +584,6 @@ class TestHandleDispatchPerAction:
             "c1",
             cognito_sub="",
             role="student",
-            auth_enforced=True,
         )
 
     def test_list_lessons_200_auth_enforced_without_claims_includes_cors(
@@ -611,7 +606,6 @@ class TestHandleDispatchPerAction:
             svc=svc,
             video_bucket="b",
             auth_svc=MagicMock(),
-            auth_enforced=True,
         )
         assert resp["statusCode"] == 200
         assert resp["headers"]["Access-Control-Allow-Origin"] == "https://app.example"
@@ -619,7 +613,6 @@ class TestHandleDispatchPerAction:
             "c1",
             cognito_sub="",
             role="student",
-            auth_enforced=True,
         )
 
     def test_get_playback_401_when_auth_enforced_and_no_claims(
@@ -632,7 +625,6 @@ class TestHandleDispatchPerAction:
             svc=svc,
             video_bucket="b",
             auth_svc=MagicMock(),
-            auth_enforced=True,
         )
         assert resp["statusCode"] == 401
         body = json.loads(resp["body"])
@@ -654,7 +646,6 @@ class TestHandleDispatchPerAction:
             svc=svc,
             video_bucket="b",
             auth_svc=auth,
-            auth_enforced=True,
         )
         assert resp["statusCode"] == 200
         auth.get_or_create_profile.assert_called_once_with(
@@ -687,7 +678,6 @@ class TestHandleDispatchPerAction:
             svc=svc,
             video_bucket="b",
             auth_svc=auth,
-            auth_enforced=True,
         )
         assert order == ["profile", "enroll"]
 

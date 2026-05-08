@@ -162,7 +162,7 @@ class TestListInstructorCourses:
         ]
         repo.list_lessons.return_value = []
         out = service.list_instructor_courses(
-            cognito_sub="sub-a", role="teacher", auth_enforced=True
+            cognito_sub="sub-a", role="teacher"
         )
         repo.list_courses_by_instructor.assert_called_once_with("sub-a")
         repo.list_courses.assert_not_called()
@@ -179,22 +179,22 @@ class TestListInstructorCourses:
         ]
         repo.list_lessons.return_value = []
         out = service.list_instructor_courses(
-            cognito_sub="admin-sub", role="admin", auth_enforced=True
+            cognito_sub="admin-sub", role="admin"
         )
         repo.list_courses.assert_called_once()
         repo.list_courses_by_instructor.assert_not_called()
         assert {c["id"] for c in out} == {"eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee", "ffffffff-ffff-4fff-8fff-ffffffffffff"}
 
-    def test_unauth_dev_lists_all(
+    def test_missing_sub_raises_unauthorized(
         self, service: CourseManagementService, repo: MagicMock
     ) -> None:
-        repo.list_courses.return_value = [_course(id_="11111111-1111-4111-8111-111111111111")]
+        repo.list_courses.return_value = []
         repo.list_lessons.return_value = []
-        service.list_instructor_courses(
-            cognito_sub="", role="teacher", auth_enforced=False
-        )
-        repo.list_courses.assert_called_once()
-        repo.list_courses_by_instructor.assert_not_called()
+        from services.common.errors import Unauthorized
+
+        with pytest.raises(Unauthorized) as ei:
+            service.list_instructor_courses(cognito_sub="", role="teacher")
+        assert ei.value.code == "unauthorized"
 
 
 # --- get_course ---------------------------------------------------------------
@@ -1085,7 +1085,7 @@ class TestGetCourseDetailPublicCatalog:
         repo.get_course.return_value = _course(id_=_VID, status="PUBLISHED")
         repo.list_lessons.return_value = []
         out = service.get_course_detail_with_enrollment(
-            _VID, cognito_sub="", role="", auth_enforced=True
+            _VID, cognito_sub="", role=""
         )
         assert out["id"] == _VID
         assert out["status"] == "PUBLISHED"
@@ -1097,7 +1097,7 @@ class TestGetCourseDetailPublicCatalog:
         repo.get_course.return_value = _course(id_=_VID, status="DRAFT")
         with pytest.raises(NotFound):
             service.get_course_detail_with_enrollment(
-                _VID, cognito_sub="", role="", auth_enforced=True
+                _VID, cognito_sub="", role=""
             )
 
     def test_owner_teacher_sees_draft_detail(
@@ -1112,7 +1112,7 @@ class TestGetCourseDetailPublicCatalog:
         )
         repo.list_lessons.return_value = []
         out = service.get_course_detail_with_enrollment(
-            _VID, cognito_sub="owner-sub", role="teacher", auth_enforced=True
+            _VID, cognito_sub="owner-sub", role="teacher"
         )
         assert out["id"] == _VID
         assert out["status"] == "DRAFT"
@@ -1132,7 +1132,7 @@ class TestListLessonsPublic:
         ]
         storage.presign_get.return_value = "https://signed-thumb"
         out = service.list_lessons_public(
-            _VID, cognito_sub="", role="student", auth_enforced=True
+            _VID, cognito_sub="", role="student"
         )
         assert [r["id"] for r in out] == ["cccccccc-cccc-4ccc-8ccc-cccccccccccc", "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"]
         assert out[0].get("thumbnailUrl") == "https://signed-thumb"
@@ -1145,7 +1145,7 @@ class TestListLessonsPublic:
         repo.get_course.return_value = _course(id_=_VID, status="DRAFT")
         with pytest.raises(NotFound):
             service.list_lessons_public(
-                _VID, cognito_sub="", role="student", auth_enforced=True
+                _VID, cognito_sub="", role="student"
             )
 
     def test_anonymous_draft_does_not_query_lessons(
@@ -1154,7 +1154,7 @@ class TestListLessonsPublic:
         repo.get_course.return_value = _course(id_=_VID, status="DRAFT")
         with pytest.raises(NotFound):
             service.list_lessons_public(
-                _VID, cognito_sub="", role="student", auth_enforced=True
+                _VID, cognito_sub="", role="student"
             )
         repo.get_course.assert_called_once_with(_VID)
         repo.list_lessons.assert_not_called()
@@ -1172,7 +1172,7 @@ class TestListLessonsPublic:
         )
         repo.list_lessons.return_value = [_lesson(id_=_L1, order=1)]
         out = service.list_lessons_public(
-            _VID, cognito_sub="owner-sub", role="teacher", auth_enforced=True
+            _VID, cognito_sub="owner-sub", role="teacher"
         )
         assert len(out) == 1
         repo.list_lessons.assert_called_once_with(_VID)
@@ -1185,7 +1185,7 @@ class TestListLessonsPublic:
         repo.list_lessons.return_value = [_lesson(id_=self._LID, order=1, thumbnail_key=k)]
         storage.presign_get.side_effect = RuntimeError("network")
         out = service.list_lessons_public(
-            _VID, cognito_sub="", role="student", auth_enforced=True
+            _VID, cognito_sub="", role="student"
         )
         assert out[0]["id"] == self._LID
         assert "thumbnailUrl" not in out[0]
@@ -1193,15 +1193,6 @@ class TestListLessonsPublic:
 
 
 class TestEnsureCanViewLessonsAndPlayback:
-    def test_auth_off_allows_without_enrollment(
-        self, service: CourseManagementService, repo: MagicMock
-    ) -> None:
-        repo.get_course.return_value = _course(id_=_VID, status="PUBLISHED")
-        c = service.ensure_can_view_lessons_and_playback(
-            _VID, cognito_sub="", role="student", auth_enforced=False
-        )
-        assert c.id == _VID
-
     def test_published_requires_enrollment_when_auth_on(
         self, service: CourseManagementService, repo: MagicMock, enrollments: MagicMock
     ) -> None:
@@ -1209,7 +1200,7 @@ class TestEnsureCanViewLessonsAndPlayback:
         enrollments.has_enrollment.return_value = False
         with pytest.raises(Forbidden) as ei:
             service.ensure_can_view_lessons_and_playback(
-                _VID, cognito_sub="sub1", role="student", auth_enforced=True
+                _VID, cognito_sub="sub1", role="student"
             )
         assert ei.value.code == "enrollment_required"
 
@@ -1219,7 +1210,7 @@ class TestEnsureCanViewLessonsAndPlayback:
         repo.get_course.return_value = _course(id_=_VID, status="PUBLISHED")
         enrollments.has_enrollment.return_value = False
         c = service.ensure_can_view_lessons_and_playback(
-            _VID, cognito_sub="admin-sub", role="admin", auth_enforced=True
+            _VID, cognito_sub="admin-sub", role="admin"
         )
         assert c.id == _VID
         enrollments.has_enrollment.assert_not_called()
@@ -1235,7 +1226,7 @@ class TestEnsureCanViewLessonsAndPlayback:
             createdBy="owner-sub",
         )
         c = service.ensure_can_view_lessons_and_playback(
-            _VID, cognito_sub="owner-sub", role="teacher", auth_enforced=True
+            _VID, cognito_sub="owner-sub", role="teacher"
         )
         assert c.id == _VID
 
@@ -1245,7 +1236,7 @@ class TestEnsureCanViewLessonsAndPlayback:
         repo.get_course.return_value = _course(id_=_VID, status="PUBLISHED")
         enrollments.has_enrollment.return_value = True
         c = service.ensure_can_view_lessons_and_playback(
-            _VID, cognito_sub="stu1", role="student", auth_enforced=True
+            _VID, cognito_sub="stu1", role="student"
         )
         assert c.id == _VID
 
@@ -1329,7 +1320,7 @@ class TestUuidValidation:
 
     def test_list_lessons_public_invalid_uuid_raises_not_found(self, service: CourseManagementService) -> None:
         with pytest.raises(NotFound):
-            service.list_lessons_public("bad-id", cognito_sub="user", role="student", auth_enforced=True)
+            service.list_lessons_public("bad-id", cognito_sub="user", role="student")
 
     def test_create_lesson_invalid_course_uuid_raises_not_found(self, service: CourseManagementService) -> None:
         with pytest.raises(NotFound):

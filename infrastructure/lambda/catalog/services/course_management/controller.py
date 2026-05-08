@@ -68,17 +68,13 @@ def _audit_event(action: str, course_id: str, claims: Dict[str, Any]) -> None:
     )
 
 
-def _require_authenticated(auth_enforced: bool, claims: Dict[str, Any]) -> None:
-    if not auth_enforced:
-        return
+def _require_authenticated(claims: Dict[str, Any]) -> None:
     if not _actor_sub(claims):
         raise Unauthorized("Authentication required")
 
 
-def _require_teacher_or_admin(auth_enforced: bool, claims: Dict[str, Any]) -> None:
-    _require_authenticated(auth_enforced, claims)
-    if not auth_enforced:
-        return
+def _require_teacher_or_admin(claims: Dict[str, Any]) -> None:
+    _require_authenticated(claims)
     if _actor_role(claims) not in ("teacher", "admin"):
         raise Forbidden("Teacher or admin role required")
 
@@ -139,7 +135,6 @@ def handle(
     svc: CourseManagementService,
     video_bucket: str,
     auth_svc: UserProfileProvisioner,
-    auth_enforced: bool = False,
     jwt_config: Optional[CognitoJwtConfig] = None,
 ) -> Dict[str, Any]:
     method, raw_path = _method_and_path(event)
@@ -155,18 +150,18 @@ def handle(
         if action == "list_courses":
             return json_response(200, dto.as_course_list(svc.list_published_courses()), origin)
         if action == "create_course":
-            _require_teacher_or_admin(auth_enforced, claims)
+            _require_teacher_or_admin(claims)
             body = parse_json_body(event)
             title = optional_str(body, "title", "Untitled Course")
             description = optional_str(body, "description", "")
             created: dto.CreateCourseResponse = svc.create_course(
                 title,
                 description,
-                created_by=_actor_sub(claims) if auth_enforced else "",
+                created_by=_actor_sub(claims),
             )  # type: ignore[assignment]
             return json_response(201, created, origin)
         if action == "enroll_course":
-            _require_authenticated(auth_enforced, claims)
+            _require_authenticated(claims)
             sub = _actor_sub(claims)
             email = str(claims.get("email", "") or "").strip()
             role = str(claims.get("custom:role") or claims.get("role") or "student").strip()
@@ -194,11 +189,10 @@ def handle(
             _audit_event("enrollment.create", params["courseId"], claims)
             return json_response(200, enrolled_body, origin)
         if action == "list_instructor_courses":
-            _require_teacher_or_admin(auth_enforced, claims)
+            _require_teacher_or_admin(claims)
             mine = svc.list_instructor_courses(
                 cognito_sub=_actor_sub(claims),
                 role=_actor_role(claims),
-                auth_enforced=auth_enforced,
             )
             return json_response(200, dto.as_course_list(mine), origin)
         if action == "list_modules":
@@ -206,7 +200,6 @@ def handle(
                 params["courseId"],
                 cognito_sub=_actor_sub(claims),
                 role=_actor_role(claims),
-                auth_enforced=auth_enforced,
             )
             return json_response(200, dto.as_course_module_list(rows), origin)
         if action == "create_module":
@@ -214,7 +207,6 @@ def handle(
                 params["courseId"],
                 cognito_sub=_actor_sub(claims),
                 role=_actor_role(claims),
-                auth_enforced=auth_enforced,
             )
             body = parse_json_body(event)
             title_m = optional_str(body, "title", "Untitled module")
@@ -228,7 +220,6 @@ def handle(
                 params["courseId"],
                 cognito_sub=_actor_sub(claims),
                 role=_actor_role(claims),
-                auth_enforced=auth_enforced,
             )
             deleted_module: dto.DeleteCourseModuleResponse = svc.delete_course_module(
                 params["courseId"], params["moduleId"]
@@ -239,7 +230,6 @@ def handle(
                 params["courseId"],
                 cognito_sub=_actor_sub(claims),
                 role=_actor_role(claims),
-                auth_enforced=auth_enforced,
             )
             return json_response(200, dto.as_course_dto(detail), origin)
         if action == "update_course":
@@ -247,7 +237,6 @@ def handle(
                 params["courseId"],
                 cognito_sub=_actor_sub(claims),
                 role=_actor_role(claims),
-                auth_enforced=auth_enforced,
             )
             body = parse_json_body(event)
             title = optional_str(body, "title", "")
@@ -259,7 +248,6 @@ def handle(
                 params["courseId"],
                 cognito_sub=_actor_sub(claims),
                 role=_actor_role(claims),
-                auth_enforced=auth_enforced,
             )
             published: dto.PublishCourseResponse = svc.publish_course(params["courseId"])  # type: ignore[assignment]
             return json_response(200, published, origin)
@@ -268,7 +256,6 @@ def handle(
                 params["courseId"],
                 cognito_sub=_actor_sub(claims),
                 role=_actor_role(claims),
-                auth_enforced=auth_enforced,
             )
             deleted: dto.DeleteCourseResponse = svc.delete_course(params["courseId"])  # type: ignore[assignment]
             _audit_event("course.delete", params["courseId"], claims)
@@ -278,7 +265,6 @@ def handle(
                 params["courseId"],
                 cognito_sub=_actor_sub(claims),
                 role=_actor_role(claims),
-                auth_enforced=auth_enforced,
             )
             return json_response(200, dto.as_lesson_list(rows), origin)
         if action == "create_lesson":
@@ -286,7 +272,6 @@ def handle(
                 params["courseId"],
                 cognito_sub=_actor_sub(claims),
                 role=_actor_role(claims),
-                auth_enforced=auth_enforced,
             )
             body = parse_json_body(event)
             title = optional_str(body, "title", "Lesson")
@@ -300,7 +285,6 @@ def handle(
                 params["courseId"],
                 cognito_sub=_actor_sub(claims),
                 role=_actor_role(claims),
-                auth_enforced=auth_enforced,
             )
             body = parse_json_body(event)
             title = optional_str(body, "title", "")
@@ -311,7 +295,6 @@ def handle(
                 params["courseId"],
                 cognito_sub=_actor_sub(claims),
                 role=_actor_role(claims),
-                auth_enforced=auth_enforced,
             )
             deleted_lesson: dto.DeleteLessonResponse = svc.delete_lesson(params["courseId"], params["lessonId"])  # type: ignore[assignment]
             return json_response(200, deleted_lesson, origin)
@@ -320,7 +303,6 @@ def handle(
                 params["courseId"],
                 cognito_sub=_actor_sub(claims),
                 role=_actor_role(claims),
-                auth_enforced=auth_enforced,
             )
             body = parse_json_body(event)
             thumb_for_lesson = optional_str(body, "thumbnailKey", "") or ""
@@ -335,7 +317,6 @@ def handle(
                 params["courseId"],
                 cognito_sub=_actor_sub(claims),
                 role=_actor_role(claims),
-                auth_enforced=auth_enforced,
             )
             body = parse_json_body(event)
             thumbnail_key = require_str(body, "thumbnailKey")
@@ -344,12 +325,11 @@ def handle(
             )
             return json_response(200, thumb, origin)
         if action == "get_playback":
-            _require_authenticated(auth_enforced, claims)
+            _require_authenticated(claims)
             svc.ensure_can_view_lessons_and_playback(
                 params["courseId"],
                 cognito_sub=_actor_sub(claims),
                 role=_actor_role(claims),
-                auth_enforced=auth_enforced,
             )
             playback: dto.PlaybackResponse = svc.get_playback_url(  # type: ignore[assignment]
                 params["courseId"], params["lessonId"], video_bucket=video_bucket
@@ -362,7 +342,6 @@ def handle(
                 course_id,
                 cognito_sub=_actor_sub(claims),
                 role=_actor_role(claims),
-                auth_enforced=auth_enforced,
             )
             filename = optional_str(body, "filename", "video.mp4")
             content_type = optional_str(body, "contentType", "video/mp4") or "video/mp4"

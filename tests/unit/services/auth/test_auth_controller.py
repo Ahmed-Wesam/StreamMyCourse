@@ -14,18 +14,6 @@ def _body(resp: Dict[str, Any]) -> Dict[str, Any]:
     return json.loads(resp["body"])
 
 
-def test_handle_users_me_returns_503_when_auth_not_enforced(make_lambda_event) -> None:
-    evt = make_lambda_event(method="GET", path="/users/me")
-    resp = handle_users_me(
-        evt,
-        origin="https://app.example",
-        auth_svc=MagicMock(),
-        auth_enforced=False,
-    )
-    assert resp["statusCode"] == 503
-    assert _body(resp)["code"] == "auth_not_configured"
-
-
 def test_handle_users_me_returns_401_when_missing_sub(monkeypatch, make_lambda_event) -> None:
     evt = make_lambda_event(method="GET", path="/users/me")
     monkeypatch.setattr("services.auth.controller._claims_dict", lambda *a, **k: {})
@@ -34,7 +22,6 @@ def test_handle_users_me_returns_401_when_missing_sub(monkeypatch, make_lambda_e
         evt,
         origin="*",
         auth_svc=MagicMock(),
-        auth_enforced=True,
     )
     assert resp["statusCode"] == 401
     assert _body(resp)["code"] == "unauthorized"
@@ -53,7 +40,6 @@ def test_handle_users_me_prefers_custom_role_over_role(monkeypatch, make_lambda_
         evt,
         origin="*",
         auth_svc=auth_svc,
-        auth_enforced=True,
     )
 
     assert resp["statusCode"] == 200
@@ -75,7 +61,6 @@ def test_handle_users_me_maps_http_error_to_json(monkeypatch, make_lambda_event)
         evt,
         origin="https://app.example",
         auth_svc=auth_svc,
-        auth_enforced=True,
     )
 
     assert resp["statusCode"] == 400
@@ -95,7 +80,6 @@ def test_handle_users_me_returns_500_on_unhandled_exception(monkeypatch, make_la
         evt,
         origin="*",
         auth_svc=auth_svc,
-        auth_enforced=True,
     )
     assert resp["statusCode"] == 500
     assert _body(resp)["code"] == "internal_error"
@@ -119,7 +103,6 @@ def test_handle_users_me_does_not_swallow_non_httperror_subclass(monkeypatch, ma
         evt,
         origin="*",
         auth_svc=auth_svc,
-        auth_enforced=True,
     )
     assert resp["statusCode"] == 418
     assert _body(resp) == {"message": "teapot", "code": "X"}

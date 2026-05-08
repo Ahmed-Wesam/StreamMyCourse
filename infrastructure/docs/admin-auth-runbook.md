@@ -106,7 +106,7 @@ Same as break-glass: Console **`custom:role`** → `teacher`, then re-auth.
 
 ## Wire API Gateway to the pool
 
-Deploy or update the API stack with the pool ARN so protected routes use the Cognito authorizer and Lambda sets `COGNITO_AUTH_ENABLED=true`:
+Deploy or update the API stack with the pool ARN so protected routes use the Cognito authorizer:
 
 - **PowerShell:** pass `-CognitoUserPoolArn` to `deploy.ps1` when using template `api`.
 - **Bash / CI:** set `COGNITO_USER_POOL_ARN` before `scripts/deploy-backend.sh`.

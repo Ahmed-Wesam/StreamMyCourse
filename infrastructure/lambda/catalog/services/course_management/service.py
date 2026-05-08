@@ -6,7 +6,14 @@ from dataclasses import asdict
 from typing import Any, Dict, List
 from uuid import UUID
 
-from services.common.errors import BadRequest, Conflict, Forbidden, NotFound, ServiceUnavailable
+from services.common.errors import (
+    BadRequest,
+    Conflict,
+    Forbidden,
+    NotFound,
+    ServiceUnavailable,
+    Unauthorized,
+)
 from services.common.sqs_client import send_media_cleanup_job
 from services.course_management.models import Course, CourseModule, Lesson
 from services.course_management.ports import CourseCatalogRepositoryPort, CourseMediaStoragePort
@@ -128,13 +135,12 @@ class CourseManagementService:
         *,
         cognito_sub: str,
         role: str,
-        auth_enforced: bool,
     ) -> List[Dict[str, Any]]:
         """Courses for the instructor dashboard (draft + published), scoped by owner unless admin."""
         sub = (cognito_sub or "").strip()
-        if not auth_enforced:
-            courses = self._repo.list_courses()
-        elif self._is_admin(role):
+        if not sub:
+            raise Unauthorized("Authentication required")
+        if self._is_admin(role):
             courses = self._repo.list_courses()
         else:
             courses = self._repo.list_courses_by_instructor(sub)
@@ -183,10 +189,7 @@ class CourseManagementService:
         course_id: str,
         cognito_sub: str,
         role: str,
-        auth_enforced: bool,
     ) -> bool:
-        if not auth_enforced:
-            return True
         if not cognito_sub.strip():
             return False
         if self._can_manage_course_unenrolled(course, cognito_sub=cognito_sub, role=role):
@@ -201,18 +204,13 @@ class CourseManagementService:
         *,
         cognito_sub: str,
         role: str,
-        auth_enforced: bool,
     ) -> Course:
         course = self._repo.get_course(course_id)
         if not course:
             raise NotFound("Course not found")
-        if not auth_enforced:
-            return course
         if not cognito_sub.strip():
-            raise Forbidden("Authentication required", code="forbidden")
-        if self.viewer_has_lesson_access(
-            course, course_id=course_id, cognito_sub=cognito_sub, role=role, auth_enforced=auth_enforced
-        ):
+            raise Unauthorized("Authentication required")
+        if self.viewer_has_lesson_access(course, course_id=course_id, cognito_sub=cognito_sub, role=role):
             return course
         raise Forbidden("Enrollment required to view this course", code="enrollment_required")
 
@@ -222,20 +220,16 @@ class CourseManagementService:
         *,
         cognito_sub: str,
         role: str,
-        auth_enforced: bool,
     ) -> Dict[str, Any]:
         course = self._repo.get_course(course_id)
         if not course:
             raise NotFound("Course not found")
-        if auth_enforced:
-            if course.status == "DRAFT":
-                if not self._can_manage_course_unenrolled(course, cognito_sub=cognito_sub, role=role):
-                    raise NotFound("Course not found")
-            has_lessons = self.viewer_has_lesson_access(
-                course, course_id=course_id, cognito_sub=cognito_sub, role=role, auth_enforced=auth_enforced
-            )
-        else:
-            has_lessons = True
+        if course.status == "DRAFT":
+            if not self._can_manage_course_unenrolled(course, cognito_sub=cognito_sub, role=role):
+                raise NotFound("Course not found")
+        has_lessons = self.viewer_has_lesson_access(
+            course, course_id=course_id, cognito_sub=cognito_sub, role=role
+        )
         data = self._public_course_dict(course)
         self._apply_course_cover_fallback(course_id, data)
         data["enrolled"] = bool(has_lessons)
@@ -243,7 +237,7 @@ class CourseManagementService:
 
     def enroll_in_published_course(self, course_id: str, *, cognito_sub: str) -> Dict[str, Any]:
         if not cognito_sub.strip():
-            raise Forbidden("Authentication required", code="forbidden")
+            raise Unauthorized("Authentication required")
         if not _is_valid_uuid(course_id):
             raise NotFound("Course not found")
         course = self._repo.get_course(course_id)
@@ -266,11 +260,10 @@ class CourseManagementService:
         *,
         cognito_sub: str,
         role: str,
-        auth_enforced: bool,
     ) -> None:
         """When auth is enforced, only teacher/admin may mutate; admin bypasses ownership."""
-        if not auth_enforced:
-            return
+        if not (cognito_sub or "").strip():
+            raise Unauthorized("Authentication required")
         r = (role or "").strip().lower()
         if r == "admin":
             return
@@ -327,7 +320,6 @@ class CourseManagementService:
         *,
         cognito_sub: str,
         role: str,
-        auth_enforced: bool,
     ) -> List[Dict[str, Any]]:
         """Published lesson rows for catalog UI (thumbnails, no videoKey). DRAFT is 404 unless caller can manage."""
         if not _is_valid_uuid(course_id):
@@ -335,7 +327,7 @@ class CourseManagementService:
         course = self._repo.get_course(course_id)
         if not course:
             raise NotFound("Course not found")
-        if auth_enforced and course.status == "DRAFT":
+        if course.status == "DRAFT":
             if not self._can_manage_course_unenrolled(course, cognito_sub=cognito_sub, role=role):
                 raise NotFound("Course not found")
         lessons = self._repo.list_lessons(course_id)
@@ -363,14 +355,13 @@ class CourseManagementService:
         *,
         cognito_sub: str,
         role: str,
-        auth_enforced: bool,
     ) -> List[Dict[str, Any]]:
         if not _is_valid_uuid(course_id):
             raise NotFound("Course not found")
         course = self._repo.get_course(course_id)
         if not course:
             raise NotFound("Course not found")
-        if auth_enforced and course.status == "DRAFT":
+        if course.status == "DRAFT":
             if not self._can_manage_course_unenrolled(course, cognito_sub=cognito_sub, role=role):
                 raise NotFound("Course not found")
         return [self._public_module_dict(m) for m in self._repo.list_course_modules(course_id)]

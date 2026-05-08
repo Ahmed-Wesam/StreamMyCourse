@@ -24,21 +24,10 @@ def handle_users_me(
     *,
     origin: Optional[str],
     auth_svc: UserProfileService,
-    auth_enforced: bool,
     jwt_config: Optional[CognitoJwtConfig] = None,
 ) -> Dict[str, Any]:
     # Set action for correlation logging
     update_action("get_users_me")
-
-    if not auth_enforced:
-        return json_response(
-            503,
-            {
-                "message": "User profile requires Cognito authorizer on API Gateway.",
-                "code": "auth_not_configured",
-            },
-            origin,
-        )
 
     claims = _claims_dict(event, jwt_config=jwt_config)
     sub = str(claims.get("sub", "") or "").strip()

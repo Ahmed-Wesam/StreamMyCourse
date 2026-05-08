@@ -17,7 +17,6 @@ def _clear_env(monkeypatch: pytest.MonkeyPatch) -> None:
         "DB_NAME",
         "DB_PORT",
         "DB_SECRET_ARN",
-        "COGNITO_AUTH_ENABLED",
         "LOG_LEVEL",
         "MEDIA_CLEANUP_QUEUE_URL",
     ):

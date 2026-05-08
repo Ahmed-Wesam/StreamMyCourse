@@ -11,7 +11,6 @@ class AppConfig:
     default_mp4_url: str
     video_url: str
     allowed_origins: List[str]
-    cognito_auth_enabled: bool
     # RDS / PostgreSQL (catalog + progress). Incomplete values mean the handler
     # returns catalog_unconfigured until the api stack wires DB_* from the RDS stack.
     db_host: str = ""
@@ -120,8 +119,6 @@ def load_config() -> AppConfig:
     # Fail-secure: no implicit wildcard. Use ALLOWED_ORIGINS=* explicitly for dev/tools.
     allowed_origins = _split_csv(raw_origins) if raw_origins else []
 
-    cognito_auth_enabled = os.environ.get("COGNITO_AUTH_ENABLED", "").strip().lower() == "true"
-
     db_host = os.environ.get("DB_HOST", "").strip()
     db_name = os.environ.get("DB_NAME", "").strip()
     db_port = _parse_db_port(os.environ.get("DB_PORT", ""))
@@ -153,7 +150,6 @@ def load_config() -> AppConfig:
         default_mp4_url=default_mp4_url,
         video_url=video_url,
         allowed_origins=allowed_origins,
-        cognito_auth_enabled=cognito_auth_enabled,
         db_host=db_host,
         db_name=db_name,
         db_port=db_port,

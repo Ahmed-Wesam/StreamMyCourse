@@ -47,16 +47,16 @@ Parameters:
 
   CognitoUserPoolArn:
     Type: String
-    Default: ''
-    Description: Cognito User Pool ARN for API Gateway COGNITO_USER_POOLS authorizer (optional; empty disables protected-route auth at gateway)
+    MinLength: 1
+    Description: Cognito User Pool ARN for API Gateway COGNITO_USER_POOLS authorizer (required)
 
   CognitoClientId:
     Type: String
-    Default: ''
+    MinLength: 1
     Description: >-
       Cognito User Pool Client ID(s) for JWT audience validation.
       Supports comma-separated list for multiple clients (e.g., student + teacher apps).
-      Required when CognitoUserPoolArn is set for public route JWT verification.
+      Required for public route JWT verification.
 
   RdsStackName:
     Type: String
@@ -105,7 +105,6 @@ Parameters:
 
 Conditions:
   HasVideoBucket: !Not [!Equals [!Ref VideoBucketName, '']]
-  HasCognitoAuthorizer: !Not [!Equals [!Ref CognitoUserPoolArn, '']]
   IsProd: !Equals [!Ref Environment, prod]
   HasMediaCleanupQueueArn: !Not [!Equals [!Ref MediaCleanupQueueArn, '']]
 
@@ -217,7 +216,6 @@ Resources:
           VIDEO_URL: !Ref VideoUrl
           VIDEO_BUCKET: !Ref VideoBucketName
           ALLOWED_ORIGINS: !Ref CorsAllowOrigin
-          COGNITO_AUTH_ENABLED: !If [HasCognitoAuthorizer, 'true', 'false']
           LOG_LEVEL: !Ref LogLevel
           DB_HOST: !ImportValue
             'Fn::Sub': '${RdsStackName}-DbHost'
@@ -255,7 +253,6 @@ Resources:
 
   CognitoAuthorizer:
     Type: AWS::ApiGateway::Authorizer
-    Condition: HasCognitoAuthorizer
     Properties:
       Name: !Sub 'StreamMyCourse-Cognito-${Environment}'
       Type: COGNITO_USER_POOLS
@@ -450,8 +447,8 @@ Resources:
       RestApiId: !Ref CatalogApi
       ResourceId: !Ref CoursesResource
       HttpMethod: POST
-      AuthorizationType: !If [HasCognitoAuthorizer, COGNITO_USER_POOLS, NONE]
-      AuthorizerId: !If [HasCognitoAuthorizer, !Ref CognitoAuthorizer, !Ref AWS::NoValue]
+      AuthorizationType: COGNITO_USER_POOLS
+      AuthorizerId: !Ref CognitoAuthorizer
       Integration:
         IntegrationHttpMethod: POST
         Type: AWS_PROXY
@@ -477,8 +474,8 @@ Resources:
       RestApiId: !Ref CatalogApi
       ResourceId: !Ref CoursesMineResource
       HttpMethod: GET
-      AuthorizationType: !If [HasCognitoAuthorizer, COGNITO_USER_POOLS, NONE]
-      AuthorizerId: !If [HasCognitoAuthorizer, !Ref CognitoAuthorizer, !Ref AWS::NoValue]
+      AuthorizationType: COGNITO_USER_POOLS
+      AuthorizerId: !Ref CognitoAuthorizer
       Integration:
         IntegrationHttpMethod: POST
         Type: AWS_PROXY
@@ -517,8 +514,8 @@ Resources:
       RestApiId: !Ref CatalogApi
       ResourceId: !Ref CourseEnrollResource
       HttpMethod: POST
-      AuthorizationType: !If [HasCognitoAuthorizer, COGNITO_USER_POOLS, NONE]
-      AuthorizerId: !If [HasCognitoAuthorizer, !Ref CognitoAuthorizer, !Ref AWS::NoValue]
+      AuthorizationType: COGNITO_USER_POOLS
+      AuthorizerId: !Ref CognitoAuthorizer
       Integration:
         IntegrationHttpMethod: POST
         Type: AWS_PROXY
@@ -557,8 +554,8 @@ Resources:
       RestApiId: !Ref CatalogApi
       ResourceId: !Ref CourseModulesResource
       HttpMethod: POST
-      AuthorizationType: !If [HasCognitoAuthorizer, COGNITO_USER_POOLS, NONE]
-      AuthorizerId: !If [HasCognitoAuthorizer, !Ref CognitoAuthorizer, !Ref AWS::NoValue]
+      AuthorizationType: COGNITO_USER_POOLS
+      AuthorizerId: !Ref CognitoAuthorizer
       Integration:
         IntegrationHttpMethod: POST
         Type: AWS_PROXY
@@ -584,8 +581,8 @@ Resources:
       RestApiId: !Ref CatalogApi
       ResourceId: !Ref CourseModuleIdResource
       HttpMethod: DELETE
-      AuthorizationType: !If [HasCognitoAuthorizer, COGNITO_USER_POOLS, NONE]
-      AuthorizerId: !If [HasCognitoAuthorizer, !Ref CognitoAuthorizer, !Ref AWS::NoValue]
+      AuthorizationType: COGNITO_USER_POOLS
+      AuthorizerId: !Ref CognitoAuthorizer
       Integration:
         IntegrationHttpMethod: POST
         Type: AWS_PROXY
@@ -611,8 +608,8 @@ Resources:
       RestApiId: !Ref CatalogApi
       ResourceId: !Ref CourseIdResource
       HttpMethod: PUT
-      AuthorizationType: !If [HasCognitoAuthorizer, COGNITO_USER_POOLS, NONE]
-      AuthorizerId: !If [HasCognitoAuthorizer, !Ref CognitoAuthorizer, !Ref AWS::NoValue]
+      AuthorizationType: COGNITO_USER_POOLS
+      AuthorizerId: !Ref CognitoAuthorizer
       Integration:
         IntegrationHttpMethod: POST
         Type: AWS_PROXY
@@ -625,8 +622,8 @@ Resources:
       RestApiId: !Ref CatalogApi
       ResourceId: !Ref CourseIdResource
       HttpMethod: DELETE
-      AuthorizationType: !If [HasCognitoAuthorizer, COGNITO_USER_POOLS, NONE]
-      AuthorizerId: !If [HasCognitoAuthorizer, !Ref CognitoAuthorizer, !Ref AWS::NoValue]
+      AuthorizationType: COGNITO_USER_POOLS
+      AuthorizerId: !Ref CognitoAuthorizer
       Integration:
         IntegrationHttpMethod: POST
         Type: AWS_PROXY
@@ -660,8 +657,8 @@ Resources:
       RestApiId: !Ref CatalogApi
       ResourceId: !Ref CoursePublishResource
       HttpMethod: PUT
-      AuthorizationType: !If [HasCognitoAuthorizer, COGNITO_USER_POOLS, NONE]
-      AuthorizerId: !If [HasCognitoAuthorizer, !Ref CognitoAuthorizer, !Ref AWS::NoValue]
+      AuthorizationType: COGNITO_USER_POOLS
+      AuthorizerId: !Ref CognitoAuthorizer
       Integration:
         IntegrationHttpMethod: POST
         Type: AWS_PROXY
@@ -695,8 +692,8 @@ Resources:
       RestApiId: !Ref CatalogApi
       ResourceId: !Ref CourseThumbnailReadyResource
       HttpMethod: PUT
-      AuthorizationType: !If [HasCognitoAuthorizer, COGNITO_USER_POOLS, NONE]
-      AuthorizerId: !If [HasCognitoAuthorizer, !Ref CognitoAuthorizer, !Ref AWS::NoValue]
+      AuthorizationType: COGNITO_USER_POOLS
+      AuthorizerId: !Ref CognitoAuthorizer
       Integration:
         IntegrationHttpMethod: POST
         Type: AWS_PROXY
@@ -735,8 +732,8 @@ Resources:
       RestApiId: !Ref CatalogApi
       ResourceId: !Ref LessonsResource
       HttpMethod: POST
-      AuthorizationType: !If [HasCognitoAuthorizer, COGNITO_USER_POOLS, NONE]
-      AuthorizerId: !If [HasCognitoAuthorizer, !Ref CognitoAuthorizer, !Ref AWS::NoValue]
+      AuthorizationType: COGNITO_USER_POOLS
+      AuthorizerId: !Ref CognitoAuthorizer
       Integration:
         IntegrationHttpMethod: POST
         Type: AWS_PROXY
@@ -762,8 +759,8 @@ Resources:
       RestApiId: !Ref CatalogApi
       ResourceId: !Ref LessonIdResource
       HttpMethod: PUT
-      AuthorizationType: !If [HasCognitoAuthorizer, COGNITO_USER_POOLS, NONE]
-      AuthorizerId: !If [HasCognitoAuthorizer, !Ref CognitoAuthorizer, !Ref AWS::NoValue]
+      AuthorizationType: COGNITO_USER_POOLS
+      AuthorizerId: !Ref CognitoAuthorizer
       Integration:
         IntegrationHttpMethod: POST
         Type: AWS_PROXY
@@ -776,8 +773,8 @@ Resources:
       RestApiId: !Ref CatalogApi
       ResourceId: !Ref LessonIdResource
       HttpMethod: DELETE
-      AuthorizationType: !If [HasCognitoAuthorizer, COGNITO_USER_POOLS, NONE]
-      AuthorizerId: !If [HasCognitoAuthorizer, !Ref CognitoAuthorizer, !Ref AWS::NoValue]
+      AuthorizationType: COGNITO_USER_POOLS
+      AuthorizerId: !Ref CognitoAuthorizer
       Integration:
         IntegrationHttpMethod: POST
         Type: AWS_PROXY
@@ -803,8 +800,8 @@ Resources:
       RestApiId: !Ref CatalogApi
       ResourceId: !Ref LessonVideoReadyResource
       HttpMethod: PUT
-      AuthorizationType: !If [HasCognitoAuthorizer, COGNITO_USER_POOLS, NONE]
-      AuthorizerId: !If [HasCognitoAuthorizer, !Ref CognitoAuthorizer, !Ref AWS::NoValue]
+      AuthorizationType: COGNITO_USER_POOLS
+      AuthorizerId: !Ref CognitoAuthorizer
       Integration:
         IntegrationHttpMethod: POST
         Type: AWS_PROXY
@@ -830,8 +827,8 @@ Resources:
       RestApiId: !Ref CatalogApi
       ResourceId: !Ref PlaybackLessonIdResource
       HttpMethod: GET
-      AuthorizationType: !If [HasCognitoAuthorizer, COGNITO_USER_POOLS, NONE]
-      AuthorizerId: !If [HasCognitoAuthorizer, !Ref CognitoAuthorizer, !Ref AWS::NoValue]
+      AuthorizationType: COGNITO_USER_POOLS
+      AuthorizerId: !Ref CognitoAuthorizer
       Integration:
         IntegrationHttpMethod: POST
         Type: AWS_PROXY
@@ -857,8 +854,8 @@ Resources:
       RestApiId: !Ref CatalogApi
       ResourceId: !Ref UploadUrlResource
       HttpMethod: POST
-      AuthorizationType: !If [HasCognitoAuthorizer, COGNITO_USER_POOLS, NONE]
-      AuthorizerId: !If [HasCognitoAuthorizer, !Ref CognitoAuthorizer, !Ref AWS::NoValue]
+      AuthorizationType: COGNITO_USER_POOLS
+      AuthorizerId: !Ref CognitoAuthorizer
       Integration:
         IntegrationHttpMethod: POST
         Type: AWS_PROXY
@@ -883,8 +880,8 @@ Resources:
       RestApiId: !Ref CatalogApi
       ResourceId: !Ref UsersMeResource
       HttpMethod: GET
-      AuthorizationType: !If [HasCognitoAuthorizer, COGNITO_USER_POOLS, NONE]
-      AuthorizerId: !If [HasCognitoAuthorizer, !Ref CognitoAuthorizer, !Ref AWS::NoValue]
+      AuthorizationType: COGNITO_USER_POOLS
+      AuthorizerId: !Ref CognitoAuthorizer
       Integration:
         IntegrationHttpMethod: POST
         Type: AWS_PROXY
@@ -909,8 +906,8 @@ Resources:
       RestApiId: !Ref CatalogApi
       ResourceId: !Ref CourseProgressResource
       HttpMethod: GET
-      AuthorizationType: !If [HasCognitoAuthorizer, COGNITO_USER_POOLS, NONE]
-      AuthorizerId: !If [HasCognitoAuthorizer, !Ref CognitoAuthorizer, !Ref AWS::NoValue]
+      AuthorizationType: COGNITO_USER_POOLS
+      AuthorizerId: !Ref CognitoAuthorizer
       Integration:
         Type: AWS_PROXY
         IntegrationHttpMethod: POST
@@ -936,8 +933,8 @@ Resources:
       RestApiId: !Ref CatalogApi
       ResourceId: !Ref LessonProgressResource
       HttpMethod: PUT
-      AuthorizationType: !If [HasCognitoAuthorizer, COGNITO_USER_POOLS, NONE]
-      AuthorizerId: !If [HasCognitoAuthorizer, !Ref CognitoAuthorizer, !Ref AWS::NoValue]
+      AuthorizationType: COGNITO_USER_POOLS
+      AuthorizerId: !Ref CognitoAuthorizer
       Integration:
         Type: AWS_PROXY
         IntegrationHttpMethod: POST

@@ -103,9 +103,12 @@ param(
     [Parameter(Mandatory=$false)]
     [string]$CognitoUserProfileSyncCodeS3Key = "",
 
-    # api stack: Cognito User Pool ARN for REST authorizer (export from auth stack)
-    [Parameter(Mandatory=$false)]
-    [string]$CognitoUserPoolArn = "",
+    # api stack: Cognito User Pool ARN + client id(s) for REST authorizer (export from auth stack)
+    [Parameter(Mandatory=$true)]
+    [string]$CognitoUserPoolArn,
+
+    [Parameter(Mandatory=$true)]
+    [string]$CognitoClientId,
 
     # rds template: PostgreSQL engine version (empty = template default for the region)
     [Parameter(Mandatory=$false)]
@@ -502,9 +505,8 @@ if ($Template -eq "edge-hosting") {
     if ($GatewayResponseAllowOrigin -ne "") {
         $apiOverrides += "GatewayResponseAllowOrigin=$GatewayResponseAllowOrigin"
     }
-    if ($CognitoUserPoolArn -ne "") {
-        $apiOverrides += "CognitoUserPoolArn=$CognitoUserPoolArn"
-    }
+    $apiOverrides += "CognitoUserPoolArn=$CognitoUserPoolArn"
+    $apiOverrides += "CognitoClientId=$CognitoClientId"
     $cfDeployArgs += '--parameter-overrides'
     $cfDeployArgs += $apiOverrides
 } elseif ($Template -eq "rds") {

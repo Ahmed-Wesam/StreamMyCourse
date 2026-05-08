@@ -8,7 +8,7 @@ Published courses should be discoverable without sign-in, including **lesson lis
 
 - Store enrollments in the existing catalog table: `PK = USER#<sub>`, `SK = ENROLLMENT#<courseId>`.
 - **`GET /courses/{id}`** and **`GET /courses/{id}/lessons`** use **no** Cognito authorizer at API Gateway (`AuthorizationType: NONE`). Lambda returns **PUBLISHED** catalog data (including presigned **thumbnail** URLs; **`videoKey`** never in JSON). **DRAFT** returns **404** unless the caller is owner/admin (JWT claims when present). **`enrolled`** on course detail is **false** for anonymous or not-yet-enrolled viewers on published courses.
-- **`GET /playback/...`** remains Cognito-gated at the gateway when a pool is configured; Lambda enforces enrollment (or owner/admin bypass) when `COGNITO_AUTH_ENABLED` is true.
+- **`GET /playback/...`** is Cognito-gated at API Gateway; Lambda enforces enrollment (or owner/admin bypass).
 
 ## Consequences
 

@@ -58,7 +58,6 @@ class TestHttpErrorLogging:
             svc=mock_svc,
             video_bucket="test-bucket",
             auth_svc=MagicMock(),
-            auth_enforced=False,
         )
 
         # Should return 404
@@ -102,7 +101,6 @@ class TestUnexpectedExceptionLogging:
             svc=mock_svc,
             video_bucket="test-bucket",
             auth_svc=MagicMock(),
-            auth_enforced=False,
         )
 
         # Should return 500
@@ -151,7 +149,6 @@ class TestActionFieldInLogs:
             svc=mock_svc,
             video_bucket="test-bucket",
             auth_svc=MagicMock(),
-            auth_enforced=False,
         )
 
         # update_action should have been called, which sets action in context
@@ -215,7 +212,6 @@ class TestAuditLogging:
             svc=mock_svc,
             video_bucket="b",
             auth_svc=mock_auth,
-            auth_enforced=False,
         )
 
         audit_records = [
@@ -258,7 +254,6 @@ class TestAuditLogging:
             svc=mock_svc,
             video_bucket="b",
             auth_svc=MagicMock(),
-            auth_enforced=False,
         )
 
         audit_records = [
@@ -298,7 +293,6 @@ class TestControllerSetsActionContext:
             svc=mock_svc,
             video_bucket="test-bucket",
             auth_svc=MagicMock(),
-            auth_enforced=False,
         )
 
         # update_action should have been called with "list_courses"

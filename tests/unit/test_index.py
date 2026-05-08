@@ -42,7 +42,6 @@ def cfg_wildcard() -> AppConfig:
         default_mp4_url="",
         video_url="",
         allowed_origins=["*"],
-        cognito_auth_enabled=False,
     )
 
 
@@ -159,7 +158,6 @@ class TestServiceUnconfigured:
             default_mp4_url="",
             video_url="",
             allowed_origins=["https://app.example.com", "http://localhost:5173"],
-            cognito_auth_enabled=False,
         )
         monkeypatch.setattr(
             index_mod, "lambda_bootstrap", _bootstrap_returning(cfg, None, None, None)

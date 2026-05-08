@@ -4,9 +4,14 @@ from __future__ import annotations
 
 import json
 import logging
+import sys
+from pathlib import Path
 from unittest.mock import MagicMock
 
-import worker as media_cleanup_worker
+_REPO_ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(_REPO_ROOT / "infrastructure" / "lambda" / "media_cleanup"))
+
+import worker as media_cleanup_worker  # noqa: E402
 
 
 def test_handler_deletes_s3_objects_in_batch(monkeypatch) -> None:
