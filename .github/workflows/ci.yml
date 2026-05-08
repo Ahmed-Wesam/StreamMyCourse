@@ -71,17 +71,17 @@ jobs:
         with:
           python-version: "3.11"
       - name: Install dependencies
-        run: pip install pyyaml
-      - name: Parse CloudFormation YAML
+        run: pip install cfn-lint
+      - name: cfn-lint
         run: |
-          python scripts/parse_cloudformation_yaml.py infrastructure/templates/api-stack.yaml
-          python scripts/parse_cloudformation_yaml.py infrastructure/templates/auth-stack.yaml
-          python scripts/parse_cloudformation_yaml.py infrastructure/templates/video-stack.yaml
-          python scripts/parse_cloudformation_yaml.py infrastructure/templates/edge-hosting-stack.yaml
-          python scripts/parse_cloudformation_yaml.py infrastructure/templates/github-deploy-role-stack.yaml
-          python scripts/parse_cloudformation_yaml.py infrastructure/templates/billing-alarm.yaml
-          python scripts/parse_cloudformation_yaml.py infrastructure/templates/rds-stack.yaml
-          python scripts/parse_cloudformation_yaml.py infrastructure/templates/media-cleanup-stack.yaml
+          cfn-lint --config-file .cfnlintrc infrastructure/templates/api-stack.yaml
+          cfn-lint --config-file .cfnlintrc infrastructure/templates/auth-stack.yaml
+          cfn-lint --config-file .cfnlintrc infrastructure/templates/video-stack.yaml
+          cfn-lint --config-file .cfnlintrc infrastructure/templates/edge-hosting-stack.yaml
+          cfn-lint --config-file .cfnlintrc infrastructure/templates/github-deploy-role-stack.yaml
+          cfn-lint --config-file .cfnlintrc infrastructure/templates/billing-alarm.yaml
+          cfn-lint --config-file .cfnlintrc infrastructure/templates/rds-stack.yaml
+          cfn-lint --config-file .cfnlintrc infrastructure/templates/media-cleanup-stack.yaml
 
   workflow-lint:
     name: GitHub Actions workflow lint
