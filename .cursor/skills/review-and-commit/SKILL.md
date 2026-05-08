@@ -53,4 +53,4 @@ When Phase 1 is complete, follow **[`.cursor/skills/commit/SKILL.md`](../commit/
 
 ---
 
-When the user only wanted review without commit, they should use a plain review request—not this skill.
+When the user only wanted review without commit: use **`/review`** backed by **[`.cursor/commands/review.md`](../../commands/review.md)**—not this skill.
