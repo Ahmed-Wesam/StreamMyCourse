@@ -19,7 +19,6 @@ from services.common.http import (
     json_response,
     options_response,
 )
-from services.common.jwt_verify import CognitoJwtConfig
 from services.common.validation import parse_json_body, require_int
 from services.progress.contracts import (
     CourseProgressResponse,
@@ -116,7 +115,6 @@ def handle_progress_request(
     *,
     origin: Optional[str],
     progress_svc: LessonProgressService,
-    jwt_config: Optional[CognitoJwtConfig] = None,
 ) -> Dict[str, Any]:
     """Handle progress-related HTTP requests.
 
@@ -124,7 +122,6 @@ def handle_progress_request(
         event: API Gateway Lambda event
         origin: CORS origin
         progress_svc: LessonProgressService instance
-        jwt_config: Optional JWT verification config
 
     Returns:
         API Gateway response dict
@@ -136,7 +133,7 @@ def handle_progress_request(
         return options_response(origin)
 
     action, params = _route(method, raw_path)
-    claims = apigw_cognito_claims(event, jwt_config=jwt_config)
+    claims = apigw_cognito_claims(event)
     user_sub = _actor_sub(claims)
 
     try:

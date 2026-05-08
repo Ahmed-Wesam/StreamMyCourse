@@ -12,11 +12,14 @@ from services.common.errors import (
     Forbidden,
     NotFound,
     ServiceUnavailable,
-    Unauthorized,
 )
 from services.common.sqs_client import send_media_cleanup_job
 from services.course_management.models import Course, CourseModule, Lesson
-from services.course_management.ports import CourseCatalogRepositoryPort, CourseMediaStoragePort
+from services.course_management.ports import (
+    CourseCatalogRepositoryPort,
+    CourseMediaStoragePort,
+    UserProfileProvisioner,
+)
 from services.enrollment.ports import EnrollmentRepositoryPort
 
 logger = logging.getLogger(__name__)
@@ -138,8 +141,9 @@ class CourseManagementService:
     ) -> List[Dict[str, Any]]:
         """Courses for the instructor dashboard (draft + published), scoped by owner unless admin."""
         sub = (cognito_sub or "").strip()
-        if not sub:
-            raise Unauthorized("Authentication required")
+        # Authentication (non-empty sub) is enforced at the controller boundary.
+        if not self._teacher_or_admin(role):
+            raise Forbidden("Teacher or admin role required")
         if self._is_admin(role):
             courses = self._repo.list_courses()
         else:
@@ -208,8 +212,6 @@ class CourseManagementService:
         course = self._repo.get_course(course_id)
         if not course:
             raise NotFound("Course not found")
-        if not cognito_sub.strip():
-            raise Unauthorized("Authentication required")
         if self.viewer_has_lesson_access(course, course_id=course_id, cognito_sub=cognito_sub, role=role):
             return course
         raise Forbidden("Enrollment required to view this course", code="enrollment_required")
@@ -236,21 +238,47 @@ class CourseManagementService:
         return data
 
     def enroll_in_published_course(self, course_id: str, *, cognito_sub: str) -> Dict[str, Any]:
-        if not cognito_sub.strip():
-            raise Unauthorized("Authentication required")
+        sub = (cognito_sub or "").strip()
+        if not sub:
+            raise BadRequest("cognito_sub must not be empty")
         if not _is_valid_uuid(course_id):
             raise NotFound("Course not found")
         course = self._repo.get_course(course_id)
         if not course or course.status != "PUBLISHED":
             raise NotFound("Course not found")
-        self._enrollments.put_enrollment(user_sub=cognito_sub, course_id=course_id)
+        self._enrollments.put_enrollment(user_sub=sub, course_id=course_id)
         return {"courseId": course_id, "enrolled": True}
 
-    def create_course(self, title: str, description: str, *, created_by: str = "") -> Dict[str, Any]:
+    def enroll_in_published_course_with_profile(
+        self,
+        course_id: str,
+        *,
+        cognito_sub: str,
+        email: str,
+        role: str,
+        profile_provisioner: UserProfileProvisioner,
+    ) -> Dict[str, Any]:
+        sub = (cognito_sub or "").strip()
+        # Authentication is enforced at the controller boundary.
+        profile_provisioner.get_or_create_profile(user_sub=sub, email=(email or "").strip(), role=(role or "student"))
+        return self.enroll_in_published_course(course_id, cognito_sub=sub)
+
+    def create_course(
+        self,
+        title: str,
+        description: str,
+        *,
+        created_by: str = "",
+        role: str = "",
+    ) -> Dict[str, Any]:
+        sub = (created_by or "").strip()
+        # Authentication is enforced at the controller boundary.
+        if not self._teacher_or_admin(role):
+            raise Forbidden("Teacher or admin role required")
         course = self._repo.create_course(
             title=title or "Untitled Course",
             description=description or "",
-            created_by=created_by or "",
+            created_by=sub,
         )
         return {"id": course.id, "status": course.status}
 
@@ -262,8 +290,9 @@ class CourseManagementService:
         role: str,
     ) -> None:
         """When auth is enforced, only teacher/admin may mutate; admin bypasses ownership."""
-        if not (cognito_sub or "").strip():
-            raise Unauthorized("Authentication required")
+        sub = (cognito_sub or "").strip()
+        if not sub:
+            raise BadRequest("cognito_sub must not be empty")
         r = (role or "").strip().lower()
         if r == "admin":
             return
@@ -275,7 +304,7 @@ class CourseManagementService:
         owner = (course.createdBy or "").strip()
         if not owner:
             return
-        if owner != cognito_sub:
+        if owner != sub:
             raise Forbidden("Not allowed to modify this course")
 
     def update_course(self, course_id: str, title: str, description: str) -> Dict[str, Any]:

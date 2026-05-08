@@ -136,6 +136,7 @@ class LessonProgressService:
         Raises:
             Forbidden: If user is not enrolled and not course owner
         """
+        # Authentication (non-empty sub) is enforced at the controller boundary.
         if not _is_valid_uuid(course_id):
             raise NotFound("Course not found")
 
@@ -233,6 +234,7 @@ class LessonProgressService:
             Forbidden: If user is not enrolled and not course owner
             BadRequest: If position is invalid or both mark_complete and mark_incomplete are True
         """
+        # Authentication (non-empty sub) is enforced at the controller boundary.
         # Validate mutually exclusive flags
         if mark_complete and mark_incomplete:
             raise BadRequest(
