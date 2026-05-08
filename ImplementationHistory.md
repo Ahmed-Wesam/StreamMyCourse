@@ -4,6 +4,33 @@
 
 ---
 
+## 2026-05-08 — Authorization hardening: createdBy invariant + privilege-escalation fix
+
+### Security fix
+
+- **Privilege escalation (now closed):** `_can_manage_course_unenrolled` previously returned `True` for any teacher when `createdBy` was blank, letting any teacher read draft lessons, bypass the enrollment gate for playback, and appear as the owner in `ensure_can_modify_course`. The same blank-owner path in `ensure_can_modify_course` returned early (allow). Both are now `Forbidden`/`BadRequest` respectively; blank `createdBy` is now treated as a data-integrity error, not a grant of universal teacher access.
+
+### What shipped
+
+- **`Course.createdBy`** promoted to a required positional field (no `= ""` default). Any construction without an owner now fails at the Python type level rather than silently producing phantom ownership.
+- **`CourseCatalogRepositoryPort.create_course`** — `created_by` parameter loses its `= ""` default.
+- **`rds_repo.py`** — `_row_to_course` uses `str(created_by or "")` (consistent defensive coercion); `_create_course_atomic` drops the `or ""` fallback since the DB column is now `NOT NULL`.
+- **`001_initial_schema.sql`** — `courses.created_by` changed from `NOT NULL DEFAULT ''` to `NOT NULL` + `CONSTRAINT courses_created_by_not_blank CHECK (btrim(created_by) <> '')` for fresh installs.
+- **`004_enforce_course_created_by.sql`** — In-place upgrade for existing DBs. Uses a `DO $$ ... $$` block that emits a `RAISE WARNING` and skips `ADD CONSTRAINT` instead of aborting deployment when blank-owner rows exist; operators must repair those rows and redeploy.
+- **`rds_schema_apply/index.py`** — `_split_sql_statements` upgraded from naive `;` split to a character-level scanner that respects `$$` dollar-quoted blocks, enabling PL/pgSQL `DO` blocks in future migrations.
+- **`scripts/migrate-dynamodb-to-rds.py`** — Deleted (one-shot DynamoDB→RDS migration complete).
+- **Service comments** — `get_course_detail_with_enrollment` documents that `enrolled` means "has lesson access" (True for enrolled students, owner-teachers, and admins) to clarify the intentional overloading of the field name.
+
+### Test coverage added
+
+- `TestListCourseModulesPublic` — 6 new cases (previously zero coverage for this service method).
+- `TestEnsureCanViewLessonsAndPlayback.test_anonymous_blank_sub_raises_forbidden` — pins that blank sub is always denied playback at the service layer.
+- `TestGetCourseDetailPublicCatalog` — non-owner teacher on draft → NotFound; admin on draft → sees it with `enrolled=True`.
+- `TestListLessonsPublic` — non-owner teacher on draft → NotFound; admin on draft → returns lessons.
+- `test_rds_schema_apply.py` — two new splitter tests for `$$` dollar-quote handling; 004 migration test updated for the DO-block structure.
+
+---
+
 ## 2026-05-07 — Course modules: HTTPS integration + API deploy + schema tightening
 
 ### Completed
