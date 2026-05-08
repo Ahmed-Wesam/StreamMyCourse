@@ -224,7 +224,7 @@ class CourseCatalogRdsRepository:
         return _row_to_course(row) if row else None
 
     def create_course(
-        self, title: str, description: str, *, created_by: str = ""
+        self, title: str, description: str, *, created_by: str
     ) -> Course:
         """Insert course plus a single default ``course_modules`` row (module_order 0).
 
@@ -251,7 +251,7 @@ class CourseCatalogRdsRepository:
                 VALUES (%s, %s, %s, %s)
                 RETURNING {_COURSE_COLUMNS}
                 """,
-                (title, description, "DRAFT", (created_by or "").strip()),
+                (title, description, "DRAFT", created_by.strip()),
             )
             row = cur.fetchone()
             if row is None:
