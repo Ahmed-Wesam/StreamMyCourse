@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import logging
 from typing import Any, Dict, Optional, Tuple
@@ -120,6 +120,7 @@ def handle(
     svc: CourseManagementService,
     video_bucket: str,
     auth_svc: UserProfileProvisioner,
+    jwt_config: "CognitoJwtConfig | None" = None,
 ) -> Dict[str, Any]:
     method, raw_path = _method_and_path(event)
     if method == "OPTIONS":
@@ -128,7 +129,7 @@ def handle(
     action, params = _route(method, raw_path)
     # Set action in context for correlation logging
     update_action(action)
-    claims = _jwt_claims(event)
+    claims = apigw_cognito_claims(event, jwt_config=jwt_config)
 
     try:
         # Authentication lives at the controller boundary. Public reads remain public;
