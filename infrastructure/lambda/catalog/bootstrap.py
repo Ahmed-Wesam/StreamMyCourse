@@ -20,7 +20,6 @@ import json
 from dataclasses import dataclass
 from typing import Any, Callable, Dict, Optional, Tuple
 
-from _diag import trace  # DIAGNOSTIC: temporary stage tracer
 from config import AppConfig, load_config
 from services.auth.rds_repo import UserProfileRdsRepository
 from services.auth.service import UserProfileService
@@ -87,11 +86,8 @@ def _build_rds_connection_factory(cfg: AppConfig) -> ConnectionFactory:
         raise RuntimeError("DB_NAME is required for the RDS catalog")
 
     def factory() -> Any:
-        trace("factory.enter")
         sm = _secretsmanager_client()
-        trace("factory.before_get_secret")
         response = sm.get_secret_value(SecretId=cfg.db_secret_arn)
-        trace("factory.after_get_secret")
         payload_raw = response.get("SecretString") or ""
         try:
             payload = json.loads(payload_raw)
@@ -101,8 +97,7 @@ def _build_rds_connection_factory(cfg: AppConfig) -> ConnectionFactory:
         password = str(payload.get("password") or "")
         if not user or not password:
             raise RuntimeError("RDS secret missing username/password fields")
-        trace("factory.before_psycopg2_connect", host=cfg.db_host)
-        conn = _psycopg2_connect(
+        return _psycopg2_connect(
             host=cfg.db_host,
             port=int(cfg.db_port or 5432),
             dbname=cfg.db_name,
@@ -119,8 +114,6 @@ def _build_rds_connection_factory(cfg: AppConfig) -> ConnectionFactory:
             # repo-layer OperationalError retry can open a fresh connection.
             options="-c statement_timeout=10000",
         )
-        trace("factory.after_psycopg2_connect")
-        return conn
 
     return factory
 
@@ -191,7 +184,6 @@ def lambda_bootstrap() -> Tuple[
 
     existing = get_cached_aws_deps()
     if existing is not None:
-        trace("bootstrap.cache_hit")
         return (
             existing.cfg,
             existing.service,
@@ -199,8 +191,6 @@ def lambda_bootstrap() -> Tuple[
             existing.progress_service,
         )
 
-    trace("bootstrap.cache_miss")
     deps = build_aws_deps(cfg)
     _cached["aws"] = deps
-    trace("bootstrap.cache_populated")
     return deps.cfg, deps.service, deps.auth_service, deps.progress_service

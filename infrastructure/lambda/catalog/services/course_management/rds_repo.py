@@ -28,7 +28,6 @@ try:  # pragma: no cover - optional dependency path
 except Exception:  # pragma: no cover - surface at first DB call instead
     psycopg2 = None  # type: ignore[assignment]
 
-from _diag import trace  # DIAGNOSTIC: temporary stage tracer
 from services.common.errors import Conflict
 from services.course_management.models import Course, CourseModule, Lesson
 
@@ -43,20 +42,15 @@ def _atomic_transaction(conn: Any) -> Iterator[None]:
     flips ``autocommit`` off for the duration, commits on success, rolls
     back on exception, and always restores ``autocommit=True`` afterward.
     """
-    trace("repo.atomic.enter")
     conn.autocommit = False
     try:
         yield
-        trace("repo.atomic.before_commit")
         conn.commit()
-        trace("repo.atomic.after_commit")
-    except Exception as exc:
-        trace("repo.atomic.exception", exc_type=type(exc).__name__)
+    except Exception:
         conn.rollback()
         raise
     finally:
         conn.autocommit = True
-        trace("repo.atomic.exit")
 
 
 logger = logging.getLogger(__name__)
@@ -171,9 +165,7 @@ class CourseCatalogRdsRepository:
     # ------------------------------------------------------------------
     def _connection(self) -> Any:
         if self._conn is None:
-            trace("repo.connection.factory_call")
             self._conn = self._conn_factory()
-            trace("repo.connection.factory_returned", cached=False)
         return self._conn
 
     def _execute(
@@ -186,33 +178,20 @@ class CourseCatalogRdsRepository:
         connection. This handles RDS idle timeouts and cross-region network
         blips without bubbling a 500 to the user on the first failure.
         """
-        sql_tag = sql.strip().split(None, 2)[:2]
-        sql_short = "_".join(sql_tag) if sql_tag else "?"
-        trace("repo.execute.enter", sql=sql_short, commit=commit)
         try:
-            trace("repo.execute.before_connection", sql=sql_short)
             conn = self._connection()
-            trace("repo.execute.after_connection", sql=sql_short)
             cur = conn.cursor()
-            trace("repo.execute.before_cur_execute", sql=sql_short)
             cur.execute(sql, params)
-            trace("repo.execute.after_cur_execute", sql=sql_short)
             if commit:
-                trace("repo.execute.before_commit", sql=sql_short)
                 conn.commit()
-                trace("repo.execute.after_commit", sql=sql_short)
             return cur
         except Exception as exc:  # broad so the retry covers any driver re-raise
-            trace("repo.execute.exception", sql=sql_short, exc_type=type(exc).__name__)
             if psycopg2 is not None and isinstance(exc, psycopg2.OperationalError):
                 logger.warning("RDS connection lost, reconnecting and retrying once: %s", exc)
-                trace("repo.execute.retry.discard_conn", sql=sql_short)
                 self._conn = None
                 conn = self._connection()
                 cur = conn.cursor()
-                trace("repo.execute.retry.before_cur_execute", sql=sql_short)
                 cur.execute(sql, params)
-                trace("repo.execute.retry.after_cur_execute", sql=sql_short)
                 if commit:
                     conn.commit()
                 return cur
