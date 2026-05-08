@@ -233,6 +233,9 @@ class TestRdsConnectionFactory:
         assert connect_kwargs.get("dbname") == "smc"
         assert connect_kwargs.get("user") == "smc_app"
         assert connect_kwargs.get("password") == "hunter2"
+        # Server-side cap so a single wedged statement raises QueryCanceled
+        # instead of hanging the warm container until the Lambda timeout.
+        assert connect_kwargs.get("options") == "-c statement_timeout=10000"
 
     def test_psycopg2_connect_sets_autocommit_true_on_connection(
         self, monkeypatch: pytest.MonkeyPatch

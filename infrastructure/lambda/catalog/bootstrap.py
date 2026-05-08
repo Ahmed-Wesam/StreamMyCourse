@@ -105,6 +105,11 @@ def _build_rds_connection_factory(cfg: AppConfig) -> ConnectionFactory:
             password=password,
             sslmode="require",
             connect_timeout=5,
+            # Server-side single-statement cap. A wedged query raises
+            # psycopg2.errors.QueryCanceled at 10s instead of stalling the warm
+            # container until the Lambda hard timeout, letting the repo-layer
+            # OperationalError retry path open a fresh connection if needed.
+            options="-c statement_timeout=10000",
         )
 
     return factory
