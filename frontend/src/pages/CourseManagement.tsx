@@ -142,10 +142,9 @@ export default function CourseManagement() {
     setError(null)
 
     try {
-      const lessonInput =
-        modules.length > 1 && selectedModuleId
-          ? { title: newLessonTitle, moduleId: selectedModuleId }
-          : { title: newLessonTitle }
+      const lessonInput = selectedModuleId
+        ? { title: newLessonTitle, moduleId: selectedModuleId }
+        : { title: newLessonTitle }
       await createAndUploadDraftLesson({
         courseId,
         lessonInput,
