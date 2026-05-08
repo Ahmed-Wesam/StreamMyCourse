@@ -6,6 +6,7 @@ import logging
 import time
 from typing import Any, Dict, Optional
 
+from _diag import trace  # DIAGNOSTIC: temporary stage tracer; revert with this commit
 from bootstrap import lambda_bootstrap
 from config import load_config
 from services.auth.controller import handle_users_me
@@ -39,9 +40,13 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     method = ""
     raw_path = ""
 
+    rid = getattr(context, "aws_request_id", "") if context is not None else ""
+    trace("handler.enter", rid=rid)
+
     try:
         # Bind request context for correlation IDs
         bind_from_lambda_event(event=event, lambda_context=context)
+        trace("handler.after_bind", rid=rid)
 
         method = (
             event.get("requestContext", {}).get("http", {}).get("method")
@@ -51,8 +56,10 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
 
         raw_path = apigw_routing_path(event)
         set_request_path(raw_path)
+        trace("handler.after_route", rid=rid, method=method, path=raw_path)
 
         cors_cfg = load_config()
+        trace("handler.after_load_config", rid=rid)
         if not cors_cfg.allowed_origins:
             logger.warning(
                 "ALLOWED_ORIGINS is empty or unset; refusing requests until CORS allowlist is configured",
@@ -70,6 +77,7 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             )
         else:
             cfg, service, auth_service, progress_service = lambda_bootstrap()
+            trace("handler.after_bootstrap", rid=rid, has_service=service is not None)
 
             headers = event.get("headers") or {}
             req_origin = headers.get("origin") or headers.get("Origin")
@@ -131,6 +139,7 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                         jwt_config=jwt_config,
                     )
                 else:
+                    trace("handler.dispatch.course_management", rid=rid, method=method, path=raw_path)
                     response = course_management_handle(
                         event,
                         origin=origin,
@@ -140,6 +149,7 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                         auth_enforced=cfg.cognito_auth_enabled,
                         jwt_config=jwt_config,
                     )
+                    trace("handler.after_dispatch", rid=rid)
 
         # Calculate duration and log request completion
         duration_ms = int((time.perf_counter() - start_time) * 1000)
