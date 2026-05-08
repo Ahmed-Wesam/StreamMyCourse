@@ -51,16 +51,6 @@ export function isProgressRdsUnavailableError(e: unknown): boolean {
 }
 
 /**
- * True when progress tracking requires authentication that is not configured.
- * The API returns 503 with code `auth_not_configured`.
- */
-export function isProgressAuthNotConfiguredError(e: unknown): boolean {
-  if (!(e instanceof ApiError)) return false
-  if (e.status === 503 && e.code === 'auth_not_configured') return true
-  return false
-}
-
-/**
  * True when playback was denied because the caller is not authenticated
  * (missing or rejected token at the gateway, or Lambda `unauthorized`).
  */

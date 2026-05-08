@@ -75,7 +75,6 @@ class TestHandleUsersMeRealEventStructure:
             event,
             origin="*",
             auth_svc=auth_svc,
-            auth_enforced=True,
         )
 
         assert resp["statusCode"] == 200
@@ -94,7 +93,6 @@ class TestHandleUsersMeRealEventStructure:
             event,
             origin="*",
             auth_svc=auth_svc,
-            auth_enforced=True,
         )
 
         assert resp["statusCode"] == 401
@@ -118,7 +116,6 @@ class TestHandleUsersMeRealEventStructure:
             event,
             origin="*",
             auth_svc=auth_svc,
-            auth_enforced=True,
         )
 
         assert resp["statusCode"] == 200
@@ -145,7 +142,6 @@ class TestHandleUsersMeRealEventStructure:
             event,
             origin="*",
             auth_svc=auth_svc,
-            auth_enforced=True,
         )
 
         assert resp["statusCode"] == 200
@@ -188,7 +184,6 @@ class TestHandleUsersMeRealEventStructure:
             event,
             origin="*",
             auth_svc=auth_svc,
-            auth_enforced=True,
             jwt_config=jwt_config,
         )
 
@@ -216,7 +211,6 @@ class TestHandleUsersMeRealEventStructure:
             event,
             origin="*",
             auth_svc=auth_svc,
-            auth_enforced=True,
         )
 
         assert resp["statusCode"] == 401
@@ -238,7 +232,6 @@ class TestHandleUsersMeRealEventStructure:
             event,
             origin="*",
             auth_svc=auth_svc,
-            auth_enforced=True,
         )
 
         assert resp["statusCode"] == 401

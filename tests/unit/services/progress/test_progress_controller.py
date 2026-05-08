@@ -102,7 +102,6 @@ class TestHandleProgressRequest:
             evt,
             origin="*",
             progress_svc=progress_svc,
-            auth_enforced=True,
             jwt_config=None,
         )
 
@@ -142,7 +141,6 @@ class TestHandleProgressRequest:
             evt,
             origin="*",
             progress_svc=progress_svc,
-            auth_enforced=True,
             jwt_config=None,
         )
 
@@ -184,7 +182,6 @@ class TestHandleProgressRequest:
             evt,
             origin="*",
             progress_svc=progress_svc,
-            auth_enforced=True,
             jwt_config=None,
         )
 
@@ -214,7 +211,6 @@ class TestHandleProgressRequest:
             evt,
             origin="*",
             progress_svc=progress_svc,
-            auth_enforced=True,
             jwt_config=None,
         )
 
@@ -239,7 +235,6 @@ class TestHandleProgressRequest:
             evt,
             origin="*",
             progress_svc=progress_svc,
-            auth_enforced=True,
             jwt_config=None,
         )
 
@@ -269,7 +264,6 @@ class TestHandleProgressRequest:
             evt,
             origin="*",
             progress_svc=progress_svc,
-            auth_enforced=True,
             jwt_config=None,
         )
 
@@ -290,7 +284,6 @@ class TestHandleProgressRequest:
             evt,
             origin="*",
             progress_svc=progress_svc,
-            auth_enforced=True,
             jwt_config=None,
         )
 
@@ -315,7 +308,6 @@ class TestHandleProgressRequest:
             evt,
             origin="*",
             progress_svc=progress_svc,
-            auth_enforced=True,
             jwt_config=None,
         )
 
@@ -336,7 +328,6 @@ class TestHandleProgressRequest:
             evt,
             origin="https://app.example",
             progress_svc=progress_svc,
-            auth_enforced=True,
             jwt_config=None,
         )
 
@@ -359,7 +350,6 @@ class TestHandleProgressRequest:
             evt,
             origin="*",
             progress_svc=progress_svc,
-            auth_enforced=True,
             jwt_config=None,
         )
 

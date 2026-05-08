@@ -105,7 +105,6 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                         event,
                         origin=origin,
                         progress_svc=progress_service,
-                        auth_enforced=cfg.cognito_auth_enabled,
                         jwt_config=jwt_config,
                     )
                 elif (
@@ -119,7 +118,6 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                         event,
                         origin=origin,
                         progress_svc=progress_service,
-                        auth_enforced=cfg.cognito_auth_enabled,
                         jwt_config=jwt_config,
                     )
                 elif method == "GET" and parts == ["users", "me"]:
@@ -127,7 +125,6 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                         event,
                         origin=origin,
                         auth_svc=auth_service,
-                        auth_enforced=cfg.cognito_auth_enabled,
                         jwt_config=jwt_config,
                     )
                 else:
@@ -137,7 +134,6 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                         svc=service,
                         video_bucket=cfg.video_bucket,
                         auth_svc=auth_service,
-                        auth_enforced=cfg.cognito_auth_enabled,
                         jwt_config=jwt_config,
                     )
 

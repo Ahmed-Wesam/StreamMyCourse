@@ -12,7 +12,7 @@ from __future__ import annotations
 import logging
 from typing import Any, Dict, Optional, Tuple
 
-from services.common.errors import BadRequest, HttpError, NotFound
+from services.common.errors import BadRequest, HttpError, NotFound, Unauthorized
 from services.common.http import (
     apigw_cognito_claims,
     apigw_routing_path,
@@ -116,7 +116,6 @@ def handle_progress_request(
     *,
     origin: Optional[str],
     progress_svc: LessonProgressService,
-    auth_enforced: bool = False,
     jwt_config: Optional[CognitoJwtConfig] = None,
 ) -> Dict[str, Any]:
     """Handle progress-related HTTP requests.
@@ -125,7 +124,6 @@ def handle_progress_request(
         event: API Gateway Lambda event
         origin: CORS origin
         progress_svc: LessonProgressService instance
-        auth_enforced: Whether authentication is enforced
         jwt_config: Optional JWT verification config
 
     Returns:
@@ -142,6 +140,8 @@ def handle_progress_request(
     user_sub = _actor_sub(claims)
 
     try:
+        if not user_sub:
+            raise Unauthorized("Authentication required")
         if action == "get_course_progress":
             result: CourseProgressResponse = progress_svc.get_course_progress(
                 user_sub=user_sub,

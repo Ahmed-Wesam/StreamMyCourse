@@ -25,7 +25,6 @@ def _clear_env(monkeypatch: pytest.MonkeyPatch) -> None:
         "DEFAULT_MP4_URL",
         "VIDEO_URL",
         "ALLOWED_ORIGINS",
-        "COGNITO_AUTH_ENABLED",
         "DB_HOST",
         "DB_NAME",
         "DB_PORT",
@@ -54,7 +53,6 @@ def _rds_cfg(
         default_mp4_url="",
         video_url="",
         allowed_origins=["*"],
-        cognito_auth_enabled=False,
         db_host=db_host,
         db_name=db_name,
         db_port=5432,
@@ -120,7 +118,6 @@ class TestBuildAwsDeps:
             default_mp4_url="",
             video_url="",
             allowed_origins=["*"],
-            cognito_auth_enabled=False,
         )
         with pytest.raises(RuntimeError, match="RDS catalog requires"):
             bootstrap_mod.build_aws_deps(empty_cfg)
@@ -141,7 +138,6 @@ class TestWarmAwsDepsIfNeeded:
             default_mp4_url="",
             video_url="",
             allowed_origins=["*"],
-            cognito_auth_enabled=False,
         )
         bootstrap_mod.warm_aws_deps_if_needed(cfg)
         assert bootstrap_mod._cached == {}
