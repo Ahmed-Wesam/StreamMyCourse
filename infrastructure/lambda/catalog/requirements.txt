@@ -6,6 +6,3 @@
 # macOS/Windows. boto3 is NOT listed -- it ships with the Lambda runtime.
 
 psycopg2-binary==2.9.9
-# JWT signature verification for Cognito tokens on public API Gateway routes
-# (where API Gateway does not enforce the authorizer). Provides RSA verification.
-cryptography>=42.0.0

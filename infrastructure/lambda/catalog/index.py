@@ -14,7 +14,6 @@ from services.progress.controller import handle_progress_request
 from services.common.logging_setup import configure_logging
 from services.common.runtime_context import bind_from_lambda_event, clear_request_context, set_request_path
 from services.course_management.controller import handle as course_management_handle
-from services.common.jwt_verify import CognitoJwtConfig
 
 logger = logging.getLogger(__name__)
 
@@ -119,15 +118,6 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                         svc=service,
                         video_bucket=cfg.video_bucket,
                         auth_svc=auth_service,
-                        jwt_config=(
-                            CognitoJwtConfig(
-                                user_pool_id=cfg.cognito_user_pool_id,
-                                client_ids=cfg.cognito_client_ids,
-                                region=cfg.cognito_region,
-                            )
-                            if cfg.cognito_user_pool_id and cfg.cognito_region
-                            else None
-                        ),
                     )
 
         # Calculate duration and log request completion
