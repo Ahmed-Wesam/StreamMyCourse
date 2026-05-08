@@ -149,7 +149,9 @@ def _verify_signature(token: str, jwk: Dict[str, Any]) -> bool:
 
 
 def _validate_claims(payload: Dict[str, Any], config: CognitoAuthorizerConfig) -> bool:
-    # Standard validations required by the slice.
+    # Cognito Id tokens carry ``aud`` and ``custom:role`` consistently; pool access tokens
+    # typically omit custom attributes — accepting them maps everyone to FALLBACK_ROLE / student,
+    # which mis-assigns RBAC versus Id tokens from the same user.
     if payload.get("token_use") != "id":
         return False
 
@@ -157,8 +159,8 @@ def _validate_claims(payload: Dict[str, Any], config: CognitoAuthorizerConfig) -
     if iss != config.issuer:
         return False
 
-    aud = payload.get("aud")
     if config.allowed_client_ids:
+        aud = payload.get("aud")
         if aud not in config.allowed_client_ids:
             return False
 
