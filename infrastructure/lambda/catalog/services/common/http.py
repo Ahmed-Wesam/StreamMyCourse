@@ -135,12 +135,18 @@ _SKIP_AUTHORIZER_META = frozenset({"claims", "principalId", "integrationLatency"
 
 def apigw_cognito_claims(
     event: Dict[str, Any],
+    *,
+    jwt_config: "CognitoJwtConfig | None" = None,
 ) -> Dict[str, Any]:
-    """Trusted JWT claims forwarded by API Gateway authorizers.
+    """JWT claims for request authorization.
 
-    This function intentionally **does not** parse `Authorization` headers or perform any
-    JWT verification. In this repo, the catalog Lambda runs in a VPC and must trust only
-    the already-authenticated `requestContext.authorizer` context set by API Gateway.
+    Prefer API Gateway authorizer claims when present (already-authenticated).
+
+    For **public** routes that intentionally do not attach an authorizer (for example,
+    `GET /courses/{id}/modules`), API Gateway will not populate `requestContext.authorizer`
+    even if the caller supplies an `Authorization: Bearer ...` header. In that case, we
+    optionally verify the JWT inside the Lambda (fail-secure) so draft-only behavior can
+    still be scoped to the caller when a valid token is provided.
     """
     auth = event.get("requestContext", {}).get("authorizer") or {}
     claims: Dict[str, Any] | None = None
@@ -159,5 +165,23 @@ def apigw_cognito_claims(
         if claims is None and isinstance(auth.get("sub"), str):
             claims = {k: v for k, v in auth.items() if k not in _SKIP_AUTHORIZER_META}
 
-    return claims if claims is not None else {}
+    if claims is not None:
+        return claims
+
+    # Optional fallback: verify Authorization bearer token when no authorizer was attached.
+    if jwt_config is not None:
+        headers = event.get("headers") or {}
+        raw = headers.get("authorization") or headers.get("Authorization") or ""
+        s = str(raw or "").strip()
+        if s.lower().startswith("bearer "):
+            token = s.split(" ", 1)[1].strip()
+            if token:
+                # Local import keeps cold-start path lean for stacks that never use this fallback.
+                from services.common.jwt_verify import parse_jwt_claims_verified
+
+                verified_claims = parse_jwt_claims_verified(token, jwt_config)
+                if verified_claims:
+                    return verified_claims
+
+    return {}
 
