@@ -4,6 +4,8 @@ description: >-
   Runs a code review on pending changes (bugs, regressions, security, missing tests;
   findings by severity), implements fixes for issues found, then performs the /commit
   workflow (CI-parity checks, conventional commits, /update-docs when warranted).
+  Local HTTPS integration against dev follows commit/SKILL.md including omitting it when
+  backend or integration expectations would fail until deploy.
   Use when the user invokes /review_and_commit or asks to review then commit without pushing.
 disable-model-invocation: true
 ---
@@ -20,15 +22,19 @@ Combine **code review** and **`/commit`** in one workflow: review first, fix wha
 
 2. **Mindset** — Code review: prioritize **bugs**, **behavioral regressions**, **security**, and **missing or inadequate tests**.
 
-3. **Evidence-first rule (no hypotheticals)** — Every finding must be backed by **concrete evidence in the diff / codebase**:
+3. **Evidence-first rule (no hypothetical severity)** — Follow the same bar as **[`.cursor/commands/review.md`](../../commands/review.md)** (`/review`): **severity labels require proof** from the diff, repo, or cited tests—not “might,” “could,” undocumented platform guesses, or “verify later” filler.
+
+   Every finding must be backed by **concrete evidence**:
+
    - **Read the relevant code paths** before raising a concern (especially for auth/authz). For example, if you suspect “protected route may be public,” you must inspect:
      - API Gateway method auth settings in templates (e.g. `AuthorizationType`, authorizer wiring),
      - the controller’s auth gate(s) (`Unauthorized` checks, required claims),
      - and the service-layer authorization checks (role/ownership/enrollment).
    - Avoid meaningless conditionals like: “if controller auth is bypassed, risk…”. Only raise conditionals when you also provide the **specific bypass path** (e.g., “Route X uses CUSTOM authorizer that always Allow, and controller does not check sub for action Y”).
    - Security issues must include: **what endpoint/path**, **what request**, and **what actual behavior** (or a minimal repro/test) that demonstrates the issue.
+   - If after reading code you cannot prove the issue: **omit** or use **Out of scope (not counted as findings):** **without** a severity label—never **Medium/Low** “just in case.”
 
-4. **Output** — Report findings as the **primary** content, **ordered by severity** (critical first). Keep narrative minimal; findings matter most. Each bullet should include the **file path(s)** and what was read to reach the conclusion.
+4. **Output** — Report findings as the **primary** content, **ordered by severity** (critical first). Keep narrative minimal; findings matter most. Each bullet must include **file path(s)** and **what you read or ran** so the conclusion is checkable—not speculation.
 
 5. **Fixes** — If there are issues worth fixing, **implement the fixes** in the repo (tests or code as appropriate). Do not stop at advice unless the issue truly needs a product decision.
 
@@ -40,12 +46,14 @@ Combine **code review** and **`/commit`** in one workflow: review first, fix wha
 
 When Phase 1 is complete, follow **[`.cursor/skills/commit/SKILL.md`](../commit/SKILL.md)** end-to-end:
 
-- Analyze changes, **CI parity** checks (same as `ci.yml` jobs: frontend, lambda, cloudformation, workflow-lint, lambda-unit-tests, integration-tests-static), **local HTTPS integration** when that skill says the diff warrants it (verify repo-root **`.env.local`** has **`LOCAL_COGNITO_PASSWORD`** set, then `./scripts/run-local-integration-tests.sh`), group commits, conventional messages, **`/update-docs`** when warranted.
+- Analyze changes, **CI parity** checks (same as `ci.yml` jobs: frontend, lambda, cloudformation, workflow-lint, lambda-unit-tests, integration-tests-static), **local HTTPS integration** when **[`../commit/SKILL.md`](../commit/SKILL.md)** says to run it—**omit** that script under the same **deploy mismatch** rules there (Lambda/API/infra or integration tests that assume a backend not yet on dev). When running: verify repo-root **`.env.local`** has **`LOCAL_COGNITO_PASSWORD`**, then `./scripts/run-local-integration-tests.sh`. Group commits, conventional messages, **`/update-docs`** when warranted.
 - Obey **Git safety** and **never push** rules from that skill.
 
 **Push:** Do **not** run `git push` unless the user explicitly requested push in the same instruction or a clear follow-up.
 
 ## Quick reference — Review severity ordering
+
+Use **only** for findings that satisfy the evidence rule in §3—not for hypotheticals.
 
 1. **Critical / high** — Correctness bugs, security flaws, data loss, broken auth or trust boundaries.
 2. **Medium** — Regressions, wrong API contracts, error-handling gaps that surface to users.

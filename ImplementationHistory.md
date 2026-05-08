@@ -4,6 +4,23 @@
 
 ---
 
+## 2026-05-08 — Public catalog GETs: permissive REQUEST authorizer + `/review` evidence bar + commit HTTPS guidance
+
+### API stack (`infrastructure/templates/api-stack.yaml`)
+
+- **`CatalogApiPublicReadAuthorizer`** — `REQUEST` Lambda authorizer (same **`catalog_token_authorizer`** zip as **`TokenAuthorizerLambda`**): permissive **`Allow`** with anonymous context when `Authorization` missing/invalid/non–id-token; valid Cognito Id token → **`sub`** / **`role`** / **`email`** in API Gateway **`context`**.
+- **GET wiring** — `GET /courses/{courseId}`, `GET …/modules`, `GET …/lessons` use **`AuthorizationType: CUSTOM`** + **`AuthorizerId`** above (replacing pool-only auth on those reads so anonymous catalog works without Gateway 401, while Bearer still hydrates Lambda claims).
+- **Deployment** — Logical id bump **`CatalogApiDeploymentV14` → `CatalogApiDeploymentV15`** with **`DependsOn`** including the new authorizer.
+- **`IdentitySource`** — Scalar string **`method.request.header.Authorization`** for **`Type: REQUEST`** (matches Cognito pool authorizer form; satisfies **cfn-lint** schema).
+
+### Cursor
+
+- **[`.cursor/commands/review.md`](.cursor/commands/review.md)** — Expanded **evidence-only** rule: severity labels require demonstrable defects; forbid hypothetical “might/could” padding; **`Out of scope`** tail without severity.
+- **[`.cursor/skills/review-and-commit/SKILL.md`](.cursor/skills/review-and-commit/SKILL.md)** — Phase 1 aligns with **`/review`**; severity quick-reference applies only when evidence-backed.
+- **[`.cursor/skills/commit/SKILL.md`](.cursor/skills/commit/SKILL.md)** — When **`./scripts/run-local-integration-tests.sh`** may be omitted: deploy mismatch vs **dev**, user waiver, typo-only Markdown; distinguishes static **`pytest --collect-only`** from HTTPS live-dev tests.
+
+---
+
 ## 2026-05-08 — Cognito JWT audience deploy + Gateway claims fallback + `/review` command
 
 ### Auth / catalog
