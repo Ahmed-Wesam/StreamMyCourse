@@ -4,6 +4,29 @@
 
 ---
 
+## 2026-05-08 — Cognito JWT audience deploy + Gateway claims fallback + `/review` command
+
+### Auth / catalog
+
+- **[`services/common/http.py`](infrastructure/lambda/catalog/services/common/http.py)** — `_claims_with_principal_fallback`: when **`requestContext.authorizer.sub`** is empty, copy **`principalId`** into **`sub`** (gateway-trusted); tolerate non-dict authorizer payloads.
+- **[`catalog_token_authorizer/index.py`](infrastructure/lambda/catalog_token_authorizer/index.py)** — Document and keep **IdToken-only** JWT validation (**`token_use == id`**): pool **access tokens** typically omit **`custom:role`**; accepting them mapped callers to **`student`** and diverged from Id-token RBAC.
+
+### Deploy
+
+- **`scripts/deploy-backend.sh`** — Resolve **`TeacherUserPoolClientId`** and **`StudentUserPoolClientId`** from **`StreamMyCourse-Auth-${ENV}`**, pass **`CognitoClientId`** as CSV to the API stack; stderr **Warning** / **Note** when the parameter override is omitted (stack keeps prior value).
+
+### Tests
+
+- [`tests/unit/services/common/test_http.py`](tests/unit/services/common/test_http.py) — flattened and nested **`authorizer`** + **`principalId`** cases.
+- [`tests/unit/services/token_authorizer/test_token_authorizer.py`](tests/unit/services/token_authorizer/test_token_authorizer.py) — access JWT → empty context; unknown **`token_use`** (e.g. refresh) unchanged.
+
+### Tooling
+
+- [`.cursor/commands/review.md`](.cursor/commands/review.md) — project **`/review`** command (severity-only findings, no hypothetical futures as ranked issues).
+- [`.cursor/skills/review-and-commit/SKILL.md`](.cursor/skills/review-and-commit/SKILL.md) — links review-only flows to **`/review`** (**`../../commands/review.md`**).
+
+---
+
 ## 2026-05-08 — Authorization hardening: createdBy invariant + privilege-escalation fix
 
 ### Security fix
