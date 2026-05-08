@@ -67,13 +67,8 @@ The **Radon** step matches CI (there it has `continue-on-error: true`); treat a 
 **CloudFormation** (same as CI job `cloudformation`; repo root):
 
 ```bash
-pip install pyyaml
-python scripts/parse_cloudformation_yaml.py infrastructure/templates/api-stack.yaml
-python scripts/parse_cloudformation_yaml.py infrastructure/templates/auth-stack.yaml
-python scripts/parse_cloudformation_yaml.py infrastructure/templates/video-stack.yaml
-python scripts/parse_cloudformation_yaml.py infrastructure/templates/edge-hosting-stack.yaml
-python scripts/parse_cloudformation_yaml.py infrastructure/templates/github-deploy-role-stack.yaml
-python scripts/parse_cloudformation_yaml.py infrastructure/templates/billing-alarm.yaml
+pip install cfn-lint
+./scripts/cfn-lint-templates.sh
 ```
 
 **GitHub Actions workflow lint** (same as CI job `workflow-lint`; repo root). You **do not** need a committed `actionlint` binary: either install **actionlint** on your **`PATH`** once (e.g. [releases](https://github.com/rhysd/actionlint/releases), `go install github.com/rhysd/actionlint/cmd/actionlint@v1.7.7`, or a package manager), or download per run (ignored by git — see root [`.gitignore`](../../../.gitignore) **`/actionlint`** / **`/actionlint.exe`**).

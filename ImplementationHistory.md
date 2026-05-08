@@ -335,7 +335,7 @@ Investigation of recurring "all S3 data deleted on deploy" reports identified th
 ### Verification
 
 - `aws cloudformation validate-template` passes for all four modified templates (`video-stack.yaml`, `edge-hosting-stack.yaml`, `media-cleanup-stack.yaml`, `billing-alarm.yaml`).
-- [`scripts/parse_cloudformation_yaml.py`](scripts/parse_cloudformation_yaml.py) parses each modified template (`YAML_OK`).
+- `cfn-lint` passes for all modified templates (`./scripts/cfn-lint-templates.sh`).
 - No existing data needs migration — `Retain` policies are inert until a delete/replace event.
 
 ### Ops / Rollout
