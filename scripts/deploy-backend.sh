@@ -257,9 +257,48 @@ dev)
 esac
 
 echo "Deploying API stack: $API_STACK (video bucket: $VIDEO_BUCKET)"
+# JWT audience validation in the TOKEN authorizer must accept every app client that mints
+# IdTokens for this API (teacher + student). CI integration tests mint both audiences.
+AUTH_STACK_NAME="StreamMyCourse-Auth-${ENV}"
+COGNITO_CLIENT_IDS="${COGNITO_CLIENT_IDS:-}"
+if [[ -z "${COGNITO_CLIENT_IDS}" ]]; then
+  if aws cloudformation describe-stacks --stack-name "$AUTH_STACK_NAME" --region "$REGION" &>/dev/null; then
+    TEACHER_CLIENT="$(aws cloudformation describe-stacks \
+      --stack-name "$AUTH_STACK_NAME" \
+      --region "$REGION" \
+      --query "Stacks[0].Outputs[?OutputKey=='TeacherUserPoolClientId'].OutputValue" \
+      --output text)"
+    STUDENT_CLIENT="$(aws cloudformation describe-stacks \
+      --stack-name "$AUTH_STACK_NAME" \
+      --region "$REGION" \
+      --query "Stacks[0].Outputs[?OutputKey=='StudentUserPoolClientId'].OutputValue" \
+      --output text)"
+    CID_PARTS=()
+    if [[ -n "${TEACHER_CLIENT}" && "${TEACHER_CLIENT}" != "None" ]]; then
+      CID_PARTS+=("${TEACHER_CLIENT}")
+    fi
+    if [[ -n "${STUDENT_CLIENT}" && "${STUDENT_CLIENT}" != "None" && "${STUDENT_CLIENT}" != "${TEACHER_CLIENT}" ]]; then
+      CID_PARTS+=("${STUDENT_CLIENT}")
+    fi
+    if ((${#CID_PARTS[@]})); then
+      COGNITO_CLIENT_IDS="$(IFS=,; echo "${CID_PARTS[*]}")"
+    fi
+  fi
+fi
+if [[ -z "${COGNITO_CLIENT_IDS}" ]]; then
+  if aws cloudformation describe-stacks --stack-name "$AUTH_STACK_NAME" --region "$REGION" &>/dev/null; then
+    echo >&2 "Warning: could not derive non-empty Cognito client ids from ${AUTH_STACK_NAME}; CognitoClientId parameter not overridden (existing API stack value kept when updating)."
+  else
+    echo >&2 "Note: auth stack ${AUTH_STACK_NAME} not found; Cognito client ids not auto-filled. Existing API stack value kept when updating. Set COGNITO_CLIENT_IDS to override explicitly."
+  fi
+fi
+
 COGNITO_OVERRIDE=()
 if [[ -n "${COGNITO_USER_POOL_ARN:-}" ]]; then
-  COGNITO_OVERRIDE=("CognitoUserPoolArn=${COGNITO_USER_POOL_ARN}")
+  COGNITO_OVERRIDE+=("CognitoUserPoolArn=${COGNITO_USER_POOL_ARN}")
+fi
+if [[ -n "${COGNITO_CLIENT_IDS}" ]]; then
+  COGNITO_OVERRIDE+=("CognitoClientId=${COGNITO_CLIENT_IDS}")
 fi
 
 # Catalog Lambda requires VPC + DB_* from the RDS stack exports.
