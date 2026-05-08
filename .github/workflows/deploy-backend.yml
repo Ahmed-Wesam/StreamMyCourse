@@ -350,7 +350,16 @@ jobs:
       - name: Run pytest
         id: pytest
         working-directory: tests/integration
-        run: pytest -q --junitxml=results.xml
+        run: |
+          echo "[integration-diag] pytest_start=$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
+          # Disable errexit only around pytest so the end marker is emitted even
+          # on failure (default shell is `bash -eo pipefail`).
+          set +e
+          pytest -q --junitxml=results.xml
+          rc=$?
+          set -e
+          echo "[integration-diag] pytest_end=$(date -u +"%Y-%m-%dT%H:%M:%SZ") exit=$rc"
+          exit $rc
 
       - name: Summary
         if: always()
