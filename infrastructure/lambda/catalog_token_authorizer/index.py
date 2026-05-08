@@ -224,12 +224,15 @@ def _extract_bearer_token(raw: str) -> str:
 
 
 def handler(event: Dict[str, Any], _context: Any) -> Dict[str, Any]:
-    # TOKEN authorizer event shape:
-    # - authorizationToken: "Bearer <jwt>"
+    # REQUEST authorizer event shape:
+    # - headers: {"Authorization": "Bearer <jwt>", ...}
     # - methodArn: ARN of the invoked method
     method_arn = str((event or {}).get("methodArn") or "*")
-    raw = (event or {}).get("authorizationToken") or ""
-    token = _extract_bearer_token(str(raw))
+    headers = (event or {}).get("headers") or {}
+    raw = ""
+    if isinstance(headers, dict):
+        raw = headers.get("Authorization") or headers.get("authorization") or ""
+    token = _extract_bearer_token(str(raw or ""))
 
     if not token:
         return _allow(method_arn, "anonymous", _empty_context())

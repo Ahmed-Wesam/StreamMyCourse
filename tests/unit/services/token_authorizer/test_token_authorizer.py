@@ -36,7 +36,7 @@ def _make_token(payload: dict, *, kid: str = "kid-1") -> str:
 def _invoke(token: str | None, *, method_arn: str = "arn:aws:execute-api:us-east-1:1:api/stage/GET/x"):
     event = {"methodArn": method_arn}
     if token is not None:
-        event["authorizationToken"] = token
+        event["headers"] = {"Authorization": token}
     return authorizer.handler(event, None)
 
 

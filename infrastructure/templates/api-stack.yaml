@@ -231,8 +231,6 @@ Resources:
           DB_SECRET_ARN: !ImportValue
             'Fn::Sub': '${RdsStackName}-DbSecretArn'
           MEDIA_CLEANUP_QUEUE_URL: !Ref MediaCleanupQueueUrl
-          COGNITO_USER_POOL_ARN: !Ref CognitoUserPoolArn
-          COGNITO_CLIENT_ID: !Ref CognitoClientId
           PROGRESS_COMPLETE_RATIO: !Ref ProgressCompleteRatio
           PROGRESS_POSITION_SLACK_SEC: !Ref ProgressPositionSlackSec
       Tags:
@@ -321,7 +319,7 @@ Resources:
       - TokenAuthorizerLambdaApiPermission
     Properties:
       Name: !Sub 'StreamMyCourse-TokenAuthorizer-${Environment}'
-      Type: TOKEN
+      Type: REQUEST
       RestApiId: !Ref CatalogApi
       IdentitySource: method.request.header.Authorization
       AuthorizerResultTtlInSeconds: 300
@@ -500,7 +498,8 @@ Resources:
       RestApiId: !Ref CatalogApi
       ResourceId: !Ref CoursesResource
       HttpMethod: GET
-      AuthorizationType: NONE
+      AuthorizationType: CUSTOM
+      AuthorizerId: !Ref CatalogApiTokenAuthorizer
       Integration:
         IntegrationHttpMethod: POST
         Type: AWS_PROXY
@@ -567,7 +566,8 @@ Resources:
       RestApiId: !Ref CatalogApi
       ResourceId: !Ref CourseIdResource
       HttpMethod: GET
-      AuthorizationType: NONE
+      AuthorizationType: CUSTOM
+      AuthorizerId: !Ref CatalogApiTokenAuthorizer
       Integration:
         IntegrationHttpMethod: POST
         Type: AWS_PROXY
@@ -607,7 +607,8 @@ Resources:
       RestApiId: !Ref CatalogApi
       ResourceId: !Ref CourseModulesResource
       HttpMethod: GET
-      AuthorizationType: NONE
+      AuthorizationType: CUSTOM
+      AuthorizerId: !Ref CatalogApiTokenAuthorizer
       Integration:
         IntegrationHttpMethod: POST
         Type: AWS_PROXY
@@ -785,7 +786,8 @@ Resources:
       RestApiId: !Ref CatalogApi
       ResourceId: !Ref LessonsResource
       HttpMethod: GET
-      AuthorizationType: NONE
+      AuthorizationType: CUSTOM
+      AuthorizerId: !Ref CatalogApiTokenAuthorizer
       Integration:
         IntegrationHttpMethod: POST
         Type: AWS_PROXY
