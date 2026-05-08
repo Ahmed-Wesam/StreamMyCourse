@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 from typing import Any, Dict, Optional, Tuple
 
+from _diag import trace  # DIAGNOSTIC: temporary stage tracer
 from services.common.errors import Forbidden, HttpError, NotFound, Unauthorized
 from services.common.http import (
     apigw_cognito_claims,
@@ -143,13 +144,17 @@ def handle(
     jwt_config: Optional[CognitoJwtConfig] = None,
 ) -> Dict[str, Any]:
     method, raw_path = _method_and_path(event)
+    trace("ctl.enter", method=method, path=raw_path)
     if method == "OPTIONS":
         return options_response(origin)
 
     action, params = _route(method, raw_path)
+    trace("ctl.routed", action=action)
     # Set action in context for correlation logging
     update_action(action)
+    trace("ctl.before_jwt_claims", action=action)
     claims = _jwt_claims(event, jwt_config=jwt_config)
+    trace("ctl.after_jwt_claims", action=action, has_sub=bool(_actor_sub(claims)))
 
     try:
         if action == "list_courses":
