@@ -15,7 +15,7 @@ Infrastructure is **CloudFormation** YAML under **`infrastructure/templates/`** 
 
 ## IaC and changes
 
-- **Templates** (`api-stack.yaml`, `auth-stack.yaml`, `video-stack.yaml`, hosting stacks, **`github-deploy-role-stack.yaml`**, **`billing-alarm.yaml`**) must remain **parsable**: run **`scripts/parse_cloudformation_yaml.py`** (see **`AGENTS.md`** / CI) after substantive edits.
+- **Templates** (`api-stack.yaml`, `auth-stack.yaml`, `video-stack.yaml`, hosting stacks, **`github-deploy-role-stack.yaml`**, **`billing-alarm.yaml`**) must remain **valid**: run **`./scripts/cfn-lint-templates.sh`** (or `.\scripts\cfn-lint-templates.ps1`) after substantive edits.
 - **Least privilege**: IAM roles/policies and GitHub OIDC policies should grant only what **`design.md`** and the workloads need; follow **`infrastructure/README.md`** when altering deploy-role JSON or **`github-deploy-role-stack.yaml`**.
 - **Commits that add workflow permissions**: apply **`deploy-github-iam-stack`** / **`apply-github-deploy-role-policies`** locally **before push** (`AGENTS.md` / **`/commit`**).
 
