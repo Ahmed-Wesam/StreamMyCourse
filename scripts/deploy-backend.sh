@@ -16,6 +16,7 @@ REGION="${AWS_REGION:-eu-west-1}"
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 TEMPLATE_DIR="$ROOT/infrastructure/templates"
 LAMBDA_DIR="$ROOT/infrastructure/lambda/catalog"
+AUTH_LAMBDA_DIR="$ROOT/infrastructure/lambda/catalog_token_authorizer"
 
 ACCOUNT="$(aws sts get-caller-identity --query Account --output text --region "$REGION")"
 ARTIFACT_BUCKET="streammycourse-artifacts-${ACCOUNT}-${REGION}"
@@ -33,6 +34,7 @@ if [[ -z "$SUFFIX" ]]; then
   fi
 fi
 ZIP_KEY="catalog-${ENV}-${SUFFIX}.zip"
+AUTH_ZIP_KEY="catalog-token-authorizer-${ENV}-${SUFFIX}.zip"
 
 if ! aws s3api head-bucket --bucket "$ARTIFACT_BUCKET" --region "$REGION" 2>/dev/null; then
   echo "Creating artifacts bucket: $ARTIFACT_BUCKET"
@@ -46,9 +48,15 @@ fi
 # Do not use mktemp's empty file as the zip target — zip(1) treats it as a corrupt archive and exits 3.
 ZIP="/tmp/catalog-lambda-${ENV}-$$.zip"
 BUILD_DIR="/tmp/catalog-build-${ENV}-$$"
-trap 'rm -f "$ZIP"; rm -rf "$BUILD_DIR"' EXIT
+AUTH_ZIP="/tmp/catalog-token-authorizer-${ENV}-$$.zip"
+AUTH_BUILD_DIR="/tmp/catalog-token-authorizer-build-${ENV}-$$"
+trap 'rm -f "$ZIP" "$AUTH_ZIP"; rm -rf "$BUILD_DIR" "$AUTH_BUILD_DIR"' EXIT
 [[ -d "$LAMBDA_DIR" ]] || {
   echo "Lambda source directory missing: $LAMBDA_DIR" >&2
+  exit 1
+}
+[[ -d "$AUTH_LAMBDA_DIR" ]] || {
+  echo "Token authorizer source directory missing: $AUTH_LAMBDA_DIR" >&2
   exit 1
 }
 
@@ -134,6 +142,31 @@ PY
 _zip_dir_recursive "$BUILD_DIR" "$ZIP"
 echo "Uploading Lambda s3://${ARTIFACT_BUCKET}/${ZIP_KEY}"
 aws s3 cp "$ZIP" "s3://${ARTIFACT_BUCKET}/${ZIP_KEY}" --region "$REGION"
+
+# --- TOKEN authorizer Lambda bundle (outside VPC) -------------------------------
+
+rm -rf "$AUTH_BUILD_DIR"
+mkdir -p "$AUTH_BUILD_DIR"
+( cd "$AUTH_LAMBDA_DIR" && \
+  find . -type f ! -path './_vendor/*' ! -path '*/__pycache__/*' ! -name '*.pyc' -print0 \
+    | xargs -0 -I{} cp --parents '{}' "$AUTH_BUILD_DIR" )
+
+AUTH_REQ_FILE="$AUTH_LAMBDA_DIR/requirements.txt"
+if [[ -f "$AUTH_REQ_FILE" ]]; then
+  echo "Installing TOKEN authorizer runtime deps into $AUTH_BUILD_DIR/_vendor"
+  pip install \
+    --quiet \
+    --platform manylinux2014_x86_64 \
+    --only-binary=:all: \
+    --python-version 3.11 \
+    --implementation cp \
+    -r "$AUTH_REQ_FILE" \
+    -t "$AUTH_BUILD_DIR/_vendor"
+fi
+
+_zip_dir_recursive "$AUTH_BUILD_DIR" "$AUTH_ZIP"
+echo "Uploading TOKEN authorizer s3://${ARTIFACT_BUCKET}/${AUTH_ZIP_KEY}"
+aws s3 cp "$AUTH_ZIP" "s3://${ARTIFACT_BUCKET}/${AUTH_ZIP_KEY}" --region "$REGION"
 
 INV_ZIP="/tmp/cf-invalidate-${ENV}-$$.zip"
 INV_KEY="cf-invalidate-${ENV}-${SUFFIX}.zip"
@@ -249,6 +282,7 @@ aws cloudformation deploy \
   "Environment=${ENV}" \
   "LambdaCodeS3Bucket=${ARTIFACT_BUCKET}" \
   "LambdaCodeS3Key=${ZIP_KEY}" \
+  "TokenAuthorizerCodeS3Key=${AUTH_ZIP_KEY}" \
   "VideoBucketName=${VIDEO_BUCKET}" \
   "VideoUrl=${BUCKET_URL}" \
   "CorsAllowOrigin=${CORS}" \

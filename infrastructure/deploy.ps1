@@ -191,6 +191,7 @@ Write-Host "`nDeploying stack $StackName..." -ForegroundColor Cyan
 # Package Lambda code if deploying API stack
 if ($Template -eq "api") {
     $lambdaSourceDir = "$PSScriptRoot\lambda\catalog"
+    $authorizerSourceDir = "$PSScriptRoot\lambda\catalog_token_authorizer"
     $artifactBucket = "streammycourse-artifacts-$($caller.Account)-$Region"
     $gitSha = (& git -C $PSScriptRoot rev-parse HEAD 2>$null)
     if (-not $gitSha) { $gitSha = [DateTimeOffset]::UtcNow.ToUnixTimeSeconds().ToString() }
@@ -198,6 +199,7 @@ if ($Template -eq "api") {
     $short = if ($gitSha.Length -ge 12) { $gitSha.Substring(0, 12) } else { $gitSha }
     # Include content hash to force Lambda code updates even without a new git commit.
     $lambdaKey = ""
+    $tokenAuthorizerKey = ""
 
     # Create artifacts bucket if it doesn't exist
     try {
@@ -254,6 +256,47 @@ if ($Template -eq "api") {
     Write-Host "Uploading Lambda code to s3://$artifactBucket/$lambdaKey" -ForegroundColor Yellow
     aws s3 cp $tempZip "s3://$artifactBucket/$lambdaKey" --region $Region
     Remove-Item $tempZip -Force
+
+    # --- Package TOKEN authorizer Lambda (outside VPC) ----------------------------
+    if (-not (Test-Path $authorizerSourceDir)) {
+        Write-Host "[X] Token authorizer source directory missing: $authorizerSourceDir" -ForegroundColor Red
+        exit 1
+    }
+
+    $authZip = "$env:TEMP\catalog-token-authorizer-$Environment.zip"
+    if (Test-Path $authZip) { Remove-Item $authZip -Force }
+
+    $authBuildDir = Join-Path $env:TEMP "catalog-token-authorizer-build-$Environment-$([System.Guid]::NewGuid().ToString('N').Substring(0,8))"
+    if (Test-Path $authBuildDir) { Remove-Item $authBuildDir -Recurse -Force }
+    New-Item -ItemType Directory -Path $authBuildDir -Force | Out-Null
+    Copy-Item -Path "$authorizerSourceDir\*" -Destination $authBuildDir -Recurse -Force
+
+    $authReqFile = Join-Path $authorizerSourceDir "requirements.txt"
+    if (Test-Path $authReqFile) {
+        Write-Host "Installing TOKEN authorizer runtime deps into $authBuildDir\_vendor" -ForegroundColor Yellow
+        & python -m pip install `
+            --quiet `
+            --platform manylinux2014_x86_64 `
+            --only-binary=:all: `
+            --python-version 3.11 `
+            --implementation cp `
+            -r $authReqFile `
+            -t (Join-Path $authBuildDir "_vendor")
+        if ($LASTEXITCODE -ne 0) {
+            Write-Host "[X] pip install failed; cannot package TOKEN authorizer Lambda" -ForegroundColor Red
+            Remove-Item $authBuildDir -Recurse -Force
+            exit 1
+        }
+    }
+
+    Compress-Archive -Path "$authBuildDir\*" -DestinationPath $authZip -Force
+    Remove-Item $authBuildDir -Recurse -Force
+
+    $authZipHash = (Get-FileHash -Path $authZip -Algorithm SHA256).Hash.Substring(0, 12).ToLower()
+    $tokenAuthorizerKey = "catalog-token-authorizer-$Environment-$short-$authZipHash.zip"
+    Write-Host "Uploading TOKEN authorizer code to s3://$artifactBucket/$tokenAuthorizerKey" -ForegroundColor Yellow
+    aws s3 cp $authZip "s3://$artifactBucket/$tokenAuthorizerKey" --region $Region
+    Remove-Item $authZip -Force
 }
 
 # Schema-applier Lambda zip for RDS stack (same layout as CI deploy-rds-dev).
@@ -488,6 +531,7 @@ if ($Template -eq "edge-hosting") {
         "Environment=$Environment",
         "LambdaCodeS3Bucket=$artifactBucket",
         "LambdaCodeS3Key=$lambdaKey",
+        "TokenAuthorizerCodeS3Key=$tokenAuthorizerKey",
         "RdsStackName=$RdsStackName"
     )
     if ($VideoBucketName -ne "") {
