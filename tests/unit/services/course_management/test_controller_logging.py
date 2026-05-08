@@ -31,7 +31,7 @@ class TestHttpErrorLogging:
     HttpError (e.g., 404) logs at INFO level, no exc_info.
     """
 
-    @patch("services.course_management.controller._jwt_claims")
+    @patch("services.course_management.controller.apigw_cognito_claims")
     @patch("services.course_management.controller._actor_sub")
     @patch("services.course_management.controller._actor_role")
     def test_http_error_404_logs_at_info(
@@ -74,7 +74,7 @@ class TestUnexpectedExceptionLogging:
     Unexpected errors log at ERROR with full stack trace.
     """
 
-    @patch("services.course_management.controller._jwt_claims")
+    @patch("services.course_management.controller.apigw_cognito_claims")
     def test_unexpected_exception_logs_error_with_stack(
         self, mock_claims, api_gateway_event, caplog
     ):
@@ -117,7 +117,7 @@ class TestActionFieldInLogs:
     Every controller log includes action field (e.g., get_course, create_course).
     """
 
-    @patch("services.course_management.controller._jwt_claims")
+    @patch("services.course_management.controller.apigw_cognito_claims")
     @patch("services.course_management.controller._actor_sub")
     @patch("services.course_management.controller._actor_role")
     @patch("services.course_management.controller.update_action")
@@ -182,7 +182,7 @@ class TestResourceIdInContext:
 
 
 class TestAuditLogging:
-    @patch("services.course_management.controller._jwt_claims")
+    @patch("services.course_management.controller.apigw_cognito_claims")
     @patch("services.course_management.controller._actor_sub")
     @patch("services.course_management.controller._actor_role")
     def test_enroll_success_emits_audit_log(
@@ -225,7 +225,7 @@ class TestAuditLogging:
         assert rec.user_sub_prefix == "cognito-"
         assert "uuid-12345" not in rec.user_sub_prefix
 
-    @patch("services.course_management.controller._jwt_claims")
+    @patch("services.course_management.controller.apigw_cognito_claims")
     @patch("services.course_management.controller._actor_sub")
     @patch("services.course_management.controller._actor_role")
     def test_delete_course_success_emits_audit_log(
@@ -270,7 +270,7 @@ class TestAuditLogging:
 class TestControllerSetsActionContext:
     """Test that controller sets action in runtime context after routing."""
 
-    @patch("services.course_management.controller._jwt_claims")
+    @patch("services.course_management.controller.apigw_cognito_claims")
     @patch("services.course_management.controller.update_action")
     def test_controller_updates_action_after_routing(self, mock_update_action, mock_claims, caplog):
         """Controller updates action in context after determining route."""
