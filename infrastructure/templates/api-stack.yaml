@@ -315,15 +315,14 @@ Resources:
 
   CatalogApiTokenAuthorizer:
     Type: AWS::ApiGateway::Authorizer
-    DependsOn:
-      - TokenAuthorizerLambdaApiPermission
     Properties:
-      Name: !Sub 'StreamMyCourse-TokenAuthorizer-${Environment}'
-      Type: REQUEST
+      Name: !Sub 'StreamMyCourse-CognitoAuthorizer-${Environment}'
+      Type: COGNITO_USER_POOLS
       RestApiId: !Ref CatalogApi
       IdentitySource: method.request.header.Authorization
       AuthorizerResultTtlInSeconds: 300
-      AuthorizerUri: !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${TokenAuthorizerLambda.Arn}/invocations'
+      ProviderARNs:
+        - !Ref CognitoUserPoolArn
 
   # API Gateway GatewayResponses to guarantee CORS headers even on errors (e.g., 4XX/5XX)
   # Note: GatewayResponseAllowOrigin must be a single value (not CSV) for API Gateway to accept it
@@ -498,8 +497,7 @@ Resources:
       RestApiId: !Ref CatalogApi
       ResourceId: !Ref CoursesResource
       HttpMethod: GET
-      AuthorizationType: CUSTOM
-      AuthorizerId: !Ref CatalogApiTokenAuthorizer
+      AuthorizationType: NONE
       Integration:
         IntegrationHttpMethod: POST
         Type: AWS_PROXY
@@ -512,7 +510,7 @@ Resources:
       RestApiId: !Ref CatalogApi
       ResourceId: !Ref CoursesResource
       HttpMethod: POST
-      AuthorizationType: CUSTOM
+      AuthorizationType: COGNITO_USER_POOLS
       AuthorizerId: !Ref CatalogApiTokenAuthorizer
       Integration:
         IntegrationHttpMethod: POST
@@ -539,7 +537,7 @@ Resources:
       RestApiId: !Ref CatalogApi
       ResourceId: !Ref CoursesMineResource
       HttpMethod: GET
-      AuthorizationType: CUSTOM
+      AuthorizationType: COGNITO_USER_POOLS
       AuthorizerId: !Ref CatalogApiTokenAuthorizer
       Integration:
         IntegrationHttpMethod: POST
@@ -566,8 +564,7 @@ Resources:
       RestApiId: !Ref CatalogApi
       ResourceId: !Ref CourseIdResource
       HttpMethod: GET
-      AuthorizationType: CUSTOM
-      AuthorizerId: !Ref CatalogApiTokenAuthorizer
+      AuthorizationType: NONE
       Integration:
         IntegrationHttpMethod: POST
         Type: AWS_PROXY
@@ -580,7 +577,7 @@ Resources:
       RestApiId: !Ref CatalogApi
       ResourceId: !Ref CourseEnrollResource
       HttpMethod: POST
-      AuthorizationType: CUSTOM
+      AuthorizationType: COGNITO_USER_POOLS
       AuthorizerId: !Ref CatalogApiTokenAuthorizer
       Integration:
         IntegrationHttpMethod: POST
@@ -607,8 +604,7 @@ Resources:
       RestApiId: !Ref CatalogApi
       ResourceId: !Ref CourseModulesResource
       HttpMethod: GET
-      AuthorizationType: CUSTOM
-      AuthorizerId: !Ref CatalogApiTokenAuthorizer
+      AuthorizationType: NONE
       Integration:
         IntegrationHttpMethod: POST
         Type: AWS_PROXY
@@ -621,7 +617,7 @@ Resources:
       RestApiId: !Ref CatalogApi
       ResourceId: !Ref CourseModulesResource
       HttpMethod: POST
-      AuthorizationType: CUSTOM
+      AuthorizationType: COGNITO_USER_POOLS
       AuthorizerId: !Ref CatalogApiTokenAuthorizer
       Integration:
         IntegrationHttpMethod: POST
@@ -648,7 +644,7 @@ Resources:
       RestApiId: !Ref CatalogApi
       ResourceId: !Ref CourseModuleIdResource
       HttpMethod: DELETE
-      AuthorizationType: CUSTOM
+      AuthorizationType: COGNITO_USER_POOLS
       AuthorizerId: !Ref CatalogApiTokenAuthorizer
       Integration:
         IntegrationHttpMethod: POST
@@ -675,7 +671,7 @@ Resources:
       RestApiId: !Ref CatalogApi
       ResourceId: !Ref CourseIdResource
       HttpMethod: PUT
-      AuthorizationType: CUSTOM
+      AuthorizationType: COGNITO_USER_POOLS
       AuthorizerId: !Ref CatalogApiTokenAuthorizer
       Integration:
         IntegrationHttpMethod: POST
@@ -689,7 +685,7 @@ Resources:
       RestApiId: !Ref CatalogApi
       ResourceId: !Ref CourseIdResource
       HttpMethod: DELETE
-      AuthorizationType: CUSTOM
+      AuthorizationType: COGNITO_USER_POOLS
       AuthorizerId: !Ref CatalogApiTokenAuthorizer
       Integration:
         IntegrationHttpMethod: POST
@@ -724,7 +720,7 @@ Resources:
       RestApiId: !Ref CatalogApi
       ResourceId: !Ref CoursePublishResource
       HttpMethod: PUT
-      AuthorizationType: CUSTOM
+      AuthorizationType: COGNITO_USER_POOLS
       AuthorizerId: !Ref CatalogApiTokenAuthorizer
       Integration:
         IntegrationHttpMethod: POST
@@ -759,7 +755,7 @@ Resources:
       RestApiId: !Ref CatalogApi
       ResourceId: !Ref CourseThumbnailReadyResource
       HttpMethod: PUT
-      AuthorizationType: CUSTOM
+      AuthorizationType: COGNITO_USER_POOLS
       AuthorizerId: !Ref CatalogApiTokenAuthorizer
       Integration:
         IntegrationHttpMethod: POST
@@ -786,8 +782,7 @@ Resources:
       RestApiId: !Ref CatalogApi
       ResourceId: !Ref LessonsResource
       HttpMethod: GET
-      AuthorizationType: CUSTOM
-      AuthorizerId: !Ref CatalogApiTokenAuthorizer
+      AuthorizationType: NONE
       Integration:
         IntegrationHttpMethod: POST
         Type: AWS_PROXY
@@ -800,7 +795,7 @@ Resources:
       RestApiId: !Ref CatalogApi
       ResourceId: !Ref LessonsResource
       HttpMethod: POST
-      AuthorizationType: CUSTOM
+      AuthorizationType: COGNITO_USER_POOLS
       AuthorizerId: !Ref CatalogApiTokenAuthorizer
       Integration:
         IntegrationHttpMethod: POST
@@ -827,7 +822,7 @@ Resources:
       RestApiId: !Ref CatalogApi
       ResourceId: !Ref LessonIdResource
       HttpMethod: PUT
-      AuthorizationType: CUSTOM
+      AuthorizationType: COGNITO_USER_POOLS
       AuthorizerId: !Ref CatalogApiTokenAuthorizer
       Integration:
         IntegrationHttpMethod: POST
@@ -841,7 +836,7 @@ Resources:
       RestApiId: !Ref CatalogApi
       ResourceId: !Ref LessonIdResource
       HttpMethod: DELETE
-      AuthorizationType: CUSTOM
+      AuthorizationType: COGNITO_USER_POOLS
       AuthorizerId: !Ref CatalogApiTokenAuthorizer
       Integration:
         IntegrationHttpMethod: POST
@@ -868,7 +863,7 @@ Resources:
       RestApiId: !Ref CatalogApi
       ResourceId: !Ref LessonVideoReadyResource
       HttpMethod: PUT
-      AuthorizationType: CUSTOM
+      AuthorizationType: COGNITO_USER_POOLS
       AuthorizerId: !Ref CatalogApiTokenAuthorizer
       Integration:
         IntegrationHttpMethod: POST
@@ -895,7 +890,7 @@ Resources:
       RestApiId: !Ref CatalogApi
       ResourceId: !Ref PlaybackLessonIdResource
       HttpMethod: GET
-      AuthorizationType: CUSTOM
+      AuthorizationType: COGNITO_USER_POOLS
       AuthorizerId: !Ref CatalogApiTokenAuthorizer
       Integration:
         IntegrationHttpMethod: POST
@@ -922,7 +917,7 @@ Resources:
       RestApiId: !Ref CatalogApi
       ResourceId: !Ref UploadUrlResource
       HttpMethod: POST
-      AuthorizationType: CUSTOM
+      AuthorizationType: COGNITO_USER_POOLS
       AuthorizerId: !Ref CatalogApiTokenAuthorizer
       Integration:
         IntegrationHttpMethod: POST
@@ -948,7 +943,7 @@ Resources:
       RestApiId: !Ref CatalogApi
       ResourceId: !Ref UsersMeResource
       HttpMethod: GET
-      AuthorizationType: CUSTOM
+      AuthorizationType: COGNITO_USER_POOLS
       AuthorizerId: !Ref CatalogApiTokenAuthorizer
       Integration:
         IntegrationHttpMethod: POST
@@ -974,7 +969,7 @@ Resources:
       RestApiId: !Ref CatalogApi
       ResourceId: !Ref CourseProgressResource
       HttpMethod: GET
-      AuthorizationType: CUSTOM
+      AuthorizationType: COGNITO_USER_POOLS
       AuthorizerId: !Ref CatalogApiTokenAuthorizer
       Integration:
         Type: AWS_PROXY
@@ -1001,7 +996,7 @@ Resources:
       RestApiId: !Ref CatalogApi
       ResourceId: !Ref LessonProgressResource
       HttpMethod: PUT
-      AuthorizationType: CUSTOM
+      AuthorizationType: COGNITO_USER_POOLS
       AuthorizerId: !Ref CatalogApiTokenAuthorizer
       Integration:
         Type: AWS_PROXY
@@ -1029,11 +1024,10 @@ Resources:
   # Bump logical id when API methods/resources change so CloudFormation always
   # creates a new deployment; otherwise the stage can keep serving an old snapshot
   # (symptom: GET /courses/{id}/lessons returns API GW 403 Missing Authentication Token).
-  CatalogApiDeploymentV12:
+  CatalogApiDeploymentV13:
     Type: AWS::ApiGateway::Deployment
     DependsOn:
       - CatalogLambdaApiPermission
-      - TokenAuthorizerLambdaApiPermission
       - CatalogApiTokenAuthorizer
       - CoursesGetMethod
       - CoursesPostMethod
@@ -1082,7 +1076,7 @@ Resources:
     Type: AWS::ApiGateway::Stage
     Properties:
       RestApiId: !Ref CatalogApi
-      DeploymentId: !Ref CatalogApiDeploymentV12
+      DeploymentId: !Ref CatalogApiDeploymentV13
       StageName: !Ref Environment
       Description: !Sub '${Environment} stage for Catalog API'
       MethodSettings:

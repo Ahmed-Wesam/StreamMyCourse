@@ -20,13 +20,21 @@ Combine **code review** and **`/commit`** in one workflow: review first, fix wha
 
 2. **Mindset** — Code review: prioritize **bugs**, **behavioral regressions**, **security**, and **missing or inadequate tests**.
 
-3. **Output** — Report findings as the **primary** content, **ordered by severity** (critical first). Keep narrative minimal; findings matter most.
+3. **Evidence-first rule (no hypotheticals)** — Every finding must be backed by **concrete evidence in the diff / codebase**:
+   - **Read the relevant code paths** before raising a concern (especially for auth/authz). For example, if you suspect “protected route may be public,” you must inspect:
+     - API Gateway method auth settings in templates (e.g. `AuthorizationType`, authorizer wiring),
+     - the controller’s auth gate(s) (`Unauthorized` checks, required claims),
+     - and the service-layer authorization checks (role/ownership/enrollment).
+   - Avoid meaningless conditionals like: “if controller auth is bypassed, risk…”. Only raise conditionals when you also provide the **specific bypass path** (e.g., “Route X uses CUSTOM authorizer that always Allow, and controller does not check sub for action Y”).
+   - Security issues must include: **what endpoint/path**, **what request**, and **what actual behavior** (or a minimal repro/test) that demonstrates the issue.
 
-4. **Fixes** — If there are issues worth fixing, **implement the fixes** in the repo (tests or code as appropriate). Do not stop at advice unless the issue truly needs a product decision.
+4. **Output** — Report findings as the **primary** content, **ordered by severity** (critical first). Keep narrative minimal; findings matter most. Each bullet should include the **file path(s)** and what was read to reach the conclusion.
 
-5. **Loop** — Re-check the changed code after edits (quick second pass or targeted re-review). Repeat until there are **no remaining issues** you would block on for merge—or until only documented acceptable risks remain.
+5. **Fixes** — If there are issues worth fixing, **implement the fixes** in the repo (tests or code as appropriate). Do not stop at advice unless the issue truly needs a product decision.
 
-6. **No drive-by scope** — Fix only what the review surfaces or what is required for those fixes; do not expand unrelated refactors.
+6. **Loop** — Re-check the changed code after edits (quick second pass or targeted re-review). Repeat until there are **no remaining issues** you would block on for merge—or until only documented acceptable risks remain.
+
+7. **No drive-by scope** — Fix only what the review surfaces or what is required for those fixes; do not expand unrelated refactors.
 
 ## Phase 2 — Commit (`/commit`)
 

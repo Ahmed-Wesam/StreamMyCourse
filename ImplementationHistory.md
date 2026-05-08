@@ -10,6 +10,30 @@
 
 - **Privilege escalation (now closed):** `_can_manage_course_unenrolled` previously returned `True` for any teacher when `createdBy` was blank, letting any teacher read draft lessons, bypass the enrollment gate for playback, and appear as the owner in `ensure_can_modify_course`. The same blank-owner path in `ensure_can_modify_course` returned early (allow). Both are now `Forbidden`/`BadRequest` respectively; blank `createdBy` is now treated as a data-integrity error, not a grant of universal teacher access.
 
+---
+
+## 2026-05-08 — Auth: remove in-VPC JWT verification (REQUEST authorizer)
+
+### Why
+
+- The catalog Lambda runs in a private VPC subnet without internet egress; JWKS fetch/token verification inside the Lambda caused timeouts on public read routes when callers supplied `Authorization` headers.
+
+### What shipped
+
+- **API Gateway** — [`infrastructure/templates/api-stack.yaml`](infrastructure/templates/api-stack.yaml)
+  - `CatalogApiTokenAuthorizer` switched to **`Type: REQUEST`**
+  - Public GET methods now use **`AuthorizationType: CUSTOM`** with the permissive authorizer:
+    - `GET /courses`
+    - `GET /courses/{id}`
+    - `GET /courses/{id}/modules`
+    - `GET /courses/{id}/lessons`
+- **Token authorizer Lambda** — [`infrastructure/lambda/catalog_token_authorizer/index.py`](infrastructure/lambda/catalog_token_authorizer/index.py)
+  - Reads bearer token from `event.headers.Authorization` (REQUEST event shape), still **Allow**-by-default with empty context for anonymous/invalid tokens.
+- **Catalog Lambda (in VPC)** — `infrastructure/lambda/catalog/`
+  - Deleted `services/common/jwt_verify.py` and removed the Authorization-header fallback from `services/common/http.py`
+  - Removed Cognito JWT config parsing/wiring from `config.py` and `index.py`
+  - Dropped `cryptography` from `infrastructure/lambda/catalog/requirements.txt`
+
 ### What shipped
 
 - **`Course.createdBy`** promoted to a required positional field (no `= ""` default). Any construction without an owner now fails at the Python type level rather than silently producing phantom ownership.
@@ -41,7 +65,7 @@
 
 - [x] **Schema (`001`)** — [`infrastructure/database/migrations/001_initial_schema.sql`](infrastructure/database/migrations/001_initial_schema.sql): **`UNIQUE (course_id, id)`** on **`course_modules`**; **`lessons`** use **`FOREIGN KEY (course_id, module_id) REFERENCES course_modules (course_id, id)`**. Operator note in-file for older DBs.
 
-- [x] **Catalog** — Default module row title **`Overview`** on course create ([`rds_repo.py`](infrastructure/lambda/catalog/services/course_management/rds_repo.py)) and DynamoDB→RDS backfill ([`scripts/migrate-dynamodb-to-rds.py`](scripts/migrate-dynamodb-to-rds.py)). **`as_lesson_dto`** requires non-empty **`moduleId`** and **`moduleOrder`** ([`contracts.py`](infrastructure/lambda/catalog/services/course_management/contracts.py)).
+- [x] **Catalog** — Default module row title **`Overview`** on course create ([`rds_repo.py`](infrastructure/lambda/catalog/services/course_management/rds_repo.py)). **`as_lesson_dto`** requires non-empty **`moduleId`** and **`moduleOrder`** ([`contracts.py`](infrastructure/lambda/catalog/services/course_management/contracts.py)).
 
 - [x] **Module delete semantics** — `DELETE /courses/{id}/modules/{mid}` is **idempotent** for unknown ids (`200` + `deleted: false`) and rejects deleting the last module (`400`).
 
@@ -782,7 +806,7 @@ Investigation of recurring "all S3 data deleted on deploy" reports identified th
 
 1. **`CI_RDS_VERIFY_AUTH_STACK=StreamMyCourse-Auth-prod`** + password → **`ensure-ci-rds-verify-cognito-user.sh`**.
 2. GitHub **prod** Environment secret **`COGNITO_RDS_VERIFY_TEST_PASSWORD`** (and optional **`COGNITO_RDS_VERIFY_JWT`**).
-3. Run **`migrate-dynamodb-to-rds.py`** for **`StreamMyCourse-Catalog-prod`** during the pipeline window after schema apply if prod DynamoDB has data (idempotent; not in CI).
+3. (Legacy) DynamoDB migration is complete; no `migrate-dynamodb-to-rds.py` step remains.
 4. Push **`main`** (or **Deploy** `workflow_dispatch` **full**) and confirm **Verify prod RDS** is green; smoke teacher site → catalog / playback.
 
 ---
@@ -945,7 +969,7 @@ Investigation of recurring "all S3 data deleted on deploy" reports identified th
 - [x] **Auth service decoupled from repo class** — [`services/auth/service.py`](infrastructure/lambda/catalog/services/auth/service.py) now depends on **`UserProfileRepositoryPort`** (structural), enabling DynamoDB / RDS swap via wiring only.
 - [x] **Config + wiring** — [`config.py`](infrastructure/lambda/catalog/config.py) adds **`use_rds`** / **`db_host`** / **`db_name`** / **`db_port`** / **`db_secret_arn`** (defaults keep existing tests green). [`bootstrap.py`](infrastructure/lambda/catalog/bootstrap.py) gains `_build_rds_connection_factory` (Secrets Manager fetch + `psycopg2.connect(sslmode='require')`) and `_build_course_repo` / `_build_enrollment_repo` / `_build_auth_repo` that return the RDS or DynamoDB adapter based on **`USE_RDS`**. `TABLE_NAME` becomes optional when `USE_RDS=true`.
 - [x] **Packaging (native deps for Lambda x86_64)** — [`infrastructure/lambda/catalog/requirements.txt`](infrastructure/lambda/catalog/requirements.txt) pins **`psycopg2-binary==2.9.9`**; [`_vendor_bootstrap.py`](infrastructure/lambda/catalog/_vendor_bootstrap.py) prepends `_vendor/` to `sys.path` (imported first from [`index.py`](infrastructure/lambda/catalog/index.py)). [`scripts/deploy-backend.sh`](scripts/deploy-backend.sh) and [`infrastructure/deploy.ps1`](infrastructure/deploy.ps1) build the Lambda zip in a temp dir and run `pip install -t _vendor --platform manylinux2014_x86_64 --only-binary=:all: --python-version 3.11 --implementation cp`. **`.gitignore`** excludes `infrastructure/lambda/catalog/_vendor/`.
-- [x] **Data migration tool** — [`scripts/migrate-dynamodb-to-rds.py`](scripts/migrate-dynamodb-to-rds.py) — one-shot idempotent DynamoDB → RDS copy (`users` first for FK, then courses, lessons, enrollments) using `execute_batch` + `ON CONFLICT DO NOTHING`; supports `--dry-run`, `--batch-size`, `--log-level` and reads RDS credentials from Secrets Manager.
+- [x] **Data migration tool (legacy, removed)** — `scripts/migrate-dynamodb-to-rds.py` — one-shot idempotent DynamoDB → RDS copy used during cutover; deleted after migration completion.
 - [x] **IAM (GitHub deploy role)** — [`infrastructure/iam-policy-github-deploy-backend.json`](infrastructure/iam-policy-github-deploy-backend.json) + [`infrastructure/templates/github-deploy-role-stack.yaml`](infrastructure/templates/github-deploy-role-stack.yaml) — added **`RdsStackManage`**, **`Ec2VpcStackManage`**, **`SecretsManagerRdsCredentials`**, **`SecretsManagerRotationAndList`** statements so CI can deploy `StreamMyCourse-Rds-*`.
 - [x] **Boundary check** — [`scripts/check_lambda_boundaries.py`](scripts/check_lambda_boundaries.py) — `bootstrap.py` added to `allowed_boto3_files`; new `allowed_psycopg2_files` (`bootstrap.py` + the three `rds_repo.py`); HTTP-import guard extended to all `rds_repo.py`. CI parity: **28 files pass**.
 - [x] **Tests (TDD)** — [`tests/unit/test_config.py`](tests/unit/test_config.py) (new `TestRdsFields`), [`tests/unit/test_rds_repos.py`](tests/unit/test_rds_repos.py) (54 assertions across the three RDS adapters with a `FakeCursor`/`FakeConn` driver mock), [`tests/unit/test_bootstrap.py`](tests/unit/test_bootstrap.py) (`TestBuildAwsDepsWithRds` + `TestRdsConnectionFactory` covering Secrets Manager failure modes and `sslmode=require`). Full suite: **311 passed**, **vulture min-confidence 61 clean**.
@@ -961,7 +985,7 @@ Investigation of recurring "all S3 data deleted on deploy" reports identified th
 
 ### Deferred to operator (post-code-merge)
 
-- Deploy `StreamMyCourse-Rds-<env>` stack; apply [`001_initial_schema.sql`](infrastructure/database/migrations/001_initial_schema.sql) via bastion/psql; run [`migrate-dynamodb-to-rds.py`](scripts/migrate-dynamodb-to-rds.py); flip `UseRds=true` on `StreamMyCourse-Api-<env>` when ready. Runbook: [`tests/integration/README.md`](tests/integration/README.md).
+- Deploy `StreamMyCourse-Rds-<env>` stack; apply [`001_initial_schema.sql`](infrastructure/database/migrations/001_initial_schema.sql) via bastion/psql; flip `UseRds=true` on `StreamMyCourse-Api-<env>` when ready. Runbook: [`tests/integration/README.md`](tests/integration/README.md).
 
 ---
 

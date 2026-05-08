@@ -39,10 +39,6 @@ def _method_and_path(event: Dict[str, Any]) -> Tuple[str, str]:
     return method, apigw_routing_path(event)
 
 
-def _jwt_claims(event: Dict[str, Any]) -> Dict[str, Any]:
-    return apigw_cognito_claims(event)
-
-
 def _actor_sub(claims: Dict[str, Any]) -> str:
     return str(claims.get("sub", "") or "").strip()
 
