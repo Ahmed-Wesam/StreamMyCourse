@@ -590,14 +590,15 @@ describe('CourseManagement', () => {
     expect(screen.queryByTestId('course-management-inline-info')).toBeNull()
   })
 
-  it('when one module exists, Add Lesson modal omits module selector and does not send moduleId', async () => {
+  it('when one module exists, Add Lesson modal still shows module selector and sends moduleId', async () => {
     api.listCourseModules.mockResolvedValue([{ id: 'm1', title: 'Only', description: '', order: 0 }])
     renderCourseManagement()
 
     const addButton = await waitFor(() => screen.getByText(/Add Lesson/i))
     fireEvent.click(addButton)
 
-    expect(screen.queryByLabelText(/^Module$/i)).toBeNull()
+    const moduleSelect = screen.getByLabelText(/^Module$/i) as HTMLSelectElement
+    expect(moduleSelect.value).toBe('m1')
 
     fireEvent.change(screen.getByLabelText(/Lesson Title/i), { target: { value: 'New Lesson' } })
     const file = new File(['x'], 'video.mp4', { type: 'video/mp4' })
@@ -617,7 +618,7 @@ describe('CourseManagement', () => {
     fireEvent.submit(form as HTMLFormElement)
 
     await waitFor(() => {
-      expect(api.createLesson).toHaveBeenCalledWith('c1', { title: 'New Lesson' })
+      expect(api.createLesson).toHaveBeenCalledWith('c1', { title: 'New Lesson', moduleId: 'm1' })
     })
   })
 })

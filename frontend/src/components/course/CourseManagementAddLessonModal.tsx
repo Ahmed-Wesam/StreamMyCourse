@@ -47,7 +47,7 @@ export function CourseManagementAddLessonModal({
             />
           </div>
 
-          {sortedModules.length > 1 && (
+          {sortedModules.length > 0 && (
             <div className="mb-4">
               <label htmlFor="lesson-module" className="block text-sm font-medium text-gray-700 mb-1">
                 Module
