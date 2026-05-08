@@ -11,11 +11,11 @@
 # Password is read from .env.local file (auto-loaded) or environment variable
 #
 # Usage:
-#   ./scripts/run-local-integration-tests.sh           # Uses .env.local
-#   ./scripts/run-local-integration-tests.sh -v        # Verbose output
-#   ./scripts/run-local-integration-tests.sh -k smoke  # Filter tests
+#   ./scripts/run-local-integration-tests.sh             # Uses .env.local — full suite
+#   ./scripts/run-local-integration-tests.sh -v          # Full suite, verbose (-v does not shrink scope)
+#   ./scripts/run-local-integration-tests.sh -k smoke    # Full tree under tests/integration, keyword filter
 #   ./scripts/run-local-integration-tests.sh -v tests/integration/test_publish.py::test_anonymous_get_draft_course_returns_404
-#     # Pass explicit paths/nodeids (otherwise defaults to the whole tests/integration package)
+#     # Narrow: any arg that looks like tests/integration/... or contains :: selects only those tests (no trailing full-tree path)
 #
 # Environment variables (all 3 passwords are REQUIRED):
 #   LOCAL_COGNITO_USERNAME    - default: ci-rds-verify@noreply.local
@@ -245,9 +245,24 @@ if ! python -c "import pytest, httpx, boto3" 2>/dev/null; then
     pip install -q -r tests/integration/requirements.txt
 fi
 
-# Run pytest: default whole package, or only what the caller passed (nodeids, -k, etc.)
-if [[ ${#PYTEST_ARGS[@]} -eq 0 ]]; then
-    python -m pytest tests/integration
-else
+# Default is always the full integration tree. Pytest options alone (-v, -k, -m, …) still run
+# tests/integration. Only when the caller passes an explicit path under tests/integration/ or a
+# node id (contains ::) do we omit the trailing package path so selection stays narrow.
+has_explicit_target=false
+for a in "${PYTEST_ARGS[@]}"; do
+    case "$a" in
+    tests/integration/* | */tests/integration/* | ./*tests/integration/*)
+        has_explicit_target=true
+        break
+        ;;
+    *::*)
+        has_explicit_target=true
+        break
+        ;;
+    esac
+done
+if [[ "$has_explicit_target" == true ]]; then
     python -m pytest "${PYTEST_ARGS[@]}"
+else
+    python -m pytest "${PYTEST_ARGS[@]}" tests/integration
 fi
