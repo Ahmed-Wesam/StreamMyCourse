@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import os
 
+import httpx
 import pytest
 
 from helpers.api import ApiClient
@@ -61,5 +62,7 @@ def test_users_me_options_preflight_returns_204_and_allow_headers(api: ApiClient
 def test_post_courses_without_bearer_reflects_gateway_policy(api: ApiClient) -> None:
     """POST /courses is protected by Cognito at the gateway."""
     title = make_test_title("auth-gateway-probe")
-    resp = api.create_course(title=title, description="")
+    base = str(api.raw.base_url).rstrip("/")
+    with httpx.Client(base_url=base, timeout=30.0) as anon:
+        resp = anon.post("/courses", json={"title": title, "description": ""})
     assert resp.status_code == 401, resp.text
