@@ -1,6 +1,6 @@
 ---
 name: commit
-description: Commit local changes in small logical groupings with conventional commit messages. Use when the user asks to commit changes, save work, or create commits from modified files. Before committing, run CI-parity checks from ci.yml (frontend, lambda, cloudformation, actionlint, lambda unit tests, integration-tests-static) plus local HTTPS integration against dev when the diff is not doc-only. After committing, follow /update-docs (design.md, roadmap.md, ImplementationHistory.md) when the session warrants it. Does not push unless the user explicitly asks to push.
+description: Commit local changes in small logical groupings with conventional commit messages. Use when the user asks to commit changes, save work, or create commits from modified files. Before committing, run CI-parity checks from ci.yml (frontend, lambda, cloudformation, actionlint, lambda unit tests, integration-tests-static) plus local HTTPS integration against dev when the diff warrants it and dev would still match the branch; skip that script when backend/API/infra or integration-test expectations would fail against current dev until deploy. After committing, follow /update-docs (design.md, roadmap.md, ImplementationHistory.md) when the session warrants it. Does not push unless the user explicitly asks to push.
 disable-model-invocation: true
 ---
 
@@ -13,7 +13,7 @@ Commit unstaged and staged changes as small, logical commits using conventional 
 ## Workflow
 
 1. **Analyze changes** - Check git status and diff to understand what changed
-2. **Run pre-deploy checks (CI parity)** - Run the same gates as GitHub Actions **CI** (see [`.github/workflows/ci.yml`](../../../.github/workflows/ci.yml)) for every job. That means: **frontend**, **lambda**, **cloudformation**, **workflow-lint** (actionlint on `.github/workflows`), **lambda-unit-tests**, **integration-tests-static**, and **local HTTPS integration against dev** whenever Step 2’s **Local HTTPS integration** subsection applies (inspect **`.env.local`** first—do not commit around a missing **`LOCAL_COGNITO_PASSWORD`** when that subsection applies). Fix failures before committing. Skip individual commands that clearly do not apply to the touched files only when it saves time and risk is low (e.g. skip frontend installs if the diff is doc-only); otherwise run the full set.
+2. **Run pre-deploy checks (CI parity)** - Run the same gates as GitHub Actions **CI** (see [`.github/workflows/ci.yml`](../../../.github/workflows/ci.yml)) for every job. That means: **frontend**, **lambda**, **cloudformation**, **workflow-lint** (actionlint on `.github/workflows`), **lambda-unit-tests**, **integration-tests-static**, and **local HTTPS integration against dev** only when Step 2’s **Local HTTPS integration** subsection applies *and* is not omitted as a **deploy mismatch** (inspect **`.env.local`** before running—do not commit around a missing **`LOCAL_COGNITO_PASSWORD`** only when you are actually running that script). Fix failures before committing. Skip individual commands that clearly do not apply to the touched files only when it saves time and risk is low (e.g. skip frontend installs if the diff is doc-only); otherwise run the full set.
 3. **Group logically** - Organize files into related groups (by feature, module, or change type)
 4. **Stage and commit each group** - Create focused commits with conventional commit messages
 5. **Update project docs (`/update-docs`)** - After commits, follow [`.cursor/skills/update-docs/SKILL.md`](../update-docs/SKILL.md): refresh `design.md`, `roadmap.md`, and `ImplementationHistory.md` when the session’s changes warrant it (features, APIs, infra, CI/CD, security, shipped behavior). If you edit those files, commit them (e.g. `docs: sync project docs` or a scoped `docs(...)`). Skip when nothing material changed (e.g. typo-only or the three files were already the only commits).
@@ -105,15 +105,28 @@ python -c "import glob, py_compile; [py_compile.compile(p, doraise=True) for p i
 cd tests/integration && python -m pytest --collect-only -q
 ```
 
-**Local HTTPS integration tests (deployed dev)** — Run after static integration checks when the pending commit touches **`frontend/`**, **`infrastructure/`**, **`tests/`**, **`.github/workflows/`**, **`scripts/`** used at deploy or runtime, or API- or auth-related behavior—**omit** for typo-only or pure markdown under `docs/`, `plans/`, or root docs that do not change commands or contracts.
+**Local HTTPS integration tests (deployed dev)** — These hit **live dev**; they are **not** the same as **integration-tests-static** above (always run that collection/compile pass when the commit skill’s Step 2 runs).
 
-When this section applies: **open** repo-root **`.env.local`** and confirm it defines a non-empty **`LOCAL_COGNITO_PASSWORD`** (do not log or echo the value). If the file or assignment is missing, **stop**; tell the user to add **`LOCAL_COGNITO_PASSWORD`** per **`.env.local.example`** and [`tests/integration/README.md`](../../../tests/integration/README.md). **Do not commit** until configured or the user explicitly rescopes to a change that does not warrant this run. Requires **bash**, **AWS CLI**, and dev stacks deployed.
+**Omit** `./scripts/run-local-integration-tests.sh` entirely when either:
+
+- The pending change is **typo-only** or **pure markdown** under `docs/`, `plans/`, or root docs that do not change commands or contracts, **or**
+- After reading the diff, **deployed dev (the API `./scripts/run-local-integration-tests.sh` exercises via stack outputs)** would not yet reflect this branch so tests would fail until backend/infra catches up—**Skip in that case**—do not treat a guaranteed red run as a merge gate. Typical signals (not an exhaustive list):
+  - Lambda or worker code under **`infrastructure/lambda/**`** that changes HTTP behavior, auth, or data seen by integration tests.
+  - **API / runtime infra** in **`infrastructure/templates/`** (or related deploy scripts) that changes routes, integrations, env, permissions, or resources the tests exercise.
+  - **`tests/integration/**`** changes that assert **new** endpoints, payloads, status codes, or flows that only exist after this backend ships to dev.
+  - **Database migrations** under **`infrastructure/database/migrations/`** (or similar) that dev does not have until deploy, when tests depend on the new schema.
+
+When you omit for **deploy mismatch**, say so briefly when reporting to the user (what was skipped and why); rely on **post-deploy** verification (e.g. CI deploy job, or re-run the script after dev is updated). **Do not** use “CI on `main` will catch it” to skip when dev **already** matches the branch and the subsection below says to run.
+
+**Run** (after static integration checks) when the pending commit touches **`frontend/`**, **`infrastructure/`**, **`tests/`**, **`.github/workflows/`**, **`scripts/`** used at deploy or runtime, or API- or auth-related behavior—**unless** one of the **omit** bullets above applies.
+
+When you **do** run the script: **open** repo-root **`.env.local`** and confirm it defines a non-empty **`LOCAL_COGNITO_PASSWORD`** (do not log or echo the value). If the file or assignment is missing, **stop**; tell the user to add **`LOCAL_COGNITO_PASSWORD`** per **`.env.local.example`** and [`tests/integration/README.md`](../../../tests/integration/README.md). **Do not commit** until configured or the user explicitly rescopes to a change that does not warrant this run. Requires **bash**, **AWS CLI**, and dev stacks deployed.
 
 ```bash
 ./scripts/run-local-integration-tests.sh -q
 ```
 
-If the script exits non-zero, **do not commit** until the failure is resolved or the user explicitly waives with a documented reason. **Do not** treat “CI on `main` will catch it” as permission to skip this check when the diff warrants running it here.
+If the script exits non-zero, **do not commit** until the failure is resolved or the user explicitly waives with a documented reason—**unless** the failure is expected because dev is behind the branch; in that case you should have **omitted** the run per **deploy mismatch** above instead of waiving.
 
 **IAM policy JSON / GitHub deploy stack (before `git push`):** If the diff touches [`infrastructure/iam-policy-github-deploy-backend.json`](../../../infrastructure/iam-policy-github-deploy-backend.json), [`infrastructure/iam-policy-github-deploy-web.json`](../../../infrastructure/iam-policy-github-deploy-web.json), [`infrastructure/templates/github-deploy-role-stack.yaml`](../../../infrastructure/templates/github-deploy-role-stack.yaml), or [`infrastructure/iam-trust-github-oidc.json`](../../../infrastructure/iam-trust-github-oidc.json), or adds/changes workflow steps that need **new AWS permissions**, run locally (admin credentials) **before** pushing so GitHub Actions does not fail mid-**Deploy**:
 
