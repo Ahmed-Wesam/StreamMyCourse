@@ -2,7 +2,7 @@ import { Link } from 'react-router-dom'
 
 export function Footer() {
   return (
-    <footer className="border-t border-slate-200/80 bg-slate-100/85 backdrop-blur-[2px]">
+    <footer className="border-t border-slate-200/80 bg-gradient-to-r from-slate-50/95 via-white to-blue-50/35 backdrop-blur-[2px]">
       <div className="mx-auto max-w-7xl px-3 py-10 sm:px-5 lg:px-10">
         <div className="flex flex-col items-center justify-between gap-4 sm:flex-row">
           <Link to="/" className="text-sm font-semibold text-gray-900">

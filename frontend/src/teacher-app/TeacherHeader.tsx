@@ -45,7 +45,7 @@ export function TeacherHeader() {
 
   return (
     <header
-      className={`fixed top-0 left-0 right-0 z-30 border-b border-slate-200/90 bg-white/95 backdrop-blur-sm transition-shadow ${
+      className={`fixed top-0 left-0 right-0 z-30 border-b border-slate-200/90 bg-white transition-shadow ${
         scrolled ? 'shadow-sm shadow-slate-300/25' : ''
       }`}
     >

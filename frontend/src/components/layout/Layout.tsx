@@ -21,7 +21,7 @@ export function Layout({ children, showChrome = true, chromeHeader }: LayoutProp
   const mainInnerClass = chromeHeader ? 'w-full pb-12' : 'w-full pb-12 pt-5'
 
   return (
-    <div className="flex min-h-screen flex-col bg-background">
+    <div className="flex min-h-screen flex-col bg-transparent">
       {chromeHeader}
       <main className="min-w-0 flex-1">
         <div className={mainInnerClass}>{children}</div>

@@ -29,7 +29,7 @@ export default {
       },
       backgroundImage: {
         'dot-grid':
-          'radial-gradient(circle at 1px 1px, rgb(148 163 184 / 0.13) 1px, transparent 0)',
+          'radial-gradient(circle at 1px 1px, rgb(148 163 184 / 0.11) 1px, transparent 0)',
       },
     },
   },
