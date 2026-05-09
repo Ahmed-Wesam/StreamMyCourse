@@ -1,5 +1,6 @@
 import { Link } from 'react-router-dom'
 import type { Course } from '../../lib/api'
+import { FIGMA_MOCK_CATALOG_COURSE_PACING } from '../../lib/figma-mocks'
 
 type CourseCardProps = {
   course: Course
@@ -56,7 +57,13 @@ export function CourseCard({ course }: CourseCardProps) {
           {course.description || 'Explore this course on Stream My Course.'}
         </p>
         <div className="mt-4 flex items-end justify-between gap-3 border-t border-gray-100 pt-4">
-          <span className="text-base font-bold text-slate-900">Free</span>
+          <div className="min-w-0">
+            <span className="block text-base font-bold text-slate-900">Free</span>
+            {/* TODO(figma-backend) GAP-S2-001: replace FIGMA_MOCK_CATALOG_COURSE_PACING with a real pacing field on the Course DTO. */}
+            <span className="mt-0.5 block truncate text-xs font-medium text-slate-500">
+              {FIGMA_MOCK_CATALOG_COURSE_PACING}
+            </span>
+          </div>
           <span className="text-sm font-semibold text-slate-700 transition-colors group-hover:text-emerald-700">
             See more
             <span className="ml-1 inline-block transition-transform group-hover:translate-x-0.5">→</span>
