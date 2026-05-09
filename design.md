@@ -1,6 +1,6 @@
 # StreamMyCourse — MVP Design Document
 
-> **Status:** The **MVP defined in this document is shipped** and running in dev/prod. Further product scope, Phase 2 work, and the **engineering quality bar** (clean, maintainable code—prefer supported APIs over brittle UI hacks) are tracked in **[roadmap.md](./roadmap.md)** and **[ImplementationHistory.md](./ImplementationHistory.md)**. **Last updated:** 2026-05-06 · **Stack:** React 19 + AWS (Serverless) · **Frontend tests:** Vitest (optional **`npm run test:coverage`** — v8 only when `--coverage`; see **`frontend/vitest.config.ts`**).
+> **Status:** The **MVP defined in this document is shipped** and running in dev/prod. Further product scope, Phase 2 work, and the **engineering quality bar** (clean, maintainable code—prefer supported APIs over brittle UI hacks) are tracked in **[roadmap.md](./roadmap.md)** and **[ImplementationHistory.md](./ImplementationHistory.md)**. **Last updated:** 2026-05-09 · **Stack:** React 19 + AWS (Serverless) · **Frontend tests:** Vitest (optional **`npm run test:coverage`** — v8 only when `--coverage`; see **`frontend/vitest.config.ts`**).
 
 A free video course platform where instructors upload content and students stream it. No payments in MVP — all courses are free.
 
@@ -179,12 +179,14 @@ frontend/                            # Vite project root
     ├── style.css
     ├── components/
     │   ├── layout/                  # Footer, Layout (gradient + main + footer; optional `chromeHeader` for fixed app nav)
-    │   └── course/                  # CourseCard, CourseGrid, skeletons, thumbnail editor
+    │   └── course/                  # CourseCard, CourseGrid, PricingSection, skeletons, thumbnail editor
     ├── lib/
     │   ├── api.ts                   # API client (fetch + env base URL); typed error helpers
     │   └── lessonGrouping.ts        # Group lessons by module; orphan moduleIds → Unsorted (student UI)
     └── pages/
-        ├── CourseCatalogPage.tsx
+        ├── HomePage.tsx             # Student landing (`/`)
+        ├── CourseCatalogPage.tsx    # Published catalog (`/catalog`)
+        ├── MyCoursePage.tsx         # Signed-in hub (`/my-course`)
         ├── CourseDetailPage.tsx
         ├── LessonPlayerPage.tsx
         ├── InstructorDashboard.tsx  # Teacher dashboard
@@ -196,16 +198,20 @@ The frontend is built as **two separate SPAs** deployed to different subdomains:
 
 | Site | Domain | Purpose | Routes |
 |------|--------|---------|--------|
-| **Student** | `streammycourse.com` | Browse and watch courses | `/`, `/login`, `/courses/:id`, `/courses/:id/lessons/:id` |
+| **Student** | `streammycourse.com` | Browse and watch courses | `/`, `/catalog`, `/my-course`, `/login`, `/courses/:id`, `/courses/:id/lessons/:id` |
 | **Teacher** | `teach.streammycourse.com` | Create, edit, upload content | `/`, `/courses/:id` |
 
 ### Student Site Routes (View-Only)
 ```
-/                                    # Course catalog
+/                                    # Home (marketing / entry)
+/catalog                             # Course catalog (published grid)
+/my-course                           # My Course hub (signed-in entry to enrolled work)
 /login                               # Student sign-in (Hosted UI / auth shell)
 /courses/:courseId                   # Course detail
 /courses/:courseId/lessons/:lessonId # Video player
 ```
+
+**Design vs backend gaps (student UI):** Tracked in **[`reports/figma-student-ui-gap-report.md`](reports/figma-student-ui-gap-report.md)** (e.g. catalog pacing, instructor display, pricing plans where the API remains MVP-free).
 
 ### Teacher Site Routes
 ```

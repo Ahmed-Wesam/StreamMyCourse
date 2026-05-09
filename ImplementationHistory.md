@@ -4,6 +4,20 @@
 
 ---
 
+## 2026-05-09 — Student SPA: Home (`/`), catalog at `/catalog`, My Course hub, course detail + pricing UI (frontend-only)
+
+### Completed
+
+- [x] **Routing** — Student shell: dedicated **Home** at **`/`**; published course grid moved to **`/catalog`**; signed-in **My Course** hub at **`/my-course`** (course detail and lesson player paths unchanged: **`/courses/:courseId`**, **`/courses/:courseId/lessons/:lessonId`**).
+- [x] **Course detail** — Visual/styling refresh on the student course detail page; **pricing** UI extracted into a reusable section component (still **MVP-free** presentation; no new backend pricing or checkout).
+- [x] **Figma gap tracking** — New **`TODO(figma-backend) GAP-S2-…`** IDs in student UI with a single normative row table in **[`reports/figma-student-ui-gap-report.md`](reports/figma-student-ui-gap-report.md)** (shared mock literals in **`frontend/src/lib/figma-mocks.ts`**; do not duplicate the report table here).
+
+### Scope note
+
+- **Backend / Lambda / API:** unchanged in this slice (documentation only here; implementation was frontend-only).
+
+---
+
 ## 2026-05-08 — Public catalog GETs: permissive REQUEST authorizer + `/review` evidence bar + commit HTTPS guidance
 
 ### API stack (`infrastructure/templates/api-stack.yaml`)
