@@ -4,6 +4,20 @@
 
 ---
 
+## 2026-05-09 — Site-wide cool theme + lesson player shell refresh (frontend-only)
+
+### Completed
+
+- [x] **Design tokens / canvas** — [`frontend/src/style.css`](frontend/src/style.css): cool neutrals, blue-tinted borders; fixed radial washes on `body`; [`frontend/src/components/layout/Layout.tsx`](frontend/src/components/layout/Layout.tsx) uses a transparent main shell so the canvas shows through.
+- [x] **Chrome** — [`frontend/src/components/layout/Footer.tsx`](frontend/src/components/layout/Footer.tsx) light gradient footer; [`frontend/src/student-app/StudentHeader.tsx`](frontend/src/student-app/StudentHeader.tsx) and [`frontend/src/teacher-app/TeacherHeader.tsx`](frontend/src/teacher-app/TeacherHeader.tsx) opaque white headers; [`frontend/tailwind.config.js`](frontend/tailwind.config.js) slightly softer `dot-grid`.
+- [x] **Lesson playback** — [`frontend/src/pages/LessonPlayerPage.tsx`](frontend/src/pages/LessonPlayerPage.tsx): professional blue lesson UI (sidebar, alerts, toolbar, primary column), shared progress gradient constants, subtler video container (no heavy bezel).
+
+### Scope note
+
+- **Backend / Lambda / API:** unchanged.
+
+---
+
 ## 2026-05-09 — Student SPA: Home (`/`), catalog at `/catalog`, My Course hub, course detail + pricing UI (frontend-only)
 
 ### Completed
