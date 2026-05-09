@@ -15,6 +15,7 @@ const api = vi.hoisted(() => ({
   getCourseProgress: vi.fn(),
   hasSignedInIdToken: vi.fn(),
   enrollInCourse: vi.fn(),
+  updateLessonProgress: vi.fn(),
 }))
 
 vi.mock('../lib/api', async (importOriginal) => {
@@ -31,6 +32,8 @@ vi.mock('../lib/api', async (importOriginal) => {
       api.hasSignedInIdToken(...args) as ReturnType<typeof mod.hasSignedInIdToken>,
     enrollInCourse: (...args: unknown[]) =>
       api.enrollInCourse(...args) as ReturnType<typeof mod.enrollInCourse>,
+    updateLessonProgress: (...args: unknown[]) =>
+      api.updateLessonProgress(...args) as ReturnType<typeof mod.updateLessonProgress>,
   }
 })
 
@@ -52,6 +55,7 @@ describe('CourseDetailPage', () => {
     api.getCourseProgress.mockReset()
     api.hasSignedInIdToken.mockReset()
     api.enrollInCourse.mockReset()
+    api.updateLessonProgress.mockReset()
 
     api.getCourse.mockResolvedValue({
       id: 'c1',
@@ -96,6 +100,10 @@ describe('CourseDetailPage', () => {
     })
     api.hasSignedInIdToken.mockResolvedValue(true)
     api.enrollInCourse.mockResolvedValue({ ok: true })
+    api.updateLessonProgress.mockResolvedValue({
+      ok: true,
+      lessonProgress: { lessonId: 'l1', completed: true, lastPositionSec: 0 },
+    })
   })
 
   afterEach(() => {
@@ -240,6 +248,77 @@ describe('CourseDetailPage', () => {
     })
   })
 
+  it('shows lesson action menu trigger when enrolled', async () => {
+    renderCourseDetail()
+    await waitFor(() => {
+      expect(screen.getByText('First Lesson')).toBeTruthy()
+    })
+    expect(screen.getByRole('button', { name: /Lesson actions: First Lesson/i })).toBeTruthy()
+  })
+
+  it('does not show lesson action menu trigger when not enrolled', async () => {
+    api.getCourse.mockResolvedValue({
+      id: 'c1',
+      title: 'Test Course',
+      description: 'Test Description',
+      status: 'PUBLISHED',
+      enrolled: false,
+    })
+    renderCourseDetail()
+    await waitFor(() => {
+      expect(screen.getByText('First Lesson')).toBeTruthy()
+    })
+    expect(screen.queryByRole('button', { name: /Lesson actions:/i })).toBeNull()
+  })
+
+  it('marks lesson complete via menu action', async () => {
+    renderCourseDetail()
+    await waitFor(() => {
+      expect(screen.getByText('First Lesson')).toBeTruthy()
+    })
+    fireEvent.click(screen.getByRole('button', { name: /Lesson actions: First Lesson/i }))
+    fireEvent.click(screen.getByRole('menuitem', { name: /Mark as complete/i }))
+    await waitFor(() => {
+      expect(api.updateLessonProgress).toHaveBeenCalledWith('c1', 'l1', {
+        lastPositionSec: 0,
+        durationSec: 100,
+        markComplete: true,
+      })
+    })
+  })
+
+  it('marks lesson incomplete via menu action when already completed', async () => {
+    api.getCourseProgress.mockResolvedValue({
+      courseId: 'c1',
+      totalReadyLessons: 2,
+      completedCount: 1,
+      percentComplete: 50,
+      lessons: [
+        { lessonId: 'l1', completed: true, lastPositionSec: 100 },
+        { lessonId: 'l2', completed: false, lastPositionSec: 0 },
+      ],
+    })
+    api.updateLessonProgress.mockResolvedValue({
+      ok: true,
+      lessonProgress: { lessonId: 'l1', completed: false, lastPositionSec: 0 },
+    })
+
+    renderCourseDetail()
+    await waitFor(() => {
+      expect(screen.getByText('First Lesson')).toBeTruthy()
+    })
+
+    fireEvent.click(screen.getByRole('button', { name: /Lesson actions: First Lesson/i }))
+    fireEvent.click(screen.getByRole('menuitem', { name: /Mark as incomplete/i }))
+    await waitFor(() => {
+      expect(api.updateLessonProgress).toHaveBeenCalledWith('c1', 'l1', {
+        lastPositionSec: 0,
+        durationSec: 100,
+        markIncomplete: true,
+      })
+    })
+  })
+
   it('calls enrollInCourse when Enroll button clicked', async () => {
     api.getCourse.mockResolvedValue({
       id: 'c1',
@@ -314,6 +393,38 @@ describe('CourseDetailPage', () => {
       const progressBars = screen.getAllByRole('progressbar')
       expect(progressBars.length).toBeGreaterThan(0)
     })
+  })
+
+  it('renders pricing section with selectable plans', async () => {
+    renderCourseDetail()
+
+    const pricing = await waitFor(() => screen.getByTestId('course-pricing'))
+    expect(pricing).toBeTruthy()
+    expect(screen.getByRole('heading', { level: 2, name: 'Choose Your Plan' })).toBeTruthy()
+
+    const popularBadge = screen.getByText('Most Popular')
+    expect(popularBadge).toBeTruthy()
+
+    const threeMonth = screen.getByTestId('pricing-plan-3month')
+    expect(threeMonth.getAttribute('aria-checked')).toBe('true')
+
+    const oneMonth = screen.getByTestId('pricing-plan-1month')
+    fireEvent.click(oneMonth)
+    expect(oneMonth.getAttribute('aria-checked')).toBe('true')
+  })
+
+  it('renders the hero and key page regions', async () => {
+    renderCourseDetail()
+
+    const heroHeading = await waitFor(() => screen.getByRole('heading', { level: 1, name: 'Test Course' }))
+    expect(heroHeading).toBeTruthy()
+
+    const curriculum = screen.getByRole('region', { name: /curriculum/i })
+    expect(curriculum).toBeTruthy()
+    expect(screen.getByRole('heading', { level: 2, name: 'Curriculum' })).toBeTruthy()
+
+    const pricingRegion = screen.getByRole('region', { name: /pricing/i })
+    expect(pricingRegion).toBeTruthy()
   })
 
   it('shows loading state initially', () => {

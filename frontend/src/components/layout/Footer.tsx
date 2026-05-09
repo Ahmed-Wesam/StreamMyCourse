@@ -6,7 +6,7 @@ export function Footer() {
       <div className="mx-auto max-w-7xl px-3 py-10 sm:px-5 lg:px-10">
         <div className="flex flex-col items-center justify-between gap-4 sm:flex-row">
           <Link to="/" className="text-sm font-semibold text-gray-900">
-            Stream My Course
+            SPSS Spectrum
           </Link>
           <div className="flex flex-wrap items-center justify-center gap-6 text-sm text-gray-600">
             <a href="/#contact" className="hover:text-gray-900">
@@ -18,7 +18,7 @@ export function Footer() {
           </div>
         </div>
         <p className="mt-6 text-center text-xs text-gray-500">
-          © {new Date().getFullYear()} Stream My Course. All rights reserved.
+          © {new Date().getFullYear()} SPSS Spectrum. All rights reserved.
         </p>
       </div>
     </footer>
