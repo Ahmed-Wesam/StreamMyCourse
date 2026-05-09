@@ -1,0 +1,35 @@
+---
+description: Windows (PowerShell + bash) integration test runner tips
+alwaysApply: true
+---
+
+# Windows integration test workflow (StreamMyCourse)
+
+## Prefer the repo runners
+
+- **PowerShell (deploy optional + run pytest):** `.\scripts\run-integration-tests.ps1`
+- **Bash/MSYS/WSL (resolves stacks + mints JWTs + runs pytest):** `./scripts/run-local-integration-tests.sh`
+
+These scripts already encode the correct CloudFormation stack names and required env vars.
+
+## PowerShell command chaining (avoid `&&`)
+
+On many Windows setups (Windows PowerShell 5.1), `&&` is **not** a valid statement separator.
+
+- **Do:** use `;` between commands
+- **Do:** put multi-step logic in a `.ps1` script (preferred)
+- **Don’t:** use `&&` inside `powershell -Command ...`
+
+## Reliable way to run the bash integration runner from PowerShell
+
+Use a single `bash -lc` string and separate steps with `;` inside bash:
+
+```powershell
+bash -lc 'cd /c/Users/ahmad/CascadeProjects/StreamMyCourse; ./scripts/run-local-integration-tests.sh tests/integration/test_rds_path.py -q'
+```
+
+## Don’t leak secrets while debugging
+
+- **Never** print the full values of `INTEGRATION_COGNITO_JWT*` or `LOCAL_COGNITO_PASSWORD*`.
+- It’s fine to log derived, non-secret values like **API host**, **bucket name**, and **JWT length** (the integration suite already does this).
+
