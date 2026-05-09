@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { listCourses, type Course } from '../lib/api'
+import { FIGMA_MOCK_COURSE_INSTRUCTOR_IMAGE_SRC, FIGMA_MOCK_COURSE_INSTRUCTOR_NAME } from '../lib/figma-mocks'
 
 /** Student catalog "Teach" CTA — teacher SPA is a separate origin (not /instructor on student routes).
  * Uses env var if set; otherwise defaults based on environment (dev vs prod).
@@ -82,8 +83,8 @@ export default function CourseCatalogPage() {
             <div className="flex min-w-0 justify-center lg:justify-end">
               <div className="aspect-[4/5] w-full max-w-sm overflow-hidden rounded-2xl border border-slate-400/30 bg-slate-900/80 shadow-2xl shadow-black/25 ring-1 ring-white/15 lg:max-w-md xl:max-w-lg">
                 <img
-                  src="/hero-lab-coat.png"
-                  alt="Instructor in a lab coat"
+                  src={FIGMA_MOCK_COURSE_INSTRUCTOR_IMAGE_SRC}
+                  alt={FIGMA_MOCK_COURSE_INSTRUCTOR_NAME}
                   className="h-full w-full object-cover object-top"
                   width={400}
                   height={500}

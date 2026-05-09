@@ -1,15 +1,55 @@
-import { useAuthenticator } from '@aws-amplify/ui-react'
 import { useEffect, useId, useState } from 'react'
-import { Link, useLocation } from 'react-router-dom'
+import { Link, useLocation, useNavigate } from 'react-router-dom'
+import { BarChart2, Menu } from 'lucide-react'
+import { signOut } from 'aws-amplify/auth'
+import { hasSignedInIdToken } from '../lib/api'
 import { isAuthConfigured } from '../lib/auth'
-import { useCognitoDisplayName } from '../lib/cognito-display-name'
+
+function clearClientAuthState() {
+  try {
+    localStorage.clear()
+  } catch {
+    /* ignore */
+  }
+  try {
+    sessionStorage.clear()
+  } catch {
+    /* ignore */
+  }
+
+  // Best-effort cookie clearing (won't remove HttpOnly cookies).
+  try {
+    const cookies = document.cookie ? document.cookie.split(';') : []
+    for (const raw of cookies) {
+      const eqPos = raw.indexOf('=')
+      const name = (eqPos > -1 ? raw.slice(0, eqPos) : raw).trim()
+      if (!name) continue
+      document.cookie = `${name}=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/`
+    }
+  } catch {
+    /* ignore */
+  }
+}
 
 export function StudentHeader() {
   const [scrolled, setScrolled] = useState(false)
   const [mobileOpen, setMobileOpen] = useState(false)
+  const [signedIn, setSignedIn] = useState(false)
   const location = useLocation()
-  const isHome = location.pathname === '/'
+  const navigate = useNavigate()
   const menuId = useId()
+
+  const pathname = location.pathname
+  const hash = location.hash
+  const isActive = (to: string) => pathname === to
+  const isCoursePricing = pathname === '/course' && hash === '#pricing'
+  const navItemClass = (active: boolean) =>
+    [
+      'px-4 py-2 rounded-xl text-sm transition-colors',
+      active
+        ? 'bg-blue-50 text-blue-700 font-semibold'
+        : 'hover:bg-muted/50 text-muted-foreground hover:text-foreground font-medium',
+    ].join(' ')
 
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 4)
@@ -31,150 +71,141 @@ export function StudentHeader() {
     return () => window.removeEventListener('keydown', onKey)
   }, [mobileOpen])
 
-  const coursesHref = isHome ? '#courses' : '/#courses'
-  const aboutHref = isHome ? '#about' : '/#about'
-  const contactHref = isHome ? '#contact' : '/#contact'
+  useEffect(() => {
+    let cancelled = false
+    async function run() {
+      if (!isAuthConfigured()) {
+        if (!cancelled) setSignedIn(false)
+        return
+      }
+      const ok = await hasSignedInIdToken()
+      if (!cancelled) setSignedIn(ok)
+    }
+    void run()
+    return () => {
+      cancelled = true
+    }
+  }, [])
 
-  const { user, signOut, authStatus } = useAuthenticator((ctx) => [
-    ctx.user,
-    ctx.signOut,
-    ctx.authStatus,
-  ])
-  const signedIn = isAuthConfigured() && authStatus === 'authenticated'
-  const { label: displayName, title: displayNameTitle, ready: displayNameReady } =
-    useCognitoDisplayName(user?.username)
-
-  const linkClass =
-    'block rounded-md px-3 py-2.5 text-base font-medium text-gray-800 hover:bg-gray-50 active:bg-gray-100'
+  async function handleSignOut() {
+    try {
+      await signOut()
+    } catch {
+      // Still clear local state even if Amplify signOut fails
+    } finally {
+      clearClientAuthState()
+      setSignedIn(false)
+      setMobileOpen(false)
+      navigate('/', { replace: true })
+    }
+  }
 
   return (
-    <header
-      className={`fixed top-0 left-0 right-0 z-30 border-b border-slate-200/90 bg-white/95 backdrop-blur-sm transition-shadow ${
-        scrolled ? 'shadow-sm shadow-slate-300/25' : ''
-      }`}
-    >
-      <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-3 sm:px-5 lg:px-10">
-        <Link to="/" className="flex min-w-0 items-center gap-2">
-          <span className="truncate text-xl font-bold tracking-tight text-gray-900">Stream My Course</span>
+    <header className={`sticky top-0 z-50 bg-white border-b border-border transition-shadow ${scrolled ? 'shadow-sm' : ''}`}>
+      <div className="max-w-6xl mx-auto px-6 h-16 flex items-center justify-between">
+        <Link className="flex items-center gap-2 text-primary" to="/">
+          <BarChart2 className="w-6 h-6" />
+          <span className="font-bold text-[1.1rem]">SPSS Spectrum</span>
         </Link>
 
-        <nav className="hidden items-center gap-8 md:flex" aria-label="Main">
-          <a
-            href={coursesHref}
-            className="text-sm font-medium text-gray-700 transition-colors hover:text-gray-900"
-          >
-            Courses
+        <nav className="hidden md:flex items-center gap-1" aria-label="Primary">
+          <Link className={navItemClass(isActive('/'))} to="/">
+            Home
+          </Link>
+          <Link className={navItemClass(isActive('/course') && !isCoursePricing)} to="/course">
+            Course
+          </Link>
+          <a className={navItemClass(isCoursePricing)} href="/course#pricing">
+            Pricing
           </a>
-          <a
-            href={aboutHref}
-            className="text-sm font-medium text-gray-700 transition-colors hover:text-gray-900"
-          >
-            About
-          </a>
-          <a
-            href={contactHref}
-            className="text-sm font-medium text-gray-700 transition-colors hover:text-gray-900"
-          >
-            Contact
-          </a>
-          {isAuthConfigured() &&
-            (signedIn ? (
-              <>
-                {displayNameReady ? (
-                  <span
-                    className="max-w-[10rem] truncate text-sm font-medium text-gray-700 transition-colors hover:text-gray-900"
-                    title={displayNameTitle}
-                  >
-                    {displayName}
-                  </span>
-                ) : null}
-                <button
-                  type="button"
-                  className="text-sm font-medium text-emerald-700 hover:text-emerald-800"
-                  onClick={() => void signOut()}
-                >
-                  Sign out
-                </button>
-              </>
-            ) : (
-              <Link to="/login" className="text-sm font-medium text-emerald-700 hover:text-emerald-800">
-                Sign in
-              </Link>
-            ))}
+          <Link className={navItemClass(isActive('/my-course'))} to="/my-course">
+            My Course
+          </Link>
         </nav>
 
-        <div className="flex items-center md:hidden">
-          <button
-            type="button"
-            className="inline-flex items-center justify-center rounded-md p-2 text-gray-700 hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-emerald-500"
-            aria-expanded={mobileOpen}
-            aria-controls={menuId}
-            aria-label={mobileOpen ? 'Close menu' : 'Open menu'}
-            onClick={() => setMobileOpen((o) => !o)}
-          >
-            {mobileOpen ? (
-              <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-              </svg>
+        <div className="hidden md:flex items-center gap-3">
+          {isAuthConfigured() ? (
+            signedIn ? (
+              <button
+                type="button"
+                className="px-4 py-2 rounded-md text-sm font-semibold text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors"
+                onClick={() => void handleSignOut()}
+              >
+                Sign out
+              </button>
             ) : (
-              <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
-              </svg>
-            )}
-          </button>
+              <Link
+                className="px-4 py-2 rounded-md text-sm font-semibold text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors"
+                to="/login"
+              >
+                Sign in
+              </Link>
+            )
+          ) : null}
+          <a className="bg-primary text-white px-5 py-2 rounded-lg text-sm hover:bg-blue-700 transition-colors font-semibold" href="/course#pricing">
+            Enroll Now
+          </a>
         </div>
+
+        <button
+          type="button"
+          className="md:hidden p-2 rounded-md text-muted-foreground hover:text-foreground"
+          aria-expanded={mobileOpen}
+          aria-controls={menuId}
+          aria-label={mobileOpen ? 'Close menu' : 'Open menu'}
+          onClick={() => setMobileOpen((o) => !o)}
+        >
+          <Menu className="w-5 h-5" />
+        </button>
       </div>
 
       {mobileOpen && (
-        <>
-          <button
-            type="button"
-            className="fixed inset-0 z-30 bg-black/25 md:hidden"
-            aria-label="Close menu"
-            onClick={() => setMobileOpen(false)}
-          />
-          <nav
-            id={menuId}
-            className="absolute left-0 right-0 top-full z-40 border-b border-gray-200 bg-white shadow-lg md:hidden"
-            aria-label="Mobile"
-          >
-            <div className="mx-auto max-w-7xl space-y-0.5 px-3 py-3 sm:px-5 lg:px-10">
-              <a href={coursesHref} className={linkClass} onClick={() => setMobileOpen(false)}>
-                Courses
-              </a>
-              <a href={aboutHref} className={linkClass} onClick={() => setMobileOpen(false)}>
-                About
-              </a>
-              <a href={contactHref} className={linkClass} onClick={() => setMobileOpen(false)}>
-                Contact
-              </a>
-              {isAuthConfigured() &&
-                (signedIn ? (
-                  <>
-                    {displayNameReady ? (
-                      <span className={linkClass} title={displayNameTitle}>
-                        {displayName}
-                      </span>
-                    ) : null}
-                    <button
-                      type="button"
-                      className={`${linkClass} w-full text-left text-emerald-700`}
-                      onClick={() => {
-                        setMobileOpen(false)
-                        void signOut()
-                      }}
-                    >
-                      Sign out
-                    </button>
-                  </>
-                ) : (
-                  <Link to="/login" className={`${linkClass} text-emerald-700`} onClick={() => setMobileOpen(false)}>
-                    Sign in
-                  </Link>
-                ))}
-            </div>
-          </nav>
-        </>
+        <nav id={menuId} className="md:hidden border-t border-border bg-white" aria-label="Primary mobile">
+          <div className="px-6 py-3 flex flex-col gap-2">
+            <Link to="/" onClick={() => setMobileOpen(false)} className={navItemClass(isActive('/'))}>
+              Home
+            </Link>
+            <Link
+              to="/course"
+              onClick={() => setMobileOpen(false)}
+              className={navItemClass(isActive('/course') && !isCoursePricing)}
+            >
+              Course
+            </Link>
+            <a
+              href="/course#pricing"
+              onClick={() => setMobileOpen(false)}
+              className={navItemClass(isCoursePricing)}
+            >
+              Pricing
+            </a>
+            <Link to="/my-course" onClick={() => setMobileOpen(false)} className={navItemClass(isActive('/my-course'))}>
+              My Course
+            </Link>
+            {isAuthConfigured() ? (
+              signedIn ? (
+                <button
+                  type="button"
+                  onClick={() => void handleSignOut()}
+                  className="px-3 py-2 rounded-xl hover:bg-muted/50 text-left text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
+                >
+                  Sign out
+                </button>
+              ) : (
+                <Link
+                  to="/login"
+                  onClick={() => setMobileOpen(false)}
+                  className="px-3 py-2 rounded-xl hover:bg-muted/50 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
+                >
+                  Sign in
+                </Link>
+              )
+            ) : null}
+            <a href="/course#pricing" className="mt-2 bg-primary text-white px-4 py-2 rounded-lg text-sm font-semibold text-center">
+              Enroll Now
+            </a>
+          </div>
+        </nav>
       )}
     </header>
   )

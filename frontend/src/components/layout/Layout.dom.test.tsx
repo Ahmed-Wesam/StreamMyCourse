@@ -25,7 +25,7 @@ describe('Layout', () => {
     expect(screen.getByText('Body')).toBeTruthy()
   })
 
-  it('applies pt-20 top padding on main inner wrapper when chromeHeader is set', () => {
+  it('does not force top padding when chromeHeader is set', () => {
     const { container } = render(
       <MemoryRouter>
         <Layout chromeHeader={<div data-testid="chrome">Nav</div>}>
@@ -36,7 +36,7 @@ describe('Layout', () => {
 
     const mainInner = container.querySelector('main')?.firstElementChild
     expect(mainInner).toBeTruthy()
-    expect(mainInner?.className).toMatch(/pt-20/)
+    expect(mainInner?.className).not.toMatch(/pt-/)
   })
 
   it('does not use pt-20 for main inner wrapper when chromeHeader is omitted', () => {

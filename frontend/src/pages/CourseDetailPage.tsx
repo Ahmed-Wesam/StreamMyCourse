@@ -7,6 +7,7 @@ import {
   hasSignedInIdToken,
   listLessons,
   listCourseModules,
+  updateLessonProgress,
   type Course,
   type CourseModule,
   type CourseProgress,
@@ -14,6 +15,8 @@ import {
   type LessonProgressItem,
 } from '../lib/api'
 import { groupLessonsByModule } from '../lib/lessonGrouping'
+import { PricingSection } from '../components/course/PricingSection'
+import { FIGMA_MOCK_COURSE_INSTRUCTOR_NAME, FIGMA_MOCK_COURSE_PRICING_PLANS } from '../lib/figma-mocks'
 
 /** 0–100 for the thumbnail bar, or null when no in-progress / completed state to show. */
 function lessonThumbnailProgressPercent(
@@ -54,7 +57,10 @@ function CourseDetailHero({
   lessons: Lesson[]
 }) {
   return (
-    <section className="overflow-hidden rounded-2xl border border-slate-600/40 bg-gradient-to-br from-slate-900 via-slate-800 to-indigo-950/90 text-white shadow-xl shadow-slate-900/20 ring-1 ring-white/10 lg:rounded-3xl">
+    <section
+      aria-label="Course hero"
+      className="overflow-hidden rounded-2xl border border-slate-600/40 bg-gradient-to-br from-slate-900 via-slate-800 to-indigo-950/90 text-white shadow-xl shadow-slate-900/20 ring-1 ring-white/10 lg:rounded-3xl"
+    >
       <div className="px-5 py-10 sm:px-8 lg:px-10 lg:py-14">
         <Link
           to="/"
@@ -66,15 +72,18 @@ function CourseDetailHero({
           Back to all courses
         </Link>
         <div className="grid items-center gap-10 lg:grid-cols-2 lg:gap-x-14">
-          <div className="pl-5">
+          <div>
             <h1 className="text-3xl font-bold sm:text-4xl">{loading ? 'Loading…' : course?.title}</h1>
             <p className="mt-4 max-w-2xl text-lg text-slate-300">
               {loading ? '' : course?.description}
             </p>
             {!loading && course && (
-              <div className="mt-6">
+              <div className="mt-6 flex flex-wrap items-center gap-3">
                 <span className="rounded-full bg-white/15 px-3 py-1 text-sm backdrop-blur-sm">
                   {lessons.length} {lessons.length === 1 ? 'lesson' : 'lessons'}
+                </span>
+                <span className="rounded-full bg-white/10 px-3 py-1 text-sm text-slate-200 backdrop-blur-sm">
+                  Self-paced
                 </span>
               </div>
             )}
@@ -195,6 +204,8 @@ function CourseDetailBody({
   needsEnrollment,
   enrolling,
   onEnroll,
+  onToggleLessonComplete,
+  markingLessonId,
 }: {
   courseId: string
   error: string | null
@@ -207,6 +218,8 @@ function CourseDetailBody({
   needsEnrollment: boolean
   enrolling: boolean
   onEnroll: () => void
+  onToggleLessonComplete: (lesson: Lesson, nextCompleted: boolean) => void
+  markingLessonId: string | null
 }) {
   const lessonSections = useMemo(() => groupLessonsByModule(lessons, modules), [lessons, modules])
   const lessonIndexById = useMemo(() => new Map(lessons.map((l, i) => [l.id, i])), [lessons])
@@ -241,12 +254,20 @@ function CourseDetailBody({
       {!loading && !error && (
         <div className="grid grid-cols-1 gap-8 lg:grid-cols-3">
           <div className="lg:col-span-2">
-            <div className="overflow-hidden rounded-xl border border-gray-100 bg-white shadow-sm">
+            <section aria-label="Curriculum" className="overflow-hidden rounded-xl border border-gray-100 bg-white shadow-sm">
               <div className="border-b border-gray-100 px-6 py-4">
-                <h2 className="text-lg font-semibold text-gray-900">Course Content</h2>
-                <p className="mt-1 text-sm text-gray-500">
-                  {lessons.length} {lessons.length === 1 ? 'lesson' : 'lessons'}
-                </p>
+                <div className="flex items-start justify-between gap-4">
+                  <div>
+                    <h2 className="text-lg font-semibold text-gray-900">Curriculum</h2>
+                    <p className="mt-1 text-sm text-gray-500">
+                      {lessons.length} {lessons.length === 1 ? 'lesson' : 'lessons'}
+                    </p>
+                  </div>
+                  <div className="hidden sm:flex items-center gap-2 text-xs text-gray-500">
+                    <span className="inline-block h-2.5 w-2.5 rounded-full bg-emerald-500/70" aria-hidden="true" />
+                    <span>Ready to watch</span>
+                  </div>
+                </div>
               </div>
               <div className="divide-y divide-gray-100">
                 {lessonSections.map((section) => (
@@ -264,6 +285,10 @@ function CourseDetailBody({
                         courseId={courseId}
                         index={lessonIndexById.get(lesson.id) ?? 0}
                         linkDisabled={previewOnly || needsEnrollment}
+                        showActions={!previewOnly && !needsEnrollment}
+                        completed={courseProgress?.lessons.find((p) => p.lessonId === lesson.id)?.completed ?? false}
+                        markingComplete={markingLessonId === lesson.id}
+                        onToggleComplete={onToggleLessonComplete}
                         thumbnailProgressPercent={lessonThumbnailProgressPercent(
                           lesson,
                           courseProgress?.lessons.find((p) => p.lessonId === lesson.id),
@@ -289,13 +314,18 @@ function CourseDetailBody({
                   <p className="mt-1 text-sm text-gray-500">This course doesn't have any lessons.</p>
                 </div>
               )}
-            </div>
+            </section>
           </div>
 
           <div className="lg:col-span-1">
             <div className="sticky top-28 rounded-xl border border-gray-100 bg-white p-6 shadow-sm">
               <h3 className="mb-4 font-semibold text-gray-900">About this course</h3>
               <p className="text-sm text-gray-600">{course?.description || 'No description available.'}</p>
+              <div className="mt-5 rounded-lg border border-gray-100 bg-gray-50 px-4 py-3">
+                <div className="text-xs font-semibold uppercase tracking-wide text-gray-500">Instructor</div>
+                {/* TODO(figma-backend) GAP-S2-002: replace FIGMA_MOCK_COURSE_INSTRUCTOR_NAME with a real instructor display name on the course DTO. */}
+                <div className="mt-1 text-sm font-semibold text-gray-900">{FIGMA_MOCK_COURSE_INSTRUCTOR_NAME}</div>
+              </div>
               <div className="mt-6 space-y-3 border-t border-gray-100 pt-6">
                 {needsEnrollment && (
                   <button
@@ -335,14 +365,38 @@ function LessonItem({
   courseId,
   index,
   linkDisabled,
+  showActions,
+  completed,
+  markingComplete,
+  onToggleComplete,
   thumbnailProgressPercent,
 }: {
   lesson: Lesson
   courseId: string
   index: number
   linkDisabled: boolean
+  showActions: boolean
+  completed: boolean
+  markingComplete: boolean
+  onToggleComplete: (lesson: Lesson, nextCompleted: boolean) => void
   thumbnailProgressPercent: number | null
 }) {
+  const [menuOpen, setMenuOpen] = useState(false)
+
+  useEffect(() => {
+    if (!menuOpen) return
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setMenuOpen(false)
+    }
+    const onMouseDown = () => setMenuOpen(false)
+    window.addEventListener('keydown', onKey)
+    window.addEventListener('mousedown', onMouseDown)
+    return () => {
+      window.removeEventListener('keydown', onKey)
+      window.removeEventListener('mousedown', onMouseDown)
+    }
+  }, [menuOpen])
+
   const rowShell =
     'group block px-6 pt-4 pb-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-blue-500 ' +
     (linkDisabled ? 'cursor-default opacity-80' : 'cursor-pointer hover:bg-blue-50 transition-colors')
@@ -363,6 +417,50 @@ function LessonItem({
           {lesson.title}
         </h3>
       </div>
+      {showActions && !linkDisabled && (
+        <div className="relative ml-2 shrink-0">
+          <button
+            type="button"
+            aria-label={`Lesson actions: ${lesson.title}`}
+            className="rounded-md p-2 text-slate-500 opacity-0 transition-opacity hover:bg-blue-100 hover:text-blue-700 group-hover:opacity-100 focus:opacity-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+            onClick={(e) => {
+              e.preventDefault()
+              e.stopPropagation()
+              setMenuOpen((o) => !o)
+            }}
+            onMouseDown={(e) => {
+              // Prevent the global mousedown listener from closing immediately.
+              e.stopPropagation()
+            }}
+          >
+            <svg className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+              <path d="M10 6.5a1.5 1.5 0 110-3 1.5 1.5 0 010 3zm0 5a1.5 1.5 0 110-3 1.5 1.5 0 010 3zm0 5a1.5 1.5 0 110-3 1.5 1.5 0 010 3z" />
+            </svg>
+          </button>
+          {menuOpen && (
+            <div
+              role="menu"
+              aria-label={`Lesson menu: ${lesson.title}`}
+              className="absolute right-0 top-10 z-20 w-48 overflow-hidden rounded-lg border border-slate-200 bg-white shadow-lg"
+              onMouseDown={(e) => e.stopPropagation()}
+            >
+              <button
+                type="button"
+                role="menuitem"
+                disabled={markingComplete}
+                className="flex w-full items-center px-3 py-2 text-sm text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+                onClick={(e) => {
+                  e.preventDefault()
+                  e.stopPropagation()
+                  onToggleComplete(lesson, !completed)
+                }}
+              >
+                {markingComplete ? 'Updating…' : completed ? 'Mark as incomplete' : 'Mark as complete'}
+              </button>
+            </div>
+          )}
+        </div>
+      )}
       <div className="flex shrink-0 items-center text-blue-600 opacity-0 group-hover:opacity-100 transition-opacity">
         <span className="text-sm font-medium mr-2">{linkDisabled ? 'Locked' : 'Play'}</span>
         <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -432,6 +530,7 @@ export default function CourseDetailPage() {
   const [needsEnrollment, setNeedsEnrollment] = useState(false)
   const [enrolling, setEnrolling] = useState(false)
   const [courseProgress, setCourseProgress] = useState<CourseProgress | null>(null)
+  const [markingLessonId, setMarkingLessonId] = useState<string | null>(null)
 
   const loadCourseData = useCallback(async () => {
     setError(null)
@@ -474,6 +573,42 @@ export default function CourseDetailPage() {
     }
   }, [courseId])
 
+  const onToggleLessonComplete = useCallback(
+    (lesson: Lesson, nextCompleted: boolean) => {
+      if (!courseId) return
+      void (async () => {
+        if (markingLessonId) return
+        setMarkingLessonId(lesson.id)
+        try {
+          const res = await updateLessonProgress(courseId, lesson.id, {
+            lastPositionSec: 0,
+            durationSec: lesson.duration ?? 0,
+            ...(nextCompleted ? { markComplete: true } : { markIncomplete: true }),
+          })
+          const updated = res.lessonProgress
+          if (!updated) return
+          setCourseProgress((prev) => {
+            if (!prev) return prev
+            const lessons = prev.lessons.map((p) =>
+              p.lessonId === updated.lessonId
+                ? { ...p, completed: updated.completed, lastPositionSec: updated.lastPositionSec, completedAt: updated.completedAt }
+                : p,
+            )
+            const completedCount = lessons.filter((l) => l.completed).length
+            const percentComplete =
+              prev.totalReadyLessons > 0 ? Math.round((completedCount / prev.totalReadyLessons) * 10000) / 100 : 0
+            return { ...prev, lessons, completedCount, percentComplete }
+          })
+        } catch {
+          return
+        } finally {
+          setMarkingLessonId(null)
+        }
+      })()
+    },
+    [courseId, markingLessonId],
+  )
+
   useEffect(() => {
     if (courseId) void loadCourseData()
   }, [courseId, loadCourseData])
@@ -493,21 +628,26 @@ export default function CourseDetailPage() {
   }, [courseId, loadCourseData])
 
   return (
-    <div className="space-y-6 sm:space-y-8">
-        <CourseDetailHero loading={loading} course={course} lessons={lessons} />
-        <CourseDetailBody
-          courseId={courseId}
-          error={error}
-          loading={loading}
-          lessons={lessons}
-          modules={modules}
-          course={course}
-          courseProgress={courseProgress}
-          previewOnly={previewOnly}
-          needsEnrollment={needsEnrollment}
-          enrolling={enrolling}
-          onEnroll={onEnroll}
-        />
+    <div className="mx-auto w-full max-w-6xl space-y-6 px-5 py-6 sm:space-y-8 sm:px-8 sm:py-8">
+      <CourseDetailHero loading={loading} course={course} lessons={lessons} />
+      <CourseDetailBody
+        courseId={courseId}
+        error={error}
+        loading={loading}
+        lessons={lessons}
+        modules={modules}
+        course={course}
+        courseProgress={courseProgress}
+        previewOnly={previewOnly}
+        needsEnrollment={needsEnrollment}
+        enrolling={enrolling}
+        onEnroll={onEnroll}
+        onToggleLessonComplete={onToggleLessonComplete}
+        markingLessonId={markingLessonId}
+      />
+      {/* Pricing visuals per Figma Make; backend wiring pending. */}
+      {/* TODO(figma-backend) GAP-S2-003: replace FIGMA_MOCK_COURSE_PRICING_PLANS with real course pricing / checkout integration. */}
+      {FIGMA_MOCK_COURSE_PRICING_PLANS.length > 0 && <PricingSection />}
     </div>
   )
 }

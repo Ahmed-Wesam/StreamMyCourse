@@ -1,0 +1,39 @@
+---
+description: PowerShell-safe terminal commands (avoid &&)
+---
+
+# PowerShell-safe command chaining (Windows)
+
+When running shell commands in this repo on **Windows PowerShell**, **do not use `&&`** to chain commands. In many PowerShell setups it is **not a valid operator**, which causes avoidable failures during workflows like `/review`, `/commit`, etc.
+
+## Rules
+
+- **Never** emit `cmd1 && cmd2` in PowerShell.
+- Prefer **separate commands** (two distinct invocations) when possible.
+- If a single line is required, use `;` plus an explicit “stop on failure” check:
+
+```powershell
+cmd1; if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }; cmd2
+```
+
+## Examples
+
+Bad (breaks in PowerShell):
+
+```powershell
+git status && git diff
+```
+
+Good (PowerShell-safe):
+
+```powershell
+git status
+git diff
+```
+
+Good single-line (PowerShell-safe, stops on failure):
+
+```powershell
+git status; if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }; git diff
+```
+
