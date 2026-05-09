@@ -30,6 +30,13 @@ const PROGRESS_INTERVAL_MS = 15000 // 15 seconds between heartbeat attempts
 const MAX_CONSECUTIVE_FAILURES = 10 // Circuit breaker threshold
 const MAX_SAME_POSITION_STREAK = 20 // Stop saving if timestamp doesn't change
 
+/** Progress fills — layered blues (professional). */
+const PRO_BLUE_STRIP =
+  'linear-gradient(90deg, #bfdbfe, #93c5fd, #60a5fa, #3b82f6, #2563eb, #60a5fa)'
+/** Compact chrome (e.g. Up next icon shell) — white through sky into blue. */
+const PRO_BLUE_FRAME =
+  'linear-gradient(155deg, #ffffff, #eff6ff, #dbeafe, #93c5fd, #60a5fa)'
+
 function formatDurationMmSs(durationSec: number | undefined): string {
   if (!durationSec || durationSec <= 0) return ''
   const total = Math.round(durationSec)
@@ -57,14 +64,14 @@ function LessonItem({
 }) {
   const rowClass = `group flex items-start px-4 py-3 transition-colors ${
     active
-      ? 'bg-blue-50 border-l-4 border-blue-600'
+      ? 'border-l-[3px] border-blue-600 bg-gradient-to-r from-blue-50 to-white shadow-sm'
       : linkDisabled
         ? 'cursor-default border-l-4 border-transparent opacity-80'
-        : 'hover:bg-gray-50 border-l-4 border-transparent'
+        : 'border-l-4 border-transparent hover:bg-slate-50'
   }`
   const inner = (
     <>
-      <div className="mt-0.5 h-6 w-6 shrink-0 flex items-center justify-center text-muted-foreground">
+      <div className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center text-slate-400">
         {linkDisabled ? (
           <>
             <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" aria-hidden="true">
@@ -84,7 +91,7 @@ function LessonItem({
             <span className="sr-only">Locked</span>
           </>
         ) : active ? (
-          <svg className="h-4 w-4 text-primary" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+          <svg className="h-4 w-4 text-blue-600" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
             <path d="M8 5v14l11-7z" />
           </svg>
         ) : (
@@ -96,11 +103,15 @@ function LessonItem({
 
       <div className="ml-3 flex-1 min-w-0">
         <div className="flex items-start justify-between gap-3">
-          <h4 className={`text-sm truncate ${active ? 'text-blue-900 font-semibold' : 'text-gray-900 font-medium'}`}>
+          <h4
+            className={`text-sm truncate ${active ? 'font-semibold text-slate-900' : 'font-medium text-slate-600'}`}
+          >
             {lesson.title}
           </h4>
           <div className="shrink-0 flex items-center justify-end gap-3 pl-2">
-            {durationLabel ? <div className="text-xs text-muted-foreground tabular-nums">{durationLabel}</div> : null}
+            {durationLabel ? (
+              <div className="text-xs tabular-nums tracking-wider text-slate-600">{durationLabel}</div>
+            ) : null}
             {!active && completed ? (
               <div className="pt-0.5">
                 <span className="sr-only">Completed lesson</span>
@@ -123,17 +134,17 @@ function LessonItem({
           </div>
         </div>
         {progressPct != null ? (
-          <div className="mt-2 h-1.5 w-full rounded-full bg-muted overflow-hidden" aria-label="Lesson progress">
+          <div
+            className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-slate-100 ring-1 ring-slate-200/80"
+            aria-label="Lesson progress"
+          >
             <div
               className="h-full overflow-hidden transition-[width] duration-300 rounded-full"
               style={{ width: `${progressPct}%` }}
             >
               <div
                 className="h-full w-full"
-                style={{
-                  backgroundImage:
-                    'linear-gradient(90deg, rgb(37 99 235), rgb(124 58 237), rgb(236 72 153), rgb(245 158 11), rgb(34 197 94))',
-                }}
+                style={{ backgroundImage: PRO_BLUE_STRIP }}
               />
             </div>
           </div>
@@ -153,8 +164,8 @@ function LessonItem({
 
 function VideoSkeleton() {
   return (
-    <div className="aspect-video bg-gray-900 rounded-lg flex items-center justify-center animate-pulse">
-      <div className="w-16 h-16 bg-gray-700 rounded-full" />
+    <div className="flex aspect-video animate-pulse items-center justify-center overflow-hidden rounded-xl bg-gradient-to-br from-slate-100 to-slate-200/90 shadow-sm">
+      <div className="h-14 w-14 rounded-full bg-slate-300/50" />
     </div>
   )
 }
@@ -185,21 +196,21 @@ function LessonPlayerAlerts({
   return (
     <>
       {needsSignIn && (
-        <div className="mb-6 rounded-lg border border-sky-200 bg-sky-50 p-4">
-          <h3 className="text-sm font-medium text-sky-900">Sign in to watch</h3>
-          <p className="mt-1 text-sm text-sky-800">
+        <div className="mb-6 rounded-2xl border border-slate-200/90 bg-gradient-to-br from-white via-white to-blue-50/50 p-5 shadow-sm shadow-slate-200/60 ring-1 ring-blue-100/80">
+          <h3 className="text-sm font-semibold text-slate-900">Sign in to watch</h3>
+          <p className="mt-1 text-sm text-slate-600">
             Sign in to your account to play this lesson and track your progress.
           </p>
           <div className="mt-4 flex flex-wrap gap-3">
             <Link
               to="/login"
-              className="inline-flex items-center rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
+              className="inline-flex items-center rounded-lg bg-gradient-to-r from-blue-600 via-blue-600 to-blue-700 px-4 py-2 text-sm font-semibold text-white shadow-md shadow-blue-900/15 transition-all hover:from-blue-700 hover:to-blue-800"
             >
               Sign in
             </Link>
             <Link
               to={`/courses/${courseId}`}
-              className="inline-flex items-center rounded-lg border border-sky-300 bg-white px-4 py-2 text-sm font-medium text-sky-900 hover:bg-sky-100"
+              className="inline-flex items-center rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 shadow-sm transition-colors hover:border-blue-200 hover:bg-blue-50/60"
             >
               Course page
             </Link>
@@ -208,9 +219,9 @@ function LessonPlayerAlerts({
       )}
 
       {needsEnrollment && (
-        <div className="mb-6 rounded-lg border border-amber-200 bg-amber-50 p-4">
-          <h3 className="text-sm font-medium text-amber-900">Enroll to watch</h3>
-          <p className="mt-1 text-sm text-amber-800">
+        <div className="mb-6 rounded-2xl border border-slate-200/90 bg-gradient-to-br from-white via-blue-50/30 to-slate-50/80 p-5 shadow-sm shadow-slate-200/60 ring-1 ring-slate-100">
+          <h3 className="text-sm font-semibold text-slate-900">Enroll to watch</h3>
+          <p className="mt-1 text-sm text-slate-600">
             You need to enroll in this course before playback is available.
           </p>
           <div className="mt-4 flex flex-wrap gap-3">
@@ -218,13 +229,13 @@ function LessonPlayerAlerts({
               type="button"
               disabled={enrolling}
               onClick={onEnroll}
-              className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-700 disabled:opacity-60"
+              className="rounded-lg bg-gradient-to-r from-blue-600 to-blue-700 px-4 py-2 text-sm font-semibold text-white shadow-md shadow-blue-900/15 transition-all hover:from-blue-700 hover:to-blue-800 disabled:opacity-60"
             >
               {enrolling ? 'Enrolling…' : 'Enroll for free'}
             </button>
             <Link
               to={`/courses/${courseId}`}
-              className="inline-flex items-center rounded-lg border border-amber-300 bg-white px-4 py-2 text-sm font-medium text-amber-900 hover:bg-amber-100"
+              className="inline-flex items-center rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 shadow-sm transition-colors hover:border-blue-200 hover:bg-blue-50/60"
             >
               Course page
             </Link>
@@ -233,14 +244,14 @@ function LessonPlayerAlerts({
       )}
 
       {error && (
-        <div className="rounded-lg bg-red-50 border border-red-200 p-4 mb-6">
+        <div className="mb-6 rounded-2xl border border-red-200 bg-red-50/80 p-4 shadow-sm">
           <div className="flex">
-            <svg className="w-5 h-5 text-red-400 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg className="mt-0.5 h-5 w-5 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
             </svg>
             <div className="ml-3">
-              <h3 className="text-sm font-medium text-red-800">Error loading video</h3>
-              <p className="mt-1 text-sm text-red-700">{error}</p>
+              <h3 className="text-sm font-semibold text-red-900">Error loading video</h3>
+              <p className="mt-1 text-sm text-red-800/90">{error}</p>
             </div>
           </div>
         </div>
@@ -264,7 +275,7 @@ function LessonPlaybackNavigation({
     prevLesson == null ? (
       <div />
     ) : playbackNavLocked ? (
-      <span className="inline-flex cursor-not-allowed items-center rounded-lg bg-gray-100 px-4 py-2 text-sm font-medium text-gray-400 opacity-60">
+      <span className="inline-flex cursor-not-allowed items-center rounded-lg border border-slate-200 bg-slate-100 px-4 py-2 text-sm font-medium text-slate-400 opacity-90">
         <svg className="mr-2 h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
         </svg>
@@ -273,7 +284,7 @@ function LessonPlaybackNavigation({
     ) : (
       <Link
         to={`/courses/${courseId}/lessons/${prevLesson.id}`}
-        className="inline-flex items-center px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors"
+        className="inline-flex items-center rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 shadow-sm transition-all hover:border-blue-200 hover:bg-slate-50"
       >
         <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
@@ -283,7 +294,7 @@ function LessonPlaybackNavigation({
     )
 
   const nextLockedMarkup = (
-    <span className="inline-flex cursor-not-allowed items-center rounded-lg bg-blue-400 px-4 py-2 text-sm font-medium text-white opacity-60">
+    <span className="inline-flex cursor-not-allowed items-center rounded-lg border border-slate-200 bg-slate-100 px-4 py-2 text-sm font-medium text-slate-400 opacity-80">
       Next
       <svg className="ml-2 h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
@@ -294,7 +305,7 @@ function LessonPlaybackNavigation({
   const coursePageMarkup = (
     <Link
       to={`/courses/${courseId}`}
-      className="inline-flex items-center rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+      className="inline-flex items-center rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 shadow-sm transition-colors hover:border-blue-200 hover:bg-slate-50"
     >
       Course page
     </Link>
@@ -307,7 +318,7 @@ function LessonPlaybackNavigation({
       ) : (
         <Link
           to={`/courses/${courseId}/lessons/${nextLesson.id}`}
-          className="inline-flex items-center px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors"
+          className="inline-flex items-center rounded-lg bg-gradient-to-r from-blue-600 to-blue-700 px-4 py-2 text-sm font-semibold text-white shadow-md shadow-blue-900/10 transition-all hover:from-blue-700 hover:to-blue-800"
         >
           Next
           <svg className="w-4 h-4 ml-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -371,14 +382,14 @@ function LessonPrimaryColumn({
       {loading ? (
         <VideoSkeleton />
       ) : (
-        <div className="rounded-xl overflow-hidden shadow-lg bg-black">
+        <div className="overflow-hidden rounded-xl bg-black shadow-md shadow-slate-900/10">
           <video
             ref={videoRef}
             controls
             playsInline
             preload="metadata"
             crossOrigin="anonymous"
-            className="w-full aspect-video"
+            className="aspect-video w-full"
             src={src || undefined}
             onLoadedMetadata={onLoadedMetadata}
             onTimeUpdate={onTimeUpdate}
@@ -388,23 +399,27 @@ function LessonPrimaryColumn({
         </div>
       )}
 
-      <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
+      <div className="rounded-2xl border border-slate-200/90 bg-gradient-to-br from-white via-white to-blue-50/40 p-6 shadow-md shadow-slate-200/50 backdrop-blur-sm ring-1 ring-blue-50">
         <div className="flex items-start justify-between gap-4">
           <div className="min-w-0">
             {activeModuleLabel ? (
-              <div className="inline-flex max-w-full items-center rounded-full bg-blue-50 px-3 py-1 text-sm font-semibold text-blue-700">
+              <div className="inline-flex max-w-full items-center rounded-full bg-gradient-to-r from-blue-50 to-slate-50 px-3 py-1 text-xs font-semibold text-blue-800 ring-1 ring-blue-100/80">
                 <span className="truncate">{activeModuleLabel}</span>
               </div>
             ) : null}
-            <h1 className="mt-1 text-2xl font-bold text-gray-900">{activeLessonTitle}</h1>
+            <h1 className="mt-1 bg-gradient-to-r from-slate-900 via-blue-900 to-slate-800 bg-clip-text text-2xl font-bold tracking-tight text-transparent">
+              {activeLessonTitle}
+            </h1>
           </div>
 
           <button
             type="button"
             disabled={loading || playbackNavLocked}
             onClick={isLessonCompleted ? onMarkIncomplete : onMarkComplete}
-            className={`inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold text-white disabled:opacity-60 disabled:cursor-not-allowed ${
-              isLessonCompleted ? 'bg-slate-600 hover:bg-slate-700' : 'bg-primary hover:bg-blue-700'
+            className={`inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold transition-all disabled:cursor-not-allowed disabled:opacity-60 ${
+              isLessonCompleted
+                ? 'border border-slate-200 bg-slate-100 text-slate-700 shadow-sm hover:bg-slate-200/80'
+                : 'bg-gradient-to-r from-blue-600 to-blue-700 text-white shadow-md shadow-blue-900/10 hover:from-blue-700 hover:to-blue-800'
             }`}
           >
             <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" aria-hidden="true">
@@ -414,12 +429,16 @@ function LessonPrimaryColumn({
           </button>
         </div>
 
-        <p className="mt-2 text-gray-600">{courseDescription}</p>
+        <p className="mt-2 text-slate-600">{courseDescription}</p>
 
         {nextLesson && (
-          <div className="mt-5 rounded-xl border border-gray-200 bg-gray-50 p-4">
+          <div className="mt-5 rounded-xl border border-slate-200 bg-gradient-to-r from-slate-50/90 to-blue-50/50 p-4 shadow-sm">
             <div className="flex items-start gap-3">
-              <div className="mt-0.5 h-9 w-9 shrink-0 rounded-lg bg-white border border-gray-200 flex items-center justify-center text-gray-500">
+              <div
+                className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl p-0.5 text-white shadow-md"
+                style={{ background: PRO_BLUE_FRAME }}
+              >
+                <div className="flex h-full w-full items-center justify-center rounded-[10px] bg-white text-blue-600 ring-1 ring-slate-200">
                 {playbackNavLocked ? (
                   <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" aria-hidden="true">
                     <path
@@ -440,11 +459,14 @@ function LessonPrimaryColumn({
                     <path d="M8 5v14l11-7z" />
                   </svg>
                 )}
+                </div>
               </div>
               <div className="min-w-0">
-                <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Up next</div>
-                <div className="mt-1 text-sm font-semibold text-gray-900 truncate">{nextLesson.title}</div>
-                <div className="mt-0.5 text-xs text-gray-500">
+                <div className="text-[11px] font-semibold uppercase tracking-wider text-blue-600/90">
+                  Up next
+                </div>
+                <div className="mt-1 truncate text-sm font-semibold text-slate-900">{nextLesson.title}</div>
+                <div className="mt-0.5 text-xs text-slate-500">
                   {playbackNavLocked ? 'Complete this lesson to unlock' : 'Continue to the next lesson'}
                 </div>
               </div>
@@ -512,22 +534,22 @@ function CourseLessonsSidebar({
 
   return (
     <aside
-      className={`${sidebarOpen ? 'w-80' : 'w-0'} shrink-0 transition-all duration-300 overflow-hidden border-r border-border bg-card flex flex-col`}
+      className={`${sidebarOpen ? 'w-80' : 'w-0'} flex shrink-0 flex-col overflow-hidden border-r border-slate-200 bg-gradient-to-b from-white via-slate-50/80 to-blue-50/30 transition-all duration-300 shadow-sm shadow-slate-200/40`}
       aria-label="Course sidebar"
     >
-      <div className="p-4 border-b border-border shrink-0">
+      <div className="shrink-0 border-b border-slate-200 bg-gradient-to-r from-white to-blue-50/50 p-4">
         <div className="flex items-center justify-between gap-3">
           <div>
-            <p className="text-xs text-muted-foreground uppercase tracking-widest mb-1">
+            <p className="mb-1 text-[11px] font-semibold uppercase tracking-wider text-blue-700/90">
               Course Progress
             </p>
-            <p className="text-xs text-muted-foreground">
+            <p className="text-xs font-medium text-slate-600">
               {completed} of {total} lessons completed
             </p>
           </div>
           <button
             type="button"
-            className="md:hidden p-2 rounded-md hover:bg-muted/50 text-muted-foreground"
+            className="rounded-md p-2 text-slate-500 hover:bg-slate-100 hover:text-slate-800 md:hidden"
             aria-label="Close sidebar"
             onClick={onClose}
           >
@@ -536,11 +558,16 @@ function CourseLessonsSidebar({
             </svg>
           </button>
         </div>
-        <div className="flex items-center gap-2 mt-3">
-          <div className="flex-1 h-2 bg-muted rounded-full overflow-hidden">
-            <div className="h-full bg-primary rounded-full transition-all" style={{ width: `${percent}%` }} />
+        <div className="mt-3 flex items-center gap-2">
+          <div className="h-2 flex-1 overflow-hidden rounded-full bg-slate-200/90 ring-1 ring-slate-200">
+            <div
+              className="h-full rounded-full transition-all shadow-sm shadow-blue-900/5"
+              style={{ width: `${percent}%`, backgroundImage: PRO_BLUE_STRIP }}
+            />
           </div>
-          <span className="text-xs text-muted-foreground shrink-0">{percent}%</span>
+          <span className="shrink-0 text-xs font-semibold tabular-nums tracking-wide text-blue-700">
+            {percent}%
+          </span>
         </div>
       </div>
 
@@ -552,7 +579,7 @@ function CourseLessonsSidebar({
               <div key={section.id}>
                 <button
                   type="button"
-                  className="w-full rounded-lg border border-border bg-white px-4 py-2.5 text-left text-xs font-semibold text-muted-foreground flex items-center justify-between hover:bg-muted/30 transition-colors"
+                  className="flex w-full items-center justify-between rounded-lg border border-slate-200/90 bg-white/80 px-4 py-2.5 text-left text-xs font-semibold tracking-wide text-slate-700 shadow-sm transition-colors hover:border-blue-200 hover:bg-blue-50/40"
                   aria-expanded={expanded}
                   onClick={() =>
                     setOpenSections((s) => ({ ...s, [section.id]: !s[section.id] }))
@@ -1130,7 +1157,7 @@ export default function LessonPlayerPage() {
   const [sidebarOpen, setSidebarOpen] = useState(true)
 
   return (
-    <div className="flex h-[calc(100vh-64px)] overflow-hidden bg-background">
+    <div className="flex h-[calc(100vh-64px)] overflow-hidden bg-gradient-to-br from-slate-100 via-white to-blue-50/70">
       <CourseLessonsSidebar
         error={error}
         lessons={lessons}
@@ -1143,12 +1170,17 @@ export default function LessonPlayerPage() {
         onClose={() => setSidebarOpen(false)}
       />
 
-      <div className="flex-1 flex flex-col overflow-hidden">
-        <div className="flex items-center gap-3 px-4 py-3 border-b border-border bg-white shrink-0">
+      <div className="flex flex-1 flex-col overflow-hidden">
+        <div className="flex shrink-0 flex-col">
+          <div
+            className="h-1 w-full shrink-0 bg-gradient-to-r from-blue-400 via-blue-600 to-sky-500"
+            aria-hidden
+          />
+          <div className="flex shrink-0 items-center gap-3 border-b border-slate-200 bg-gradient-to-r from-white via-white to-blue-50/60 px-4 py-3 shadow-sm shadow-slate-200/40">
           <button
             type="button"
             onClick={() => setSidebarOpen((s) => !s)}
-            className="p-2 rounded-md hover:bg-muted/50 transition-colors text-muted-foreground"
+            className="rounded-lg p-2 text-slate-600 transition-colors hover:bg-slate-100 hover:text-slate-900"
             aria-label={sidebarOpen ? 'Hide sidebar' : 'Show sidebar'}
             title={sidebarOpen ? 'Hide sidebar' : 'Show sidebar'}
           >
@@ -1157,13 +1189,13 @@ export default function LessonPlayerPage() {
             </svg>
           </button>
 
-          <div className="flex-1 min-w-0">
-            <p className="text-xs text-muted-foreground truncate">
-              <Link to={`/courses/${courseId}`} className="hover:underline">
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-xs font-medium uppercase tracking-wide text-slate-500">
+              <Link to={`/courses/${courseId}`} className="text-blue-700 hover:text-blue-800 hover:underline">
                 {course?.title ?? 'Course'}
               </Link>
             </p>
-            <p className="text-sm truncate" style={{ fontWeight: 600 }}>
+            <p className="truncate text-sm font-semibold tracking-tight text-slate-900">
               {activeLessonTitle}
             </p>
           </div>
@@ -1171,7 +1203,7 @@ export default function LessonPlayerPage() {
           <div className="flex items-center gap-2 shrink-0">
             {prevLesson ? (
               playbackNavLocked ? (
-                <span className="inline-flex cursor-not-allowed items-center rounded-md border border-border bg-muted px-3 py-1.5 text-sm text-muted-foreground opacity-60">
+                <span className="inline-flex cursor-not-allowed items-center rounded-lg border border-slate-200 bg-slate-100 px-3 py-1.5 text-sm text-slate-400 opacity-90">
                   <svg className="mr-1.5 h-4 w-4" viewBox="0 0 24 24" fill="none" aria-hidden="true">
                     <path d="M15 19l-7-7 7-7" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
                   </svg>
@@ -1180,7 +1212,7 @@ export default function LessonPlayerPage() {
               ) : (
                 <Link
                   to={`/courses/${courseId}/lessons/${prevLesson.id}`}
-                  className="inline-flex items-center rounded-md border border-border bg-white px-3 py-1.5 text-sm hover:bg-muted/40 transition-colors"
+                  className="inline-flex items-center rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 shadow-sm transition-colors hover:border-blue-200 hover:bg-slate-50"
                 >
                   <svg className="mr-1.5 h-4 w-4" viewBox="0 0 24 24" fill="none" aria-hidden="true">
                     <path d="M15 19l-7-7 7-7" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
@@ -1192,7 +1224,7 @@ export default function LessonPlayerPage() {
 
             {nextLesson ? (
               playbackNavLocked ? (
-                <span className="inline-flex cursor-not-allowed items-center rounded-md bg-primary px-3 py-1.5 text-sm text-white opacity-60">
+                <span className="inline-flex cursor-not-allowed items-center rounded-lg border border-slate-200 bg-slate-100 px-3 py-1.5 text-sm font-medium text-slate-400 opacity-90">
                   Next
                   <svg className="ml-1.5 h-4 w-4" viewBox="0 0 24 24" fill="none" aria-hidden="true">
                     <path d="M9 5l7 7-7 7" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
@@ -1201,7 +1233,7 @@ export default function LessonPlayerPage() {
               ) : (
                 <Link
                   to={`/courses/${courseId}/lessons/${nextLesson.id}`}
-                  className="inline-flex items-center rounded-md bg-primary px-3 py-1.5 text-sm text-white hover:bg-blue-700 transition-colors"
+                  className="inline-flex items-center rounded-md bg-gradient-to-r from-blue-600 to-blue-700 px-3 py-1.5 text-sm font-semibold text-white shadow-md shadow-blue-900/10 transition-all hover:from-blue-700 hover:to-blue-800"
                 >
                   Next
                   <svg className="ml-1.5 h-4 w-4" viewBox="0 0 24 24" fill="none" aria-hidden="true">
@@ -1212,9 +1244,10 @@ export default function LessonPlayerPage() {
             ) : null}
           </div>
         </div>
+        </div>
 
-        <div className="flex-1 overflow-y-auto">
-          <main className="max-w-4xl mx-auto px-6 py-8">
+        <div className="flex-1 overflow-y-auto bg-gradient-to-b from-transparent via-white/50 to-blue-50/30">
+          <main className="mx-auto max-w-4xl px-6 py-8">
             <LessonPlayerAlerts
               needsSignIn={needsSignIn}
               needsEnrollment={needsEnrollment}

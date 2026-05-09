@@ -2,38 +2,46 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Shadcn-like design tokens (from Figma Make export) */
+/* Design tokens — cool neutrals + blue primary (subtle site-wide harmony) */
 :root {
   --font-size: 18px;
-  --background: #ffffff;
-  --foreground: oklch(0.145 0 0);
+  /* Slightly cool canvas so white cards read clearly */
+  --background: #f5f8fc;
+  --foreground: oklch(0.145 0.012 255);
   --card: #ffffff;
-  --card-foreground: oklch(0.145 0 0);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.145 0 0);
-  /* Real-site primary blue */
+  --card-foreground: oklch(0.145 0.012 255);
+  --popover: #ffffff;
+  --popover-foreground: oklch(0.145 0.012 255);
   --primary: #2563eb;
-  --primary-foreground: oklch(1 0 0);
-  --secondary: oklch(0.95 0.0058 264.53);
-  --secondary-foreground: #0b1220;
-  --muted: #ececf0;
-  --muted-foreground: #717182;
-  --accent: #e9ebef;
-  --accent-foreground: #030213;
+  --primary-foreground: #ffffff;
+  --secondary: #eef3f9;
+  --secondary-foreground: #0f172a;
+  --muted: #e6edf5;
+  --muted-foreground: #5c6578;
+  --accent: #e8f0fa;
+  --accent-foreground: #0f172a;
   --destructive: #d4183d;
   --destructive-foreground: #ffffff;
-  --border: rgba(0, 0, 0, 0.1);
+  --border: rgba(30, 58, 138, 0.09);
   --input: transparent;
-  --ring: oklch(0.708 0 0);
+  --ring: #93c5fd;
 }
 
 /* Base styles */
 html {
   font-size: var(--font-size);
+  min-height: 100%;
 }
 
 body {
   margin: 0;
   font-family: system-ui, -apple-system, sans-serif;
-  @apply bg-background text-foreground antialiased;
+  @apply text-foreground antialiased;
+  background-color: var(--background);
+  /* Very soft blue wash — fixed so long pages feel consistent */
+  background-image:
+    radial-gradient(ellipse 120% 72% at 50% -28%, rgba(59, 130, 246, 0.055), transparent 54%),
+    radial-gradient(ellipse 82% 52% at 100% 100%, rgba(37, 99, 235, 0.042), transparent 50%),
+    radial-gradient(ellipse 68% 42% at 0% 100%, rgba(14, 165, 233, 0.032), transparent 48%);
+  background-attachment: fixed;
 }

@@ -101,7 +101,7 @@ export function StudentHeader() {
   }
 
   return (
-    <header className={`sticky top-0 z-50 bg-white border-b border-border transition-shadow ${scrolled ? 'shadow-sm' : ''}`}>
+    <header className={`sticky top-0 z-50 border-b border-border bg-white transition-shadow ${scrolled ? 'shadow-sm' : ''}`}>
       <div className="max-w-6xl mx-auto px-6 h-16 flex items-center justify-between">
         <Link className="flex items-center gap-2 text-primary" to="/">
           <BarChart2 className="w-6 h-6" />
