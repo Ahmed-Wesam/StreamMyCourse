@@ -8,8 +8,14 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 vi.mock('../pages/CourseCatalogPage', () => ({
   default: () => <div data-testid="student-page-catalog" />,
 }))
+vi.mock('../pages/HomePage', () => ({
+  default: () => <div data-testid="student-page-home" />,
+}))
 vi.mock('../pages/CourseDetailPage', () => ({
   default: () => <div data-testid="student-page-detail" />,
+}))
+vi.mock('../pages/MyCoursePage', () => ({
+  default: () => <div data-testid="student-page-my-course" />,
 }))
 vi.mock('../pages/StudentLoginPage', () => ({
   default: () => <div data-testid="student-page-login" />,
@@ -43,14 +49,24 @@ describe('StudentApp', () => {
     vi.clearAllMocks()
   })
 
-  it('mounts the catalog route at /', () => {
+  it('mounts the home route at /', () => {
     renderAt('/')
+    expect(screen.getByTestId('student-page-home')).toBeTruthy()
+  })
+
+  it('mounts the catalog route at /catalog', () => {
+    renderAt('/catalog')
     expect(screen.getByTestId('student-page-catalog')).toBeTruthy()
   })
 
   it('mounts the course detail route at /courses/:courseId', () => {
     renderAt('/courses/c-1')
     expect(screen.getByTestId('student-page-detail')).toBeTruthy()
+  })
+
+  it('mounts the my course route at /my-course', () => {
+    renderAt('/my-course')
+    expect(screen.getByTestId('student-page-my-course')).toBeTruthy()
   })
 
   it('mounts the login route at /login', () => {
@@ -63,10 +79,10 @@ describe('StudentApp', () => {
     expect(screen.getByTestId('student-page-lesson')).toBeTruthy()
   })
 
-  it('redirects unknown paths to home (catalog)', async () => {
+  it('redirects unknown paths to home', async () => {
     renderAt('/no-such-route')
     await waitFor(() => {
-      expect(screen.getByTestId('student-page-catalog')).toBeTruthy()
+      expect(screen.getByTestId('student-page-home')).toBeTruthy()
     })
   })
 })

@@ -174,7 +174,7 @@ describe('LessonPlayerPage', () => {
     })
   })
 
-  it('shows completion badge when lesson is completed', async () => {
+  it('shows "Mark as Incomplete" when lesson is completed', async () => {
     api.getCourseProgress.mockResolvedValue({
       courseId: 'c1',
       totalReadyLessons: 2,
@@ -189,11 +189,11 @@ describe('LessonPlayerPage', () => {
     renderLessonPlayer('/courses/c1/lessons/l1')
 
     await waitFor(() => {
-      expect(screen.getByText('Completed')).toBeTruthy()
+      expect(screen.getByRole('button', { name: /Mark as Incomplete/i })).toBeTruthy()
     })
   })
 
-  it('shows "Done" badge on completed lessons in sidebar', async () => {
+  it('shows completed checkmark on completed lessons in sidebar', async () => {
     api.getCourseProgress.mockResolvedValue({
       courseId: 'c1',
       totalReadyLessons: 2,
@@ -208,8 +208,8 @@ describe('LessonPlayerPage', () => {
     renderLessonPlayer('/courses/c1/lessons/l2')
 
     await waitFor(() => {
-      const doneBadges = screen.getAllByText('Done')
-      expect(doneBadges.length).toBeGreaterThan(0)
+      const checkmarks = screen.getAllByLabelText('Completed lesson')
+      expect(checkmarks.length).toBeGreaterThan(0)
     })
   })
 
@@ -234,58 +234,77 @@ describe('LessonPlayerPage', () => {
     })
   })
 
-  it('shows "Mark as not done" button for completed lessons', async () => {
+  it('renders a per-lesson progress bar that is capped below 100% until completed', async () => {
+    api.listLessons.mockResolvedValue([
+      {
+        id: 'l1',
+        title: 'Alpha',
+        order: 1,
+        moduleId: 'm1',
+        moduleOrder: 0,
+        videoStatus: 'ready',
+        duration: 400,
+      },
+      {
+        id: 'l2',
+        title: 'Beta',
+        order: 2,
+        moduleId: 'm1',
+        moduleOrder: 0,
+        videoStatus: 'ready',
+        duration: 400,
+      },
+    ])
+    api.listCourseModules.mockResolvedValue([{ id: 'm1', title: 'Section 1', description: '', order: 0 }])
     api.getCourseProgress.mockResolvedValue({
       courseId: 'c1',
       totalReadyLessons: 2,
       completedCount: 1,
       percentComplete: 50,
       lessons: [
-        { lessonId: 'l1', completed: true, lastPositionSec: 120 },
-        { lessonId: 'l2', completed: false, lastPositionSec: 0 },
+        { lessonId: 'l1', completed: false, lastPositionSec: 200 },
+        { lessonId: 'l2', completed: true, lastPositionSec: 400 },
       ],
     })
 
     renderLessonPlayer('/courses/c1/lessons/l1')
 
-    const button = await screen.findByRole('button', { name: /Mark as not done/i })
-    expect(button).toBeTruthy()
+    // Module is open because it contains the active lesson.
+    const bars = await waitFor(() => screen.getAllByLabelText('Lesson progress'))
+    expect(bars.length).toBeGreaterThan(0)
+
+    // Ensure at least one is not full width (incomplete), and at least one is full width (complete).
+    const widths = bars
+      .map((el) => el.firstElementChild as HTMLElement | null)
+      .filter(Boolean)
+      .map((el) => el?.style.width ?? '')
+
+    expect(widths.some((w) => w === '100%')).toBe(true)
+    expect(widths.some((w) => w && w !== '100%')).toBe(true)
   })
 
-  it('calls updateLessonProgress with markIncomplete when "Mark as not done" clicked', async () => {
-    api.getCourseProgress
-      .mockResolvedValueOnce({
-        courseId: 'c1',
-        totalReadyLessons: 2,
-        completedCount: 1,
-        percentComplete: 50,
-        lessons: [
-          { lessonId: 'l1', completed: true, lastPositionSec: 120 },
-          { lessonId: 'l2', completed: false, lastPositionSec: 0 },
-        ],
-      })
-      .mockResolvedValueOnce({
-        courseId: 'c1',
-        totalReadyLessons: 2,
-        completedCount: 0,
-        percentComplete: 0,
-        lessons: [
-          { lessonId: 'l1', completed: false, lastPositionSec: 0 },
-          { lessonId: 'l2', completed: false, lastPositionSec: 0 },
-        ],
-      })
+  it('shows "Mark as Complete" button for an incomplete lesson', async () => {
+    renderLessonPlayer('/courses/c1/lessons/l1')
+    expect(await screen.findByRole('button', { name: /Mark as Complete/i })).toBeTruthy()
+  })
 
+  it('calls updateLessonProgress with markComplete when "Mark as Complete" is clicked', async () => {
     renderLessonPlayer('/courses/c1/lessons/l1')
 
-    const button = await screen.findByRole('button', { name: /Mark as not done/i })
-    fireEvent.click(button)
+    const btn = await screen.findByRole('button', { name: /Mark as Complete/i })
+    const progressFetchesBefore = api.getCourseProgress.mock.calls.length
+    fireEvent.click(btn)
 
     await waitFor(() => {
-      expect(api.updateLessonProgress).toHaveBeenCalledWith('c1', 'l1', {
-        lastPositionSec: 0,
-        durationSec: 400,
-        markIncomplete: true,
-      })
+      const calls = api.updateLessonProgress.mock.calls
+      expect(calls.some((c) => c[2]?.markComplete === true)).toBe(true)
+    })
+
+    // UI should immediately reflect completion.
+    expect(await screen.findByRole('button', { name: /Mark as Incomplete/i })).toBeTruthy()
+
+    await waitFor(() => {
+      expect(api.getCourseProgress.mock.calls.length).toBeGreaterThan(progressFetchesBefore)
     })
   })
 
@@ -293,9 +312,9 @@ describe('LessonPlayerPage', () => {
     renderLessonPlayer('/courses/c1/lessons/l1')
 
     await waitFor(() => {
-      expect(screen.getByText('Section 1')).toBeTruthy()
+      expect(screen.getByRole('button', { name: 'Section 1' })).toBeTruthy()
     })
-    expect(screen.getByText('Section 2')).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Section 2' })).toBeTruthy()
   })
 
   it('shows Unsorted sidebar section when a lesson references an unknown module', async () => {
@@ -347,23 +366,26 @@ describe('LessonPlayerPage', () => {
     renderLessonPlayer('/courses/c1/lessons/l1')
 
     await waitFor(() => {
-      expect(screen.getByText('Section 1')).toBeTruthy()
+      expect(screen.getByRole('button', { name: 'Section 1' })).toBeTruthy()
     })
-    expect(screen.getByText('Section 2')).toBeTruthy()
-    expect(screen.getByText('Unsorted')).toBeTruthy()
-    expect(screen.getByText('Orphan Lesson')).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Section 2' })).toBeTruthy()
+    const unsortedToggle = await screen.findByRole('button', { name: /Unsorted/i })
+    if (unsortedToggle.getAttribute('aria-expanded') !== 'true') {
+      fireEvent.click(unsortedToggle)
+    }
+    expect(await screen.findByText(/Orphan Lesson/i)).toBeTruthy()
   })
 
   it('navigates Next/Previous across modules in (moduleOrder, order) order', async () => {
     renderLessonPlayer('/courses/c1/lessons/l2')
 
-    const next = await waitFor(() => screen.getByRole('link', { name: /Next/i }))
-    expect(next.getAttribute('href')).toBe('/courses/c1/lessons/l3')
+    const nextLinks = await waitFor(() => screen.getAllByRole('link', { name: /Next/i }))
+    expect(nextLinks.some((a) => a.getAttribute('href') === '/courses/c1/lessons/l3')).toBe(true)
 
     cleanup()
     renderLessonPlayer('/courses/c1/lessons/l3')
-    const prev = await waitFor(() => screen.getByRole('link', { name: /Previous/i }))
-    expect(prev.getAttribute('href')).toBe('/courses/c1/lessons/l2')
+    const prevLinks = await waitFor(() => screen.getAllByRole('link', { name: /Prev|Previous/i }))
+    expect(prevLinks.some((a) => a.getAttribute('href') === '/courses/c1/lessons/l2')).toBe(true)
   })
 
   it('does not render Lesson N subtitle in sidebar items', async () => {
@@ -385,25 +407,12 @@ describe('LessonPlayerPage', () => {
     expect(screen.queryByText('Alpha')).toBeNull()
   })
 
-  it('counts failures when markIncomplete fails', async () => {
-    // Set up completed lesson state
-    api.getCourseProgress.mockResolvedValue({
-      courseId: 'c1',
-      totalReadyLessons: 2,
-      completedCount: 1,
-      percentComplete: 50,
-      lessons: [
-        { lessonId: 'l1', completed: true, lastPositionSec: 400 },
-        { lessonId: 'l2', completed: false, lastPositionSec: 0 },
-      ],
-    })
-
-    // All calls fail to quickly trigger circuit breaker
+  it('counts failures when markComplete fails', async () => {
     api.updateLessonProgress.mockRejectedValue(new Error('Network error'))
 
     renderLessonPlayer('/courses/c1/lessons/l1')
 
-    const button = await screen.findByRole('button', { name: /Mark as not done/i })
+    const button = await screen.findByRole('button', { name: /Mark as Complete/i })
 
     // Click 10 times to trigger circuit breaker, awaiting each click
     for (let i = 0; i < 10; i++) {
