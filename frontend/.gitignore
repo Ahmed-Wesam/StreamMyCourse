@@ -16,6 +16,7 @@ dist-ssr
 # Environment variables
 .env.*
 !.env.example
+!.env.teacher.example
 
 # Editor directories and files
 .vscode/*
