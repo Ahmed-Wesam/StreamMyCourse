@@ -1109,7 +1109,7 @@ Resources:
           HttpMethod: '*'
           ThrottlingBurstLimit: 200
           ThrottlingRateLimit: 100
-          MetricsEnabled: true
+          MetricsEnabled: false
 
 Outputs:
   ApiEndpoint:
