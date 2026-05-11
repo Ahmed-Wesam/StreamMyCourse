@@ -1,5 +1,5 @@
 AWSTemplateFormatVersion: '2010-09-09'
-Description: 'StreamMyCourse — SQS + Lambda worker for async S3 media cleanup after course delete'
+Description: 'StreamMyCourse - SQS + Lambda worker for async S3 media cleanup after course delete'
 
 Parameters:
   Environment:
