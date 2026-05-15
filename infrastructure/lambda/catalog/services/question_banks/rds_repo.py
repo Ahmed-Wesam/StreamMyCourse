@@ -581,12 +581,15 @@ class QuestionBankRdsRepository:
         return str(row[0])
 
     def insert_published_question(
-        self, *, course_id: str, bank_id: str, correct_option_key: str
+        self,
+        *,
+        course_id: str,
+        bank_id: str,
+        prompt_text: str,
+        options_json: Any,
+        correct_option_key: str,
     ) -> str:
         key = (correct_option_key or "").strip()
-        if not key:
-            raise BadRequest("correct_option_key is required")
-        options: list[dict[str, str]] = [{"key": key, "text": ""}]
         try:
             cur = self._execute(
                 """
@@ -597,7 +600,13 @@ class QuestionBankRdsRepository:
                 VALUES (%s, %s, 'PUBLISHED', %s, %s, %s)
                 RETURNING id
                 """,
-                (course_id, bank_id, "", _pg_json(options), key),
+                (
+                    course_id,
+                    bank_id,
+                    (prompt_text or "").strip(),
+                    _pg_json(options_json),
+                    key or None,
+                ),
                 commit=True,
             )
         except Exception as exc:

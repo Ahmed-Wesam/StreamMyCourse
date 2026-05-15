@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 from typing import Any, Dict, Optional, Tuple
 
-from services.common.errors import HttpError, Unauthorized
+from services.common.errors import BadRequest, HttpError, Unauthorized
 from services.common.http import (
     apigw_cognito_claims,
     apigw_routing_path,
@@ -112,6 +112,30 @@ def _route_question_banks(method: str, path: str) -> Tuple[str, Dict[str, str]]:
             "questionBankId": parts[3],
         }
     if (
+        method == "PATCH"
+        and len(parts) == 6
+        and parts[0] == "courses"
+        and parts[2] == "question-banks"
+        and parts[4] == "questions"
+    ):
+        return "update_question", {
+            "courseId": parts[1],
+            "questionBankId": parts[3],
+            "questionId": parts[5],
+        }
+    if (
+        method == "DELETE"
+        and len(parts) == 6
+        and parts[0] == "courses"
+        and parts[2] == "question-banks"
+        and parts[4] == "questions"
+    ):
+        return "delete_question", {
+            "courseId": parts[1],
+            "questionBankId": parts[3],
+            "questionId": parts[5],
+        }
+    if (
         method == "OPTIONS"
         and len(parts) == 3
         and parts[0] == "courses"
@@ -134,6 +158,14 @@ def _route_question_banks(method: str, path: str) -> Tuple[str, Dict[str, str]]:
         and parts[4] == "questions"
     ):
         return "options_question_bank_questions", {"courseId": parts[1]}
+    if (
+        method == "OPTIONS"
+        and len(parts) == 6
+        and parts[0] == "courses"
+        and parts[2] == "question-banks"
+        and parts[4] == "questions"
+    ):
+        return "options_question_bank_question_item", {"courseId": parts[1]}
     if (
         method == "OPTIONS"
         and len(parts) == 6
@@ -249,16 +281,81 @@ def handle_question_banks_request(
             opts = require_json_array_or_object(body, "optionsJson")
             correct_raw = optional_str(body, "correctOptionKey", "").strip()
             correct_key = correct_raw or None
-            qid = qb_svc.create_draft_question(
+            bank = qb_svc.get_bank_for_course(
                 params["courseId"],
                 params["questionBankId"],
-                prompt_text=prompt,
-                options_json=opts,
-                correct_option_key=correct_key,
                 cognito_sub=_actor_sub(claims),
                 role=_actor_role(claims),
             )
+            if bank.status == "DRAFT":
+                qid = qb_svc.create_draft_question(
+                    params["courseId"],
+                    params["questionBankId"],
+                    prompt_text=prompt,
+                    options_json=opts,
+                    correct_option_key=correct_key,
+                    cognito_sub=_actor_sub(claims),
+                    role=_actor_role(claims),
+                )
+            elif bank.status == "PUBLISHED":
+                if not correct_key:
+                    raise BadRequest("correctOptionKey must not be empty")
+                qid = qb_svc.add_published_question(
+                    params["courseId"],
+                    params["questionBankId"],
+                    prompt_text=prompt,
+                    options_json=opts,
+                    correct_option_key=correct_key,
+                    cognito_sub=_actor_sub(claims),
+                    role=_actor_role(claims),
+                )
+            else:
+                raise BadRequest("Question bank cannot accept questions in this status")
             return json_response(201, {"questionId": qid}, origin)
+
+        if action == "update_question":
+            body = parse_json_body(event)
+            if (
+                "promptText" not in body
+                and "optionsJson" not in body
+                and "correctOptionKey" not in body
+            ):
+                raise BadRequest(
+                    "At least one of promptText, optionsJson, correctOptionKey is required"
+                )
+            prompt_patch = None
+            if "promptText" in body:
+                prompt_patch = require_str(body, "promptText")
+            opts_patch = None
+            if "optionsJson" in body:
+                opts_patch = require_json_array_or_object(body, "optionsJson")
+            correct_patch = None
+            if "correctOptionKey" in body:
+                ck = optional_str(body, "correctOptionKey", "")
+                if not ck.strip():
+                    raise BadRequest("correctOptionKey must not be empty")
+                correct_patch = ck.strip()
+            qb_svc.update_question(
+                params["courseId"],
+                params["questionBankId"],
+                params["questionId"],
+                cognito_sub=_actor_sub(claims),
+                role=_actor_role(claims),
+                prompt_text=prompt_patch,
+                options_json=opts_patch,
+                correct_option_key=correct_patch,
+            )
+            return json_response(200, {"status": "updated"}, origin)
+
+        if action == "delete_question":
+            qb_svc.delete_question(
+                params["courseId"],
+                params["questionBankId"],
+                params["questionId"],
+                cognito_sub=_actor_sub(claims),
+                role=_actor_role(claims),
+            )
+            return json_response(200, {"status": "deleted"}, origin)
 
         return None
     except HttpError as exc:

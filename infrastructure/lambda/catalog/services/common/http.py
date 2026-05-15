@@ -40,7 +40,7 @@ def _security_headers(origin: Optional[str]) -> Dict[str, str]:
     }
     if origin is not None:
         h["Access-Control-Allow-Origin"] = origin
-        h["Access-Control-Allow-Methods"] = "GET,POST,PUT,DELETE,OPTIONS"
+        h["Access-Control-Allow-Methods"] = "GET,POST,PUT,PATCH,DELETE,OPTIONS"
         h["Access-Control-Allow-Headers"] = "Content-Type,Authorization"
         if origin.startswith("https://"):
             h["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
@@ -63,7 +63,7 @@ def options_response(origin: Optional[str]) -> Dict[str, Any]:
     }
     if origin is not None:
         h["Access-Control-Allow-Origin"] = origin
-        h["Access-Control-Allow-Methods"] = "GET,POST,PUT,DELETE,OPTIONS"
+        h["Access-Control-Allow-Methods"] = "GET,POST,PUT,PATCH,DELETE,OPTIONS"
         h["Access-Control-Allow-Headers"] = "Content-Type,Authorization"
         if origin.startswith("https://"):
             h["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
