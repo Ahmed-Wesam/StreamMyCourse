@@ -20,6 +20,10 @@ _ROLE = "teacher"
 
 _MCQ_A = [{"key": "A", "text": "choice A"}]
 _MCQ_B = [{"key": "B", "text": "choice B"}]
+_MCQ_AB = [
+    {"key": "A", "text": "choice A"},
+    {"key": "B", "text": "choice B"},
+]
 
 
 def _draft_q(
@@ -71,6 +75,57 @@ def _make_service(authorizer: MagicMock, repo: MagicMock) -> QuestionBankService
         student_lesson_access=lesson_access,
         course_read=course_read,
     )
+
+
+def test_get_bank_for_course_returns_after_authz() -> None:
+    authorizer = MagicMock()
+    repo = MagicMock()
+    repo.get_bank_for_course.return_value = _draft_bank()
+    svc = _make_service(authorizer, repo)
+    out = svc.get_bank_for_course(
+        _COURSE_ID,
+        _BANK_ID,
+        cognito_sub=_COGNITO_SUB,
+        role=_ROLE,
+    )
+    assert out.status == "DRAFT"
+    authorizer.ensure_course_mutable_by_actor.assert_called_once_with(
+        _COURSE_ID, cognito_sub=_COGNITO_SUB, role=_ROLE
+    )
+    repo.get_bank_for_course.assert_called_once_with(
+        course_id=_COURSE_ID, bank_id=_BANK_ID
+    )
+
+
+def test_get_bank_for_course_not_found() -> None:
+    authorizer = MagicMock()
+    repo = MagicMock()
+    repo.get_bank_for_course.return_value = None
+    svc = _make_service(authorizer, repo)
+    with pytest.raises(NotFound, match="Question bank not found"):
+        svc.get_bank_for_course(
+            _COURSE_ID,
+            _BANK_ID,
+            cognito_sub=_COGNITO_SUB,
+            role=_ROLE,
+        )
+
+
+def test_get_bank_for_course_forbidden_before_repo() -> None:
+    authorizer = MagicMock()
+    repo = MagicMock()
+    authorizer.ensure_course_mutable_by_actor.side_effect = Forbidden(
+        "not allowed", code="forbidden"
+    )
+    svc = _make_service(authorizer, repo)
+    with pytest.raises(Forbidden, match="not allowed"):
+        svc.get_bank_for_course(
+            _COURSE_ID,
+            _BANK_ID,
+            cognito_sub=_COGNITO_SUB,
+            role=_ROLE,
+        )
+    repo.get_bank_for_course.assert_not_called()
 
 
 def test_authorizer_called_before_insert_question_bank() -> None:
@@ -383,6 +438,8 @@ def test_add_published_question_rejects_draft_bank() -> None:
             _BANK_ID,
             cognito_sub=_COGNITO_SUB,
             role=_ROLE,
+            prompt_text="Pick one",
+            options_json=_MCQ_AB,
             correct_option_key="A",
         )
     repo.insert_published_question.assert_not_called()
@@ -399,14 +456,90 @@ def test_add_published_question_inserts_when_bank_published() -> None:
         _BANK_ID,
         cognito_sub=_COGNITO_SUB,
         role=_ROLE,
-        correct_option_key="C",
+        prompt_text="  What is 2+2?  ",
+        options_json=_MCQ_AB,
+        correct_option_key="B",
     )
     assert out == "new-published-q"
     repo.insert_published_question.assert_called_once_with(
         course_id=_COURSE_ID,
         bank_id=_BANK_ID,
-        correct_option_key="C",
+        prompt_text="What is 2+2?",
+        options_json=_MCQ_AB,
+        correct_option_key="B",
     )
+
+
+def test_add_published_question_rejects_blank_prompt() -> None:
+    authorizer = MagicMock()
+    repo = MagicMock()
+    repo.get_bank_for_course.return_value = _published_bank()
+    svc = _make_service(authorizer, repo)
+    with pytest.raises(BadRequest, match="promptText"):
+        svc.add_published_question(
+            _COURSE_ID,
+            _BANK_ID,
+            cognito_sub=_COGNITO_SUB,
+            role=_ROLE,
+            prompt_text="   ",
+            options_json=_MCQ_AB,
+            correct_option_key="A",
+        )
+    repo.insert_published_question.assert_not_called()
+
+
+def test_add_published_question_rejects_empty_options() -> None:
+    authorizer = MagicMock()
+    repo = MagicMock()
+    repo.get_bank_for_course.return_value = _published_bank()
+    svc = _make_service(authorizer, repo)
+    with pytest.raises(BadRequest, match="optionsJson"):
+        svc.add_published_question(
+            _COURSE_ID,
+            _BANK_ID,
+            cognito_sub=_COGNITO_SUB,
+            role=_ROLE,
+            prompt_text="Q?",
+            options_json=[],
+            correct_option_key="A",
+        )
+    repo.insert_published_question.assert_not_called()
+
+
+def test_add_published_question_rejects_correct_key_not_in_options() -> None:
+    authorizer = MagicMock()
+    repo = MagicMock()
+    repo.get_bank_for_course.return_value = _published_bank()
+    svc = _make_service(authorizer, repo)
+    with pytest.raises(BadRequest, match="correctOptionKey"):
+        svc.add_published_question(
+            _COURSE_ID,
+            _BANK_ID,
+            cognito_sub=_COGNITO_SUB,
+            role=_ROLE,
+            prompt_text="Q?",
+            options_json=_MCQ_A,
+            correct_option_key="Z",
+        )
+    repo.insert_published_question.assert_not_called()
+
+
+def test_add_published_question_rejects_empty_correct_key() -> None:
+    authorizer = MagicMock()
+    repo = MagicMock()
+    repo.get_bank_for_course.return_value = _published_bank()
+    svc = _make_service(authorizer, repo)
+    with pytest.raises(BadRequest, match="correctOptionKey"):
+        svc.add_published_question(
+            _COURSE_ID,
+            _BANK_ID,
+            cognito_sub=_COGNITO_SUB,
+            role=_ROLE,
+            prompt_text="Q?",
+            options_json=_MCQ_AB,
+            correct_option_key="   ",
+        )
+    repo.insert_published_question.assert_not_called()
 
 
 def test_update_question_conflict_when_published_skips_repo_update() -> None:

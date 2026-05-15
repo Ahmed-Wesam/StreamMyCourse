@@ -125,7 +125,7 @@ class TestServiceUnconfigured:
         headers = resp["headers"]
         # Wildcard cfg with a real origin echoes the origin (per pick_origin).
         assert headers["Access-Control-Allow-Origin"] == "https://app.example.com"
-        for verb in ("GET", "POST", "PUT", "DELETE", "OPTIONS"):
+        for verb in ("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"):
             assert verb in headers["Access-Control-Allow-Methods"]
 
     def test_uppercase_origin_header_also_recognized(

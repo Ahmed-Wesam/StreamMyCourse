@@ -235,7 +235,7 @@ class TestOptionsResponse:
         headers = resp["headers"]
         assert headers["Access-Control-Allow-Origin"] == "https://app.example.com"
         # Methods string must enumerate every verb the API gateway exposes.
-        for verb in ("GET", "POST", "PUT", "DELETE", "OPTIONS"):
+        for verb in ("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"):
             assert verb in headers["Access-Control-Allow-Methods"]
         assert headers["Access-Control-Allow-Headers"] == "Content-Type,Authorization"
         # No content-type header on a no-content response.

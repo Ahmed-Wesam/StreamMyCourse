@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Any, Dict, List
 
 import httpx
+import pytest
 
 MODULES_GET_DEPLOY_HINT = (
     "Expected GET /courses/{id}/modules → 200 and a JSON array. "
@@ -49,6 +50,17 @@ def response_json_dict(resp: httpx.Response) -> Dict[str, Any]:
     if not isinstance(data, dict):
         raise AssertionError(f"Expected JSON object, got {type(data).__name__}: {data!r}")
     return data
+
+
+def require_lambda_json_or_skip(resp: httpx.Response, *, hint: str) -> Dict[str, Any]:
+    """Skip when API Gateway returns non-JSON (method/path not deployed); else JSON object."""
+    ct = (resp.headers.get("content-type") or "").lower()
+    if "application/json" in ct:
+        return response_json_dict(resp)
+    pytest.skip(
+        f"{hint} Expected catalog JSON once route exists (see CatalogApiDeploymentV24). "
+        f"HTTP {resp.status_code} content-type={resp.headers.get('content-type')!r}."
+    )
 
 
 def require_course_modules_list(resp: httpx.Response) -> List[Dict[str, Any]]:
