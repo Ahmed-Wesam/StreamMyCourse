@@ -86,11 +86,27 @@ class ApiClient:
             json=body,
         )
 
-    def start_module_quiz(self, course_id: str, module_id: str) -> httpx.Response:
-        """POST /courses/{courseId}/modules/{moduleId}/quiz/start — student binding draw or reload."""
+    def start_module_quiz(
+        self,
+        course_id: str,
+        module_id: str,
+        *,
+        body: Optional[Dict[str, Any]] = None,
+    ) -> httpx.Response:
+        """POST /courses/{courseId}/modules/{moduleId}/quiz/start — student binding draw or reload.
+
+        Pass ``body`` for optional flags such as ``{"retake": true}``. Defaults to ``{}``.
+        """
         return self._client.post(
             f"/courses/{course_id}/modules/{module_id}/quiz/start",
-            json={},
+            json=body if body is not None else {},
+        )
+
+    def submit_module_quiz(self, course_id: str, module_id: str, body: dict) -> httpx.Response:
+        """POST /courses/{courseId}/modules/{moduleId}/quiz/submit — graded submission (QB-H)."""
+        return self._client.post(
+            f"/courses/{course_id}/modules/{module_id}/quiz/submit",
+            json=body,
         )
 
     def create_draft_question(
