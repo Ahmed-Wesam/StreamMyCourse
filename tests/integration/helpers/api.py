@@ -86,6 +86,13 @@ class ApiClient:
             json=body,
         )
 
+    def start_module_quiz(self, course_id: str, module_id: str) -> httpx.Response:
+        """POST /courses/{courseId}/modules/{moduleId}/quiz/start — student binding draw or reload."""
+        return self._client.post(
+            f"/courses/{course_id}/modules/{module_id}/quiz/start",
+            json={},
+        )
+
     def create_draft_question(
         self,
         course_id: str,
