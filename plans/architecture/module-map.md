@@ -12,19 +12,20 @@ This document is the “public surface” map for the Python Lambda under `infra
 
 ## Bounded contexts
 
-### `services/question_banks/` (QB-A domain, QB-B–E HTTP + authz + publish, QB-D visibility, QB-F binding + start, QB-G attempts + shuffle)
+### `services/question_banks/` (QB-A domain, QB-B–E HTTP + authz + publish, QB-D visibility, QB-F binding + start, QB-G attempts + shuffle, QB-H/I submit + grading + start phases)
 
 | File | Layer | Notes |
 |------|-------|-------|
 | `models.py` | Domain | `QuestionBank`, `ModuleQuiz`, `Question` (RDS-aligned); **QB-F:** `StudentModuleQuizBinding`; **QB-G:** `ModuleQuizAttempt`, `BoundQuestion` |
 | `ports.py` | Contracts | `CourseMutateAuthorizerPort` (publisher writes); **QB-F:** `StudentLessonAccessPort`, `CourseReadPort` — start gate without importing `course_management` |
-| `service.py` | Domain/application | `QuestionBankService` — authorizer before every repo write; publish §9.3 / N §5; draft + published-question rules; **QB-F + QB-G:** `start_module_quiz` (QB-D gate + idempotent binding draw + resolve/create `in_progress` attempt + stable presentation shuffle on re-`start`) |
-| `controller.py` | HTTP adapter | Publisher: `POST .../question-banks`, `.../questions`, `.../publish`, `POST .../modules/{mid}/quiz`. Student: **`POST .../modules/{mid}/quiz/start`** (route **`quiz/start` before `quiz`**). Cognito claims → service |
-| `contracts.py` | API DTOs | **QB-F/QB-G:** `StudentQuizStartDto` (`attemptId`, `attemptNumber`, `questionIds`, shuffled `questions`) / `StudentQuizQuestionDto` (student-safe; no correct keys) |
+| `service.py` | Domain/application | `QuestionBankService` — authorizer before every repo write; publish §9.3 / N §5; draft + published-question rules; **QB-F + QB-G + QB-I:** `start_module_quiz` (QB-D gate + idempotent binding + resolve/create `in_progress` or return `latest_results` + `latestSubmission`; optional `retake` + fresh shuffle); **QB-H:** `submit_module_quiz` |
+| `controller.py` | HTTP adapter | Publisher: `POST .../question-banks`, `.../questions`, `.../publish`, `POST .../modules/{mid}/quiz`. Student: **`POST .../modules/{mid}/quiz/submit`**, **`POST .../quiz/start`** ( **`quiz/submit` before `quiz/start` before bare `quiz`** ). Cognito claims → service |
+| `contracts.py` | API DTOs | **QB-F/QB-G/QB-I:** discriminated **`StudentQuizStartInProgressDto` \| `StudentQuizStartLatestResultsDto`** + `StudentQuizStartBodyDto`; **QB-H:** `StudentQuizSubmitRequestDto`, `StudentQuizSubmitResponseDto`; `StudentQuizQuestionDto` (student-safe); result rows with `correctOptionKey` only in submit/`latestSubmission` payloads |
 | `binding_draw.py` | Domain (pure) | **QB-F:** `draw_question_ids` — uniform sample without replacement |
 | `presentation_shuffle.py` | Domain (pure) | **QB-G:** question-order and per-question choice-key shuffle + `apply_presentation_shuffle` (injectable `rng`) |
+| `grading.py` | Domain (pure) | **QB-H:** equal-weight grading / answer validation helpers (no HTTP) |
 | `visibility.py` | Domain (pure) | **QB-D:** `apply_module_quiz_visibility` — gates repo map by `course_status` + `has_lesson_access` |
-| `rds_repo.py` | Persistence adapter | `question_banks`, `module_quizzes`, `questions`; transactional publish; **QB-D:** `list_module_quiz_visibility_for_course`; **QB-F:** `student_module_quiz_bindings` / `student_module_quiz_binding_questions`, `list_published_question_ids`, binding CRUD; **QB-G:** `module_quiz_attempts` (insert/load open attempt, `mark_attempt_submitted` for tests); maps integrity errors to HTTP types |
+| `rds_repo.py` | Persistence adapter | `question_banks`, `module_quizzes`, `questions`; transactional publish; **QB-D:** `list_module_quiz_visibility_for_course`; **QB-F:** `student_module_quiz_bindings` / `student_module_quiz_binding_questions`, `list_published_question_ids`, binding CRUD; **QB-G:** `module_quiz_attempts` (insert/load open attempt, `mark_attempt_submitted` for tests); **QB-H:** `module_quiz_attempt_submissions` (**010**): insert submission + mark submitted, latest submission for binding, attempt+binding fetches for submit authz; maps integrity errors to HTTP types |
 
 **Cross-context rule:** `question_banks` must not import `course_management` or `auth` (same as other leaves).
 
