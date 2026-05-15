@@ -215,6 +215,25 @@ def test_split_real_migration_007_contains_expected_questions_ddl(schema_apply):
     assert len(parts) >= 3
 
 
+def test_split_real_migration_008_contains_expected_bindings_ddl(schema_apply):
+    """008_student_module_quiz_bindings.sql adds binding tables (idempotent DDL only)."""
+    path = (
+        _ROOT
+        / "infrastructure"
+        / "database"
+        / "migrations"
+        / "008_student_module_quiz_bindings.sql"
+    )
+    sql = path.read_text(encoding="utf-8")
+    parts = schema_apply._split_sql_statements(sql)
+    joined = "\n".join(parts)
+    assert "CREATE TABLE IF NOT EXISTS student_module_quiz_bindings" in joined
+    assert "CREATE TABLE IF NOT EXISTS student_module_quiz_binding_questions" in joined
+    assert "ON DELETE CASCADE" in joined
+    assert "ALTER TABLE" not in joined
+    assert len(parts) >= 4
+
+
 def test_concatenated_001_003_004_006_007_008_bundle_is_splittable_and_complete(schema_apply):
     """Deploy script and CI concatenate 001, 003, 004, 006, 007, and 008 into schema.sql."""
     migrations_dir = _ROOT / "infrastructure" / "database" / "migrations"
