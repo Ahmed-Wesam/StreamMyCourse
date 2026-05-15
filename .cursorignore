@@ -1,0 +1,71 @@
+﻿# Auto-generated, vendor, and local-only paths — leaner Cursor index + context.
+# Syntax mirrors .gitignore (Cursor docs: ignore files / codebase indexing).
+
+# Cursor scratch plans (also in root .gitignore)
+.cursor/plans/
+
+# Dependencies
+**/node_modules/
+.pnp
+.pnp.js
+
+# Builds
+**/dist/
+**/build/
+**/dist-ssr/
+*.tsbuildinfo
+
+# Frontend tooling outputs
+**/.vite/
+**/coverage/
+.nyc_output/
+
+# Python
+**/__pycache__/
+**/*.py[cod]
+*$py.class
+.pytest_cache/
+.ruff_cache/
+venv/
+env/
+ENV/
+.Python
+*.egg-info/
+htmlcov/
+
+# Lambda bundle created by deploy scripts
+infrastructure/lambda/catalog/_vendor/
+
+# Terraform
+.terraform/
+*.tfstate
+*.tfstate.*
+
+# Logs & caches
+*.log
+.cache/
+temp/
+tmp/
+
+# Test artifacts
+tests/unit/results.xml
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Secrets & cloud CLI profiles (do not pull into AI context)
+.env
+.env.local
+.env.*.local
+.env.teacher
+.aws/
+*.pem
+
+# Local backups / scratch dirs (match root .gitignore)
+.backups/
+diagrams/
+
+# Tooling binaries
+/actionlint
+/actionlint.exe
