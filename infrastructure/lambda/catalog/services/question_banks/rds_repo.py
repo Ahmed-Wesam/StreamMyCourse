@@ -519,6 +519,29 @@ class QuestionBankRdsRepository:
         if cur.rowcount != 1:
             raise NotFound("Question not found for this bank")
 
+    def list_module_quiz_visibility_for_course(
+        self, *, course_id: str
+    ) -> dict[str, dict[str, int]]:
+        """Modules with a published bank and served N >= 1 for this course."""
+        cur = self._execute(
+            """
+            SELECT mq.module_id, mq.served_count_n
+            FROM module_quizzes mq
+            INNER JOIN question_banks qb
+              ON qb.id = mq.question_bank_id AND qb.course_id = %s
+            WHERE mq.course_id = %s
+              AND mq.question_bank_id IS NOT NULL
+              AND qb.status = 'PUBLISHED'
+              AND mq.served_count_n IS NOT NULL
+              AND mq.served_count_n >= 1
+            """,
+            (course_id, course_id),
+        )
+        result: dict[str, dict[str, int]] = {}
+        for module_id, served_n in cur.fetchall():
+            result[str(module_id)] = {"servedCountN": int(served_n)}
+        return result
+
     def get_module_quiz_by_module_id(self, *, module_id: str) -> Optional[ModuleQuiz]:
         cur = self._execute(
             """
