@@ -2,15 +2,23 @@
 
 from __future__ import annotations
 
+import json
+import random
 from typing import Any, Optional
 
 from services.common.errors import BadRequest, Conflict, NotFound
+from services.question_banks.binding_draw import draw_question_ids
 from services.question_banks.mcq_validation import (
     validate_correct_option_key,
     validate_draft_question_for_publish,
     validate_mcq_options_json,
 )
-from services.question_banks.ports import CourseMutateAuthorizerPort
+from services.question_banks.models import ModuleQuiz, StudentModuleQuizBinding
+from services.question_banks.ports import (
+    CourseMutateAuthorizerPort,
+    CourseReadPort,
+    StudentLessonAccessPort,
+)
 from services.question_banks.rds_repo import QuestionBankRdsRepository
 
 
@@ -20,9 +28,140 @@ class QuestionBankService:
         *,
         course_mutate_authorizer: CourseMutateAuthorizerPort,
         question_bank_repo: QuestionBankRdsRepository,
+        student_lesson_access: StudentLessonAccessPort,
+        course_read: CourseReadPort,
     ) -> None:
         self._authorizer = course_mutate_authorizer
         self._repo = question_bank_repo
+        self._lesson_access = student_lesson_access
+        self._course_read = course_read
+
+    def start_module_quiz(
+        self,
+        course_id: str,
+        module_id: str,
+        *,
+        cognito_sub: str,
+        role: str,
+        rng: random.Random | None = None,
+    ) -> dict[str, Any]:
+        module_quiz = self._resolve_startable_module_quiz(
+            course_id, module_id, cognito_sub=cognito_sub, role=role
+        )
+        user_sub = cognito_sub.strip()
+        binding = self._repo.get_binding_for_student(
+            module_quiz_id=module_quiz.id, user_sub=user_sub
+        )
+        if binding is None:
+            binding = self._create_binding_for_student(
+                module_quiz,
+                course_id=course_id,
+                user_sub=user_sub,
+                rng=rng,
+            )
+        return self._build_module_quiz_start_response(module_quiz, binding)
+
+    def _resolve_startable_module_quiz(
+        self,
+        course_id: str,
+        module_id: str,
+        *,
+        cognito_sub: str,
+        role: str,
+    ) -> ModuleQuiz:
+        status = self._course_read.get_course_status(course_id)
+        if status != "PUBLISHED":
+            raise NotFound("Module quiz not available")
+        if not self._lesson_access.viewer_has_lesson_access(
+            course_id, cognito_sub, role
+        ):
+            raise NotFound("Module quiz not available")
+        module_quiz = self._repo.get_module_quiz_by_module_id(module_id=module_id)
+        if module_quiz is None or module_quiz.courseId != course_id:
+            raise NotFound("Module quiz not available")
+        bank_id = module_quiz.questionBankId
+        served_n = module_quiz.servedCountN
+        if not bank_id or served_n is None or served_n < 1:
+            raise NotFound("Module quiz not available")
+        bank = self._repo.get_question_bank_by_id(bank_id=bank_id)
+        if (
+            bank is None
+            or bank.courseId != course_id
+            or bank.status != "PUBLISHED"
+        ):
+            raise NotFound("Module quiz not available")
+        return module_quiz
+
+    def _create_binding_for_student(
+        self,
+        module_quiz: ModuleQuiz,
+        *,
+        course_id: str,
+        user_sub: str,
+        rng: random.Random | None,
+    ) -> StudentModuleQuizBinding:
+        bank_id = module_quiz.questionBankId
+        assert bank_id is not None
+        served_n = module_quiz.servedCountN
+        assert served_n is not None and served_n >= 1
+        published_ids = self._repo.list_published_question_ids(
+            course_id=course_id, bank_id=bank_id
+        )
+        draw_rng = rng if rng is not None else random.Random()
+        try:
+            drawn_ids = draw_question_ids(published_ids, served_n, draw_rng)
+        except ValueError as exc:
+            raise Conflict(str(exc)) from exc
+        try:
+            self._repo.insert_binding_with_questions(
+                module_quiz_id=module_quiz.id,
+                course_id=course_id,
+                user_sub=user_sub,
+                question_ids=drawn_ids,
+            )
+        except Conflict:
+            binding = self._repo.get_binding_for_student(
+                module_quiz_id=module_quiz.id, user_sub=user_sub
+            )
+            if binding is None:
+                raise
+            return binding
+        binding = self._repo.get_binding_for_student(
+            module_quiz_id=module_quiz.id, user_sub=user_sub
+        )
+        if binding is None:
+            raise Conflict("Module quiz binding could not be loaded after create")
+        return binding
+
+    def _build_module_quiz_start_response(
+        self,
+        module_quiz: ModuleQuiz,
+        binding: StudentModuleQuizBinding,
+    ) -> dict[str, Any]:
+        served_n = module_quiz.servedCountN
+        assert served_n is not None
+        if len(binding.questionIds) != served_n:
+            raise Conflict("Module quiz binding is incomplete")
+        rows = self._repo.list_student_bound_questions(
+            course_id=binding.courseId,
+            question_ids=binding.questionIds,
+        )
+        questions = [
+            {
+                "id": row.id,
+                "promptText": row.promptText,
+                "optionsJson": _parse_options_json(row.optionsJson),
+            }
+            for row in rows
+        ]
+        if len(questions) != served_n:
+            raise Conflict("Module quiz questions could not be loaded")
+        return {
+            "moduleQuizId": module_quiz.id,
+            "moduleId": module_quiz.moduleId,
+            "servedCountN": served_n,
+            "questions": questions,
+        }
 
     def create_question_bank(
         self, course_id: str, *, cognito_sub: str, role: str
@@ -227,3 +366,13 @@ class QuestionBankService:
             bank_id=bank_id,
             question_id=question_id,
         )
+
+
+def _parse_options_json(raw: str) -> Any:
+    text = (raw or "").strip()
+    if not text:
+        return []
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError:
+        return raw

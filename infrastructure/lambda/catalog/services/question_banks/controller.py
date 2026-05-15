@@ -63,6 +63,15 @@ def _route_question_banks(method: str, path: str) -> Tuple[str, Dict[str, str]]:
         return "create_question_bank", {"courseId": parts[1]}
     if (
         method == "POST"
+        and len(parts) == 6
+        and parts[0] == "courses"
+        and parts[2] == "modules"
+        and parts[4] == "quiz"
+        and parts[5] == "start"
+    ):
+        return "start_module_quiz", {"courseId": parts[1], "moduleId": parts[3]}
+    if (
+        method == "POST"
         and len(parts) == 5
         and parts[0] == "courses"
         and parts[2] == "modules"
@@ -116,6 +125,15 @@ def _route_question_banks(method: str, path: str) -> Tuple[str, Dict[str, str]]:
         return "options_question_bank_questions", {"courseId": parts[1]}
     if (
         method == "OPTIONS"
+        and len(parts) == 6
+        and parts[0] == "courses"
+        and parts[2] == "modules"
+        and parts[4] == "quiz"
+        and parts[5] == "start"
+    ):
+        return "options_module_quiz_start", {"courseId": parts[1], "moduleId": parts[3]}
+    if (
+        method == "OPTIONS"
         and len(parts) == 5
         and parts[0] == "courses"
         and parts[2] == "modules"
@@ -152,6 +170,15 @@ def handle_question_banks_request(
                 role=_actor_role(claims),
             )
             return json_response(201, {"questionBankId": bank_id}, origin)
+
+        if action == "start_module_quiz":
+            payload = qb_svc.start_module_quiz(
+                params["courseId"],
+                params["moduleId"],
+                cognito_sub=_actor_sub(claims),
+                role=_actor_role(claims),
+            )
+            return json_response(200, payload, origin)
 
         if action == "create_module_quiz":
             body = parse_json_body(event)

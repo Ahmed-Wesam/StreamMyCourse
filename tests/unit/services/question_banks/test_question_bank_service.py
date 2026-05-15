@@ -61,9 +61,15 @@ def _published_bank() -> QuestionBank:
 
 def _make_service(authorizer: MagicMock, repo: MagicMock) -> QuestionBankService:
     """Constructor shape: explicit keyword ports."""
+    lesson_access = MagicMock()
+    lesson_access.viewer_has_lesson_access.return_value = True
+    course_read = MagicMock()
+    course_read.get_course_status.return_value = "PUBLISHED"
     return QuestionBankService(
         course_mutate_authorizer=authorizer,
         question_bank_repo=repo,
+        student_lesson_access=lesson_access,
+        course_read=course_read,
     )
 
 
