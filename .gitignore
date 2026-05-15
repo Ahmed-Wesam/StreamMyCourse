@@ -74,9 +74,8 @@ infrastructure/lambda/catalog/_vendor/
 .cache/
 temp/
 tmp/
-
-# Local scratch (not for the repo)
-First_prompt.txt
+plans/
+reports/
 
 # Operator-only notes (e.g. Cognito bootstrap scratch — not backed up by git)
 .local-operator-notes.txt
