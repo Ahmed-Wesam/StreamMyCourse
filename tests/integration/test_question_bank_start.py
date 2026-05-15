@@ -164,6 +164,7 @@ def _option_keys_by_question(body: dict[str, Any]) -> dict[str, list[str]]:
 
 
 def _assert_start_attempt_contract(body: dict[str, Any], *, served_n: int) -> None:
+    assert body.get("phase") == "in_progress", body
     assert isinstance(body.get("attemptId"), str) and body["attemptId"]
     assert body.get("attemptNumber") == 1
     question_ids = body.get("questionIds")
