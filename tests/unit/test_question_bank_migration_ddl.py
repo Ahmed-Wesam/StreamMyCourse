@@ -56,4 +56,6 @@ def test_008_migration_file_exists_and_binding_tables() -> None:
     assert "UNIQUE (module_quiz_id, user_sub)" in text
     assert "user_sub VARCHAR(255)" in text
     assert "REFERENCES module_quizzes" in text
-    assert "REFERENCES questions" in text
+    assert "REFERENCES questions(id) ON DELETE CASCADE" in text
+    assert "ALTER TABLE" not in text
+    assert "DROP CONSTRAINT" not in text

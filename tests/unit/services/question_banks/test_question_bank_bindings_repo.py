@@ -150,6 +150,28 @@ def test_insert_binding_with_questions_stores_and_loads_position_order() -> None
     assert any("ORDER BY" in s and "position" in s for s in load_sqls)
 
 
+def test_list_student_bound_questions_casts_ids_to_uuid_array() -> None:
+    """Postgres rejects ANY(text[]) against uuid id; repo must cast the array."""
+    fake = FakeConn()
+    fake.cursor_obj.fetchall_batches = [
+        [
+            ("q1", "Prompt?", '[{"key":"A","text":"x"}]'),
+        ]
+    ]
+    repo = QuestionBankRdsRepository(lambda: fake)
+
+    rows = repo.list_student_bound_questions(
+        course_id="c1", question_ids=["q1", "q2"]
+    )
+
+    assert len(rows) == 1
+    assert rows[0].id == "q1"
+    sql, params = fake.cursor_obj.executions[0]
+    assert "FROM questions" in sql
+    assert "ANY(%s::uuid[])" in sql
+    assert params == ("c1", ["q1", "q2"])
+
+
 def test_insert_binding_maps_unique_violation_to_conflict() -> None:
     """Slice 3 will re-read binding on Conflict; repo must map UniqueViolation."""
     fake = FakeConn()
