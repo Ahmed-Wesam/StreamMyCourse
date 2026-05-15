@@ -21,6 +21,13 @@ _MIGRATION_009 = (
     / "migrations"
     / "009_module_quiz_attempts.sql"
 )
+_MIGRATION_010 = (
+    _ROOT
+    / "infrastructure"
+    / "database"
+    / "migrations"
+    / "010_module_quiz_attempt_submissions.sql"
+)
 _DEPLOY_BACKEND = _ROOT / ".github" / "workflows" / "deploy-backend.yml"
 
 
@@ -95,3 +102,29 @@ def test_009_migration_listed_in_deploy_backend_workflow() -> None:
     assert _DEPLOY_BACKEND.is_file()
     text = _DEPLOY_BACKEND.read_text(encoding="utf-8")
     assert "009_module_quiz_attempts.sql" in text
+
+
+def test_010_migration_file_exists_and_submission_table() -> None:
+    assert _MIGRATION_010.is_file(), (
+        "expected 010_module_quiz_attempt_submissions.sql in repo"
+    )
+    text = _MIGRATION_010.read_text(encoding="utf-8")
+    assert "CREATE TABLE IF NOT EXISTS module_quiz_attempt_submissions" in text
+    assert "answers_json     JSONB NOT NULL" in text
+    assert "correct_count    INTEGER NOT NULL" in text
+    assert "total_count      INTEGER NOT NULL" in text
+    assert "submitted_at     TIMESTAMPTZ NOT NULL DEFAULT NOW()" in text
+    assert "REFERENCES module_quiz_attempts(id) ON DELETE CASCADE" in text
+    assert "CHECK (jsonb_typeof(answers_json) = 'object')" in text
+    assert "CHECK (total_count >= 1)" in text
+    assert "CHECK (correct_count >= 0)" in text
+    assert "CHECK (correct_count <= total_count)" in text
+    assert "PRIMARY KEY" in text and "attempt_id" in text
+    assert "ALTER TABLE" not in text
+    assert "DROP CONSTRAINT" not in text
+
+
+def test_010_migration_listed_in_deploy_backend_workflow() -> None:
+    assert _DEPLOY_BACKEND.is_file()
+    text = _DEPLOY_BACKEND.read_text(encoding="utf-8")
+    assert "010_module_quiz_attempt_submissions.sql" in text

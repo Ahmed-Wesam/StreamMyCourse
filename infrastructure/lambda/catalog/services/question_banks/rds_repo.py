@@ -22,6 +22,9 @@ from services.question_banks.models import (
     BoundQuestion,
     ModuleQuiz,
     ModuleQuizAttempt,
+    ModuleQuizAttemptBindingContext,
+    ModuleQuizSubmissionSnapshot,
+    PublishedQuestionGradingRow,
     Question,
     QuestionBank,
     StudentModuleQuizBinding,
@@ -173,6 +176,26 @@ class QuestionBankRdsRepository:
             raise BadRequest("Database integrity constraint failed") from exc
         raise exc
 
+    @classmethod
+    def _raise_submission_integrity(cls, exc: BaseException) -> None:
+        if pg_errors is None or psycopg2 is None:
+            raise exc
+        if isinstance(exc, pg_errors.UniqueViolation):
+            raise Conflict(
+                "Submission already recorded for this module quiz attempt"
+            ) from exc
+        if isinstance(exc, pg_errors.ForeignKeyViolation):
+            raise BadRequest(
+                "attempt_id must reference an existing module_quiz_attempts row"
+            ) from exc
+        if isinstance(exc, pg_errors.CheckViolation):
+            raise BadRequest(
+                "Invalid module quiz submission data (answers JSON or score bounds)"
+            ) from exc
+        if isinstance(exc, psycopg2.IntegrityError):
+            raise BadRequest("Database integrity constraint failed") from exc
+        raise exc
+
     @staticmethod
     def _jsonb_to_list(value: Any) -> list[str]:
         if value is None:
@@ -199,6 +222,17 @@ class QuestionBankRdsRepository:
             if isinstance(order, list):
                 out[str(key)] = [str(v) for v in order]
         return out
+
+    @staticmethod
+    def _jsonb_to_answers_map(value: Any) -> dict[str, str]:
+        if value is None:
+            return {}
+        raw: Any = value
+        if isinstance(value, str):
+            raw = json.loads(value)
+        if not isinstance(raw, dict):
+            return {}
+        return {str(k): str(v) for k, v in raw.items()}
 
     @classmethod
     def _row_to_attempt(cls, row: tuple[Any, ...]) -> ModuleQuizAttempt:
@@ -687,6 +721,32 @@ class QuestionBankRdsRepository:
             )
         return [by_id[qid] for qid in question_ids if qid in by_id]
 
+    def list_grading_rows_for_questions(
+        self, *, course_id: str, question_ids: list[str]
+    ) -> list[PublishedQuestionGradingRow]:
+        """Load published MCQ rows for grading (includes ``correct_option_key``)."""
+        if not question_ids:
+            return []
+        cur = self._execute(
+            """
+            SELECT id, prompt_text, options_json, correct_option_key
+            FROM questions
+            WHERE course_id = %s AND status = 'PUBLISHED' AND id = ANY(%s::uuid[])
+            """,
+            (course_id, question_ids),
+        )
+        by_id: dict[str, PublishedQuestionGradingRow] = {}
+        for qid, prompt_text, options_json, correct_key in cur.fetchall():
+            if correct_key is None:
+                continue
+            by_id[str(qid)] = PublishedQuestionGradingRow(
+                id=str(qid),
+                promptText=str(prompt_text or ""),
+                optionsJson=_options_json_to_str(options_json),
+                correctOptionKey=str(correct_key),
+            )
+        return [by_id[qid] for qid in question_ids if qid in by_id]
+
     def get_binding_for_student(
         self, *, module_quiz_id: str, user_sub: str
     ) -> Optional[StudentModuleQuizBinding]:
@@ -945,6 +1005,144 @@ class QuestionBankRdsRepository:
         )
         if cur.rowcount < 1:
             raise NotFound("Module quiz attempt not found")
+
+    def insert_submission_and_mark_submitted(
+        self,
+        *,
+        attempt_id: str,
+        answers_json: dict[str, str],
+        correct_count: int,
+        total_count: int,
+        submitted_at: Optional[datetime] = None,
+    ) -> None:
+        """Insert ``module_quiz_attempt_submissions`` and mark the attempt submitted (one transaction)."""
+        when = submitted_at if submitted_at is not None else datetime.now(timezone.utc)
+        conn = self._connection()
+        prev_autocommit = getattr(conn, "autocommit", False)
+        conn.autocommit = False
+        cur = conn.cursor()
+        try:
+            cur.execute(
+                """
+                INSERT INTO module_quiz_attempt_submissions (
+                    attempt_id, answers_json, correct_count, total_count, submitted_at
+                )
+                VALUES (%s, %s, %s, %s, %s)
+                """,
+                (
+                    attempt_id,
+                    _pg_json(answers_json),
+                    correct_count,
+                    total_count,
+                    when,
+                ),
+            )
+            cur.execute(
+                """
+                UPDATE module_quiz_attempts
+                SET status = 'submitted', submitted_at = %s
+                WHERE id = %s
+                """,
+                (when, attempt_id),
+            )
+            if cur.rowcount < 1:
+                conn.rollback()
+                raise NotFound("Module quiz attempt not found")
+            conn.commit()
+        except NotFound:
+            raise
+        except Exception as exc:
+            conn.rollback()
+            self._raise_submission_integrity(exc)
+        finally:
+            conn.autocommit = prev_autocommit
+
+    def get_latest_submission_for_binding(
+        self, *, binding_id: str
+    ) -> Optional[ModuleQuizSubmissionSnapshot]:
+        cur = self._execute(
+            """
+            SELECT s.attempt_id, a.attempt_number, s.answers_json, s.correct_count,
+                   s.total_count, s.submitted_at
+            FROM module_quiz_attempt_submissions s
+            INNER JOIN module_quiz_attempts a ON a.id = s.attempt_id
+            WHERE a.binding_id = %s
+            ORDER BY s.submitted_at DESC, s.attempt_id DESC
+            LIMIT 1
+            """,
+            (binding_id,),
+        )
+        row = cur.fetchone()
+        if not row:
+            return None
+        (
+            att_id,
+            attempt_number,
+            answers_raw,
+            correct_count,
+            total_count,
+            submitted_at,
+        ) = row
+        return ModuleQuizSubmissionSnapshot(
+            attemptId=str(att_id),
+            attemptNumber=int(attempt_number),
+            answersJson=self._jsonb_to_answers_map(answers_raw),
+            correctCount=int(correct_count),
+            totalCount=int(total_count),
+            submittedAt=_to_iso(submitted_at),
+        )
+
+    def get_attempt_with_binding_rows(
+        self, *, attempt_id: str
+    ) -> Optional[ModuleQuizAttemptBindingContext]:
+        cur = self._execute(
+            """
+            SELECT a.id, a.binding_id, a.attempt_number, a.status,
+                   a.shuffled_question_order, a.shuffled_choice_orders,
+                   a.started_at, a.submitted_at,
+                   b.module_quiz_id, b.course_id, b.user_sub,
+                   mq.module_id
+            FROM module_quiz_attempts a
+            INNER JOIN student_module_quiz_bindings b ON b.id = a.binding_id
+            INNER JOIN module_quizzes mq ON mq.id = b.module_quiz_id
+            WHERE a.id = %s
+            """,
+            (attempt_id,),
+        )
+        row = cur.fetchone()
+        if not row:
+            return None
+        (
+            aid,
+            binding_id,
+            attempt_number,
+            status,
+            question_order,
+            choice_orders,
+            started_at,
+            submitted_at,
+            module_quiz_id,
+            course_id,
+            user_sub,
+            module_id,
+        ) = row
+        attempt = ModuleQuizAttempt(
+            id=str(aid),
+            bindingId=str(binding_id),
+            attemptNumber=int(attempt_number),
+            status=str(status),
+            shuffledQuestionOrder=self._jsonb_to_list(question_order),
+            shuffledChoiceOrders=self._jsonb_to_choice_orders(choice_orders),
+            startedAt=_to_iso(started_at),
+            submittedAt=_to_iso(submitted_at) if submitted_at is not None else None,
+        )
+        return ModuleQuizAttemptBindingContext(
+            attempt=attempt,
+            moduleQuizId=str(module_quiz_id),
+            courseId=str(course_id),
+            moduleId=str(module_id),
+            userSub=str(user_sub),
+        )
 
     def get_module_quiz_by_module_id(self, *, module_id: str) -> Optional[ModuleQuiz]:
         cur = self._execute(

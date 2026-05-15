@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any, List, TypedDict
+from typing import Any, List, Literal, NotRequired, TypedDict
 
 
 class StudentQuizQuestionDto(TypedDict):
@@ -11,7 +11,8 @@ class StudentQuizQuestionDto(TypedDict):
     optionsJson: Any
 
 
-class StudentQuizStartDto(TypedDict):
+class StudentQuizStartInProgressDto(TypedDict):
+    phase: Literal["in_progress"]
     moduleQuizId: str
     moduleId: str
     servedCountN: int
@@ -19,3 +20,46 @@ class StudentQuizStartDto(TypedDict):
     attemptNumber: int
     questionIds: List[str]
     questions: List[StudentQuizQuestionDto]
+
+
+class StudentQuizResultQuestionDto(TypedDict):
+    id: str
+    promptText: str
+    selectedOptionKey: str
+    correctOptionKey: str
+    isCorrect: bool
+
+
+class StudentQuizLatestSubmissionDto(TypedDict):
+    correctCount: int
+    totalCount: int
+    attemptNumber: int
+    submittedAt: NotRequired[str | None]
+    questions: List[StudentQuizResultQuestionDto]
+
+
+class StudentQuizStartLatestResultsDto(TypedDict):
+    phase: Literal["latest_results"]
+    moduleQuizId: str
+    moduleId: str
+    servedCountN: int
+    latestSubmission: StudentQuizLatestSubmissionDto
+
+
+class StudentQuizSubmitRequestDto(TypedDict):
+    attemptId: str
+    answers: dict[str, str]
+
+
+class StudentQuizSubmitResponseDto(TypedDict):
+    attemptId: str
+    attemptNumber: int
+    correctCount: int
+    totalCount: int
+    questions: List[StudentQuizResultQuestionDto]
+
+
+class StudentQuizStartBodyDto(TypedDict, total=False):
+    """Optional JSON body for ``POST .../quiz/start``."""
+
+    retake: bool

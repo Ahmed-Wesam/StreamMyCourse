@@ -90,3 +90,30 @@ def require_json_array_or_object(body: Dict[str, Any], key: str) -> Union[list[A
         return val
     raise BadRequest(f"'{key}' must be a JSON array or object")
 
+
+def optional_bool(body: Dict[str, Any], key: str, *, default: bool = False) -> bool:
+    """Optional boolean field (missing key → ``default``); rejects non-booleans."""
+    if key not in body:
+        return default
+    val = body[key]
+    if isinstance(val, bool):
+        return val
+    raise BadRequest(f"'{key}' must be a boolean")
+
+
+def require_string_mapping(body: Dict[str, Any], key: str) -> Dict[str, str]:
+    """Require a JSON object whose keys and values are non-empty strings."""
+    val = body.get(key)
+    if val is None:
+        raise BadRequest(f"'{key}' is required")
+    if not isinstance(val, dict):
+        raise BadRequest(f"'{key}' must be a JSON object")
+    out: Dict[str, str] = {}
+    for raw_k, raw_v in val.items():
+        if not isinstance(raw_k, str) or not raw_k.strip():
+            raise BadRequest(f"'{key}' keys must be non-empty strings")
+        if not isinstance(raw_v, str) or not raw_v.strip():
+            raise BadRequest(f"'{key}' values must be non-empty strings")
+        out[raw_k.strip()] = raw_v.strip()
+    return out
+

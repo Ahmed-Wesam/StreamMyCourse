@@ -13,11 +13,13 @@ from services.common.http import (
     options_response,
 )
 from services.common.validation import (
+    optional_bool,
     optional_str,
     parse_json_body,
     require_int,
     require_json_array_or_object,
     require_str,
+    require_string_mapping,
 )
 from services.question_banks.service import QuestionBankService
 
@@ -61,6 +63,15 @@ def _route_question_banks(method: str, path: str) -> Tuple[str, Dict[str, str]]:
         and parts[2] == "question-banks"
     ):
         return "create_question_bank", {"courseId": parts[1]}
+    if (
+        method == "POST"
+        and len(parts) == 6
+        and parts[0] == "courses"
+        and parts[2] == "modules"
+        and parts[4] == "quiz"
+        and parts[5] == "submit"
+    ):
+        return "submit_module_quiz", {"courseId": parts[1], "moduleId": parts[3]}
     if (
         method == "POST"
         and len(parts) == 6
@@ -129,6 +140,15 @@ def _route_question_banks(method: str, path: str) -> Tuple[str, Dict[str, str]]:
         and parts[0] == "courses"
         and parts[2] == "modules"
         and parts[4] == "quiz"
+        and parts[5] == "submit"
+    ):
+        return "options_module_quiz_submit", {"courseId": parts[1], "moduleId": parts[3]}
+    if (
+        method == "OPTIONS"
+        and len(parts) == 6
+        and parts[0] == "courses"
+        and parts[2] == "modules"
+        and parts[4] == "quiz"
         and parts[5] == "start"
     ):
         return "options_module_quiz_start", {"courseId": parts[1], "moduleId": parts[3]}
@@ -171,12 +191,29 @@ def handle_question_banks_request(
             )
             return json_response(201, {"questionBankId": bank_id}, origin)
 
+        if action == "submit_module_quiz":
+            body = parse_json_body(event)
+            attempt_id = require_str(body, "attemptId")
+            answers = require_string_mapping(body, "answers")
+            payload = qb_svc.submit_module_quiz(
+                params["courseId"],
+                params["moduleId"],
+                cognito_sub=_actor_sub(claims),
+                role=_actor_role(claims),
+                attempt_id=attempt_id,
+                answers=answers,
+            )
+            return json_response(200, payload, origin)
+
         if action == "start_module_quiz":
+            body = parse_json_body(event)
+            retake = optional_bool(body, "retake", default=False)
             payload = qb_svc.start_module_quiz(
                 params["courseId"],
                 params["moduleId"],
                 cognito_sub=_actor_sub(claims),
                 role=_actor_role(claims),
+                retake=retake,
             )
             return json_response(200, payload, origin)
 
