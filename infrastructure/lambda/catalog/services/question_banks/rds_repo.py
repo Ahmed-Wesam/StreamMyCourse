@@ -588,7 +588,7 @@ class QuestionBankRdsRepository:
             """
             SELECT id, prompt_text, options_json
             FROM questions
-            WHERE course_id = %s AND id = ANY(%s)
+            WHERE course_id = %s AND id = ANY(%s::uuid[])
             """,
             (course_id, question_ids),
         )
