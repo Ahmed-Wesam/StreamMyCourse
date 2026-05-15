@@ -9,7 +9,6 @@ See ``plans/question-banks-qb-d-plan.md`` and ``tests/integration/README.md``.
 
 from __future__ import annotations
 
-import json
 from typing import Any
 
 import httpx
@@ -23,12 +22,10 @@ from helpers.module_contract import (
     response_json_dict,
 )
 
-_FORBIDDEN_MODULE_LIST_LEAKS = (
-    "questionBankId",
-    "DRAFT",
-    "promptText",
-    "correctOptionKey",
+_FORBIDDEN_JSON_KEYS = frozenset(
+    {"questionBankId", "promptText", "correctOptionKey", "optionsJson"}
 )
+_ALLOWED_MODULE_QUIZ_KEYS = frozenset({"available", "servedCountN"})
 
 
 def _owner_draft_course_with_module(
@@ -105,12 +102,28 @@ def _module_row(modules: list[dict[str, Any]], module_id: str) -> dict[str, Any]
     return row
 
 
-def _assert_no_module_list_leaks(resp: httpx.Response) -> None:
-    """Module list JSON must not expose bank or draft question fields."""
-    assert resp.status_code == 200, resp.text
-    body = resp.text
-    for token in _FORBIDDEN_MODULE_LIST_LEAKS:
-        assert token not in body, f"leak scan: found forbidden substring {token!r} in {body[:1200]!r}"
+def _collect_json_keys(obj: Any) -> set[str]:
+    keys: set[str] = set()
+    if isinstance(obj, dict):
+        keys.update(obj.keys())
+        for value in obj.values():
+            keys |= _collect_json_keys(value)
+    elif isinstance(obj, list):
+        for item in obj:
+            keys |= _collect_json_keys(item)
+    return keys
+
+
+def _assert_no_module_list_leaks(modules: list[dict[str, Any]]) -> None:
+    """Module list JSON must not expose bank or question fields (key-based, not substrings)."""
+    leaked = _collect_json_keys(modules) & _FORBIDDEN_JSON_KEYS
+    assert not leaked, f"leak scan: forbidden keys in module list JSON: {sorted(leaked)!r}"
+    for row in modules:
+        mq = row.get("moduleQuiz")
+        if mq is None:
+            continue
+        extra = set(mq.keys()) - _ALLOWED_MODULE_QUIZ_KEYS
+        assert not extra, f"moduleQuiz must only expose allowed keys; got extra {sorted(extra)!r}"
 
 
 def test_draft_bank_hidden(
@@ -164,6 +177,35 @@ def test_published_bank_visible(
     assert quiz.get("servedCountN") == served_n
 
 
+def test_owner_sees_module_quiz_without_enrollment(
+    api: ApiClient,
+    course_factory,
+    lesson_factory,
+) -> None:
+    """Course publisher may see moduleQuiz via ownership without an enrollment row."""
+    served_n = 2
+    course_id, module_id = _owner_draft_course_with_module(
+        api, course_factory, label="qb-vis-owner-no-enroll"
+    )
+    bank_id = _setup_bank_quiz_and_drafts(api, course_id, module_id, draft_count=served_n)
+
+    pub_bank = api.publish_question_bank(
+        course_id, bank_id, n=served_n, module_id=module_id
+    )
+    assert pub_bank.status_code == 200, pub_bank.text
+
+    _publish_course_with_ready_lesson(
+        api, course_id, lesson_factory, label="qb-vis-owner-lesson"
+    )
+
+    modules = require_course_modules_list(api.list_course_modules(course_id))
+    row = _module_row(modules, module_id)
+    quiz = row.get("moduleQuiz")
+    assert quiz is not None, f"expected moduleQuiz for owner on {row!r}"
+    assert quiz.get("available") is True
+    assert quiz.get("servedCountN") == served_n
+
+
 def test_unenrolled_no_quiz(
     api: ApiClient,
     student_api: ApiClient,
@@ -213,16 +255,12 @@ def test_leak_scan(
     _enroll_student(student_api, course_id)
 
     resp = student_api.list_course_modules(course_id)
-    _assert_no_module_list_leaks(resp)
-
+    assert resp.status_code == 200, resp.text
     modules = resp.json()
     assert isinstance(modules, list)
+    _assert_no_module_list_leaks(modules)
     row = _module_row(modules, module_id)
     assert row.get("moduleQuiz", {}).get("available") is True
-    # Parsed JSON must not carry forbidden keys at any depth.
-    dumped = json.dumps(modules)
-    for token in _FORBIDDEN_MODULE_LIST_LEAKS:
-        assert token not in dumped
 
 
 def test_student_cannot_publish(

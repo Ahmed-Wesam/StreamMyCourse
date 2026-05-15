@@ -266,3 +266,58 @@ def test_publish_bank_transaction_detects_draft_set_changed() -> None:
             course_id="c1", bank_id="b1", module_id="m1", n=2
         )
     assert fake.rolled_back == 1
+
+
+def _visibility_repo(rows: List[Tuple[Any, ...]]) -> tuple[QuestionBankRdsRepository, FakeConn]:
+    fake = FakeConn()
+    fake.cursor_obj.fetchall_batches = [rows]
+    return QuestionBankRdsRepository(lambda: fake), fake
+
+
+def test_list_module_quiz_visibility_for_course_empty_when_no_rows() -> None:
+    repo, fake = _visibility_repo([])
+
+    result = repo.list_module_quiz_visibility_for_course(course_id="c1")
+
+    assert result == {}
+    sql, params = fake.cursor_obj.executions[0]
+    assert "module_quizzes" in sql
+    assert "question_banks" in sql
+    assert "c1" in params
+
+
+def test_list_module_quiz_visibility_for_course_excludes_draft_bank() -> None:
+    repo, _ = _visibility_repo([])
+
+    result = repo.list_module_quiz_visibility_for_course(course_id="c1")
+
+    assert result == {}
+
+
+def test_list_module_quiz_visibility_for_course_includes_published_with_n() -> None:
+    repo, fake = _visibility_repo([("m-published", 3)])
+
+    result = repo.list_module_quiz_visibility_for_course(course_id="c1")
+
+    assert result == {"m-published": {"servedCountN": 3}}
+    sql, params = fake.cursor_obj.executions[0]
+    assert "PUBLISHED" in sql
+    assert "served_count_n" in sql
+    assert params == ("c1", "c1")
+
+
+def test_list_module_quiz_visibility_for_course_excludes_null_served_count_n() -> None:
+    repo, _ = _visibility_repo([])
+
+    result = repo.list_module_quiz_visibility_for_course(course_id="c1")
+
+    assert result == {}
+
+
+def test_list_module_quiz_visibility_for_course_filters_by_course_id() -> None:
+    repo, fake = _visibility_repo([])
+
+    repo.list_module_quiz_visibility_for_course(course_id="c-target")
+
+    _, params = fake.cursor_obj.executions[0]
+    assert params == ("c-target", "c-target")

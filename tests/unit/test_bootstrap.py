@@ -189,6 +189,47 @@ class TestBuildAwsDepsWiresRdsRepos:
         assert isinstance(deps.auth_service._repo, UserProfileRdsRepository)
         assert isinstance(deps.progress_service._progress_repo, LessonProgressRdsRepository)
         assert isinstance(deps.question_bank_service._repo, QuestionBankRdsRepository)
+        assert deps.service._module_quiz_visibility is not None
+
+
+class TestModuleQuizVisibilityAdapter:
+    def test_skips_rds_when_course_draft(self) -> None:
+        mock_repo = MagicMock()
+        adapter = bootstrap_mod._ModuleQuizVisibilityAdapter(mock_repo)
+        result = adapter.module_quiz_visibility_by_course(
+            "course-id",
+            course_status="DRAFT",
+            has_lesson_access=True,
+        )
+        assert result == {}
+        mock_repo.list_module_quiz_visibility_for_course.assert_not_called()
+
+    def test_skips_rds_when_no_lesson_access(self) -> None:
+        mock_repo = MagicMock()
+        adapter = bootstrap_mod._ModuleQuizVisibilityAdapter(mock_repo)
+        result = adapter.module_quiz_visibility_by_course(
+            "course-id",
+            course_status="PUBLISHED",
+            has_lesson_access=False,
+        )
+        assert result == {}
+        mock_repo.list_module_quiz_visibility_for_course.assert_not_called()
+
+    def test_queries_rds_when_published_and_has_access(self) -> None:
+        mock_repo = MagicMock()
+        mock_repo.list_module_quiz_visibility_for_course.return_value = {
+            "m1": {"servedCountN": 2},
+        }
+        adapter = bootstrap_mod._ModuleQuizVisibilityAdapter(mock_repo)
+        result = adapter.module_quiz_visibility_by_course(
+            "course-id",
+            course_status="PUBLISHED",
+            has_lesson_access=True,
+        )
+        mock_repo.list_module_quiz_visibility_for_course.assert_called_once_with(
+            course_id="course-id"
+        )
+        assert result == {"m1": {"available": True, "servedCountN": 2}}
 
 
 class TestRdsConnectionFactory:
