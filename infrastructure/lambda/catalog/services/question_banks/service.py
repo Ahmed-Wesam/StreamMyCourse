@@ -22,6 +22,7 @@ from services.question_banks.models import (
     ModuleQuiz,
     ModuleQuizAttempt,
     PublishedQuestionGradingRow,
+    QuestionBank,
     StudentModuleQuizBinding,
 )
 from services.question_banks.presentation_shuffle import (
@@ -444,6 +445,22 @@ class QuestionBankService:
             question_bank_id=resolved,
         )
 
+    def get_bank_for_course(
+        self,
+        course_id: str,
+        bank_id: str,
+        *,
+        cognito_sub: str,
+        role: str,
+    ) -> QuestionBank:
+        self._authorizer.ensure_course_mutable_by_actor(
+            course_id, cognito_sub=cognito_sub, role=role
+        )
+        bank = self._repo.get_bank_for_course(course_id=course_id, bank_id=bank_id)
+        if bank is None:
+            raise NotFound("Question bank not found for this course")
+        return bank
+
     def create_draft_question(
         self,
         course_id: str,
@@ -526,6 +543,8 @@ class QuestionBankService:
         *,
         cognito_sub: str,
         role: str,
+        prompt_text: str,
+        options_json: Any,
         correct_option_key: str,
     ) -> str:
         self._authorizer.ensure_course_mutable_by_actor(
@@ -538,12 +557,19 @@ class QuestionBankService:
             raise BadRequest(
                 "Published questions can only be added when the bank is published"
             )
+        text = (prompt_text or "").strip()
+        if not text:
+            raise BadRequest("promptText must not be empty")
+        validate_mcq_options_json(options_json)
         key = (correct_option_key or "").strip()
         if not key:
-            raise BadRequest("correct_option_key is required")
+            raise BadRequest("correctOptionKey must not be empty")
+        validate_correct_option_key(key, options_json=options_json)
         return self._repo.insert_published_question(
             course_id=course_id,
             bank_id=bank_id,
+            prompt_text=text,
+            options_json=options_json,
             correct_option_key=key,
         )
 
