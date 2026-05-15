@@ -4,6 +4,72 @@
 
 ---
 
+## 2026-05-15 — QB-C/E hardening: MCQ validation + test coverage
+
+### Completed
+
+- [x] **MCQ validation** — [`infrastructure/lambda/catalog/services/question_banks/mcq_validation.py`](infrastructure/lambda/catalog/services/question_banks/mcq_validation.py): `optionsJson` must include ≥1 choice with a `key`; when set, `correctOptionKey` must match a choice key; used on draft create, publish (service), and inside [`publish_bank_transaction`](infrastructure/lambda/catalog/services/question_banks/rds_repo.py).
+- [x] **Service** — [`service.py`](infrastructure/lambda/catalog/services/question_banks/service.py): `update_question` accepts optional fields with merged validation; `courseId` checked on update/delete.
+- [x] **Unit tests** — [`tests/unit/services/question_banks/test_mcq_validation.py`](tests/unit/services/question_banks/test_mcq_validation.py), expanded [`test_question_bank_service.py`](tests/unit/services/question_banks/test_question_bank_service.py), [`test_question_bank_rds_repo.py`](tests/unit/services/question_banks/test_question_bank_rds_repo.py) (`publish_bank_transaction` TX paths), [`test_question_bank_controller.py`](tests/unit/services/question_banks/test_question_bank_controller.py).
+- [x] **Integration tests** — [`tests/integration/test_question_bank_publish.py`](tests/integration/test_question_bank_publish.py): publish without linked module quiz (**400**), double publish (**409**); [`tests/integration/helpers/api.py`](tests/integration/helpers/api.py) `create_module_quiz(..., question_bank_id=...)`, `create_draft_question`, `publish_question_bank`.
+- [x] **Docs** — [`design.md`](design.md) §7/§13, [`roadmap.md`](roadmap.md) MVP baseline + bridge row 4 synced.
+
+---
+
+## 2026-05-14 — QB-C / QB-E: `questions` migration, publish + N, draft create HTTP
+
+### Completed
+
+- [x] **Migration** — [`infrastructure/database/migrations/007_question_bank_questions.sql`](infrastructure/database/migrations/007_question_bank_questions.sql): `questions` (composite FK to `question_banks`, `DRAFT`/`PUBLISHED`, MCQ JSON + `correct_option_key`); bundled in [`scripts/deploy-rds-stack.sh`](scripts/deploy-rds-stack.sh), [`.github/workflows/deploy-backend.yml`](.github/workflows/deploy-backend.yml), [`infrastructure/deploy.ps1`](infrastructure/deploy.ps1) with **006**.
+- [x] **Service** — [`infrastructure/lambda/catalog/services/question_banks/service.py`](infrastructure/lambda/catalog/services/question_banks/service.py): `publish_question_bank` (§9.3 / §5 validation + auth), `create_draft_question`, `add_published_question`, `update_question`, `delete_question` (published immutable).
+- [x] **Repo** — [`infrastructure/lambda/catalog/services/question_banks/rds_repo.py`](infrastructure/lambda/catalog/services/question_banks/rds_repo.py): draft CRUD, `publish_bank_transaction` (single TX, bank `FOR UPDATE`, flips drafts → `PUBLISHED`, bank → `PUBLISHED`, `module_quizzes.served_count_n = n`).
+- [x] **HTTP** — [`infrastructure/lambda/catalog/services/question_banks/controller.py`](infrastructure/lambda/catalog/services/question_banks/controller.py): `POST .../question-banks/{bid}/questions`, `POST .../publish` (+ OPTIONS); [`infrastructure/lambda/catalog/services/common/validation.py`](infrastructure/lambda/catalog/services/common/validation.py) `require_json_array_or_object`.
+- [x] **API Gateway** — [`infrastructure/templates/api-stack.yaml`](infrastructure/templates/api-stack.yaml): nested resources; deployment **CatalogApiDeploymentV20** (Cognito on new `POST` methods).
+- [x] **Tests** — [`tests/unit/services/question_banks/test_question_bank_service.py`](tests/unit/services/question_banks/test_question_bank_service.py); [`tests/unit/test_question_bank_migration_ddl.py`](tests/unit/test_question_bank_migration_ddl.py); [`tests/unit/test_rds_schema_apply.py`](tests/unit/test_rds_schema_apply.py); [`tests/integration/helpers/api.py`](tests/integration/helpers/api.py); [`tests/integration/test_question_bank_publish.py`](tests/integration/test_question_bank_publish.py). *(Further MCQ/repo/controller tests: **2026-05-15** entry above.)*
+
+### Ops / verify
+
+- **Local HTTPS** against **current dev**: run [`./scripts/run-local-integration-tests.sh`](./scripts/run-local-integration-tests.sh) `tests/integration/test_question_bank_publish.py` **after** dev has **API deployment V20** (or newer) and RDS schema includes **007**; otherwise `POST .../questions` / `.../publish` can return API Gateway **403** (“Invalid key=value pair … Authorization header”) because the stage snapshot predates the Cognito methods.
+
+### Scope note
+
+- **QB-D** (student quiz visibility / §6–7) and **QB-F+** (binding, attempts) are **not** this slice.
+
+---
+
+## 2026-05-14 — QB-B: Question bank + module quiz create APIs (publisher authz)
+
+### Completed
+
+- [x] **Port + service** — [`infrastructure/lambda/catalog/services/question_banks/ports.py`](infrastructure/lambda/catalog/services/question_banks/ports.py) (`CourseMutateAuthorizerPort`), [`.../service.py`](infrastructure/lambda/catalog/services/question_banks/service.py) (`QuestionBankService`: authorizer before RDS; IDOR guard when `questionBankId` is supplied).
+- [x] **Composition root** — [`infrastructure/lambda/catalog/bootstrap.py`](infrastructure/lambda/catalog/bootstrap.py): `_CourseMutateAuthorizerAdapter` delegates to `CourseManagementService.ensure_can_modify_course`; `AwsDeps.question_bank_service`; `lambda_bootstrap` fifth return value.
+- [x] **HTTP** — [`infrastructure/lambda/catalog/services/question_banks/controller.py`](infrastructure/lambda/catalog/services/question_banks/controller.py); [`infrastructure/lambda/catalog/index.py`](infrastructure/lambda/catalog/index.py) dispatches before `course_management_handle`.
+- [x] **API Gateway** — [`infrastructure/templates/api-stack.yaml`](infrastructure/templates/api-stack.yaml): `POST` + `OPTIONS` on `/courses/{courseId}/question-banks` and `/courses/{courseId}/modules/{moduleId}/quiz` (Cognito for `POST`); deployment bumped **V18 → V19**.
+- [x] **Tests** — [`tests/unit/services/question_banks/test_question_bank_service.py`](tests/unit/services/question_banks/test_question_bank_service.py) (authorizer ordering); [`tests/integration/test_question_bank_permissions.py`](tests/integration/test_question_bank_permissions.py) (owner **201** for bank + module-quiz create; alt teacher **403** + `code: forbidden`; student **401/403** + `unauthorized`/`forbidden` for **both** routes); [`tests/integration/helpers/api.py`](tests/integration/helpers/api.py) (`create_question_bank`, `create_module_quiz`); [`tests/unit/test_bootstrap.py`](tests/unit/test_bootstrap.py) / [`tests/unit/test_index.py`](tests/unit/test_index.py) / [`tests/unit/test_index_logging.py`](tests/unit/test_index_logging.py) (`lambda_bootstrap` fifth tuple element).
+
+### Scope note
+
+- **QB-B** covered create bank + module quiz only. **QB-C/QB-E** (publish, `questions`, `served_count_n`, draft HTTP) are in the **2026-05-14 — QB-C / QB-E** entry above. **QB-D** (student visibility) remains future work.
+
+---
+
+## 2026-05-14 — QB-A: RDS `question_banks` + `module_quizzes` + repository
+
+### Completed
+
+- [x] **Migration** — [`infrastructure/database/migrations/006_question_banks_module_quizzes.sql`](infrastructure/database/migrations/006_question_banks_module_quizzes.sql): course-scoped `question_banks` (`DRAFT` / `PUBLISHED`), `module_quizzes` with `UNIQUE(module_id)`, nullable `served_count_n` (≥1 when set), composite `FOREIGN KEY (course_id, question_bank_id)` → `question_banks(course_id, id)` for cross-course attach prevention.
+- [x] **Deploy bundle** — [`scripts/deploy-rds-stack.sh`](scripts/deploy-rds-stack.sh) and [`.github/workflows/deploy-backend.yml`](.github/workflows/deploy-backend.yml) concatenate **006** into `schema.sql` alongside 001+003+004.
+- [x] **Catalog adapter** — [`infrastructure/lambda/catalog/services/question_banks/rds_repo.py`](infrastructure/lambda/catalog/services/question_banks/rds_repo.py): `QuestionBankRdsRepository` (`insert_question_bank`, `insert_module_quiz`, getters); maps `UniqueViolation` → `Conflict`, `ForeignKeyViolation` → `BadRequest`.
+- [x] **Tests** — [`tests/unit/test_question_bank_migration_ddl.py`](tests/unit/test_question_bank_migration_ddl.py), [`tests/unit/services/question_banks/test_question_bank_rds_repo.py`](tests/unit/services/question_banks/test_question_bank_rds_repo.py), [`tests/unit/test_rds_schema_apply.py`](tests/unit/test_rds_schema_apply.py) (006 split + concatenated bundle).
+- [x] **CI boundaries** — [`scripts/check_lambda_boundaries.py`](scripts/check_lambda_boundaries.py) allows `psycopg2` in `question_banks/rds_repo.py`.
+- [x] **Docs** — [`plans/architecture/module-map.md`](plans/architecture/module-map.md) `services/question_banks/` row; [`design.md`](design.md) §13 RDS / near-term row (question banks schema + follow-on HTTP).
+
+### Scope note
+
+- **HTTP / API Gateway:** `POST /courses/{id}/question-banks` and `POST /courses/{id}/modules/{mid}/quiz` shipped in **QB-B** (2026-05-14 entry above); QB-A delivered schema + repository only.
+
+---
+
 ## 2026-05-09 — Site-wide cool theme + lesson player shell refresh (frontend-only)
 
 ### Completed
