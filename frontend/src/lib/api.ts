@@ -175,7 +175,25 @@ export type ModuleQuizQuestion = {
   optionsJson: ModuleQuizOption[]
 }
 
-export type ModuleQuizStartResponse = {
+/** Per-question scored row (submit 200 or latest submission breakdown). */
+export type ModuleQuizResultQuestion = {
+  id: string
+  promptText: string
+  selectedOptionKey: string
+  correctOptionKey: string
+  isCorrect: boolean
+}
+
+export type ModuleQuizLatestSubmission = {
+  correctCount: number
+  totalCount: number
+  attemptNumber: number
+  submittedAt?: string | null
+  questions: ModuleQuizResultQuestion[]
+}
+
+export type ModuleQuizStartInProgress = {
+  phase: 'in_progress'
   moduleQuizId: string
   moduleId: string
   servedCountN: number
@@ -184,6 +202,29 @@ export type ModuleQuizStartResponse = {
   /** Display order; matches `questions[].id` order. */
   questionIds: string[]
   questions: ModuleQuizQuestion[]
+}
+
+export type ModuleQuizStartLatestResults = {
+  phase: 'latest_results'
+  moduleQuizId: string
+  moduleId: string
+  servedCountN: number
+  latestSubmission: ModuleQuizLatestSubmission
+}
+
+export type ModuleQuizStartResponse = ModuleQuizStartInProgress | ModuleQuizStartLatestResults
+
+export type ModuleQuizSubmitBody = {
+  attemptId: string
+  answers: Record<string, string>
+}
+
+export type ModuleQuizSubmitResponse = {
+  attemptId: string
+  attemptNumber: number
+  correctCount: number
+  totalCount: number
+  questions: ModuleQuizResultQuestion[]
 }
 
 export type Lesson = {
@@ -342,14 +383,26 @@ export async function listCourseModules(courseId: string): Promise<CourseModule[
   return httpGet<CourseModule[]>(`/courses/${courseId}/modules`)
 }
 
-/** Start or resume a module quiz for the signed-in student (idempotent). */
+/** Start or resume a module quiz for the signed-in student (idempotent). Pass `{ retake: true }` for a new attempt after submit. */
 export async function startModuleQuiz(
   courseId: string,
   moduleId: string,
+  body: Record<string, unknown> = {},
 ): Promise<ModuleQuizStartResponse> {
   return httpPost<ModuleQuizStartResponse>(
     `/courses/${courseId}/modules/${moduleId}/quiz/start`,
-    {},
+    body,
+  )
+}
+
+export async function submitModuleQuiz(
+  courseId: string,
+  moduleId: string,
+  body: ModuleQuizSubmitBody,
+): Promise<ModuleQuizSubmitResponse> {
+  return httpPost<ModuleQuizSubmitResponse>(
+    `/courses/${courseId}/modules/${moduleId}/quiz/submit`,
+    body,
   )
 }
 
