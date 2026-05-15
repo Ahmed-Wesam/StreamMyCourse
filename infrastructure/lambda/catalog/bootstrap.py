@@ -31,6 +31,32 @@ from services.progress.rds_repo import LessonProgressRdsRepository
 from services.progress.service import LessonProgressService
 from services.question_banks.rds_repo import QuestionBankRdsRepository
 from services.question_banks.service import QuestionBankService
+from services.question_banks.visibility import apply_module_quiz_visibility
+
+
+@dataclass(frozen=True)
+class _ModuleQuizVisibilityAdapter:
+    """Composition-root adapter: ``ModuleQuizVisibilityPort`` → question bank RDS + visibility."""
+
+    _qb_repo: QuestionBankRdsRepository
+
+    def module_quiz_visibility_by_course(
+        self,
+        course_id: str,
+        *,
+        course_status: str,
+        has_lesson_access: bool,
+    ) -> Dict[str, Dict[str, Any]]:
+        if course_status != "PUBLISHED" or not has_lesson_access:
+            return {}
+        repo_map = self._qb_repo.list_module_quiz_visibility_for_course(
+            course_id=course_id
+        )
+        return apply_module_quiz_visibility(
+            repo_map,
+            course_status=course_status,
+            has_lesson_access=has_lesson_access,
+        )
 
 
 @dataclass(frozen=True)
@@ -150,11 +176,14 @@ def build_aws_deps(cfg: AppConfig) -> AwsDeps:
     progress_repo = LessonProgressRdsRepository(conn_factory)
 
     storage = CourseMediaStorage(cfg.video_bucket) if cfg.video_bucket else None
+    qb_repo = QuestionBankRdsRepository(conn_factory)
+    module_quiz_visibility = _ModuleQuizVisibilityAdapter(qb_repo)
     service = CourseManagementService(
         course_repo,
         storage,
         enrollment_repo,
         media_cleanup_queue_url=cfg.media_cleanup_queue_url,
+        module_quiz_visibility=module_quiz_visibility,
     )
     auth_service = UserProfileService(auth_repo)
     progress_service = LessonProgressService(
@@ -165,7 +194,6 @@ def build_aws_deps(cfg: AppConfig) -> AwsDeps:
         position_slack_sec=cfg.progress_position_slack_sec,
     )
 
-    qb_repo = QuestionBankRdsRepository(conn_factory)
     authorizer = _CourseMutateAuthorizerAdapter(service)
     question_bank_service = QuestionBankService(
         course_mutate_authorizer=authorizer,

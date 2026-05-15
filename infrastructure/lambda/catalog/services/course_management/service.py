@@ -18,6 +18,7 @@ from services.course_management.models import Course, CourseModule, Lesson
 from services.course_management.ports import (
     CourseCatalogRepositoryPort,
     CourseMediaStoragePort,
+    ModuleQuizVisibilityPort,
     UserProfileProvisioner,
 )
 from services.enrollment.ports import EnrollmentRepositoryPort
@@ -42,11 +43,13 @@ class CourseManagementService:
         enrollments: EnrollmentRepositoryPort,
         *,
         media_cleanup_queue_url: str = "",
+        module_quiz_visibility: ModuleQuizVisibilityPort | None = None,
     ):
         self._repo = repo
         self._storage = storage
         self._enrollments = enrollments
         self._media_cleanup_queue_url = (media_cleanup_queue_url or "").strip()
+        self._module_quiz_visibility = module_quiz_visibility
 
     def _delete_media_keys(self, keys: List[str]) -> None:
         if self._storage is None:
@@ -399,11 +402,31 @@ class CourseManagementService:
         if course.status == "DRAFT":
             if not self._can_manage_course_unenrolled(course, cognito_sub=cognito_sub, role=role):
                 raise NotFound("Course not found")
-        return [self._public_module_dict(m) for m in self._repo.list_course_modules(course_id)]
+        visibility: Dict[str, Dict[str, Any]] = {}
+        if self._module_quiz_visibility is not None:
+            has_lesson_access = self.viewer_has_lesson_access(
+                course,
+                course_id=course_id,
+                cognito_sub=cognito_sub,
+                role=role,
+            )
+            visibility = self._module_quiz_visibility.module_quiz_visibility_by_course(
+                course_id,
+                course_status=course.status,
+                has_lesson_access=has_lesson_access,
+            )
+        return [
+            self._public_module_dict(m, module_quiz=visibility.get(m.id))
+            for m in self._repo.list_course_modules(course_id)
+        ]
 
     @staticmethod
-    def _public_module_dict(m: CourseModule) -> Dict[str, Any]:
-        return {
+    def _public_module_dict(
+        m: CourseModule,
+        *,
+        module_quiz: Dict[str, Any] | None = None,
+    ) -> Dict[str, Any]:
+        row: Dict[str, Any] = {
             "id": m.id,
             "title": m.title,
             "description": m.description,
@@ -411,6 +434,9 @@ class CourseManagementService:
             "createdAt": m.createdAt,
             "updatedAt": m.updatedAt,
         }
+        if module_quiz is not None:
+            row["moduleQuiz"] = module_quiz
+        return row
 
     def create_course_module(self, course_id: str, title: str, description: str = "") -> Dict[str, Any]:
         if not _is_valid_uuid(course_id):

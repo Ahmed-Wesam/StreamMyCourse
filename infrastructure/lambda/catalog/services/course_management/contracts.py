@@ -25,6 +25,11 @@ class LessonDto(TypedDict):
     thumbnailUrl: NotRequired[str]
 
 
+class ModuleQuizDto(TypedDict):
+    available: bool
+    servedCountN: int
+
+
 class CourseModuleDto(TypedDict):
     id: str
     title: str
@@ -32,6 +37,7 @@ class CourseModuleDto(TypedDict):
     order: int
     createdAt: NotRequired[str]
     updatedAt: NotRequired[str]
+    moduleQuiz: NotRequired[ModuleQuizDto]
 
 
 class CreateCourseModuleResponse(TypedDict):
@@ -166,6 +172,12 @@ def as_course_module_dto(obj: Dict[str, Any]) -> CourseModuleDto:
         dto["createdAt"] = str(obj.get("createdAt", ""))
     if obj.get("updatedAt") is not None:
         dto["updatedAt"] = str(obj.get("updatedAt", ""))
+    if obj.get("moduleQuiz") is not None:
+        mq = obj["moduleQuiz"]
+        dto["moduleQuiz"] = {
+            "available": bool(mq.get("available")),
+            "servedCountN": int(mq.get("servedCountN", 0) or 0),
+        }
     return dto
 
 

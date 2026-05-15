@@ -41,6 +41,16 @@ class CourseCatalogRepositoryPort(Protocol):
     def set_lesson_duration(self, course_id: str, lesson_id: str, duration: int) -> None: ...
 
 
+class ModuleQuizVisibilityPort(Protocol):
+    def module_quiz_visibility_by_course(
+        self,
+        course_id: str,
+        *,
+        course_status: str,
+        has_lesson_access: bool,
+    ) -> Dict[str, Dict[str, Any]]: ...
+
+
 class CourseMediaStoragePort(Protocol):
     def presign_put(
         self,
