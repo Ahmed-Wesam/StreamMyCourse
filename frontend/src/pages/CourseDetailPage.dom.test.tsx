@@ -495,7 +495,47 @@ describe('CourseDetailPage', () => {
         expect(screen.getByText('Section 1')).toBeTruthy()
       })
       expect(screen.getByText('Module quiz')).toBeTruthy()
-      expect(screen.queryByRole('button', { name: /start quiz/i })).toBeNull()
+    })
+
+    it('shows Start quiz link when enrolled and moduleQuiz.available', async () => {
+      api.listCourseModules.mockResolvedValue([
+        { id: 'm1', title: 'Section 1', description: '', order: 0, moduleQuiz: { available: true, servedCountN: 2 } },
+        { id: 'm2', title: 'Section 2', description: '', order: 1 },
+      ])
+
+      renderCourseDetail()
+
+      await waitFor(() => {
+        expect(screen.getByRole('link', { name: /start quiz/i })).toBeTruthy()
+      })
+      const startLink = screen.getByRole('link', { name: /start quiz/i })
+      expect(startLink.getAttribute('href')).toBe('/courses/c1/modules/m1/quiz')
+    })
+
+    it('navigates to module quiz route when Start quiz is clicked', async () => {
+      api.listCourseModules.mockResolvedValue([
+        { id: 'm1', title: 'Section 1', description: '', order: 0, moduleQuiz: { available: true, servedCountN: 2 } },
+        { id: 'm2', title: 'Section 2', description: '', order: 1 },
+      ])
+
+      const QuizStub = () => <div data-testid="quiz-page">Quiz shell</div>
+      const router = createMemoryRouter(
+        [
+          { path: '/courses/:courseId', element: <CourseDetailPage /> },
+          { path: '/courses/:courseId/modules/:moduleId/quiz', element: <QuizStub /> },
+        ],
+        { initialEntries: ['/courses/c1'] },
+      )
+      render(<RouterProvider router={router} />)
+
+      await waitFor(() => {
+        expect(screen.getByRole('link', { name: /start quiz/i })).toBeTruthy()
+      })
+      fireEvent.click(screen.getByRole('link', { name: /start quiz/i }))
+
+      await waitFor(() => {
+        expect(screen.getByTestId('quiz-page')).toBeTruthy()
+      })
     })
 
     it('does not show Module quiz badge when moduleQuiz is absent', async () => {
