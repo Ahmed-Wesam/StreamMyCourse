@@ -164,6 +164,24 @@ export type CourseModule = {
   moduleQuiz?: { available: boolean; servedCountN: number }
 }
 
+export type ModuleQuizOption = {
+  key: string
+  text: string
+}
+
+export type ModuleQuizQuestion = {
+  id: string
+  promptText: string
+  optionsJson: ModuleQuizOption[]
+}
+
+export type ModuleQuizStartResponse = {
+  moduleQuizId: string
+  moduleId: string
+  servedCountN: number
+  questions: ModuleQuizQuestion[]
+}
+
 export type Lesson = {
   id: string
   title: string
@@ -318,6 +336,17 @@ export async function listLessons(courseId: string): Promise<Lesson[]> {
 
 export async function listCourseModules(courseId: string): Promise<CourseModule[]> {
   return httpGet<CourseModule[]>(`/courses/${courseId}/modules`)
+}
+
+/** Start or resume a module quiz for the signed-in student (idempotent). */
+export async function startModuleQuiz(
+  courseId: string,
+  moduleId: string,
+): Promise<ModuleQuizStartResponse> {
+  return httpPost<ModuleQuizStartResponse>(
+    `/courses/${courseId}/modules/${moduleId}/quiz/start`,
+    {},
+  )
 }
 
 export async function getPlaybackUrl(courseId: string, lessonId: string): Promise<Playback> {

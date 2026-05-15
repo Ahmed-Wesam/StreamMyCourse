@@ -1,6 +1,7 @@
 import { Navigate, Route, Routes } from 'react-router-dom'
 import CourseCatalogPage from '../pages/CourseCatalogPage'
 import CourseDetailPage from '../pages/CourseDetailPage'
+import { StudentModuleQuizAuth } from '../components/auth/StudentModuleQuizAuth'
 import CoursePage from '../pages/CoursePage'
 import HomePage from '../pages/HomePage'
 import LearnRedirectPage from '../pages/LearnRedirectPage'
@@ -26,6 +27,7 @@ function StudentApp() {
         <Route path="/catalog" element={<CourseCatalogPage />} />
         <Route path="/my-course" element={<MyCoursePage />} />
         <Route path="/courses/:courseId" element={<CourseDetailPage />} />
+        <Route path="/courses/:courseId/modules/:moduleId/quiz" element={<StudentModuleQuizAuth />} />
         <Route path="/login" element={<StudentLoginPage />} />
         <Route path="/courses/:courseId/lessons/:lessonId" element={<StudentLessonAuth />} />
         <Route path="*" element={<Navigate to="/" replace />} />

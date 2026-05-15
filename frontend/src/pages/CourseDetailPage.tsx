@@ -285,6 +285,14 @@ function CourseDetailBody({
                             Module quiz
                           </span>
                         )}
+                        {quizAvailable && (
+                          <Link
+                            to={`/courses/${courseId}/modules/${section.id}/quiz`}
+                            className="ml-auto inline-flex items-center rounded-lg bg-indigo-600 px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-indigo-700"
+                          >
+                            Start quiz
+                          </Link>
+                        )}
                       </div>
                       {section.description && (
                         <div className="mt-1 text-sm text-gray-600">{section.description}</div>
