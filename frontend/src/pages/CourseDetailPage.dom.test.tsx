@@ -482,6 +482,72 @@ describe('CourseDetailPage', () => {
     })
   })
 
+  describe('module quiz badge', () => {
+    it('shows passive Module quiz badge when enrolled and moduleQuiz.available', async () => {
+      api.listCourseModules.mockResolvedValue([
+        { id: 'm1', title: 'Section 1', description: '', order: 0, moduleQuiz: { available: true, servedCountN: 2 } },
+        { id: 'm2', title: 'Section 2', description: '', order: 1 },
+      ])
+
+      renderCourseDetail()
+
+      await waitFor(() => {
+        expect(screen.getByText('Section 1')).toBeTruthy()
+      })
+      expect(screen.getByText('Module quiz')).toBeTruthy()
+      expect(screen.queryByRole('button', { name: /start quiz/i })).toBeNull()
+    })
+
+    it('does not show Module quiz badge when moduleQuiz is absent', async () => {
+      api.listCourseModules.mockResolvedValue([
+        { id: 'm1', title: 'Section 1', description: '', order: 0 },
+        { id: 'm2', title: 'Section 2', description: '', order: 1 },
+      ])
+
+      renderCourseDetail()
+
+      await waitFor(() => {
+        expect(screen.getByText('Section 1')).toBeTruthy()
+      })
+      expect(screen.queryByText('Module quiz')).toBeNull()
+    })
+
+    it('does not show Module quiz badge when not enrolled', async () => {
+      api.getCourse.mockResolvedValue({
+        id: 'c1',
+        title: 'Test Course',
+        description: 'Test Description',
+        status: 'PUBLISHED',
+        enrolled: false,
+      })
+      api.listCourseModules.mockResolvedValue([
+        { id: 'm1', title: 'Section 1', description: '', order: 0, moduleQuiz: { available: true, servedCountN: 2 } },
+        { id: 'm2', title: 'Section 2', description: '', order: 1 },
+      ])
+
+      renderCourseDetail()
+
+      await waitFor(() => {
+        expect(screen.getByText('Section 1')).toBeTruthy()
+      })
+      expect(screen.queryByText('Module quiz')).toBeNull()
+    })
+
+    it('does not show Module quiz badge when moduleQuiz.available is false', async () => {
+      api.listCourseModules.mockResolvedValue([
+        { id: 'm1', title: 'Section 1', description: '', order: 0, moduleQuiz: { available: false, servedCountN: 0 } },
+        { id: 'm2', title: 'Section 2', description: '', order: 1 },
+      ])
+
+      renderCourseDetail()
+
+      await waitFor(() => {
+        expect(screen.getByText('Section 1')).toBeTruthy()
+      })
+      expect(screen.queryByText('Module quiz')).toBeNull()
+    })
+  })
+
   it('clears hero and lesson list when route changes and the new course fails to load', async () => {
     api.getCourse.mockImplementation((courseId: string) => {
       if (courseId === 'c1') {
