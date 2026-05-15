@@ -93,6 +93,9 @@ def check_file(path: str) -> List[Violation]:
         _norm_path(os.path.join(ROOT, "infrastructure/lambda/catalog/services/auth/rds_repo.py")),
         _norm_path(os.path.join(ROOT, "infrastructure/lambda/catalog/services/enrollment/rds_repo.py")),
         _norm_path(os.path.join(ROOT, "infrastructure/lambda/catalog/services/progress/rds_repo.py")),
+        _norm_path(
+            os.path.join(ROOT, "infrastructure/lambda/catalog/services/question_banks/rds_repo.py")
+        ),
         _norm_path(os.path.join(ROOT, "infrastructure/lambda/cognito_user_profile_sync/repo.py")),
     }
     if "psycopg2" in roots and _norm_path(path) not in allowed_psycopg2_files:
