@@ -18,7 +18,13 @@ except Exception:  # pragma: no cover - surface at first DB call instead
 
 from services.common.errors import BadRequest, Conflict, NotFound
 from services.question_banks.mcq_validation import validate_draft_question_for_publish
-from services.question_banks.models import ModuleQuiz, Question, QuestionBank
+from services.question_banks.models import (
+    BoundQuestion,
+    ModuleQuiz,
+    Question,
+    QuestionBank,
+    StudentModuleQuizBinding,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -109,6 +115,23 @@ class QuestionBankRdsRepository:
                 ) from exc
             raise BadRequest(
                 "Invalid question bank status (allowed values: DRAFT, PUBLISHED)"
+            ) from exc
+        if isinstance(exc, psycopg2.IntegrityError):
+            raise BadRequest("Database integrity constraint failed") from exc
+        raise exc
+
+    @staticmethod
+    def _raise_binding_integrity(exc: BaseException) -> None:
+        if pg_errors is None or psycopg2 is None:
+            raise exc
+        if isinstance(exc, pg_errors.UniqueViolation):
+            raise Conflict(
+                "Student module quiz binding already exists for this quiz"
+            ) from exc
+        if isinstance(exc, pg_errors.ForeignKeyViolation):
+            raise BadRequest(
+                "module_quiz_id, course_id, and question_id must reference "
+                "valid module_quizzes and questions rows for the same course"
             ) from exc
         if isinstance(exc, psycopg2.IntegrityError):
             raise BadRequest("Database integrity constraint failed") from exc
@@ -541,6 +564,122 @@ class QuestionBankRdsRepository:
         for module_id, served_n in cur.fetchall():
             result[str(module_id)] = {"servedCountN": int(served_n)}
         return result
+
+    def list_published_question_ids(
+        self, *, course_id: str, bank_id: str
+    ) -> list[str]:
+        cur = self._execute(
+            """
+            SELECT id
+            FROM questions
+            WHERE course_id = %s AND question_bank_id = %s AND status = 'PUBLISHED'
+            ORDER BY created_at ASC, id ASC
+            """,
+            (course_id, bank_id),
+        )
+        return [str(row[0]) for row in cur.fetchall()]
+
+    def list_student_bound_questions(
+        self, *, course_id: str, question_ids: list[str]
+    ) -> list[BoundQuestion]:
+        if not question_ids:
+            return []
+        cur = self._execute(
+            """
+            SELECT id, prompt_text, options_json
+            FROM questions
+            WHERE course_id = %s AND id = ANY(%s)
+            """,
+            (course_id, question_ids),
+        )
+        by_id: dict[str, BoundQuestion] = {}
+        for qid, prompt_text, options_json in cur.fetchall():
+            by_id[str(qid)] = BoundQuestion(
+                id=str(qid),
+                promptText=str(prompt_text or ""),
+                optionsJson=_options_json_to_str(options_json),
+            )
+        return [by_id[qid] for qid in question_ids if qid in by_id]
+
+    def get_binding_for_student(
+        self, *, module_quiz_id: str, user_sub: str
+    ) -> Optional[StudentModuleQuizBinding]:
+        cur = self._execute(
+            """
+            SELECT id, module_quiz_id, course_id, user_sub
+            FROM student_module_quiz_bindings
+            WHERE module_quiz_id = %s AND user_sub = %s
+            """,
+            (module_quiz_id, user_sub),
+        )
+        row = cur.fetchone()
+        if not row:
+            return None
+        binding_id, mq_id, course_id, sub = row
+        cur = self._execute(
+            """
+            SELECT question_id
+            FROM student_module_quiz_binding_questions
+            WHERE binding_id = %s
+            ORDER BY position ASC
+            """,
+            (str(binding_id),),
+        )
+        question_ids = [str(r[0]) for r in cur.fetchall()]
+        return StudentModuleQuizBinding(
+            id=str(binding_id),
+            moduleQuizId=str(mq_id),
+            courseId=str(course_id),
+            userSub=str(sub),
+            questionIds=question_ids,
+        )
+
+    def insert_binding_with_questions(
+        self,
+        *,
+        module_quiz_id: str,
+        course_id: str,
+        user_sub: str,
+        question_ids: list[str],
+    ) -> str:
+        conn = self._connection()
+        prev_autocommit = getattr(conn, "autocommit", False)
+        conn.autocommit = False
+        cur = conn.cursor()
+        try:
+            cur.execute(
+                """
+                INSERT INTO student_module_quiz_bindings (
+                    module_quiz_id, course_id, user_sub
+                )
+                VALUES (%s, %s, %s)
+                RETURNING id
+                """,
+                (module_quiz_id, course_id, user_sub),
+            )
+            row = cur.fetchone()
+            if not row:
+                raise RuntimeError(
+                    "INSERT student_module_quiz_bindings returned no row"
+                )
+            binding_id = str(row[0])
+            for position, question_id in enumerate(question_ids):
+                cur.execute(
+                    """
+                    INSERT INTO student_module_quiz_binding_questions (
+                        binding_id, position, question_id
+                    )
+                    VALUES (%s, %s, %s)
+                    """,
+                    (binding_id, position, question_id),
+                )
+            conn.commit()
+            return binding_id
+        except Exception as exc:
+            conn.rollback()
+            self._raise_binding_integrity(exc)
+        finally:
+            conn.autocommit = prev_autocommit
 
     def get_module_quiz_by_module_id(self, *, module_id: str) -> Optional[ModuleQuiz]:
         cur = self._execute(

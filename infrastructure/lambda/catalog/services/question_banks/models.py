@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Optional
 
 
@@ -39,3 +39,23 @@ class Question:
     optionsJson: str = "[]"
     createdAt: str = ""
     updatedAt: str = ""
+
+
+@dataclass(frozen=True)
+class StudentModuleQuizBinding:
+    """Persisted draw for one student + module quiz (question ids in draw order)."""
+
+    id: str
+    moduleQuizId: str
+    courseId: str
+    userSub: str
+    questionIds: list[str] = field(default_factory=list)
+
+
+@dataclass(frozen=True)
+class BoundQuestion:
+    """Student-safe question payload (no correctOptionKey or bank metadata)."""
+
+    id: str
+    promptText: str
+    optionsJson: str
