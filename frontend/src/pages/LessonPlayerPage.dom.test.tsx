@@ -373,11 +373,23 @@ describe('LessonPlayerPage', () => {
       expect(screen.getByRole('button', { name: 'Section 1' })).toBeTruthy()
     })
     expect(screen.getByRole('button', { name: 'Section 2' })).toBeTruthy()
-    const unsortedToggle = await screen.findByRole('button', { name: /Unsorted/i })
-    if (unsortedToggle.getAttribute('aria-expanded') !== 'true') {
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /Unsorted/i })).toBeTruthy()
+    })
+    // openSections defaults via useEffect; avoid clicking an already-expanded toggle (collapses).
+    await waitFor(() => {
+      expect(screen.getByText(/Orphan Lesson/i)).toBeTruthy()
+    })
+    const unsortedToggle = screen.getByRole('button', { name: /Unsorted/i })
+    if (
+      unsortedToggle.getAttribute('aria-expanded') !== 'true' &&
+      !screen.queryByText(/Orphan Lesson/i)
+    ) {
       fireEvent.click(unsortedToggle)
     }
-    expect(await screen.findByText(/Orphan Lesson/i)).toBeTruthy()
+    await waitFor(() => {
+      expect(screen.getByText(/Orphan Lesson/i)).toBeTruthy()
+    })
   })
 
   it('navigates Next/Previous across modules in (moduleOrder, order) order', async () => {
