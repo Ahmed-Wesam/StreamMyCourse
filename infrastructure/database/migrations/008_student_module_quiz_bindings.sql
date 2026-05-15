@@ -31,11 +31,3 @@ CREATE TABLE IF NOT EXISTS student_module_quiz_binding_questions (
     PRIMARY KEY (binding_id, position),
     UNIQUE (binding_id, question_id)
 );
-
--- In-place upgrade when 008 was applied with ON DELETE RESTRICT (course delete cleanup).
-ALTER TABLE student_module_quiz_binding_questions
-    DROP CONSTRAINT IF EXISTS student_module_quiz_binding_questions_question_id_fkey;
-
-ALTER TABLE student_module_quiz_binding_questions
-    ADD CONSTRAINT student_module_quiz_binding_questions_question_id_fkey
-    FOREIGN KEY (question_id) REFERENCES questions(id) ON DELETE CASCADE;
