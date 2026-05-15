@@ -258,6 +258,7 @@ def test_first_start_draws_inserts_and_returns_n_questions() -> None:
     repo.insert_binding_with_questions.assert_not_called()
     repo.insert_attempt_with_shuffle.assert_not_called()
     assert out["servedCountN"] == 2
+    assert out["phase"] == "in_progress"
     assert len(out["questions"]) == 2
     assert out["questionIds"] == ids
     assert [q["id"] for q in out["questions"]] == ids
@@ -395,6 +396,7 @@ def test_second_start_returns_same_ids_and_draw_called_once() -> None:
         )
 
     draw_mock.assert_not_called()
+    assert first["phase"] == second["phase"] == "in_progress"
     assert first["questionIds"] == second["questionIds"] == ids
     assert [q["id"] for q in first["questions"]] == ids
     assert [q["id"] for q in second["questions"]] == ids
@@ -484,6 +486,7 @@ def test_section_9_5_existing_binding_unchanged_new_student_may_differ() -> None
                 )
 
     assert draw_mock.call_count == 1
+    assert out_a["phase"] == out_b["phase"] == "in_progress"
     assert out_a["questionIds"] == ["q-old-1", "q-old-2"]
     assert out_b["questionIds"] == ["q-new-3", "q-new-4"]
     repo.insert_binding_with_questions_and_initial_attempt.assert_called_once()
@@ -528,6 +531,7 @@ def test_start_response_omits_correct_option_key() -> None:
     )
 
     assert out["moduleQuizId"] == _MQ_ID
+    assert out["phase"] == "in_progress"
     assert out["moduleId"] == _MODULE_ID
     assert out["servedCountN"] == 2
     assert len(out["questions"]) == 2
@@ -572,6 +576,7 @@ def test_start_on_conflict_reloads_binding_without_second_draw() -> None:
         )
 
     draw_mock.assert_called_once()
+    assert out["phase"] == "in_progress"
     assert out["questionIds"] == ["q1", "q2"]
     assert [q["id"] for q in out["questions"]] == ["q1", "q2"]
     assert repo.get_binding_for_student.call_count == 2

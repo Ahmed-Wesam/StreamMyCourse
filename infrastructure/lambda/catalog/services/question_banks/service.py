@@ -8,6 +8,11 @@ from typing import Any, Optional
 
 from services.common.errors import BadRequest, Conflict, NotFound
 from services.question_banks.binding_draw import draw_question_ids
+from services.question_banks.grading import (
+    GradingRow,
+    QuizGradeResult,
+    grade_bound_answers,
+)
 from services.question_banks.mcq_validation import (
     validate_correct_option_key,
     validate_draft_question_for_publish,
@@ -16,6 +21,7 @@ from services.question_banks.mcq_validation import (
 from services.question_banks.models import (
     ModuleQuiz,
     ModuleQuizAttempt,
+    PublishedQuestionGradingRow,
     StudentModuleQuizBinding,
 )
 from services.question_banks.presentation_shuffle import (
@@ -53,6 +59,7 @@ class QuestionBankService:
         *,
         cognito_sub: str,
         role: str,
+        retake: bool = False,
         rng: random.Random | None = None,
     ) -> dict[str, Any]:
         module_quiz = self._resolve_startable_module_quiz(
@@ -69,9 +76,101 @@ class QuestionBankService:
                 user_sub=user_sub,
                 rng=rng,
             )
-        return self._build_module_quiz_start_response(
-            module_quiz, binding, rng=rng
+
+        open_attempt = self._repo.get_open_attempt(binding_id=binding.id)
+        if open_attempt is not None:
+            return self._student_quiz_start_in_progress(
+                module_quiz, binding, open_attempt
+            )
+
+        latest = self._repo.get_latest_attempt(binding_id=binding.id)
+        if latest is not None and latest.status == "submitted" and not retake:
+            return self._student_quiz_start_latest_results(module_quiz, binding)
+
+        shuffle_rng = rng if rng is not None else random.Random()
+        if latest is not None and latest.status == "in_progress":
+            attempt = latest
+        else:
+            attempt = self._insert_new_attempt(
+                binding, latest=latest, rng=shuffle_rng
+            )
+        return self._student_quiz_start_in_progress(module_quiz, binding, attempt)
+
+    def submit_module_quiz(
+        self,
+        course_id: str,
+        module_id: str,
+        *,
+        cognito_sub: str,
+        role: str,
+        attempt_id: str,
+        answers: dict[str, str],
+    ) -> dict[str, Any]:
+        """Grade bound answers, persist submission, return scored breakdown (QB-H)."""
+        self._resolve_startable_module_quiz(
+            course_id, module_id, cognito_sub=cognito_sub, role=role
         )
+        user_sub = cognito_sub.strip()
+        cid = course_id.strip()
+        mid = module_id.strip()
+        aid = attempt_id.strip()
+        ctx = self._repo.get_attempt_with_binding_rows(attempt_id=aid)
+        if ctx is None:
+            raise NotFound("Module quiz attempt not found")
+        if ctx.courseId != cid or ctx.moduleId != mid:
+            raise NotFound("Module quiz attempt not found")
+        if ctx.userSub != user_sub:
+            raise NotFound("Module quiz attempt not found")
+        if ctx.attempt.status != "in_progress":
+            raise Conflict("Quiz attempt already submitted")
+        binding = self._repo.get_binding_for_student(
+            module_quiz_id=ctx.moduleQuizId,
+            user_sub=user_sub,
+        )
+        if binding is None or binding.id != ctx.attempt.bindingId:
+            raise NotFound("Module quiz attempt not found")
+        ordered_ids = binding.questionIds
+        grading_rows = self._repo.list_grading_rows_for_questions(
+            course_id=cid,
+            question_ids=ordered_ids,
+        )
+        if len(grading_rows) != len(ordered_ids):
+            raise Conflict("Module quiz questions could not be loaded")
+        grading_by_id, prompts_by_id = self._grading_inputs_from_published_rows(
+            grading_rows
+        )
+        try:
+            grade_result = grade_bound_answers(
+                question_ids=ordered_ids,
+                answers=answers,
+                grading_by_question_id=grading_by_id,
+            )
+        except ValueError as exc:
+            raise BadRequest(str(exc)) from exc
+        normalized_answers = {
+            ga.question_id: ga.selected_option_key
+            for ga in grade_result.questions
+        }
+        try:
+            self._repo.insert_submission_and_mark_submitted(
+                attempt_id=ctx.attempt.id,
+                answers_json=normalized_answers,
+                correct_count=grade_result.correct_count,
+                total_count=grade_result.total_count,
+            )
+        except Conflict:
+            raise
+        except NotFound:
+            raise NotFound("Module quiz attempt not found") from None
+        return {
+            "attemptId": ctx.attempt.id,
+            "attemptNumber": ctx.attempt.attemptNumber,
+            "correctCount": grade_result.correct_count,
+            "totalCount": grade_result.total_count,
+            "questions": self._questions_result_breakdown(
+                grade_result, prompts_by_id
+            ),
+        }
 
     def _resolve_startable_module_quiz(
         self,
@@ -159,23 +258,6 @@ class QuestionBankService:
             raise Conflict("Module quiz binding could not be loaded after create")
         return binding
 
-    def _resolve_or_create_attempt(
-        self,
-        binding: StudentModuleQuizBinding,
-        *,
-        rng: random.Random | None,
-    ) -> ModuleQuizAttempt:
-        open_attempt = self._repo.get_open_attempt(binding_id=binding.id)
-        if open_attempt is not None:
-            return open_attempt
-
-        latest = self._repo.get_latest_attempt(binding_id=binding.id)
-        if latest is not None and latest.status == "in_progress":
-            return latest
-
-        shuffle_rng = rng if rng is not None else random.Random()
-        return self._insert_new_attempt(binding, latest=latest, rng=shuffle_rng)
-
     def _insert_new_attempt(
         self,
         binding: StudentModuleQuizBinding,
@@ -208,18 +290,16 @@ class QuestionBankService:
                 raise
             return open_attempt
 
-    def _build_module_quiz_start_response(
+    def _student_quiz_start_in_progress(
         self,
         module_quiz: ModuleQuiz,
         binding: StudentModuleQuizBinding,
-        *,
-        rng: random.Random | None = None,
+        attempt: ModuleQuizAttempt,
     ) -> dict[str, Any]:
         served_n = module_quiz.servedCountN
         assert served_n is not None
         if len(binding.questionIds) != served_n:
             raise Conflict("Module quiz binding is incomplete")
-        attempt = self._resolve_or_create_attempt(binding, rng=rng)
         try:
             validate_question_order(
                 binding.questionIds, attempt.shuffledQuestionOrder
@@ -241,6 +321,7 @@ class QuestionBankService:
         except ValueError as exc:
             raise Conflict(str(exc)) from exc
         return {
+            "phase": "in_progress",
             "moduleQuizId": module_quiz.id,
             "moduleId": module_quiz.moduleId,
             "servedCountN": served_n,
@@ -249,6 +330,86 @@ class QuestionBankService:
             "questionIds": list(attempt.shuffledQuestionOrder),
             "questions": questions,
         }
+
+    def _student_quiz_start_latest_results(
+        self,
+        module_quiz: ModuleQuiz,
+        binding: StudentModuleQuizBinding,
+    ) -> dict[str, Any]:
+        served_n = module_quiz.servedCountN
+        assert served_n is not None
+        if len(binding.questionIds) != served_n:
+            raise Conflict("Module quiz binding is incomplete")
+        snapshot = self._repo.get_latest_submission_for_binding(
+            binding_id=binding.id
+        )
+        if snapshot is None:
+            raise Conflict("Quiz submission record not found")
+        ordered_ids = binding.questionIds
+        grading_rows = self._repo.list_grading_rows_for_questions(
+            course_id=binding.courseId,
+            question_ids=ordered_ids,
+        )
+        if len(grading_rows) != len(ordered_ids):
+            raise Conflict("Module quiz questions could not be loaded")
+        grading_by_id, prompts_by_id = self._grading_inputs_from_published_rows(
+            grading_rows
+        )
+        try:
+            grade_result = grade_bound_answers(
+                question_ids=ordered_ids,
+                answers=snapshot.answersJson,
+                grading_by_question_id=grading_by_id,
+            )
+        except ValueError as exc:
+            raise BadRequest(str(exc)) from exc
+        return {
+            "phase": "latest_results",
+            "moduleQuizId": module_quiz.id,
+            "moduleId": module_quiz.moduleId,
+            "servedCountN": served_n,
+            "latestSubmission": {
+                "correctCount": snapshot.correctCount,
+                "totalCount": snapshot.totalCount,
+                "attemptNumber": snapshot.attemptNumber,
+                "submittedAt": snapshot.submittedAt,
+                "questions": self._questions_result_breakdown(
+                    grade_result, prompts_by_id
+                ),
+            },
+        }
+
+    @staticmethod
+    def _grading_inputs_from_published_rows(
+        rows: list[PublishedQuestionGradingRow],
+    ) -> tuple[dict[str, GradingRow], dict[str, str]]:
+        grading_by_id: dict[str, GradingRow] = {}
+        prompts_by_id: dict[str, str] = {}
+        for row in rows:
+            opts = _parse_options_json(row.optionsJson)
+            grading_by_id[row.id] = GradingRow(
+                question_id=row.id,
+                correct_option_key=row.correctOptionKey,
+                options_json=opts,
+            )
+            prompts_by_id[row.id] = row.promptText
+        return grading_by_id, prompts_by_id
+
+    @staticmethod
+    def _questions_result_breakdown(
+        grade_result: QuizGradeResult,
+        prompts_by_id: dict[str, str],
+    ) -> list[dict[str, Any]]:
+        return [
+            {
+                "id": ga.question_id,
+                "promptText": prompts_by_id[ga.question_id],
+                "selectedOptionKey": ga.selected_option_key,
+                "correctOptionKey": ga.correct_option_key,
+                "isCorrect": ga.is_correct,
+            }
+            for ga in grade_result.questions
+        ]
 
     def create_question_bank(
         self, course_id: str, *, cognito_sub: str, role: str

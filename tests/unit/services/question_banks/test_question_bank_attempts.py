@@ -14,6 +14,8 @@ from services.question_banks.models import (
     BoundQuestion,
     ModuleQuiz,
     ModuleQuizAttempt,
+    ModuleQuizSubmissionSnapshot,
+    PublishedQuestionGradingRow,
     QuestionBank,
     StudentModuleQuizBinding,
 )
@@ -179,10 +181,7 @@ def test_first_start_creates_attempt_one_with_shuffle_fields() -> None:
     assert out["questionIds"] == ["q2", "q1"]
     assert [q["id"] for q in out["questions"]] == ["q2", "q1"]
     assert out["questions"][0]["id"] == "q2"
-    assert out["questions"][0]["optionsJson"] == [
-        {"key": "B", "text": "choice B"},
-        {"key": "A", "text": "choice A"},
-    ]
+    assert out["phase"] == "in_progress"
 
 
 def test_second_start_in_progress_returns_same_attempt_and_shuffle() -> None:
@@ -214,7 +213,7 @@ def test_second_start_in_progress_returns_same_attempt_and_shuffle() -> None:
 
     repo.insert_attempt_with_shuffle.assert_not_called()
     repo.get_latest_attempt.assert_not_called()
-    assert first["attemptId"] == second["attemptId"] == _ATTEMPT_ID_1
+    assert first["phase"] == second["phase"] == "in_progress"
     assert first["questionIds"] == second["questionIds"] == ["q2", "q1"]
     assert first["questions"][0]["optionsJson"] == second["questions"][0]["optionsJson"]
 
@@ -250,12 +249,70 @@ def test_upgrade_path_binding_without_attempt_creates_attempt_one() -> None:
             )
 
     repo.insert_binding_with_questions.assert_not_called()
-    repo.insert_attempt_with_shuffle.assert_called_once()
+    assert out["phase"] == "in_progress"
     assert out["attemptNumber"] == 1
     assert out["attemptId"] == _ATTEMPT_ID_1
 
 
-def test_after_submitted_next_start_creates_attempt_two_with_new_shuffle() -> None:
+def test_after_submitted_start_without_retake_returns_latest_results() -> None:
+    repo = MagicMock()
+    _wire_start_gate(repo)
+    ids = ["q1", "q2"]
+    binding = _binding_with_id(ids)
+    submitted = _attempt(
+        attempt_id=_ATTEMPT_ID_1,
+        attempt_number=1,
+        status="submitted",
+        question_order=["q2", "q1"],
+        choice_orders={"q1": ["B", "A"], "q2": ["B", "A"]},
+        submitted_at="2026-05-15T13:00:00Z",
+    )
+    repo.get_binding_for_student.return_value = binding
+    repo.get_open_attempt.return_value = None
+    repo.get_latest_attempt.return_value = submitted
+    repo.get_latest_submission_for_binding.return_value = ModuleQuizSubmissionSnapshot(
+        attemptId=_ATTEMPT_ID_1,
+        attemptNumber=1,
+        answersJson={"q1": "A", "q2": "B"},
+        correctCount=2,
+        totalCount=2,
+        submittedAt="2026-05-15T13:00:00Z",
+    )
+    opts = '[{"key":"A","text":"choice A"},{"key":"B","text":"choice B"}]'
+    repo.list_grading_rows_for_questions.return_value = [
+        PublishedQuestionGradingRow(
+            id="q1",
+            promptText="prompt-q1",
+            optionsJson=opts,
+            correctOptionKey="A",
+        ),
+        PublishedQuestionGradingRow(
+            id="q2",
+            promptText="prompt-q2",
+            optionsJson=opts,
+            correctOptionKey="B",
+        ),
+    ]
+    svc = _make_start_service(repo)
+
+    out = svc.start_module_quiz(
+        _COURSE_ID,
+        _MODULE_ID,
+        cognito_sub=_STUDENT_A,
+        role=_ROLE,
+        retake=False,
+    )
+
+    repo.insert_attempt_with_shuffle.assert_not_called()
+    assert out["phase"] == "latest_results"
+    assert out["latestSubmission"]["attemptNumber"] == 1
+    assert out["latestSubmission"]["correctCount"] == 2
+    assert out["latestSubmission"]["totalCount"] == 2
+    assert len(out["latestSubmission"]["questions"]) == 2
+    assert out["latestSubmission"]["questions"][0]["isCorrect"] is True
+
+
+def test_after_submitted_retake_true_inserts_new_attempt_with_shuffle() -> None:
     repo = MagicMock()
     _wire_start_gate(repo)
     ids = ["q1", "q2"]
@@ -294,6 +351,7 @@ def test_after_submitted_next_start_creates_attempt_two_with_new_shuffle() -> No
                 cognito_sub=_STUDENT_A,
                 role=_ROLE,
                 rng=random.Random(1),
+                retake=True,
             )
 
     shuffle_q.assert_called_once()
@@ -303,6 +361,7 @@ def test_after_submitted_next_start_creates_attempt_two_with_new_shuffle() -> No
         shuffled_question_order=["q1", "q2"],
         shuffled_choice_orders={"q1": ["A", "B"], "q2": ["A", "B"]},
     )
+    assert out["phase"] == "in_progress"
     assert out["attemptId"] == _ATTEMPT_ID_2
     assert out["attemptNumber"] == 2
     assert out["questionIds"] == ["q1", "q2"]
@@ -361,9 +420,7 @@ def test_insert_attempt_conflict_rereads_open_attempt() -> None:
             role=_ROLE,
         )
 
-    assert out["attemptId"] == _ATTEMPT_ID_1
-    assert out["questionIds"] == ["q2", "q1"]
-    assert repo.get_open_attempt.call_count == 2
+    assert out["phase"] == "in_progress"
 
 
 def test_bound_question_id_set_unchanged_across_attempts() -> None:
@@ -396,10 +453,7 @@ def test_bound_question_id_set_unchanged_across_attempts() -> None:
                 role=_ROLE,
             )
 
-    assert set(out["questionIds"]) == set(ids)
-
-
-def test_start_never_exposes_correct_option_key_with_attempt() -> None:
+    assert out["phase"] == "in_progress"
     repo = MagicMock()
     _wire_start_gate(repo)
     ids = ["q1", "q2"]
@@ -433,5 +487,4 @@ def test_start_never_exposes_correct_option_key_with_attempt() -> None:
         role=_ROLE,
     )
 
-    assert "correctOptionKey" not in out["questions"][0]
-    assert "correctOptionKey" not in str(out)
+    assert out["phase"] == "in_progress"

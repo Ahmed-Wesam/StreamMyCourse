@@ -62,6 +62,16 @@ class BoundQuestion:
 
 
 @dataclass(frozen=True)
+class PublishedQuestionGradingRow:
+    """Published question fields needed to grade or recap a submission (service-internal)."""
+
+    id: str
+    promptText: str
+    optionsJson: str
+    correctOptionKey: str
+
+
+@dataclass(frozen=True)
 class ModuleQuizAttempt:
     """Persisted module-quiz attempt with presentation shuffle (RDS camelCase)."""
 
@@ -73,3 +83,26 @@ class ModuleQuizAttempt:
     shuffledChoiceOrders: dict[str, list[str]]
     startedAt: str
     submittedAt: Optional[str] = None
+
+
+@dataclass(frozen=True)
+class ModuleQuizSubmissionSnapshot:
+    """One row from ``module_quiz_attempt_submissions`` with attempt metadata."""
+
+    attemptId: str
+    attemptNumber: int
+    answersJson: dict[str, str]
+    correctCount: int
+    totalCount: int
+    submittedAt: str
+
+
+@dataclass(frozen=True)
+class ModuleQuizAttemptBindingContext:
+    """Attempt joined to binding + module quiz (authz / path checks in later slices)."""
+
+    attempt: ModuleQuizAttempt
+    moduleQuizId: str
+    courseId: str
+    moduleId: str
+    userSub: str

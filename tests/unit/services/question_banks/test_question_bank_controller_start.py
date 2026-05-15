@@ -6,8 +6,6 @@ import json
 from typing import Any, Dict
 from unittest.mock import MagicMock
 
-import pytest
-
 from services.common.errors import NotFound
 from services.question_banks.controller import (
     _route_question_banks,
@@ -32,7 +30,12 @@ def _event(
 
 
 class TestRouteQuizStart:
-    def test_quiz_start_matches_before_create_module_quiz(self) -> None:
+    def test_quiz_submit_matches_before_start_before_create_module_quiz(self) -> None:
+        action_submit, _ = _route_question_banks(
+            "POST", "/courses/c1/modules/m1/quiz/submit"
+        )
+        assert action_submit == "submit_module_quiz"
+
         action, params = _route_question_banks(
             "POST", "/courses/c1/modules/m1/quiz/start"
         )
@@ -58,6 +61,7 @@ class TestHandleStartModuleQuiz:
     def test_post_routes_to_start_and_returns_200(self) -> None:
         qb_svc = MagicMock()
         qb_svc.start_module_quiz.return_value = {
+            "phase": "in_progress",
             "moduleQuizId": "mq1",
             "moduleId": "m1",
             "servedCountN": 2,
@@ -87,7 +91,30 @@ class TestHandleStartModuleQuiz:
         assert [q["id"] for q in body["questions"]] == body["questionIds"]
         assert len(body["questions"]) == 1
         qb_svc.start_module_quiz.assert_called_once_with(
-            "c1", "m1", cognito_sub="student-sub", role="student"
+            "c1", "m1", cognito_sub="student-sub", role="student", retake=False
+        )
+
+    def test_optional_retake_true_passed_to_service(self) -> None:
+        qb_svc = MagicMock()
+        qb_svc.start_module_quiz.return_value = {"phase": "in_progress"}
+        evt = {
+            "requestContext": {
+                "http": {
+                    "method": "POST",
+                    "path": "/courses/c1/modules/m1/quiz/start",
+                },
+                "authorizer": {"claims": {"sub": "student-sub", "custom:role": "student"}},
+            },
+            "rawPath": "/courses/c1/modules/m1/quiz/start",
+            "body": '{"retake": true}',
+        }
+        resp = handle_question_banks_request(
+            evt, origin=None, qb_svc=qb_svc
+        )
+        assert resp is not None
+        assert resp["statusCode"] == 200
+        qb_svc.start_module_quiz.assert_called_once_with(
+            "c1", "m1", cognito_sub="student-sub", role="student", retake=True
         )
 
     def test_not_found_from_service_returns_404(self) -> None:
