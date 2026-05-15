@@ -1,0 +1,251 @@
+"""HTTPS integration tests for question-bank module quiz visibility (QB-D slice 4).
+
+``GET /courses/{courseId}/modules`` may include optional ``moduleQuiz`` when the course
+is published, the viewer has lesson access (enrolled student or owner), and the linked
+bank is published with ``served_count_n`` set.
+
+See ``plans/question-banks-qb-d-plan.md`` and ``tests/integration/README.md``.
+"""
+
+from __future__ import annotations
+
+import json
+from typing import Any
+
+import httpx
+import pytest
+
+from helpers.api import ApiClient
+from helpers.factories import make_test_title
+from helpers.module_contract import (
+    EXPECTED_ROLE_DENIAL_JSON,
+    require_course_modules_list,
+    response_json_dict,
+)
+
+_FORBIDDEN_MODULE_LIST_LEAKS = (
+    "questionBankId",
+    "DRAFT",
+    "promptText",
+    "correctOptionKey",
+)
+
+
+def _owner_draft_course_with_module(
+    api: ApiClient, course_factory, *, label: str
+) -> tuple[str, str]:
+    course = course_factory(label=label)
+    cr = api.create_course_module(
+        course.course_id,
+        title=make_test_title(f"{label}-mod"),
+        description="",
+    )
+    assert cr.status_code == 201, cr.text
+    module_id = str(cr.json()["moduleId"])
+    return course.course_id, module_id
+
+
+def _mcq_options() -> list[dict[str, str]]:
+    return [
+        {"key": "A", "text": "First choice"},
+        {"key": "B", "text": "Second choice"},
+    ]
+
+
+def _setup_bank_quiz_and_drafts(
+    api: ApiClient,
+    course_id: str,
+    module_id: str,
+    *,
+    draft_count: int = 2,
+) -> str:
+    br = api.create_question_bank(course_id)
+    assert br.status_code == 201, br.text
+    bank_id = str(br.json()["questionBankId"])
+
+    qr = api.create_module_quiz(course_id, module_id, question_bank_id=bank_id)
+    assert qr.status_code == 201, qr.text
+
+    for i in range(draft_count):
+        dr = api.create_draft_question(
+            course_id,
+            bank_id,
+            prompt_text=f"Draft Q{i + 1}?",
+            options_json=_mcq_options(),
+            correct_option_key="A",
+        )
+        assert dr.status_code == 201, dr.text
+
+    return bank_id
+
+
+def _publish_course_with_ready_lesson(
+    api: ApiClient,
+    course_id: str,
+    lesson_factory,
+    *,
+    label: str,
+) -> None:
+    lesson = lesson_factory(course_id, label=label)
+    upload_resp = api.get_upload_url(course_id=course_id, lesson_id=lesson.lesson_id)
+    assert upload_resp.status_code == 200, upload_resp.text
+    assert api.mark_video_ready(course_id, lesson.lesson_id).status_code == 200
+    pr = api.publish_course(course_id)
+    assert pr.status_code == 200, pr.text
+
+
+def _enroll_student(student_api: ApiClient, course_id: str) -> None:
+    enroll_resp = student_api.enroll_course(course_id)
+    assert enroll_resp.status_code in (200, 201), enroll_resp.text
+
+
+def _module_row(modules: list[dict[str, Any]], module_id: str) -> dict[str, Any]:
+    row = next((m for m in modules if m.get("id") == module_id), None)
+    assert row is not None, f"module {module_id!r} not in {modules!r}"
+    return row
+
+
+def _assert_no_module_list_leaks(resp: httpx.Response) -> None:
+    """Module list JSON must not expose bank or draft question fields."""
+    assert resp.status_code == 200, resp.text
+    body = resp.text
+    for token in _FORBIDDEN_MODULE_LIST_LEAKS:
+        assert token not in body, f"leak scan: found forbidden substring {token!r} in {body[:1200]!r}"
+
+
+def test_draft_bank_hidden(
+    api: ApiClient,
+    student_api: ApiClient,
+    course_factory,
+    lesson_factory,
+) -> None:
+    course_id, module_id = _owner_draft_course_with_module(
+        api, course_factory, label="qb-vis-draft-hidden"
+    )
+    _setup_bank_quiz_and_drafts(api, course_id, module_id)
+
+    _publish_course_with_ready_lesson(
+        api, course_id, lesson_factory, label="qb-vis-draft-lesson"
+    )
+    _enroll_student(student_api, course_id)
+
+    modules = require_course_modules_list(student_api.list_course_modules(course_id))
+    row = _module_row(modules, module_id)
+    assert "moduleQuiz" not in row
+
+
+def test_published_bank_visible(
+    api: ApiClient,
+    student_api: ApiClient,
+    course_factory,
+    lesson_factory,
+) -> None:
+    served_n = 2
+    course_id, module_id = _owner_draft_course_with_module(
+        api, course_factory, label="qb-vis-published-visible"
+    )
+    bank_id = _setup_bank_quiz_and_drafts(api, course_id, module_id, draft_count=served_n)
+
+    pub_bank = api.publish_question_bank(
+        course_id, bank_id, n=served_n, module_id=module_id
+    )
+    assert pub_bank.status_code == 200, pub_bank.text
+
+    _publish_course_with_ready_lesson(
+        api, course_id, lesson_factory, label="qb-vis-pub-lesson"
+    )
+    _enroll_student(student_api, course_id)
+
+    modules = require_course_modules_list(student_api.list_course_modules(course_id))
+    row = _module_row(modules, module_id)
+    quiz = row.get("moduleQuiz")
+    assert quiz is not None, f"expected moduleQuiz on {row!r}"
+    assert quiz.get("available") is True
+    assert quiz.get("servedCountN") == served_n
+
+
+def test_unenrolled_no_quiz(
+    api: ApiClient,
+    student_api: ApiClient,
+    course_factory,
+    lesson_factory,
+) -> None:
+    served_n = 1
+    course_id, module_id = _owner_draft_course_with_module(
+        api, course_factory, label="qb-vis-unenrolled"
+    )
+    bank_id = _setup_bank_quiz_and_drafts(api, course_id, module_id, draft_count=served_n)
+
+    pub_bank = api.publish_question_bank(
+        course_id, bank_id, n=served_n, module_id=module_id
+    )
+    assert pub_bank.status_code == 200, pub_bank.text
+
+    _publish_course_with_ready_lesson(
+        api, course_id, lesson_factory, label="qb-vis-unenroll-lesson"
+    )
+
+    modules = require_course_modules_list(student_api.list_course_modules(course_id))
+    for row in modules:
+        assert "moduleQuiz" not in row, f"unenrolled viewer must not see quiz on {row!r}"
+
+
+def test_leak_scan(
+    api: ApiClient,
+    student_api: ApiClient,
+    course_factory,
+    lesson_factory,
+) -> None:
+    served_n = 2
+    course_id, module_id = _owner_draft_course_with_module(
+        api, course_factory, label="qb-vis-leak-scan"
+    )
+    bank_id = _setup_bank_quiz_and_drafts(api, course_id, module_id, draft_count=served_n)
+
+    pub_bank = api.publish_question_bank(
+        course_id, bank_id, n=served_n, module_id=module_id
+    )
+    assert pub_bank.status_code == 200, pub_bank.text
+
+    _publish_course_with_ready_lesson(
+        api, course_id, lesson_factory, label="qb-vis-leak-lesson"
+    )
+    _enroll_student(student_api, course_id)
+
+    resp = student_api.list_course_modules(course_id)
+    _assert_no_module_list_leaks(resp)
+
+    modules = resp.json()
+    assert isinstance(modules, list)
+    row = _module_row(modules, module_id)
+    assert row.get("moduleQuiz", {}).get("available") is True
+    # Parsed JSON must not carry forbidden keys at any depth.
+    dumped = json.dumps(modules)
+    for token in _FORBIDDEN_MODULE_LIST_LEAKS:
+        assert token not in dumped
+
+
+def test_student_cannot_publish(
+    api: ApiClient,
+    student_api: ApiClient,
+    course_factory,
+    lesson_factory,
+) -> None:
+    served_n = 1
+    course_id, module_id = _owner_draft_course_with_module(
+        api, course_factory, label="qb-vis-student-publish"
+    )
+    bank_id = _setup_bank_quiz_and_drafts(api, course_id, module_id, draft_count=served_n)
+
+    _publish_course_with_ready_lesson(
+        api, course_id, lesson_factory, label="qb-vis-student-pub-lesson"
+    )
+    _enroll_student(student_api, course_id)
+
+    pr = student_api.publish_question_bank(
+        course_id, bank_id, n=served_n, module_id=module_id
+    )
+    assert pr.status_code in (401, 403), f"Expected 401 or 403, got {pr.status_code}: {pr.text}"
+    body = response_json_dict(pr)
+    if body.get("code") not in ("unauthorized", "forbidden"):
+        pytest.fail(f"{EXPECTED_ROLE_DENIAL_JSON} status={pr.status_code} body={body!r}")
