@@ -12,7 +12,13 @@ from services.common.http import (
     json_response,
     options_response,
 )
-from services.common.validation import optional_str, parse_json_body
+from services.common.validation import (
+    optional_str,
+    parse_json_body,
+    require_int,
+    require_json_array_or_object,
+    require_str,
+)
 from services.question_banks.service import QuestionBankService
 
 logger = logging.getLogger(__name__)
@@ -64,12 +70,50 @@ def _route_question_banks(method: str, path: str) -> Tuple[str, Dict[str, str]]:
     ):
         return "create_module_quiz", {"courseId": parts[1], "moduleId": parts[3]}
     if (
+        method == "POST"
+        and len(parts) == 5
+        and parts[0] == "courses"
+        and parts[2] == "question-banks"
+        and parts[4] == "publish"
+    ):
+        return "publish_question_bank", {
+            "courseId": parts[1],
+            "questionBankId": parts[3],
+        }
+    if (
+        method == "POST"
+        and len(parts) == 5
+        and parts[0] == "courses"
+        and parts[2] == "question-banks"
+        and parts[4] == "questions"
+    ):
+        return "create_draft_question", {
+            "courseId": parts[1],
+            "questionBankId": parts[3],
+        }
+    if (
         method == "OPTIONS"
         and len(parts) == 3
         and parts[0] == "courses"
         and parts[2] == "question-banks"
     ):
         return "options_question_bank_collection", {"courseId": parts[1]}
+    if (
+        method == "OPTIONS"
+        and len(parts) == 5
+        and parts[0] == "courses"
+        and parts[2] == "question-banks"
+        and parts[4] == "publish"
+    ):
+        return "options_question_bank_publish", {"courseId": parts[1]}
+    if (
+        method == "OPTIONS"
+        and len(parts) == 5
+        and parts[0] == "courses"
+        and parts[2] == "question-banks"
+        and parts[4] == "questions"
+    ):
+        return "options_question_bank_questions", {"courseId": parts[1]}
     if (
         method == "OPTIONS"
         and len(parts) == 5
@@ -120,6 +164,37 @@ def handle_question_banks_request(
                 question_bank_id=qbid,
             )
             return json_response(201, {"quizId": quiz_id}, origin)
+
+        if action == "publish_question_bank":
+            body = parse_json_body(event)
+            n = require_int(body, "n")
+            module_id = require_str(body, "moduleId")
+            qb_svc.publish_question_bank(
+                params["courseId"],
+                params["questionBankId"],
+                module_id,
+                n,
+                cognito_sub=_actor_sub(claims),
+                role=_actor_role(claims),
+            )
+            return json_response(200, {"status": "PUBLISHED"}, origin)
+
+        if action == "create_draft_question":
+            body = parse_json_body(event)
+            prompt = require_str(body, "promptText")
+            opts = require_json_array_or_object(body, "optionsJson")
+            correct_raw = optional_str(body, "correctOptionKey", "").strip()
+            correct_key = correct_raw or None
+            qid = qb_svc.create_draft_question(
+                params["courseId"],
+                params["questionBankId"],
+                prompt_text=prompt,
+                options_json=opts,
+                correct_option_key=correct_key,
+                cognito_sub=_actor_sub(claims),
+                role=_actor_role(claims),
+            )
+            return json_response(201, {"questionId": qid}, origin)
 
         return None
     except HttpError as exc:

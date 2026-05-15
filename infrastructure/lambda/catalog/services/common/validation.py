@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import base64
 import json
-from typing import Any, Dict
+from typing import Any, Dict, Union
 
 from services.common.errors import BadRequest
 
@@ -77,4 +77,16 @@ def require_int(body: Dict[str, Any], key: str) -> int:
         except ValueError:
             raise BadRequest(f"'{key}' must be a valid integer")
     raise BadRequest(f"'{key}' must be a number")
+
+
+def require_json_array_or_object(body: Dict[str, Any], key: str) -> Union[list[Any], dict[str, Any]]:
+    """Require a JSON field that is a non-null array or object (e.g. ``optionsJson``)."""
+    val = body.get(key)
+    if val is None:
+        raise BadRequest(f"'{key}' is required")
+    if isinstance(val, list):
+        return val
+    if isinstance(val, dict):
+        return val
+    raise BadRequest(f"'{key}' must be a JSON array or object")
 
