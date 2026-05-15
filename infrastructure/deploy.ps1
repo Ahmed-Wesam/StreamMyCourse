@@ -322,7 +322,9 @@ if ($Template -eq "rds") {
     $schemaSqlFiles = @(
         "$PSScriptRoot\database\migrations\001_initial_schema.sql",
         "$PSScriptRoot\database\migrations\003_progress_course_lesson_fk.sql",
-        "$PSScriptRoot\database\migrations\004_enforce_course_created_by.sql"
+        "$PSScriptRoot\database\migrations\004_enforce_course_created_by.sql",
+        "$PSScriptRoot\database\migrations\006_question_banks_module_quizzes.sql",
+        "$PSScriptRoot\database\migrations\007_question_bank_questions.sql"
     )
     if (-not (Test-Path $schemaHandler)) {
         Write-Host "[X] Missing schema applier: $schemaHandler" -ForegroundColor Red
