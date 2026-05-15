@@ -14,6 +14,14 @@ _MIGRATION_008 = (
     / "migrations"
     / "008_student_module_quiz_bindings.sql"
 )
+_MIGRATION_009 = (
+    _ROOT
+    / "infrastructure"
+    / "database"
+    / "migrations"
+    / "009_module_quiz_attempts.sql"
+)
+_DEPLOY_BACKEND = _ROOT / ".github" / "workflows" / "deploy-backend.yml"
 
 
 def test_006_migration_file_exists_and_encodes_cardinality() -> None:
@@ -59,3 +67,31 @@ def test_008_migration_file_exists_and_binding_tables() -> None:
     assert "REFERENCES questions(id) ON DELETE CASCADE" in text
     assert "ALTER TABLE" not in text
     assert "DROP CONSTRAINT" not in text
+
+
+def test_009_migration_file_exists_and_attempt_table() -> None:
+    assert _MIGRATION_009.is_file(), (
+        "expected 009_module_quiz_attempts.sql in repo"
+    )
+    text = _MIGRATION_009.read_text(encoding="utf-8")
+    assert "CREATE TABLE IF NOT EXISTS module_quiz_attempts" in text
+    assert "binding_id" in text
+    assert "REFERENCES student_module_quiz_bindings" in text
+    assert "attempt_number" in text
+    assert "UNIQUE (binding_id, attempt_number)" in text
+    assert "CHECK (attempt_number >= 1)" in text
+    assert "CHECK (status IN ('in_progress', 'submitted'))" in text
+    assert "shuffled_question_order" in text and "JSONB" in text
+    assert "shuffled_choice_orders" in text and "JSONB" in text
+    assert "jsonb_typeof(shuffled_question_order) = 'array'" in text
+    assert "jsonb_typeof(shuffled_choice_orders) = 'object'" in text
+    assert "uq_module_quiz_attempts_one_in_progress" in text
+    assert "WHERE status = 'in_progress'" in text
+    assert "ALTER TABLE" not in text
+    assert "DROP CONSTRAINT" not in text
+
+
+def test_009_migration_listed_in_deploy_backend_workflow() -> None:
+    assert _DEPLOY_BACKEND.is_file()
+    text = _DEPLOY_BACKEND.read_text(encoding="utf-8")
+    assert "009_module_quiz_attempts.sql" in text

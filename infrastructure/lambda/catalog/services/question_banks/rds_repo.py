@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Callable, Optional
 
 try:  # pragma: no cover - optional dependency path
@@ -21,6 +21,7 @@ from services.question_banks.mcq_validation import validate_draft_question_for_p
 from services.question_banks.models import (
     BoundQuestion,
     ModuleQuiz,
+    ModuleQuizAttempt,
     Question,
     QuestionBank,
     StudentModuleQuizBinding,
@@ -136,6 +137,91 @@ class QuestionBankRdsRepository:
         if isinstance(exc, psycopg2.IntegrityError):
             raise BadRequest("Database integrity constraint failed") from exc
         raise exc
+
+    @staticmethod
+    def _attempt_unique_violation_message(exc: Any) -> str:
+        constraint = ""
+        diag = getattr(exc, "diag", None)
+        if diag is not None:
+            name = getattr(diag, "constraint_name", None)
+            if name:
+                constraint = str(name)
+        if constraint == "uq_module_quiz_attempts_one_in_progress":
+            return "Module quiz attempt already in progress for this binding"
+        if constraint == "module_quiz_attempts_binding_id_attempt_number_key":
+            return (
+                "Module quiz attempt number already exists for this binding"
+            )
+        return "Module quiz attempt already exists for this binding"
+
+    @classmethod
+    def _raise_attempt_integrity(cls, exc: BaseException) -> None:
+        if pg_errors is None or psycopg2 is None:
+            raise exc
+        if isinstance(exc, pg_errors.UniqueViolation):
+            raise Conflict(cls._attempt_unique_violation_message(exc)) from exc
+        if isinstance(exc, pg_errors.ForeignKeyViolation):
+            raise BadRequest(
+                "binding_id must reference a valid student_module_quiz_bindings row"
+            ) from exc
+        if isinstance(exc, pg_errors.CheckViolation):
+            raise BadRequest(
+                "Invalid module quiz attempt data "
+                "(attempt_number, status, or shuffle JSON shape)"
+            ) from exc
+        if isinstance(exc, psycopg2.IntegrityError):
+            raise BadRequest("Database integrity constraint failed") from exc
+        raise exc
+
+    @staticmethod
+    def _jsonb_to_list(value: Any) -> list[str]:
+        if value is None:
+            return []
+        if isinstance(value, list):
+            return [str(v) for v in value]
+        if isinstance(value, str):
+            parsed = json.loads(value)
+            if isinstance(parsed, list):
+                return [str(v) for v in parsed]
+        return []
+
+    @staticmethod
+    def _jsonb_to_choice_orders(value: Any) -> dict[str, list[str]]:
+        if value is None:
+            return {}
+        raw: Any = value
+        if isinstance(value, str):
+            raw = json.loads(value)
+        if not isinstance(raw, dict):
+            return {}
+        out: dict[str, list[str]] = {}
+        for key, order in raw.items():
+            if isinstance(order, list):
+                out[str(key)] = [str(v) for v in order]
+        return out
+
+    @classmethod
+    def _row_to_attempt(cls, row: tuple[Any, ...]) -> ModuleQuizAttempt:
+        (
+            attempt_id,
+            binding_id,
+            attempt_number,
+            status,
+            question_order,
+            choice_orders,
+            started_at,
+            submitted_at,
+        ) = row
+        return ModuleQuizAttempt(
+            id=str(attempt_id),
+            bindingId=str(binding_id),
+            attemptNumber=int(attempt_number),
+            status=str(status),
+            shuffledQuestionOrder=cls._jsonb_to_list(question_order),
+            shuffledChoiceOrders=cls._jsonb_to_choice_orders(choice_orders),
+            startedAt=_to_iso(started_at),
+            submittedAt=_to_iso(submitted_at) if submitted_at is not None else None,
+        )
 
     @staticmethod
     def _raise_question_integrity(exc: BaseException) -> None:
@@ -680,6 +766,185 @@ class QuestionBankRdsRepository:
             self._raise_binding_integrity(exc)
         finally:
             conn.autocommit = prev_autocommit
+
+    def insert_binding_with_questions_and_initial_attempt(
+        self,
+        *,
+        module_quiz_id: str,
+        course_id: str,
+        user_sub: str,
+        question_ids: list[str],
+        shuffled_question_order: list[str],
+        shuffled_choice_orders: dict[str, list[str]],
+    ) -> str:
+        """Insert binding, binding questions, and attempt 1 in one transaction."""
+        conn = self._connection()
+        prev_autocommit = getattr(conn, "autocommit", False)
+        conn.autocommit = False
+        cur = conn.cursor()
+        try:
+            cur.execute(
+                """
+                INSERT INTO student_module_quiz_bindings (
+                    module_quiz_id, course_id, user_sub
+                )
+                VALUES (%s, %s, %s)
+                RETURNING id
+                """,
+                (module_quiz_id, course_id, user_sub),
+            )
+            row = cur.fetchone()
+            if not row:
+                raise RuntimeError(
+                    "INSERT student_module_quiz_bindings returned no row"
+                )
+            binding_id = str(row[0])
+            for position, question_id in enumerate(question_ids):
+                cur.execute(
+                    """
+                    INSERT INTO student_module_quiz_binding_questions (
+                        binding_id, position, question_id
+                    )
+                    VALUES (%s, %s, %s)
+                    """,
+                    (binding_id, position, question_id),
+                )
+            cur.execute(
+                """
+                INSERT INTO module_quiz_attempts (
+                    binding_id,
+                    attempt_number,
+                    status,
+                    shuffled_question_order,
+                    shuffled_choice_orders
+                )
+                VALUES (%s, 1, 'in_progress', %s, %s)
+                RETURNING id
+                """,
+                (
+                    binding_id,
+                    _pg_json(shuffled_question_order),
+                    _pg_json(shuffled_choice_orders),
+                ),
+            )
+            if not cur.fetchone():
+                raise RuntimeError("INSERT module_quiz_attempts returned no row")
+            conn.commit()
+            return binding_id
+        except Exception as exc:
+            conn.rollback()
+            if isinstance(exc, pg_errors.UniqueViolation):
+                constraint = ""
+                diag = getattr(exc, "diag", None)
+                if diag is not None:
+                    name = getattr(diag, "constraint_name", None)
+                    if name:
+                        constraint = str(name)
+                if "student_module_quiz_bindings" in constraint:
+                    self._raise_binding_integrity(exc)
+                self._raise_attempt_integrity(exc)
+            self._raise_binding_integrity(exc)
+        finally:
+            conn.autocommit = prev_autocommit
+
+    _ATTEMPT_SELECT = """
+            SELECT id, binding_id, attempt_number, status,
+                   shuffled_question_order, shuffled_choice_orders,
+                   started_at, submitted_at
+            FROM module_quiz_attempts
+    """
+
+    def get_open_attempt(self, *, binding_id: str) -> Optional[ModuleQuizAttempt]:
+        cur = self._execute(
+            self._ATTEMPT_SELECT
+            + """
+            WHERE binding_id = %s AND status = 'in_progress'
+            """,
+            (binding_id,),
+        )
+        row = cur.fetchone()
+        if not row:
+            return None
+        return self._row_to_attempt(row)
+
+    def get_latest_attempt(self, *, binding_id: str) -> Optional[ModuleQuizAttempt]:
+        cur = self._execute(
+            self._ATTEMPT_SELECT
+            + """
+            WHERE binding_id = %s
+            ORDER BY attempt_number DESC
+            LIMIT 1
+            """,
+            (binding_id,),
+        )
+        row = cur.fetchone()
+        if not row:
+            return None
+        return self._row_to_attempt(row)
+
+    def insert_attempt_with_shuffle(
+        self,
+        *,
+        binding_id: str,
+        attempt_number: int,
+        shuffled_question_order: list[str],
+        shuffled_choice_orders: dict[str, list[str]],
+    ) -> ModuleQuizAttempt:
+        conn = self._connection()
+        prev_autocommit = getattr(conn, "autocommit", False)
+        conn.autocommit = False
+        cur = conn.cursor()
+        try:
+            cur.execute(
+                """
+                INSERT INTO module_quiz_attempts (
+                    binding_id,
+                    attempt_number,
+                    status,
+                    shuffled_question_order,
+                    shuffled_choice_orders
+                )
+                VALUES (%s, %s, 'in_progress', %s, %s)
+                RETURNING id, binding_id, attempt_number, status,
+                          shuffled_question_order, shuffled_choice_orders,
+                          started_at, submitted_at
+                """,
+                (
+                    binding_id,
+                    attempt_number,
+                    _pg_json(shuffled_question_order),
+                    _pg_json(shuffled_choice_orders),
+                ),
+            )
+            row = cur.fetchone()
+            if not row:
+                raise RuntimeError("INSERT module_quiz_attempts returned no row")
+            conn.commit()
+            return self._row_to_attempt(row)
+        except Exception as exc:
+            conn.rollback()
+            self._raise_attempt_integrity(exc)
+        finally:
+            conn.autocommit = prev_autocommit
+
+    def mark_attempt_submitted(
+        self,
+        *,
+        attempt_id: str,
+        submitted_at: Optional[datetime] = None,
+    ) -> None:
+        when = submitted_at if submitted_at is not None else datetime.now(timezone.utc)
+        cur = self._execute(
+            """
+            UPDATE module_quiz_attempts
+            SET status = 'submitted', submitted_at = %s
+            WHERE id = %s
+            """,
+            (when, attempt_id),
+            commit=True,
+        )
+        if cur.rowcount < 1:
+            raise NotFound("Module quiz attempt not found")
 
     def get_module_quiz_by_module_id(self, *, module_id: str) -> Optional[ModuleQuiz]:
         cur = self._execute(

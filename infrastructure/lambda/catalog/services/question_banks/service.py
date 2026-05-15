@@ -13,7 +13,17 @@ from services.question_banks.mcq_validation import (
     validate_draft_question_for_publish,
     validate_mcq_options_json,
 )
-from services.question_banks.models import ModuleQuiz, StudentModuleQuizBinding
+from services.question_banks.models import (
+    ModuleQuiz,
+    ModuleQuizAttempt,
+    StudentModuleQuizBinding,
+)
+from services.question_banks.presentation_shuffle import (
+    apply_presentation_shuffle,
+    shuffle_choice_orders_for_questions,
+    shuffle_question_order,
+    validate_question_order,
+)
 from services.question_banks.ports import (
     CourseMutateAuthorizerPort,
     CourseReadPort,
@@ -59,7 +69,9 @@ class QuestionBankService:
                 user_sub=user_sub,
                 rng=rng,
             )
-        return self._build_module_quiz_start_response(module_quiz, binding)
+        return self._build_module_quiz_start_response(
+            module_quiz, binding, rng=rng
+        )
 
     def _resolve_startable_module_quiz(
         self,
@@ -112,12 +124,26 @@ class QuestionBankService:
             drawn_ids = draw_question_ids(published_ids, served_n, draw_rng)
         except ValueError as exc:
             raise Conflict(str(exc)) from exc
+        bound_rows = self._repo.list_student_bound_questions(
+            course_id=course_id, question_ids=drawn_ids
+        )
+        if len(bound_rows) != len(drawn_ids):
+            raise Conflict("Module quiz questions could not be loaded")
         try:
-            self._repo.insert_binding_with_questions(
+            question_order = shuffle_question_order(drawn_ids, draw_rng)
+            choice_orders = shuffle_choice_orders_for_questions(
+                bound_rows, draw_rng
+            )
+        except ValueError as exc:
+            raise Conflict(str(exc)) from exc
+        try:
+            self._repo.insert_binding_with_questions_and_initial_attempt(
                 module_quiz_id=module_quiz.id,
                 course_id=course_id,
                 user_sub=user_sub,
                 question_ids=drawn_ids,
+                shuffled_question_order=question_order,
+                shuffled_choice_orders=choice_orders,
             )
         except Conflict:
             binding = self._repo.get_binding_for_student(
@@ -133,33 +159,94 @@ class QuestionBankService:
             raise Conflict("Module quiz binding could not be loaded after create")
         return binding
 
+    def _resolve_or_create_attempt(
+        self,
+        binding: StudentModuleQuizBinding,
+        *,
+        rng: random.Random | None,
+    ) -> ModuleQuizAttempt:
+        open_attempt = self._repo.get_open_attempt(binding_id=binding.id)
+        if open_attempt is not None:
+            return open_attempt
+
+        latest = self._repo.get_latest_attempt(binding_id=binding.id)
+        if latest is not None and latest.status == "in_progress":
+            return latest
+
+        shuffle_rng = rng if rng is not None else random.Random()
+        return self._insert_new_attempt(binding, latest=latest, rng=shuffle_rng)
+
+    def _insert_new_attempt(
+        self,
+        binding: StudentModuleQuizBinding,
+        *,
+        latest: ModuleQuizAttempt | None,
+        rng: random.Random,
+    ) -> ModuleQuizAttempt:
+        attempt_number = 1 if latest is None else latest.attemptNumber + 1
+        rows = self._repo.list_student_bound_questions(
+            course_id=binding.courseId,
+            question_ids=binding.questionIds,
+        )
+        if len(rows) != len(binding.questionIds):
+            raise Conflict("Module quiz questions could not be loaded")
+        try:
+            question_order = shuffle_question_order(binding.questionIds, rng)
+            choice_orders = shuffle_choice_orders_for_questions(rows, rng)
+        except ValueError as exc:
+            raise Conflict(str(exc)) from exc
+        try:
+            return self._repo.insert_attempt_with_shuffle(
+                binding_id=binding.id,
+                attempt_number=attempt_number,
+                shuffled_question_order=question_order,
+                shuffled_choice_orders=choice_orders,
+            )
+        except Conflict:
+            open_attempt = self._repo.get_open_attempt(binding_id=binding.id)
+            if open_attempt is None:
+                raise
+            return open_attempt
+
     def _build_module_quiz_start_response(
         self,
         module_quiz: ModuleQuiz,
         binding: StudentModuleQuizBinding,
+        *,
+        rng: random.Random | None = None,
     ) -> dict[str, Any]:
         served_n = module_quiz.servedCountN
         assert served_n is not None
         if len(binding.questionIds) != served_n:
             raise Conflict("Module quiz binding is incomplete")
+        attempt = self._resolve_or_create_attempt(binding, rng=rng)
+        try:
+            validate_question_order(
+                binding.questionIds, attempt.shuffledQuestionOrder
+            )
+        except ValueError as exc:
+            raise Conflict(str(exc)) from exc
         rows = self._repo.list_student_bound_questions(
             course_id=binding.courseId,
-            question_ids=binding.questionIds,
+            question_ids=attempt.shuffledQuestionOrder,
         )
-        questions = [
-            {
-                "id": row.id,
-                "promptText": row.promptText,
-                "optionsJson": _parse_options_json(row.optionsJson),
-            }
-            for row in rows
-        ]
-        if len(questions) != served_n:
+        if len(rows) != served_n:
             raise Conflict("Module quiz questions could not be loaded")
+        try:
+            questions = apply_presentation_shuffle(
+                rows,
+                question_order=attempt.shuffledQuestionOrder,
+                choice_orders=attempt.shuffledChoiceOrders,
+            )
+        except ValueError as exc:
+            raise Conflict(str(exc)) from exc
         return {
             "moduleQuizId": module_quiz.id,
             "moduleId": module_quiz.moduleId,
             "servedCountN": served_n,
+            "attemptId": attempt.id,
+            "attemptNumber": attempt.attemptNumber,
+            "questionIds": list(attempt.shuffledQuestionOrder),
             "questions": questions,
         }
 

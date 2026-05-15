@@ -59,3 +59,17 @@ class BoundQuestion:
     id: str
     promptText: str
     optionsJson: str
+
+
+@dataclass(frozen=True)
+class ModuleQuizAttempt:
+    """Persisted module-quiz attempt with presentation shuffle (RDS camelCase)."""
+
+    id: str
+    bindingId: str
+    attemptNumber: int
+    status: str
+    shuffledQuestionOrder: list[str]
+    shuffledChoiceOrders: dict[str, list[str]]
+    startedAt: str
+    submittedAt: Optional[str] = None
