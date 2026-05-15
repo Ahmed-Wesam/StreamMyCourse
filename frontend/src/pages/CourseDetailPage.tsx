@@ -223,6 +223,8 @@ function CourseDetailBody({
 }) {
   const lessonSections = useMemo(() => groupLessonsByModule(lessons, modules), [lessons, modules])
   const lessonIndexById = useMemo(() => new Map(lessons.map((l, i) => [l.id, i])), [lessons])
+  const moduleById = useMemo(() => new Map(modules.map((m) => [m.id, m])), [modules])
+  const showModuleQuizBadge = !previewOnly && !needsEnrollment
 
   return (
     <div className="space-y-8 py-6 sm:py-8">
@@ -270,10 +272,20 @@ function CourseDetailBody({
                 </div>
               </div>
               <div className="divide-y divide-gray-100">
-                {lessonSections.map((section) => (
+                {lessonSections.map((section) => {
+                  const moduleQuiz = moduleById.get(section.id)?.moduleQuiz
+                  const quizAvailable = showModuleQuizBadge && moduleQuiz?.available === true
+                  return (
                   <div key={section.id}>
                     <div className="bg-gray-50 px-6 py-3">
-                      <div className="font-semibold text-gray-900">{section.title}</div>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <div className="font-semibold text-gray-900">{section.title}</div>
+                        {quizAvailable && (
+                          <span className="rounded-full bg-indigo-50 px-2 py-0.5 text-xs font-medium text-indigo-700 ring-1 ring-indigo-100">
+                            Module quiz
+                          </span>
+                        )}
+                      </div>
                       {section.description && (
                         <div className="mt-1 text-sm text-gray-600">{section.description}</div>
                       )}
@@ -296,7 +308,8 @@ function CourseDetailBody({
                       />
                     ))}
                   </div>
-                ))}
+                  )
+                })}
               </div>
               {lessons.length === 0 && (
                 <div className="px-6 py-12 text-center">

@@ -160,6 +160,8 @@ export type CourseModule = {
   order: number
   createdAt?: string
   updatedAt?: string
+  /** Present when the viewer may see that a module quiz exists (enrolled + visibility rules). */
+  moduleQuiz?: { available: boolean; servedCountN: number }
 }
 
 export type Lesson = {
