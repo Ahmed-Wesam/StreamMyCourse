@@ -353,7 +353,7 @@ Resources:
       ResponseType: DEFAULT_4XX
       ResponseParameters:
         gatewayresponse.header.Access-Control-Allow-Origin: !Sub "'${GatewayResponseAllowOrigin}'"
-        gatewayresponse.header.Access-Control-Allow-Methods: "'GET,POST,PUT,DELETE,OPTIONS'"
+        gatewayresponse.header.Access-Control-Allow-Methods: "'GET,POST,PUT,PATCH,DELETE,OPTIONS'"
         gatewayresponse.header.Access-Control-Allow-Headers: "'Content-Type,Authorization'"
 
   ApiGatewayResponseDefault5XX:
@@ -363,7 +363,7 @@ Resources:
       ResponseType: DEFAULT_5XX
       ResponseParameters:
         gatewayresponse.header.Access-Control-Allow-Origin: !Sub "'${GatewayResponseAllowOrigin}'"
-        gatewayresponse.header.Access-Control-Allow-Methods: "'GET,POST,PUT,DELETE,OPTIONS'"
+        gatewayresponse.header.Access-Control-Allow-Methods: "'GET,POST,PUT,PATCH,DELETE,OPTIONS'"
         gatewayresponse.header.Access-Control-Allow-Headers: "'Content-Type,Authorization'"
 
   # API Gateway Resource: /courses
@@ -445,6 +445,14 @@ Resources:
       RestApiId: !Ref CatalogApi
       ParentId: !Ref CourseQuestionBankIdResource
       PathPart: questions
+
+  # API Gateway Resource: /courses/{courseId}/question-banks/{questionBankId}/questions/{questionId}
+  CourseQuestionBankQuestionIdResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref CatalogApi
+      ParentId: !Ref CourseQuestionBankQuestionsResource
+      PathPart: '{questionId}'
 
   # API Gateway Resource: /courses/{courseId}/modules/{moduleId}/quiz
   CourseModuleQuizResource:
@@ -817,6 +825,47 @@ Resources:
     Properties:
       RestApiId: !Ref CatalogApi
       ResourceId: !Ref CourseQuestionBankQuestionsResource
+      HttpMethod: OPTIONS
+      AuthorizationType: NONE
+      Integration:
+        IntegrationHttpMethod: POST
+        Type: AWS_PROXY
+        Uri: !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${CatalogLambda.Arn}/invocations'
+
+  # API Gateway Method: PATCH /courses/{courseId}/question-banks/{questionBankId}/questions/{questionId}
+  CourseQuestionBankQuestionIdPatchMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref CatalogApi
+      ResourceId: !Ref CourseQuestionBankQuestionIdResource
+      HttpMethod: PATCH
+      AuthorizationType: COGNITO_USER_POOLS
+      AuthorizerId: !Ref CatalogApiTokenAuthorizer
+      Integration:
+        IntegrationHttpMethod: POST
+        Type: AWS_PROXY
+        Uri: !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${CatalogLambda.Arn}/invocations'
+
+  # API Gateway Method: DELETE /courses/{courseId}/question-banks/{questionBankId}/questions/{questionId}
+  CourseQuestionBankQuestionIdDeleteMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref CatalogApi
+      ResourceId: !Ref CourseQuestionBankQuestionIdResource
+      HttpMethod: DELETE
+      AuthorizationType: COGNITO_USER_POOLS
+      AuthorizerId: !Ref CatalogApiTokenAuthorizer
+      Integration:
+        IntegrationHttpMethod: POST
+        Type: AWS_PROXY
+        Uri: !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${CatalogLambda.Arn}/invocations'
+
+  # API Gateway Method: OPTIONS /courses/{courseId}/question-banks/{questionBankId}/questions/{questionId}
+  CourseQuestionBankQuestionIdOptionsMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref CatalogApi
+      ResourceId: !Ref CourseQuestionBankQuestionIdResource
       HttpMethod: OPTIONS
       AuthorizationType: NONE
       Integration:
@@ -1266,7 +1315,7 @@ Resources:
   # Bump logical id when API methods/resources change so CloudFormation always
   # creates a new deployment; otherwise the stage can keep serving an old snapshot
   # (symptom: GET /courses/{id}/lessons returns API GW 403 Missing Authentication Token).
-  CatalogApiDeploymentV22:
+  CatalogApiDeploymentV24:
     Type: AWS::ApiGateway::Deployment
     DependsOn:
       - CatalogLambdaApiPermission
@@ -1316,6 +1365,9 @@ Resources:
       - CourseQuestionBankPublishOptionsMethod
       - CourseQuestionBankQuestionsPostMethod
       - CourseQuestionBankQuestionsOptionsMethod
+      - CourseQuestionBankQuestionIdPatchMethod
+      - CourseQuestionBankQuestionIdDeleteMethod
+      - CourseQuestionBankQuestionIdOptionsMethod
       - CourseModuleQuizPostMethod
       - CourseModuleQuizOptionsMethod
       - CourseModuleQuizSubmitPostMethod
@@ -1331,7 +1383,7 @@ Resources:
     Type: AWS::ApiGateway::Stage
     Properties:
       RestApiId: !Ref CatalogApi
-      DeploymentId: !Ref CatalogApiDeploymentV22
+      DeploymentId: !Ref CatalogApiDeploymentV24
       StageName: !Ref Environment
       Description: !Sub '${Environment} stage for Catalog API'
       MethodSettings:
