@@ -1,7 +1,7 @@
 /**
  * @vitest-environment jsdom
  */
-import { cleanup, render, screen, waitFor, within } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -9,6 +9,7 @@ import ModuleQuizPage from './ModuleQuizPage'
 
 const api = vi.hoisted(() => ({
   startModuleQuiz: vi.fn(),
+  submitModuleQuiz: vi.fn(),
 }))
 
 vi.mock('../lib/api', async (importOriginal) => {
@@ -17,11 +18,14 @@ vi.mock('../lib/api', async (importOriginal) => {
     ...mod,
     startModuleQuiz: (...args: unknown[]) =>
       api.startModuleQuiz(...args) as ReturnType<typeof mod.startModuleQuiz>,
+    submitModuleQuiz: (...args: unknown[]) =>
+      api.submitModuleQuiz(...args) as ReturnType<typeof mod.submitModuleQuiz>,
   }
 })
 
 /** API order reversed vs naive binding order q1 → q2; options shuffled per question. */
 const REVERSED_START_RESPONSE = {
+  phase: 'in_progress' as const,
   moduleQuizId: 'mq1',
   moduleId: 'm1',
   servedCountN: 2,
@@ -46,6 +50,34 @@ const REVERSED_START_RESPONSE = {
       ],
     },
   ],
+} as const
+
+const LATEST_RESULTS_RESPONSE = {
+  phase: 'latest_results' as const,
+  moduleQuizId: 'mq1',
+  moduleId: 'm1',
+  servedCountN: 2,
+  latestSubmission: {
+    correctCount: 1,
+    totalCount: 2,
+    attemptNumber: 1,
+    questions: [
+      {
+        id: 'q2',
+        promptText: 'Capital of France?',
+        selectedOptionKey: 'A',
+        correctOptionKey: 'B',
+        isCorrect: false,
+      },
+      {
+        id: 'q1',
+        promptText: 'What is 2 + 2?',
+        selectedOptionKey: 'B',
+        correctOptionKey: 'B',
+        isCorrect: true,
+      },
+    ],
+  },
 } as const
 
 function renderModuleQuiz(path = '/courses/c1/modules/m1/quiz') {
@@ -73,6 +105,7 @@ function optionLabelsInFieldset(fieldset: HTMLElement): string[] {
 describe('ModuleQuizPage', () => {
   beforeEach(() => {
     api.startModuleQuiz.mockReset()
+    api.submitModuleQuiz.mockReset()
     api.startModuleQuiz.mockResolvedValue(REVERSED_START_RESPONSE)
   })
 
@@ -109,12 +142,90 @@ describe('ModuleQuizPage', () => {
     expect(optionLabelsInFieldset(fieldsets[1]!)).toEqual(['4', '3'])
   })
 
-  it('does not render a Submit button', async () => {
+  it('keeps Submit disabled until every question has a selection', async () => {
     renderModuleQuiz()
 
     await waitFor(() => {
       expect(screen.getByText('Capital of France?')).toBeTruthy()
     })
-    expect(screen.queryByRole('button', { name: /submit/i })).toBeNull()
+
+    const submit = screen.getByRole('button', { name: /submit answers/i }) as HTMLButtonElement
+    expect(submit.disabled).toBe(true)
+
+    const fieldsets = screen.getAllByRole('group')
+    fireEvent.click(within(fieldsets[0]!).getAllByRole('radio')[0]!)
+    expect(submit.disabled).toBe(true)
+
+    fireEvent.click(within(fieldsets[1]!).getAllByRole('radio')[0]!)
+    expect(submit.disabled).toBe(false)
+  })
+
+  it('renders latest submission summary and Try again without MCQ controls', async () => {
+    api.startModuleQuiz.mockResolvedValue(LATEST_RESULTS_RESPONSE)
+    renderModuleQuiz()
+
+    await waitFor(() => {
+      expect(screen.getByText(/Score 1 \/ 2/)).toBeTruthy()
+    })
+
+    expect(screen.getByRole('button', { name: /^Try again$/i })).toBeTruthy()
+    expect(screen.queryAllByRole('radio')).toHaveLength(0)
+    expect(screen.queryByRole('button', { name: /submit answers/i })).toBeNull()
+  })
+
+  it('Try again calls startModuleQuiz with retake: true', async () => {
+    api.startModuleQuiz.mockResolvedValueOnce(LATEST_RESULTS_RESPONSE).mockResolvedValue(REVERSED_START_RESPONSE)
+
+    renderModuleQuiz()
+
+    await waitFor(() => {
+      expect(screen.getByText(/Score 1 \/ 2/)).toBeTruthy()
+    })
+
+    fireEvent.click(screen.getByRole('button', { name: /^Try again$/i }))
+
+    await waitFor(() => {
+      expect(api.startModuleQuiz).toHaveBeenLastCalledWith('c1', 'm1', { retake: true })
+    })
+
+    await waitFor(() => {
+      expect(screen.getByText('Capital of France?')).toBeTruthy()
+    })
+    expect(screen.getByRole('button', { name: /submit answers/i })).toBeTruthy()
+  })
+
+  it('submits attemptId and full answers map on Submit', async () => {
+    api.submitModuleQuiz.mockResolvedValue({
+      attemptId: 'att-1',
+      attemptNumber: 1,
+      correctCount: 2,
+      totalCount: 2,
+      questions: LATEST_RESULTS_RESPONSE.latestSubmission.questions,
+    })
+
+    renderModuleQuiz()
+
+    await waitFor(() => {
+      expect(screen.getByText('Capital of France?')).toBeTruthy()
+    })
+
+    const fieldsets = screen.getAllByRole('group')
+    fireEvent.click(within(fieldsets[0]!).getAllByRole('radio')[0]!)
+    fireEvent.click(within(fieldsets[1]!).getAllByRole('radio')[0]!)
+
+    fireEvent.click(screen.getByRole('button', { name: /submit answers/i }))
+
+    await waitFor(() => {
+      expect(api.submitModuleQuiz).toHaveBeenCalledWith('c1', 'm1', {
+        attemptId: 'att-1',
+        answers: { q2: 'B', q1: 'B' },
+      })
+    })
+
+    await waitFor(() => {
+      expect(screen.getAllByText(/Your answer:/)).toHaveLength(2)
+      expect(screen.getByRole('button', { name: /^Try again$/i })).toBeTruthy()
+    })
+    expect(screen.queryAllByRole('radio')).toHaveLength(0)
   })
 })
