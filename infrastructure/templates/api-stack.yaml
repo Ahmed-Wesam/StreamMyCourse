@@ -462,6 +462,14 @@ Resources:
       ParentId: !Ref CourseModuleQuizResource
       PathPart: start
 
+  # API Gateway Resource: /courses/{courseId}/modules/{moduleId}/quiz/submit
+  CourseModuleQuizSubmitResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref CatalogApi
+      ParentId: !Ref CourseModuleQuizResource
+      PathPart: submit
+
   # API Gateway Resource: /courses/{courseId}/lessons
   LessonsResource:
     Type: AWS::ApiGateway::Resource
@@ -870,6 +878,33 @@ Resources:
         Type: AWS_PROXY
         Uri: !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${CatalogLambda.Arn}/invocations'
 
+  # API Gateway Method: POST /courses/{courseId}/modules/{moduleId}/quiz/submit
+  CourseModuleQuizSubmitPostMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref CatalogApi
+      ResourceId: !Ref CourseModuleQuizSubmitResource
+      HttpMethod: POST
+      AuthorizationType: COGNITO_USER_POOLS
+      AuthorizerId: !Ref CatalogApiTokenAuthorizer
+      Integration:
+        IntegrationHttpMethod: POST
+        Type: AWS_PROXY
+        Uri: !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${CatalogLambda.Arn}/invocations'
+
+  # API Gateway Method: OPTIONS /courses/{courseId}/modules/{moduleId}/quiz/submit
+  CourseModuleQuizSubmitOptionsMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref CatalogApi
+      ResourceId: !Ref CourseModuleQuizSubmitResource
+      HttpMethod: OPTIONS
+      AuthorizationType: NONE
+      Integration:
+        IntegrationHttpMethod: POST
+        Type: AWS_PROXY
+        Uri: !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${CatalogLambda.Arn}/invocations'
+
   # API Gateway Method: PUT /courses/{courseId}
   CourseIdPutMethod:
     Type: AWS::ApiGateway::Method
@@ -1231,7 +1266,7 @@ Resources:
   # Bump logical id when API methods/resources change so CloudFormation always
   # creates a new deployment; otherwise the stage can keep serving an old snapshot
   # (symptom: GET /courses/{id}/lessons returns API GW 403 Missing Authentication Token).
-  CatalogApiDeploymentV21:
+  CatalogApiDeploymentV22:
     Type: AWS::ApiGateway::Deployment
     DependsOn:
       - CatalogLambdaApiPermission
@@ -1283,6 +1318,8 @@ Resources:
       - CourseQuestionBankQuestionsOptionsMethod
       - CourseModuleQuizPostMethod
       - CourseModuleQuizOptionsMethod
+      - CourseModuleQuizSubmitPostMethod
+      - CourseModuleQuizSubmitOptionsMethod
       - CourseModuleQuizStartPostMethod
       - CourseModuleQuizStartOptionsMethod
     Properties:
@@ -1294,7 +1331,7 @@ Resources:
     Type: AWS::ApiGateway::Stage
     Properties:
       RestApiId: !Ref CatalogApi
-      DeploymentId: !Ref CatalogApiDeploymentV21
+      DeploymentId: !Ref CatalogApiDeploymentV22
       StageName: !Ref Environment
       Description: !Sub '${Environment} stage for Catalog API'
       MethodSettings:
