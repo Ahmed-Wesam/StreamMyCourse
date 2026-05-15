@@ -4,6 +4,76 @@
 
 ---
 
+## 2026-05-15 — QB-F: binding and student start
+
+### Completed
+
+- [x] **Migration** — [`infrastructure/database/migrations/008_student_module_quiz_bindings.sql`](infrastructure/database/migrations/008_student_module_quiz_bindings.sql): `student_module_quiz_bindings` + `student_module_quiz_binding_questions` (per-student draw order; `UNIQUE (module_quiz_id, user_sub)`).
+- [x] **Pure draw** — [`infrastructure/lambda/catalog/services/question_banks/binding_draw.py`](infrastructure/lambda/catalog/services/question_banks/binding_draw.py): `draw_question_ids` (`random.sample`; injectable RNG in service).
+- [x] **Repo** — [`rds_repo.py`](infrastructure/lambda/catalog/services/question_banks/rds_repo.py): `list_published_question_ids`, binding insert/load; concurrent first-start re-read on `UniqueViolation`.
+- [x] **Service + ports** — [`service.py`](infrastructure/lambda/catalog/services/question_banks/service.py) `start_module_quiz` (QB-D gate via published course + lesson access); [`ports.py`](infrastructure/lambda/catalog/services/question_banks/ports.py) `StudentLessonAccessPort`, `CourseReadPort`; [`bootstrap.py`](infrastructure/lambda/catalog/bootstrap.py) `_StudentLessonAccessAdapter`, `_CourseReadAdapter`.
+- [x] **HTTP** — [`controller.py`](infrastructure/lambda/catalog/services/question_banks/controller.py) `POST .../modules/{mid}/quiz/start` (matched **before** `POST .../quiz`); [`contracts.py`](infrastructure/lambda/catalog/services/question_banks/contracts.py) `StudentQuizStartDto` (no `correctOptionKey` / bank ids).
+- [x] **API Gateway** — [`infrastructure/templates/api-stack.yaml`](infrastructure/templates/api-stack.yaml): `CourseModuleQuizStartResource`; deployment **CatalogApiDeploymentV21** (Cognito on POST).
+- [x] **Tests** — [`tests/unit/test_question_bank_migration_ddl.py`](tests/unit/test_question_bank_migration_ddl.py) (008); [`test_question_bank_bindings_repo.py`](tests/unit/services/question_banks/test_question_bank_bindings_repo.py), [`test_binding_draw.py`](tests/unit/services/question_banks/test_binding_draw.py), [`test_question_bank_start.py`](tests/unit/services/question_banks/test_question_bank_start.py), [`test_question_bank_controller_start.py`](tests/unit/services/question_banks/test_question_bank_controller_start.py); [`tests/integration/test_question_bank_start.py`](tests/integration/test_question_bank_start.py) (idempotency, 404 gates, leak scan, IDOR).
+- [x] **Frontend** — [`frontend/src/lib/api.ts`](frontend/src/lib/api.ts) `startModuleQuiz`; **Start quiz** on [`CourseDetailPage.tsx`](frontend/src/pages/CourseDetailPage.tsx) when `moduleQuiz.available`; [`ModuleQuizPage.tsx`](frontend/src/pages/ModuleQuizPage.tsx) behind [`StudentModuleQuizAuth.tsx`](frontend/src/components/auth/StudentModuleQuizAuth.tsx) at `/courses/:courseId/modules/:moduleId/quiz` (prompts + MCQ selection; no Submit).
+- [x] **Response invariants** — `start_module_quiz` returns **409** `conflict` if binding row count or loaded question rows do not match `servedCountN` (never **200** with a short question list).
+
+### Verify
+
+```bash
+pytest tests/unit/services/question_banks/ -q
+python scripts/check_lambda_boundaries.py
+```
+
+```bash
+./scripts/run-local-integration-tests.sh tests/integration/test_question_bank_start.py -q
+```
+
+(Requires dev deploy, migration **008**, **CatalogApiDeploymentV21+**, `.env.local` / `LOCAL_COGNITO_PASSWORD` per [`tests/integration/README.md`](tests/integration/README.md); do not log JWTs.)
+
+```bash
+cd frontend ; npm run test -- src/pages/CourseDetailPage.dom.test.tsx src/pages/ModuleQuizPage.dom.test.tsx
+```
+
+### Scope note
+
+- **QB-F** is first start + binding + read-only student shell only. **QB-G** (shuffle / in-progress attempts) and **QB-H/I** (submit / scoring) are future work — [`plans/question-banks-requirements.md`](plans/question-banks-requirements.md) §8.4, §10–§11.
+
+---
+
+## 2026-05-15 — QB-D: module quiz visibility on course modules list
+
+### Completed
+
+- [x] **Repo** — [`infrastructure/lambda/catalog/services/question_banks/rds_repo.py`](infrastructure/lambda/catalog/services/question_banks/rds_repo.py): `list_module_quiz_visibility_for_course` (batch join `module_quizzes` + `question_banks`; published bank + non-null `served_count_n`; course-scoped).
+- [x] **Pure gating** — [`infrastructure/lambda/catalog/services/question_banks/visibility.py`](infrastructure/lambda/catalog/services/question_banks/visibility.py): `apply_module_quiz_visibility` (published course + lesson access).
+- [x] **Port + wiring** — [`infrastructure/lambda/catalog/services/course_management/ports.py`](infrastructure/lambda/catalog/services/course_management/ports.py) `ModuleQuizVisibilityPort`; [`bootstrap.py`](infrastructure/lambda/catalog/bootstrap.py) `_ModuleQuizVisibilityAdapter`; [`service.py`](infrastructure/lambda/catalog/services/course_management/service.py) `list_course_modules_public` adds optional `moduleQuiz` on module rows; [`contracts.py`](infrastructure/lambda/catalog/services/course_management/contracts.py) `ModuleQuizDto`.
+- [x] **Tests** — [`tests/unit/services/question_banks/test_question_bank_visibility.py`](tests/unit/services/question_banks/test_question_bank_visibility.py); repo visibility cases in [`test_question_bank_rds_repo.py`](tests/unit/services/question_banks/test_question_bank_rds_repo.py); [`tests/unit/test_course_management_service.py`](tests/unit/test_course_management_service.py); [`tests/unit/test_bootstrap.py`](tests/unit/test_bootstrap.py) (`TestModuleQuizVisibilityAdapter`); [`tests/integration/test_question_bank_visibility.py`](tests/integration/test_question_bank_visibility.py) (6 scenarios: draft bank, published+enrolled, unenrolled, owner without enrollment, leak scan, student publish denied).
+- [x] **Frontend** — [`frontend/src/lib/api.ts`](frontend/src/lib/api.ts) `CourseModule.moduleQuiz`; passive **Module quiz** badge on [`CourseDetailPage.tsx`](frontend/src/pages/CourseDetailPage.tsx) when enrolled and `moduleQuiz.available` (no Start control).
+- [x] **Docs** — [`design.md`](design.md) course-modules API + §13; [`plans/architecture/module-map.md`](plans/architecture/module-map.md).
+
+### Verify
+
+```bash
+pytest tests/unit/services/question_banks/test_question_bank_visibility.py tests/unit/test_course_management_service.py -q
+```
+
+```bash
+./scripts/run-local-integration-tests.sh tests/integration/test_question_bank_visibility.py -q
+```
+
+(Requires dev deploy, `.env.local` / `LOCAL_COGNITO_PASSWORD` per [`tests/integration/README.md`](tests/integration/README.md); do not log JWTs.)
+
+```bash
+cd frontend && npm run test -- src/pages/CourseDetailPage.dom.test.tsx -q
+```
+
+### Scope note
+
+- **QB-D** is visibility/gating + passive badge only. **QB-F** (first start, binding, student shell) shipped in the **2026-05-15 — QB-F** entry above.
+
+---
+
 ## 2026-05-15 — QB-C/E hardening: MCQ validation + test coverage
 
 ### Completed
@@ -33,7 +103,7 @@
 
 ### Scope note
 
-- **QB-D** (student quiz visibility / §6–7) and **QB-F+** (binding, attempts) are **not** this slice.
+- **QB-D** (student quiz visibility / §6–7) shipped in the **2026-05-15 — QB-D** entry above. **QB-F+** (binding, attempts) was **not** this slice.
 
 ---
 
@@ -49,7 +119,7 @@
 
 ### Scope note
 
-- **QB-B** covered create bank + module quiz only. **QB-C/QB-E** (publish, `questions`, `served_count_n`, draft HTTP) are in the **2026-05-14 — QB-C / QB-E** entry above. **QB-D** (student visibility) remains future work.
+- **QB-B** covered create bank + module quiz only. **QB-C/QB-E** (publish, `questions`, `served_count_n`, draft HTTP) are in the **2026-05-14 — QB-C / QB-E** entry above. **QB-D** (student visibility) shipped **2026-05-15** (entry above).
 
 ---
 
