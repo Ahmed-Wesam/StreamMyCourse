@@ -179,6 +179,10 @@ export type ModuleQuizStartResponse = {
   moduleQuizId: string
   moduleId: string
   servedCountN: number
+  attemptId: string
+  attemptNumber: number
+  /** Display order; matches `questions[].id` order. */
+  questionIds: string[]
   questions: ModuleQuizQuestion[]
 }
 

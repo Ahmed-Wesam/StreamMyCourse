@@ -1,9 +1,11 @@
-"""HTTPS integration tests for ``POST .../modules/{moduleId}/quiz/start`` (QB-F slice 5).
+"""HTTPS integration tests for ``POST .../modules/{moduleId}/quiz/start`` (QB-F + QB-G).
 
-Student binding draw, idempotent reload, 404 gates (unenrolled, unpublished bank),
-IDOR on path ``courseId``, and publisher-route denial for students.
+Student binding draw, attempt metadata, stable in-progress shuffle, 404 gates
+(unenrolled, unpublished bank), IDOR on path ``courseId``, and publisher-route
+denial for students.
 
-See ``plans/question-banks-qb-f-plan.md`` and ``tests/integration/README.md``.
+See ``plans/question-banks-qb-f-plan.md``, ``plans/question-banks-qb-g-plan.md``,
+and ``tests/integration/README.md``.
 """
 
 from __future__ import annotations
@@ -149,6 +151,27 @@ def _question_ids_from_start(body: dict[str, Any]) -> list[str]:
     return [str(q["id"]) for q in questions]
 
 
+def _option_keys_by_question(body: dict[str, Any]) -> dict[str, list[str]]:
+    """Map question id → option key order from ``optionsJson``."""
+    out: dict[str, list[str]] = {}
+    for question in body.get("questions") or []:
+        assert isinstance(question, dict), f"expected question object, got {question!r}"
+        qid = str(question["id"])
+        options = question.get("optionsJson")
+        assert isinstance(options, list), f"expected optionsJson array for {qid!r}"
+        out[qid] = [str(opt["key"]) for opt in options]
+    return out
+
+
+def _assert_start_attempt_contract(body: dict[str, Any], *, served_n: int) -> None:
+    assert isinstance(body.get("attemptId"), str) and body["attemptId"]
+    assert body.get("attemptNumber") == 1
+    question_ids = body.get("questionIds")
+    assert isinstance(question_ids, list) and len(question_ids) == served_n
+    assert question_ids == _question_ids_from_start(body)
+    _assert_no_start_response_leaks(body)
+
+
 def test_enrolled_student_start_returns_bound_questions(
     api: ApiClient,
     student_api: ApiClient,
@@ -173,7 +196,7 @@ def test_enrolled_student_start_returns_bound_questions(
     questions = body.get("questions")
     assert isinstance(questions, list)
     assert len(questions) == served_n
-    _assert_no_start_response_leaks(body)
+    _assert_start_attempt_contract(body, served_n=served_n)
 
 
 def test_second_start_returns_same_question_ids(
@@ -194,13 +217,20 @@ def test_second_start_returns_same_question_ids(
 
     first = student_api.start_module_quiz(course_id, module_id)
     assert first.status_code == 200, first.text
-    first_ids = _question_ids_from_start(response_json_dict(first))
+    first_body = response_json_dict(first)
+    _assert_start_attempt_contract(first_body, served_n=served_n)
+    first_ids = _question_ids_from_start(first_body)
+    first_option_keys = _option_keys_by_question(first_body)
 
     second = student_api.start_module_quiz(course_id, module_id)
     assert second.status_code == 200, second.text
-    second_ids = _question_ids_from_start(response_json_dict(second))
+    second_body = response_json_dict(second)
+    second_ids = _question_ids_from_start(second_body)
 
+    assert second_body.get("attemptId") == first_body.get("attemptId")
     assert second_ids == first_ids
+    assert second_body.get("questionIds") == first_body.get("questionIds")
+    assert _option_keys_by_question(second_body) == first_option_keys
 
 
 def test_unenrolled_student_start_returns_404(
