@@ -29,6 +29,22 @@ from services.course_management.storage import CourseMediaStorage
 from services.enrollment.rds_repo import EnrollmentRdsRepository
 from services.progress.rds_repo import LessonProgressRdsRepository
 from services.progress.service import LessonProgressService
+from services.question_banks.rds_repo import QuestionBankRdsRepository
+from services.question_banks.service import QuestionBankService
+
+
+@dataclass(frozen=True)
+class _CourseMutateAuthorizerAdapter:
+    """Composition-root adapter: ``CourseMutateAuthorizerPort`` → ``CourseManagementService``."""
+
+    _course: CourseManagementService
+
+    def ensure_course_mutable_by_actor(
+        self, course_id: str, *, cognito_sub: str, role: str
+    ) -> None:
+        self._course.ensure_can_modify_course(
+            course_id, cognito_sub=cognito_sub, role=role
+        )
 
 
 @dataclass(frozen=True)
@@ -37,6 +53,7 @@ class AwsDeps:
     service: CourseManagementService
     auth_service: UserProfileService
     progress_service: LessonProgressService
+    question_bank_service: QuestionBankService
 
 
 _cached: Dict[str, Any] = {}
@@ -148,11 +165,19 @@ def build_aws_deps(cfg: AppConfig) -> AwsDeps:
         position_slack_sec=cfg.progress_position_slack_sec,
     )
 
+    qb_repo = QuestionBankRdsRepository(conn_factory)
+    authorizer = _CourseMutateAuthorizerAdapter(service)
+    question_bank_service = QuestionBankService(
+        course_mutate_authorizer=authorizer,
+        question_bank_repo=qb_repo,
+    )
+
     return AwsDeps(
         cfg=cfg,
         service=service,
         auth_service=auth_service,
         progress_service=progress_service,
+        question_bank_service=question_bank_service,
     )
 
 
@@ -168,16 +193,17 @@ def lambda_bootstrap() -> Tuple[
     Optional[CourseManagementService],
     Optional[UserProfileService],
     Optional[LessonProgressService],
+    Optional[QuestionBankService],
 ]:
     """
     Composition root: load config and construct dependencies once.
     When RDS settings are incomplete the catalog cannot be wired, so
-    ``(cfg, None, None, None)`` is returned and the handler responds with a
+    ``(cfg, None, None, None, None)`` is returned and the handler responds with a
     configuration error.
     """
     cfg = load_config()
     if not _rds_config_complete(cfg):
-        return cfg, None, None, None
+        return cfg, None, None, None, None
 
     existing = get_cached_aws_deps()
     if existing is not None:
@@ -186,8 +212,15 @@ def lambda_bootstrap() -> Tuple[
             existing.service,
             existing.auth_service,
             existing.progress_service,
+            existing.question_bank_service,
         )
 
     deps = build_aws_deps(cfg)
     _cached["aws"] = deps
-    return deps.cfg, deps.service, deps.auth_service, deps.progress_service
+    return (
+        deps.cfg,
+        deps.service,
+        deps.auth_service,
+        deps.progress_service,
+        deps.question_bank_service,
+    )
