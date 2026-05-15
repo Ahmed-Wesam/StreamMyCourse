@@ -61,6 +61,9 @@ class TestHandleStartModuleQuiz:
             "moduleQuizId": "mq1",
             "moduleId": "m1",
             "servedCountN": 2,
+            "attemptId": "att-1",
+            "attemptNumber": 1,
+            "questionIds": ["q1"],
             "questions": [
                 {
                     "id": "q1",
@@ -78,6 +81,10 @@ class TestHandleStartModuleQuiz:
         assert resp["statusCode"] == 200
         body = json.loads(resp["body"])
         assert body["moduleQuizId"] == "mq1"
+        assert body["attemptId"] == "att-1"
+        assert body["attemptNumber"] == 1
+        assert body["questionIds"] == ["q1"]
+        assert [q["id"] for q in body["questions"]] == body["questionIds"]
         assert len(body["questions"]) == 1
         qb_svc.start_module_quiz.assert_called_once_with(
             "c1", "m1", cognito_sub="student-sub", role="student"

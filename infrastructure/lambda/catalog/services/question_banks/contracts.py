@@ -15,4 +15,7 @@ class StudentQuizStartDto(TypedDict):
     moduleQuizId: str
     moduleId: str
     servedCountN: int
+    attemptId: str
+    attemptNumber: int
+    questionIds: List[str]
     questions: List[StudentQuizQuestionDto]
