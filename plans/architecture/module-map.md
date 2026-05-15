@@ -7,20 +7,36 @@ This document is the “public surface” map for the Python Lambda under `infra
 | Module | Responsibility | Public API |
 |--------|----------------|------------|
 | `index.py` | Lambda entrypoint | `lambda_handler` |
-| `bootstrap.py` | Dependency wiring (composition root) | `lambda_bootstrap()` |
+| `bootstrap.py` | Dependency wiring (composition root) | `lambda_bootstrap()` → `(cfg, course_svc, auth_svc, progress_svc, question_bank_svc)` when RDS is complete; **QB-F:** `_StudentLessonAccessAdapter`, `_CourseReadAdapter` → `QuestionBankService` start ports |
 | `config.py` | Environment configuration | `load_config()`; `pick_origin` helpers live in `services/common/http.py` |
 
 ## Bounded contexts
+
+### `services/question_banks/` (QB-A domain, QB-B–E HTTP + authz + publish, QB-D visibility, QB-F binding + start, QB-G attempts + shuffle)
+
+| File | Layer | Notes |
+|------|-------|-------|
+| `models.py` | Domain | `QuestionBank`, `ModuleQuiz`, `Question` (RDS-aligned); **QB-F:** `StudentModuleQuizBinding`; **QB-G:** `ModuleQuizAttempt`, `BoundQuestion` |
+| `ports.py` | Contracts | `CourseMutateAuthorizerPort` (publisher writes); **QB-F:** `StudentLessonAccessPort`, `CourseReadPort` — start gate without importing `course_management` |
+| `service.py` | Domain/application | `QuestionBankService` — authorizer before every repo write; publish §9.3 / N §5; draft + published-question rules; **QB-F + QB-G:** `start_module_quiz` (QB-D gate + idempotent binding draw + resolve/create `in_progress` attempt + stable presentation shuffle on re-`start`) |
+| `controller.py` | HTTP adapter | Publisher: `POST .../question-banks`, `.../questions`, `.../publish`, `POST .../modules/{mid}/quiz`. Student: **`POST .../modules/{mid}/quiz/start`** (route **`quiz/start` before `quiz`**). Cognito claims → service |
+| `contracts.py` | API DTOs | **QB-F/QB-G:** `StudentQuizStartDto` (`attemptId`, `attemptNumber`, `questionIds`, shuffled `questions`) / `StudentQuizQuestionDto` (student-safe; no correct keys) |
+| `binding_draw.py` | Domain (pure) | **QB-F:** `draw_question_ids` — uniform sample without replacement |
+| `presentation_shuffle.py` | Domain (pure) | **QB-G:** question-order and per-question choice-key shuffle + `apply_presentation_shuffle` (injectable `rng`) |
+| `visibility.py` | Domain (pure) | **QB-D:** `apply_module_quiz_visibility` — gates repo map by `course_status` + `has_lesson_access` |
+| `rds_repo.py` | Persistence adapter | `question_banks`, `module_quizzes`, `questions`; transactional publish; **QB-D:** `list_module_quiz_visibility_for_course`; **QB-F:** `student_module_quiz_bindings` / `student_module_quiz_binding_questions`, `list_published_question_ids`, binding CRUD; **QB-G:** `module_quiz_attempts` (insert/load open attempt, `mark_attempt_submitted` for tests); maps integrity errors to HTTP types |
+
+**Cross-context rule:** `question_banks` must not import `course_management` or `auth` (same as other leaves).
 
 ### `services/course_management/` (implemented)
 
 | File | Layer | Notes |
 |------|-------|------|
 | `controller.py` | HTTP adapter | Parses API Gateway events, maps errors to JSON, returns API responses; **`GET /courses/{id}`** / **`GET /courses/{id}/lessons`** are unauthenticated at the edge (**`AuthorizationType: NONE`**) and rely on **`service.list_lessons_public`** + **`get_course_detail_with_enrollment`** for DRAFT hiding |
-| `service.py` | Domain/application | Business rules; depends on **ports** only |
+| `service.py` | Domain/application | Business rules; depends on **ports** only; **QB-D:** `list_course_modules_public` merges optional `moduleQuiz` via `ModuleQuizVisibilityPort` |
 | `rds_repo.py` | Persistence adapter (PostgreSQL) | psycopg2-based `CourseCatalogRepositoryPort` implementation |
 | `storage.py` | Infrastructure adapter | S3 presign generation |
-| `ports.py` | Contracts | `Protocol` interfaces for repo/storage |
+| `ports.py` | Contracts | `Protocol` interfaces for repo/storage; **QB-D:** `ModuleQuizVisibilityPort` (implemented in `bootstrap.py`, not imported from `question_banks`) |
 | `models.py` | Domain models | `Course`, **`CourseModule`**, `Lesson`, `PresignResult` (lesson carries `moduleId` + module display order from join) |
 | `contracts.py` | API DTOs | TypedDicts for JSON shapes returned by controller |
 

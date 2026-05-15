@@ -4,6 +4,37 @@
 
 ---
 
+## 2026-05-15 — QB-G: in-progress attempts and presentation shuffle
+
+### Completed
+
+- [x] **Migration** — [`infrastructure/database/migrations/009_module_quiz_attempts.sql`](infrastructure/database/migrations/009_module_quiz_attempts.sql): `module_quiz_attempts` (`in_progress` / `submitted`, `shuffled_question_order`, `shuffled_choice_orders`; one open attempt per binding); bundled in [`.github/workflows/deploy-backend.yml`](.github/workflows/deploy-backend.yml) apply-schema (dev + prod).
+- [x] **Pure shuffle** — [`presentation_shuffle.py`](infrastructure/lambda/catalog/services/question_banks/presentation_shuffle.py): `shuffle_question_order`, `shuffle_choice_orders_for_questions`, `apply_presentation_shuffle` (injectable `random.Random`).
+- [x] **Domain** — [`models.py`](infrastructure/lambda/catalog/services/question_banks/models.py): `ModuleQuizAttempt`, `BoundQuestion`.
+- [x] **Repo** — [`rds_repo.py`](infrastructure/lambda/catalog/services/question_banks/rds_repo.py): attempt insert/load (`get_open_attempt`, `get_latest_attempt`, `insert_attempt_with_shuffle`, `mark_attempt_submitted` for tests); concurrent first-open re-read on unique violation (mirror QB-F binding).
+- [x] **Service** — [`service.py`](infrastructure/lambda/catalog/services/question_banks/service.py): extended `start_module_quiz` — binding draw unchanged; resolve/create `in_progress` attempt; stable shuffle on re-`start`; QB-F binding-only upgrade creates attempt **1** without redraw.
+- [x] **HTTP contract** — [`contracts.py`](infrastructure/lambda/catalog/services/question_banks/contracts.py): `StudentQuizStartDto` adds `attemptId`, `attemptNumber`, `questionIds`.
+- [x] **Tests** — [`tests/unit/test_question_bank_migration_ddl.py`](tests/unit/test_question_bank_migration_ddl.py) (009); [`test_presentation_shuffle.py`](tests/unit/services/question_banks/test_presentation_shuffle.py), [`test_question_bank_attempts_repo.py`](tests/unit/services/question_banks/test_question_bank_attempts_repo.py), [`test_question_bank_attempts.py`](tests/unit/services/question_banks/test_question_bank_attempts.py); updated [`test_question_bank_start.py`](tests/unit/services/question_banks/test_question_bank_start.py), [`test_question_bank_controller_start.py`](tests/unit/services/question_banks/test_question_bank_controller_start.py); [`tests/integration/test_question_bank_start.py`](tests/integration/test_question_bank_start.py) (attempt metadata, stable in-progress shuffle).
+
+### Verify
+
+```bash
+pytest tests/unit/services/question_banks/test_presentation_shuffle.py tests/unit/services/question_banks/test_question_bank_attempts.py tests/unit/services/question_banks/test_question_bank_attempts_repo.py -q
+python scripts/check_lambda_boundaries.py
+```
+
+```bash
+./scripts/run-local-integration-tests.sh tests/integration/test_question_bank_start.py -q
+```
+
+(Requires dev deploy, migrations **008+009**, **CatalogApiDeploymentV21+**, `.env.local` / `LOCAL_COGNITO_PASSWORD` per [`tests/integration/README.md`](tests/integration/README.md); do not log JWTs.)
+
+### Scope note
+
+- **QB-G** extends **QB-F** `POST .../quiz/start` only (no submit HTTP). **QB-H/I** (submit / scoring, repeat-after-submit HTTPS) — [`plans/question-banks-requirements.md`](plans/question-banks-requirements.md) §10–§11; plan [`plans/question-banks-qb-g-plan.md`](plans/question-banks-qb-g-plan.md).
+
+---
+
 ## 2026-05-15 — QB-F: binding and student start
 
 ### Completed
@@ -37,7 +68,7 @@ cd frontend ; npm run test -- src/pages/CourseDetailPage.dom.test.tsx src/pages/
 
 ### Scope note
 
-- **QB-F** is first start + binding + read-only student shell only. **QB-G** (shuffle / in-progress attempts) and **QB-H/I** (submit / scoring) are future work — [`plans/question-banks-requirements.md`](plans/question-banks-requirements.md) §8.4, §10–§11.
+- **QB-F** is binding draw + read-only student shell; presentation shuffle and attempts shipped in **2026-05-15 — QB-G** above. **QB-H/I** (submit / scoring) remain future work — [`plans/question-banks-requirements.md`](plans/question-banks-requirements.md) §10–§11.
 
 ---
 
