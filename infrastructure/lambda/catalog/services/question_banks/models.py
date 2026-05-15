@@ -24,3 +24,18 @@ class ModuleQuiz:
     servedCountN: Optional[int]
     createdAt: str
     updatedAt: str
+
+
+@dataclass(frozen=True)
+class Question:
+    """Course question row (RDS camelCase); status is DRAFT or PUBLISHED at publish time."""
+
+    id: str
+    bankId: str
+    status: str
+    correctOptionKey: Optional[str] = None
+    courseId: str = ""
+    promptText: str = ""
+    optionsJson: str = "[]"
+    createdAt: str = ""
+    updatedAt: str = ""
