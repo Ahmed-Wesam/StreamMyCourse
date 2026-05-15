@@ -66,6 +66,17 @@ class ApiClient:
     def delete_course_module(self, course_id: str, module_id: str) -> httpx.Response:
         return self._client.delete(f"/courses/{course_id}/modules/{module_id}")
 
+    def create_question_bank(self, course_id: str) -> httpx.Response:
+        """POST /courses/{courseId}/question-banks — body optional (empty object)."""
+        return self._client.post(f"/courses/{course_id}/question-banks", json={})
+
+    def create_module_quiz(self, course_id: str, module_id: str) -> httpx.Response:
+        """POST /courses/{courseId}/modules/{moduleId}/quiz — creates module_quiz without bank link."""
+        return self._client.post(
+            f"/courses/{course_id}/modules/{module_id}/quiz",
+            json={},
+        )
+
     def create_lesson(self, course_id: str, *, title: str, module_id: str | None = None) -> httpx.Response:
         body: Dict[str, Any] = {"title": title}
         if module_id:
