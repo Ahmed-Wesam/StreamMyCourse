@@ -173,11 +173,30 @@ def test_split_real_migration_004_contains_expected_upgrade_ddl(schema_apply):
     assert len(parts) == 2
 
 
-def test_concatenated_001_003_and_004_bundle_is_splittable_and_complete(schema_apply):
-    """The deploy script and CI workflow concatenate 001, 003, and 004 into a single
-    schema.sql before zipping the Lambda. Verify the concatenation is splittable
-    end-to-end and surfaces the canonical schema and upgrade DDL.
-    """
+def test_split_real_migration_006_contains_expected_qb_a_ddl(schema_apply):
+    """006_question_banks_module_quizzes.sql adds QB-A tables and cross-course FK."""
+    path = (
+        _ROOT
+        / "infrastructure"
+        / "database"
+        / "migrations"
+        / "006_question_banks_module_quizzes.sql"
+    )
+    sql = path.read_text(encoding="utf-8")
+    parts = schema_apply._split_sql_statements(sql)
+    joined = "\n".join(parts)
+    assert "CREATE TABLE IF NOT EXISTS question_banks" in joined
+    assert "CREATE TABLE IF NOT EXISTS module_quizzes" in joined
+    assert "UNIQUE (module_id)" in joined
+    assert (
+        "FOREIGN KEY (course_id, question_bank_id) REFERENCES question_banks (course_id, id)"
+        in joined
+    )
+    assert len(parts) >= 4
+
+
+def test_concatenated_001_003_004_and_006_bundle_is_splittable_and_complete(schema_apply):
+    """Deploy script and CI concatenate 001, 003, 004, and 006 into schema.sql."""
     migrations_dir = _ROOT / "infrastructure" / "database" / "migrations"
     sql_001 = (migrations_dir / "001_initial_schema.sql").read_text(encoding="utf-8")
     sql_003 = (migrations_dir / "003_progress_course_lesson_fk.sql").read_text(
@@ -186,7 +205,10 @@ def test_concatenated_001_003_and_004_bundle_is_splittable_and_complete(schema_a
     sql_004 = (migrations_dir / "004_enforce_course_created_by.sql").read_text(
         encoding="utf-8"
     )
-    bundle = sql_001 + sql_003 + sql_004
+    sql_006 = (migrations_dir / "006_question_banks_module_quizzes.sql").read_text(
+        encoding="utf-8"
+    )
+    bundle = sql_001 + sql_003 + sql_004 + sql_006
     parts = schema_apply._split_sql_statements(bundle)
     joined = "\n".join(parts)
     # 001 markers
@@ -198,8 +220,12 @@ def test_concatenated_001_003_and_004_bundle_is_splittable_and_complete(schema_a
     # 004 markers
     assert "ALTER COLUMN created_by DROP DEFAULT" in joined
     assert "ADD CONSTRAINT courses_created_by_not_blank" in joined
-    # Sanity: 001 alone gave >=11 statements; 003 adds 4 and 004 adds 2 more.
-    assert len(parts) >= 17
+    # 006 markers (QB-A)
+    assert "CREATE TABLE IF NOT EXISTS question_banks" in joined
+    assert "CREATE TABLE IF NOT EXISTS module_quizzes" in joined
+    assert "UNIQUE (module_id)" in joined
+    # Sanity: 001 >=11; 003 adds 4; 004 adds 2; 006 adds several CREATE/INDEX statements.
+    assert len(parts) >= 20
 
 
 def test_handler_returns_error_when_secret_arn_missing(schema_apply, monkeypatch) -> None:
