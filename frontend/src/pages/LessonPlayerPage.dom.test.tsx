@@ -292,6 +292,10 @@ describe('LessonPlayerPage', () => {
     renderLessonPlayer('/courses/c1/lessons/l1')
 
     const btn = await screen.findByRole('button', { name: /Mark as Complete/i })
+    await waitFor(() => {
+      expect(document.querySelector('video')).toBeTruthy()
+      expect((btn as HTMLButtonElement).disabled).toBe(false)
+    })
     const progressFetchesBefore = api.getCourseProgress.mock.calls.length
     fireEvent.click(btn)
 
@@ -413,6 +417,10 @@ describe('LessonPlayerPage', () => {
     renderLessonPlayer('/courses/c1/lessons/l1')
 
     const button = await screen.findByRole('button', { name: /Mark as Complete/i })
+    await waitFor(() => {
+      expect(document.querySelector('video')).toBeTruthy()
+      expect((button as HTMLButtonElement).disabled).toBe(false)
+    })
 
     // Click 10 times to trigger circuit breaker, awaiting each click
     for (let i = 0; i < 10; i++) {
