@@ -4,6 +4,27 @@
 
 ---
 
+## 2026-05-15 — QB-K: instructor question HTTP (post-publish add, PATCH/DELETE)
+
+### Completed
+
+- [x] **§9.1 MCQ add-published** — [`service.py`](infrastructure/lambda/catalog/services/question_banks/service.py) `add_published_question` + [`rds_repo.py`](infrastructure/lambda/catalog/services/question_banks/rds_repo.py) `insert_published_question` with `promptText` / `optionsJson` / `correctOptionKey` validation (unit tests extended).
+- [x] **POST overload** — [`controller.py`](infrastructure/lambda/catalog/services/question_banks/controller.py): `get_bank_for_course`; same `POST .../questions` branches **DRAFT** vs **PUBLISHED**; **CatalogApiDeploymentV23** in [`api-stack.yaml`](infrastructure/templates/api-stack.yaml).
+- [x] **PATCH/DELETE** — `PATCH`/`DELETE` `/courses/{id}/question-banks/{bid}/questions/{qid}`; draft **200**; published **409** `conflict`; **CatalogApiDeploymentV24**; CORS **PATCH** in [`http.py`](infrastructure/lambda/catalog/services/common/http.py).
+- [x] **Tests** — integration: [`test_question_bank_post_published_mcq.py`](tests/integration/test_question_bank_post_published_mcq.py), [`test_question_bank_patch_delete.py`](tests/integration/test_question_bank_patch_delete.py); permissions: [`test_question_bank_permissions.py`](tests/integration/test_question_bank_permissions.py); unit controller/service updates.
+- [x] **Docs** — [`design.md`](design.md) §7; child plan [`plans/question-banks-qb-k-plan.md`](plans/question-banks-qb-k-plan.md); mega-plan [`plans/question-banks-mega-plan.md`](plans/question-banks-mega-plan.md) **QB-K** row.
+
+### Verify
+
+```bash
+python -m pytest tests/unit/services/question_banks/ tests/unit/services/common/test_http.py tests/unit/test_index.py -q
+python scripts/check_lambda_boundaries.py
+```
+
+HTTPS integration after deploy applies **V24** (see [`tests/integration/README.md`](tests/integration/README.md)).
+
+---
+
 ## 2026-05-15 — QB-H / QB-I: submit, grading, latest results, retake
 
 ### Completed
