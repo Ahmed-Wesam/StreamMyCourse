@@ -414,6 +414,22 @@ Resources:
       ParentId: !Ref CourseModulesResource
       PathPart: '{moduleId}'
 
+  # API Gateway Resource: /courses/{courseId}/question-banks
+  CourseQuestionBanksResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref CatalogApi
+      ParentId: !Ref CourseIdResource
+      PathPart: question-banks
+
+  # API Gateway Resource: /courses/{courseId}/modules/{moduleId}/quiz
+  CourseModuleQuizResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref CatalogApi
+      ParentId: !Ref CourseModuleIdResource
+      PathPart: quiz
+
   # API Gateway Resource: /courses/{courseId}/lessons
   LessonsResource:
     Type: AWS::ApiGateway::Resource
@@ -680,6 +696,60 @@ Resources:
     Properties:
       RestApiId: !Ref CatalogApi
       ResourceId: !Ref CourseModuleIdResource
+      HttpMethod: OPTIONS
+      AuthorizationType: NONE
+      Integration:
+        IntegrationHttpMethod: POST
+        Type: AWS_PROXY
+        Uri: !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${CatalogLambda.Arn}/invocations'
+
+  # API Gateway Method: POST /courses/{courseId}/question-banks
+  CourseQuestionBanksPostMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref CatalogApi
+      ResourceId: !Ref CourseQuestionBanksResource
+      HttpMethod: POST
+      AuthorizationType: COGNITO_USER_POOLS
+      AuthorizerId: !Ref CatalogApiTokenAuthorizer
+      Integration:
+        IntegrationHttpMethod: POST
+        Type: AWS_PROXY
+        Uri: !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${CatalogLambda.Arn}/invocations'
+
+  # API Gateway Method: OPTIONS /courses/{courseId}/question-banks
+  CourseQuestionBanksOptionsMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref CatalogApi
+      ResourceId: !Ref CourseQuestionBanksResource
+      HttpMethod: OPTIONS
+      AuthorizationType: NONE
+      Integration:
+        IntegrationHttpMethod: POST
+        Type: AWS_PROXY
+        Uri: !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${CatalogLambda.Arn}/invocations'
+
+  # API Gateway Method: POST /courses/{courseId}/modules/{moduleId}/quiz
+  CourseModuleQuizPostMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref CatalogApi
+      ResourceId: !Ref CourseModuleQuizResource
+      HttpMethod: POST
+      AuthorizationType: COGNITO_USER_POOLS
+      AuthorizerId: !Ref CatalogApiTokenAuthorizer
+      Integration:
+        IntegrationHttpMethod: POST
+        Type: AWS_PROXY
+        Uri: !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${CatalogLambda.Arn}/invocations'
+
+  # API Gateway Method: OPTIONS /courses/{courseId}/modules/{moduleId}/quiz
+  CourseModuleQuizOptionsMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref CatalogApi
+      ResourceId: !Ref CourseModuleQuizResource
       HttpMethod: OPTIONS
       AuthorizationType: NONE
       Integration:
@@ -1048,7 +1118,7 @@ Resources:
   # Bump logical id when API methods/resources change so CloudFormation always
   # creates a new deployment; otherwise the stage can keep serving an old snapshot
   # (symptom: GET /courses/{id}/lessons returns API GW 403 Missing Authentication Token).
-  CatalogApiDeploymentV18:
+  CatalogApiDeploymentV19:
     Type: AWS::ApiGateway::Deployment
     DependsOn:
       - CatalogLambdaApiPermission
@@ -1092,6 +1162,10 @@ Resources:
       - CourseModulesOptionsMethod
       - CourseModuleIdDeleteMethod
       - CourseModuleIdOptionsMethod
+      - CourseQuestionBanksPostMethod
+      - CourseQuestionBanksOptionsMethod
+      - CourseModuleQuizPostMethod
+      - CourseModuleQuizOptionsMethod
     Properties:
       RestApiId: !Ref CatalogApi
       Description: !Sub 'catalog-${LambdaCodeS3Key}'
@@ -1101,7 +1175,7 @@ Resources:
     Type: AWS::ApiGateway::Stage
     Properties:
       RestApiId: !Ref CatalogApi
-      DeploymentId: !Ref CatalogApiDeploymentV18
+      DeploymentId: !Ref CatalogApiDeploymentV19
       StageName: !Ref Environment
       Description: !Sub '${Environment} stage for Catalog API'
       MethodSettings:

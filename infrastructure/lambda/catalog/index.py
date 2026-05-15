@@ -14,6 +14,7 @@ from services.progress.controller import handle_progress_request
 from services.common.logging_setup import configure_logging
 from services.common.runtime_context import bind_from_lambda_event, clear_request_context, set_request_path
 from services.course_management.controller import handle as course_management_handle
+from services.question_banks.controller import handle_question_banks_request
 
 logger = logging.getLogger(__name__)
 
@@ -57,7 +58,9 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 None,
             )
         else:
-            cfg, service, auth_service, progress_service = lambda_bootstrap()
+            cfg, service, auth_service, progress_service, question_bank_service = (
+                lambda_bootstrap()
+            )
 
             headers = event.get("headers") or {}
             req_origin = headers.get("origin") or headers.get("Origin")
@@ -82,7 +85,17 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             else:
                 parts = [p for p in raw_path.split("/") if p]
 
-                if (
+                qb_resp = None
+                if question_bank_service is not None:
+                    qb_resp = handle_question_banks_request(
+                        event,
+                        origin=origin,
+                        qb_svc=question_bank_service,
+                    )
+
+                if qb_resp is not None:
+                    response = qb_resp
+                elif (
                     len(parts) == 3
                     and parts[0] == "courses"
                     and parts[2] == "progress"
