@@ -2,9 +2,9 @@
 name: execute-plan
 description: >-
   Executes a written plan slice-by-slice using the Task subagent sequentially
-  with model composer 2 fast, gated on passing tests and explicit per-slice
-  reports before the next slice begins (avoids context rot). Expects the parent
-  to keep session todos synced to plan slices. Use when the user invokes
+  with Auto agent routing (no pinned model), gated on passing tests and explicit
+  per-slice reports before the next slice begins (avoids context rot). Expects
+  the parent to keep session todos synced to plan slices. Use when the user invokes
   /execute_plan, asks to execute a plan with one subagent at a time, or wants
   phased plan execution with verification between slices.
 disable-model-invocation: true
@@ -12,7 +12,7 @@ disable-model-invocation: true
 
 # /execute_plan
 
-**Core directive (verbatim):** Execute each slice in a subagent to avoid context rot. it should use composer 2. only a single subagent at a time, wait for it to finish and run its tests and succeed in them all and reporting back with results before kicking off the next agent. go
+**Core directive (verbatim):** Execute each slice in a subagent to avoid context rot. it should use the auto agent. only a single subagent at a time, wait for it to finish and run its tests and succeed in them all and reporting back with results before kicking off the next agent. go
 
 ## Role of the parent agent (this chat)
 
@@ -30,7 +30,7 @@ The session todo list is the **living map** of execution state. Keep it **contin
 
 ## Model and concurrency
 
-- **Model:** Every Task invocation for plan execution **must** set `model` to **`composer-2-fast`** (Composer 2).
+- **Model:** Every Task invocation for plan execution **must** use **Auto** for the slice subagent: **do not** pass `model` on the Task call (no pinning to Composer or other fixed slugs unless the user overrides in-chat). Let Cursor route the subagent automatically.
 - **Concurrency:** **One** subagent at a time: `run_in_background` **false** (default). Do not batch parallel Tasks for plan slices under this skill.
 
 ## Per-slice workflow
@@ -38,7 +38,7 @@ The session todo list is the **living map** of execution state. Keep it **contin
 Repeat for each slice in the plan (in order unless the plan explicitly allows reordering):
 
 1. **Prepare the slice prompt** — Include: goal, file paths, constraints, acceptance criteria, and which tests to run. Point to repo conventions (`AGENTS.md`, boundaries) when the slice touches them. **Update todos** (current slice → in progress) before the next step.
-2. **Launch Task** — `subagent_type`: prefer `generalPurpose` for implementation; use `explore` or `shell` only when the slice is read-only or command-only. Set `model: composer-2-fast` and **do not** set `run_in_background: true`.
+2. **Launch Task** — `subagent_type`: prefer `generalPurpose` for implementation; use `explore` or `shell` only when the slice is read-only or command-only. **Omit** `model` (Auto). **Do not** set `run_in_background: true`.
 3. **Wait for completion** — Read the subagent’s final message; treat missing or vague handoff as **failure to proceed** (ask one focused follow-up or re-run the slice with a tighter prompt).
 4. **Run tests** — Execute the **smallest** command set that proves the slice (e.g. targeted `vitest` path, `pytest` path, `npm run lint` if the slice touched linted code). For StreamMyCourse, align with **Before merging** in `AGENTS.md` for the layers the slice changed; at minimum run what the plan and slice require.
 5. **Gate** — If **any** required test or check fails: **do not** start the next subagent. Fix forward by delegating a **follow-up** Task (still one at a time) or adjust the slice until green.
@@ -59,7 +59,7 @@ Each Task prompt should require the subagent to:
 - Spawning **multiple** Task tools for different slices in one message.
 - Accepting “tests should pass” without **running** them (or without re-running when the handoff is ambiguous).
 - Skipping the **per-slice user report** before starting the next subagent.
-- Using a **non–Composer-2** model for slice execution under this skill.
+- Pinning a **fixed** `model` on Task calls when this skill expects **Auto** delegation (unless the user explicitly requests a specific model for a slice).
 - **Stale todos**: leaving items **in progress** after a slice is done, failing to add todos when the plan splits, or stopping without reconciling pending work.
 
 ## When this skill does not apply
