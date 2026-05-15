@@ -4,6 +4,43 @@
 
 ---
 
+## 2026-05-15 — QB-H / QB-I: submit, grading, latest results, retake
+
+### Completed
+
+- [x] **Migration** — [`infrastructure/database/migrations/010_module_quiz_attempt_submissions.sql`](infrastructure/database/migrations/010_module_quiz_attempt_submissions.sql): `module_quiz_attempt_submissions` (1:1 with submitted attempts; graded answers + counts); listed in apply-schema (**dev + prod**) in [`.github/workflows/deploy-backend.yml`](.github/workflows/deploy-backend.yml).
+- [x] **Pure grading** — [`grading.py`](infrastructure/lambda/catalog/services/question_banks/grading.py): equal-weight correct counts vs designated keys (no HTTP).
+- [x] **Repo** — [`rds_repo.py`](infrastructure/lambda/catalog/services/question_banks/rds_repo.py): attempt+binding lookups for submit, transactional insert submission + mark submitted, latest submission for binding (for `latest_results` start phase).
+- [x] **Service** — [`service.py`](infrastructure/lambda/catalog/services/question_banks/service.py): `submit_module_quiz`; `start_module_quiz` discriminated **`phase`** (`in_progress` | `latest_results`), optional body **`retake`**, **`latestSubmission`** embedding.
+- [x] **HTTP contracts** — [`contracts.py`](infrastructure/lambda/catalog/services/question_banks/contracts.py): `StudentQuizSubmitRequestDto` / `StudentQuizSubmitResponseDto`; start unions `StudentQuizStartInProgressDto` / `StudentQuizStartLatestResultsDto`; `StudentQuizStartBodyDto` (`retake`).
+- [x] **HTTP** — [`controller.py`](infrastructure/lambda/catalog/services/question_banks/controller.py): `POST .../quiz/submit` registered before `quiz/start` before bare `quiz`.
+- [x] **API Gateway** — [`infrastructure/templates/api-stack.yaml`](infrastructure/templates/api-stack.yaml): `CourseModuleQuizSubmitResource` + POST/OPTIONS; **CatalogApiDeploymentV22**.
+- [x] **Tests** — unit: [`test_grading.py`](tests/unit/services/question_banks/test_grading.py), [`test_question_bank_submit.py`](tests/unit/services/question_banks/test_question_bank_submit.py), [`test_question_bank_submissions_repo.py`](tests/unit/services/question_banks/test_question_bank_submissions_repo.py), controller submit + updated attempts/start tests; DDL: [`test_question_bank_migration_ddl.py`](tests/unit/test_question_bank_migration_ddl.py) (**010**). Integration **authorship:** [`tests/integration/test_question_bank_submit.py`](tests/integration/test_question_bank_submit.py); helper `submit_module_quiz` in [`tests/integration/helpers/api.py`](tests/integration/helpers/api.py) (HTTPS assertions run in CI after deploy applies template + migrations).
+- [x] **Frontend** — [`frontend/src/lib/api.ts`](frontend/src/lib/api.ts) `submitModuleQuiz` + extended `startModuleQuiz` types; [`ModuleQuizPage.tsx`](frontend/src/pages/ModuleQuizPage.tsx) submit + results + retake; [`ModuleQuizPage.dom.test.tsx`](frontend/src/pages/ModuleQuizPage.dom.test.tsx).
+
+### Verify
+
+```bash
+pytest tests/unit/services/question_banks/test_grading.py tests/unit/services/question_banks/test_question_bank_submit.py tests/unit/services/question_banks/test_question_bank_submissions_repo.py tests/unit/services/question_banks/test_question_bank_controller_submit.py -q
+python scripts/check_lambda_boundaries.py
+```
+
+```bash
+pytest tests/integration --collect-only -q
+```
+
+([`tests/integration/README.md`](tests/integration/README.md) for optional local HTTPS against a deployed stack that includes migration **010** and **CatalogApiDeploymentV22**; do not log JWTs.)
+
+```bash
+cd frontend ; npm run test -- src/pages/ModuleQuizPage.dom.test.tsx -q
+```
+
+### Scope note
+
+- Breaks implicit client assumption that **any** `POST .../quiz/start` after submit always creates a new attempt: default revisit returns **`phase: latest_results`**; callers must send **`retake: true`** for a new shuffle (documented in [`design.md`](design.md) §7 and [`plans/question-banks-qb-h-plan.md`](plans/question-banks-qb-h-plan.md)). **QB-J** (audit-only) stays future — [`plans/question-banks-mega-plan.md`](plans/question-banks-mega-plan.md).
+
+---
+
 ## 2026-05-15 — QB-G: in-progress attempts and presentation shuffle
 
 ### Completed
@@ -31,7 +68,7 @@ python scripts/check_lambda_boundaries.py
 
 ### Scope note
 
-- **QB-G** extends **QB-F** `POST .../quiz/start` only (no submit HTTP). **QB-H/I** (submit / scoring, repeat-after-submit HTTPS) — [`plans/question-banks-requirements.md`](plans/question-banks-requirements.md) §10–§11; plan [`plans/question-banks-qb-g-plan.md`](plans/question-banks-qb-g-plan.md).
+- **QB-G** adds attempts + shuffle on **QB-F** `POST .../quiz/start`. **Submit**, `latest_results` / **`retake`**, and **`POST .../quiz/submit`** shipped in **2026-05-15 — QB-H / QB-I** above. Earlier plan detail: [`plans/question-banks-qb-g-plan.md`](plans/question-banks-qb-g-plan.md).
 
 ---
 
@@ -46,7 +83,7 @@ python scripts/check_lambda_boundaries.py
 - [x] **HTTP** — [`controller.py`](infrastructure/lambda/catalog/services/question_banks/controller.py) `POST .../modules/{mid}/quiz/start` (matched **before** `POST .../quiz`); [`contracts.py`](infrastructure/lambda/catalog/services/question_banks/contracts.py) `StudentQuizStartDto` (no `correctOptionKey` / bank ids).
 - [x] **API Gateway** — [`infrastructure/templates/api-stack.yaml`](infrastructure/templates/api-stack.yaml): `CourseModuleQuizStartResource`; deployment **CatalogApiDeploymentV21** (Cognito on POST).
 - [x] **Tests** — [`tests/unit/test_question_bank_migration_ddl.py`](tests/unit/test_question_bank_migration_ddl.py) (008); [`test_question_bank_bindings_repo.py`](tests/unit/services/question_banks/test_question_bank_bindings_repo.py), [`test_binding_draw.py`](tests/unit/services/question_banks/test_binding_draw.py), [`test_question_bank_start.py`](tests/unit/services/question_banks/test_question_bank_start.py), [`test_question_bank_controller_start.py`](tests/unit/services/question_banks/test_question_bank_controller_start.py); [`tests/integration/test_question_bank_start.py`](tests/integration/test_question_bank_start.py) (idempotency, 404 gates, leak scan, IDOR).
-- [x] **Frontend** — [`frontend/src/lib/api.ts`](frontend/src/lib/api.ts) `startModuleQuiz`; **Start quiz** on [`CourseDetailPage.tsx`](frontend/src/pages/CourseDetailPage.tsx) when `moduleQuiz.available`; [`ModuleQuizPage.tsx`](frontend/src/pages/ModuleQuizPage.tsx) behind [`StudentModuleQuizAuth.tsx`](frontend/src/components/auth/StudentModuleQuizAuth.tsx) at `/courses/:courseId/modules/:moduleId/quiz` (prompts + MCQ selection; no Submit).
+- [x] **Frontend** — [`frontend/src/lib/api.ts`](frontend/src/lib/api.ts) `startModuleQuiz`; **Start quiz** on [`CourseDetailPage.tsx`](frontend/src/pages/CourseDetailPage.tsx) when `moduleQuiz.available`; [`ModuleQuizPage.tsx`](frontend/src/pages/ModuleQuizPage.tsx) behind [`StudentModuleQuizAuth.tsx`](frontend/src/components/auth/StudentModuleQuizAuth.tsx) at `/courses/:courseId/modules/:moduleId/quiz` (prompts + MCQ selection at ship time; submit/results in **QB-H/I** entry above).
 - [x] **Response invariants** — `start_module_quiz` returns **409** `conflict` if binding row count or loaded question rows do not match `servedCountN` (never **200** with a short question list).
 
 ### Verify
@@ -68,7 +105,7 @@ cd frontend ; npm run test -- src/pages/CourseDetailPage.dom.test.tsx src/pages/
 
 ### Scope note
 
-- **QB-F** is binding draw + read-only student shell; presentation shuffle and attempts shipped in **2026-05-15 — QB-G** above. **QB-H/I** (submit / scoring) remain future work — [`plans/question-banks-requirements.md`](plans/question-banks-requirements.md) §10–§11.
+- **QB-F** is binding draw + student quiz shell entry; presentation shuffle and attempts shipped in **2026-05-15 — QB-G** above. Submit, scoring, `latest_results`, and **`retake`** shipped in **2026-05-15 — QB-H / QB-I** above.
 
 ---
 
