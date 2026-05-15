@@ -9,3 +9,13 @@ class CourseMutateAuthorizerPort(Protocol):
     def ensure_course_mutable_by_actor(
         self, course_id: str, *, cognito_sub: str, role: str
     ) -> None: ...
+
+
+class StudentLessonAccessPort(Protocol):
+    def viewer_has_lesson_access(
+        self, course_id: str, cognito_sub: str, role: str
+    ) -> bool: ...
+
+
+class CourseReadPort(Protocol):
+    def get_course_status(self, course_id: str) -> str | None: ...

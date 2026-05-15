@@ -23,6 +23,7 @@ from typing import Any, Callable, Dict, Optional, Tuple
 from config import AppConfig, load_config
 from services.auth.rds_repo import UserProfileRdsRepository
 from services.auth.service import UserProfileService
+from services.course_management.models import Course
 from services.course_management.rds_repo import CourseCatalogRdsRepository
 from services.course_management.service import CourseManagementService
 from services.course_management.storage import CourseMediaStorage
@@ -70,6 +71,38 @@ class _CourseMutateAuthorizerAdapter:
     ) -> None:
         self._course.ensure_can_modify_course(
             course_id, cognito_sub=cognito_sub, role=role
+        )
+
+
+@dataclass(frozen=True)
+class _CourseReadAdapter:
+    """Composition-root adapter: ``CourseReadPort`` → course catalog RDS."""
+
+    _course_repo: CourseCatalogRdsRepository
+
+    def get_course_status(self, course_id: str) -> str | None:
+        course = self._course_repo.get_course(course_id)
+        return course.status if course else None
+
+
+@dataclass(frozen=True)
+class _StudentLessonAccessAdapter:
+    """Composition-root adapter: ``StudentLessonAccessPort`` → ``CourseManagementService``."""
+
+    _course: CourseManagementService
+    _course_repo: CourseCatalogRdsRepository
+
+    def viewer_has_lesson_access(
+        self, course_id: str, cognito_sub: str, role: str
+    ) -> bool:
+        course: Course | None = self._course_repo.get_course(course_id)
+        if course is None:
+            return False
+        return self._course.viewer_has_lesson_access(
+            course,
+            course_id=course_id,
+            cognito_sub=cognito_sub,
+            role=role,
         )
 
 
@@ -195,9 +228,13 @@ def build_aws_deps(cfg: AppConfig) -> AwsDeps:
     )
 
     authorizer = _CourseMutateAuthorizerAdapter(service)
+    course_read = _CourseReadAdapter(course_repo)
+    lesson_access = _StudentLessonAccessAdapter(service, course_repo)
     question_bank_service = QuestionBankService(
         course_mutate_authorizer=authorizer,
         question_bank_repo=qb_repo,
+        student_lesson_access=lesson_access,
+        course_read=course_read,
     )
 
     return AwsDeps(
