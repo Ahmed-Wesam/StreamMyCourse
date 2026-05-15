@@ -22,6 +22,7 @@ from helpers.factories import make_test_title
 from helpers.module_contract import (
     EXPECTED_CATALOG_FORBIDDEN_403,
     EXPECTED_ROLE_DENIAL_JSON,
+    require_lambda_json_or_skip,
     response_json_dict,
 )
 
@@ -39,6 +40,28 @@ def _owner_draft_course_with_module(
     assert cr.status_code == 201, cr.text
     module_id = str(cr.json()["moduleId"])
     return course.course_id, module_id
+
+
+def _qb_patch_options() -> list[dict[str, str]]:
+    return [{"key": "A", "text": "a"}, {"key": "B", "text": "b"}]
+
+
+def _draft_bank_with_question_ids(
+    api: ApiClient, course_factory, *, label: str
+) -> tuple[str, str, str]:
+    course_id, _mid = _owner_draft_course_with_module(api, course_factory, label=label)
+    br = api.create_question_bank(course_id)
+    assert br.status_code == 201, br.text
+    bank_id = str(br.json()["questionBankId"])
+    dr = api.create_draft_question(
+        course_id,
+        bank_id,
+        prompt_text="perm-q?",
+        options_json=_qb_patch_options(),
+        correct_option_key="A",
+    )
+    assert dr.status_code == 201, dr.text
+    return course_id, bank_id, str(dr.json()["questionId"])
 
 
 def test_owner_can_create_question_bank(api: ApiClient, course_factory) -> None:
@@ -106,6 +129,60 @@ def test_student_cannot_create_module_quiz(
     resp = student_api.create_module_quiz(course_id, module_id)
     assert resp.status_code in (401, 403), f"Expected 401 or 403, got {resp.status_code}: {resp.text}"
     body = response_json_dict(resp)
+    code = body.get("code")
+    if code not in ("unauthorized", "forbidden"):
+        pytest.fail(f"{EXPECTED_ROLE_DENIAL_JSON} status={resp.status_code} body={body!r}")
+
+
+def test_alt_teacher_cannot_patch_draft_question(
+    api: ApiClient, alt_api: ApiClient, course_factory
+) -> None:
+    course_id, bank_id, qid = _draft_bank_with_question_ids(
+        api, course_factory, label="qb-perm-alt-patch"
+    )
+    resp = alt_api.patch_question(course_id, bank_id, qid, body={"promptText": "nope"})
+    body = require_lambda_json_or_skip(resp, hint="PATCH question alt teacher")
+    assert resp.status_code == 403, resp.text
+    if body.get("code") != "forbidden":
+        pytest.fail(f"{EXPECTED_CATALOG_FORBIDDEN_403} Got: {body!r}")
+
+
+def test_student_cannot_patch_draft_question(
+    api: ApiClient, student_api: ApiClient, course_factory
+) -> None:
+    course_id, bank_id, qid = _draft_bank_with_question_ids(
+        api, course_factory, label="qb-perm-student-patch"
+    )
+    resp = student_api.patch_question(course_id, bank_id, qid, body={"promptText": "nope"})
+    body = require_lambda_json_or_skip(resp, hint="PATCH question student")
+    assert resp.status_code in (401, 403), resp.text
+    code = body.get("code")
+    if code not in ("unauthorized", "forbidden"):
+        pytest.fail(f"{EXPECTED_ROLE_DENIAL_JSON} status={resp.status_code} body={body!r}")
+
+
+def test_alt_teacher_cannot_delete_draft_question(
+    api: ApiClient, alt_api: ApiClient, course_factory
+) -> None:
+    course_id, bank_id, qid = _draft_bank_with_question_ids(
+        api, course_factory, label="qb-perm-alt-del-q"
+    )
+    resp = alt_api.delete_question_bank_question(course_id, bank_id, qid)
+    body = require_lambda_json_or_skip(resp, hint="DELETE question alt teacher")
+    assert resp.status_code == 403, resp.text
+    if body.get("code") != "forbidden":
+        pytest.fail(f"{EXPECTED_CATALOG_FORBIDDEN_403} Got: {body!r}")
+
+
+def test_student_cannot_delete_draft_question(
+    api: ApiClient, student_api: ApiClient, course_factory
+) -> None:
+    course_id, bank_id, qid = _draft_bank_with_question_ids(
+        api, course_factory, label="qb-perm-student-del-q"
+    )
+    resp = student_api.delete_question_bank_question(course_id, bank_id, qid)
+    body = require_lambda_json_or_skip(resp, hint="DELETE question student")
+    assert resp.status_code in (401, 403), resp.text
     code = body.get("code")
     if code not in ("unauthorized", "forbidden"):
         pytest.fail(f"{EXPECTED_ROLE_DENIAL_JSON} status={resp.status_code} body={body!r}")

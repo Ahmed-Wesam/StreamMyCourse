@@ -144,6 +144,31 @@ class ApiClient:
             json={"n": n, "moduleId": module_id},
         )
 
+    def patch_question(
+        self,
+        course_id: str,
+        bank_id: str,
+        question_id: str,
+        *,
+        body: Dict[str, Any],
+    ) -> httpx.Response:
+        """PATCH /courses/{courseId}/question-banks/{questionBankId}/questions/{questionId}."""
+        return self._client.patch(
+            f"/courses/{course_id}/question-banks/{bank_id}/questions/{question_id}",
+            json=body,
+        )
+
+    def delete_question_bank_question(
+        self,
+        course_id: str,
+        bank_id: str,
+        question_id: str,
+    ) -> httpx.Response:
+        """DELETE /courses/{courseId}/question-banks/{questionBankId}/questions/{questionId}."""
+        return self._client.delete(
+            f"/courses/{course_id}/question-banks/{bank_id}/questions/{question_id}",
+        )
+
     def create_lesson(self, course_id: str, *, title: str, module_id: str | None = None) -> httpx.Response:
         body: Dict[str, Any] = {"title": title}
         if module_id:
