@@ -70,11 +70,55 @@ class ApiClient:
         """POST /courses/{courseId}/question-banks — body optional (empty object)."""
         return self._client.post(f"/courses/{course_id}/question-banks", json={})
 
-    def create_module_quiz(self, course_id: str, module_id: str) -> httpx.Response:
-        """POST /courses/{courseId}/modules/{moduleId}/quiz — creates module_quiz without bank link."""
+    def create_module_quiz(
+        self,
+        course_id: str,
+        module_id: str,
+        *,
+        question_bank_id: str | None = None,
+    ) -> httpx.Response:
+        """POST /courses/{courseId}/modules/{moduleId}/quiz — optional ``questionBankId`` links the quiz row."""
+        body: Dict[str, Any] = {}
+        if question_bank_id:
+            body["questionBankId"] = question_bank_id
         return self._client.post(
             f"/courses/{course_id}/modules/{module_id}/quiz",
-            json={},
+            json=body,
+        )
+
+    def create_draft_question(
+        self,
+        course_id: str,
+        bank_id: str,
+        *,
+        prompt_text: str,
+        options_json: Any,
+        correct_option_key: str | None = None,
+    ) -> httpx.Response:
+        """POST /courses/{courseId}/question-banks/{questionBankId}/questions."""
+        payload: Dict[str, Any] = {
+            "promptText": prompt_text,
+            "optionsJson": options_json,
+        }
+        if correct_option_key is not None:
+            payload["correctOptionKey"] = correct_option_key
+        return self._client.post(
+            f"/courses/{course_id}/question-banks/{bank_id}/questions",
+            json=payload,
+        )
+
+    def publish_question_bank(
+        self,
+        course_id: str,
+        bank_id: str,
+        *,
+        n: int,
+        module_id: str,
+    ) -> httpx.Response:
+        """POST /courses/{courseId}/question-banks/{questionBankId}/publish."""
+        return self._client.post(
+            f"/courses/{course_id}/question-banks/{bank_id}/publish",
+            json={"n": n, "moduleId": module_id},
         )
 
     def create_lesson(self, course_id: str, *, title: str, module_id: str | None = None) -> httpx.Response:

@@ -8,7 +8,7 @@ from typing import Any, List, Optional, Sequence, Tuple
 import pytest
 from psycopg2 import errors as pg_errors
 
-from services.common.errors import BadRequest, Conflict
+from services.common.errors import BadRequest, Conflict, NotFound
 from services.question_banks.rds_repo import QuestionBankRdsRepository
 
 
@@ -16,6 +16,7 @@ from services.question_banks.rds_repo import QuestionBankRdsRepository
 class FakeCursor:
     executions: List[Tuple[str, Tuple[Any, ...]]] = field(default_factory=list)
     rows_to_return: List[Tuple[Any, ...]] = field(default_factory=list)
+    fetchall_batches: List[List[Tuple[Any, ...]]] = field(default_factory=list)
     rowcount: int = 1
     _execute_impl: Any = None
 
@@ -28,6 +29,11 @@ class FakeCursor:
         if not self.rows_to_return:
             return None
         return self.rows_to_return.pop(0)
+
+    def fetchall(self) -> List[Tuple[Any, ...]]:
+        if not self.fetchall_batches:
+            return []
+        return self.fetchall_batches.pop(0)
 
     def __enter__(self) -> "FakeCursor":
         return self
@@ -137,3 +143,126 @@ def test_insert_module_quiz_success_returns_id() -> None:
     insert_sql = [e[0] for e in fake.cursor_obj.executions if "INSERT INTO module_quizzes" in e[0]]
     assert insert_sql
     assert "VALUES (%s, %s, %s, %s)" in insert_sql[0]
+
+
+def _publish_cursor_success(*, draft_total: int = 2) -> FakeCursor:
+    cur = FakeCursor()
+    cur.rows_to_return = [
+        ("bank-1", "DRAFT"),
+        (draft_total,),
+        (0,),
+    ]
+    cur.fetchall_batches = [
+        [
+            ("A", [{"key": "A", "text": "a"}]),
+            ("B", [{"key": "B", "text": "b"}]),
+        ][:draft_total]
+    ]
+
+    def on_execute(c: FakeCursor, sql: str, params: Tuple[Any, ...]) -> None:
+        if "UPDATE questions" in sql and "SET status = 'PUBLISHED'" in sql:
+            c.rowcount = draft_total
+        elif "UPDATE question_banks" in sql:
+            c.rowcount = 1
+        elif "UPDATE module_quizzes" in sql:
+            c.rowcount = 1
+
+    cur._execute_impl = on_execute
+    return cur
+
+
+def test_publish_bank_transaction_commits_on_success() -> None:
+    fake = FakeConn(cursor_obj=_publish_cursor_success())
+    repo = QuestionBankRdsRepository(lambda: fake)
+
+    repo.publish_bank_transaction(
+        course_id="c1", bank_id="b1", module_id="m1", n=2
+    )
+
+    assert fake.committed == 1
+    assert fake.rolled_back == 0
+    sqls = " ".join(e[0] for e in fake.cursor_obj.executions)
+    assert "FOR UPDATE" in sqls
+    assert "UPDATE module_quizzes" in sqls
+
+
+def test_publish_bank_transaction_conflict_when_bank_not_draft() -> None:
+    cur = FakeCursor()
+    cur.rows_to_return = [("bank-1", "PUBLISHED")]
+    fake = FakeConn(cursor_obj=cur)
+    repo = QuestionBankRdsRepository(lambda: fake)
+
+    with pytest.raises(Conflict, match="not in DRAFT"):
+        repo.publish_bank_transaction(
+            course_id="c1", bank_id="b1", module_id="m1", n=1
+        )
+    assert fake.rolled_back == 1
+    assert fake.committed == 0
+
+
+def test_publish_bank_transaction_not_found_when_bank_missing() -> None:
+    cur = FakeCursor()
+    cur.rows_to_return = []
+    fake = FakeConn(cursor_obj=cur)
+    repo = QuestionBankRdsRepository(lambda: fake)
+
+    with pytest.raises(NotFound, match="Question bank not found"):
+        repo.publish_bank_transaction(
+            course_id="c1", bank_id="b1", module_id="m1", n=1
+        )
+    assert fake.rolled_back == 1
+
+
+def test_publish_bank_transaction_bad_request_no_module_quiz_link() -> None:
+    cur = _publish_cursor_success(draft_total=1)
+    cur.fetchall_batches = [[("A", [{"key": "A", "text": "a"}])]]
+
+    def on_execute(c: FakeCursor, sql: str, params: Tuple[Any, ...]) -> None:
+        if "UPDATE questions" in sql and "SET status = 'PUBLISHED'" in sql:
+            c.rowcount = 1
+        elif "UPDATE question_banks" in sql:
+            c.rowcount = 1
+        elif "UPDATE module_quizzes" in sql:
+            c.rowcount = 0
+
+    cur._execute_impl = on_execute
+    fake = FakeConn(cursor_obj=cur)
+    repo = QuestionBankRdsRepository(lambda: fake)
+
+    with pytest.raises(BadRequest, match="No module quiz row"):
+        repo.publish_bank_transaction(
+            course_id="c1", bank_id="b1", module_id="m1", n=1
+        )
+    assert fake.rolled_back == 1
+
+
+def test_publish_bank_transaction_rejects_invalid_correct_key() -> None:
+    cur = FakeCursor()
+    cur.rows_to_return = [("bank-1", "DRAFT"), (1,), (0,)]
+    cur.fetchall_batches = [[("Z", [{"key": "A", "text": "a"}])]]
+    fake = FakeConn(cursor_obj=cur)
+    repo = QuestionBankRdsRepository(lambda: fake)
+
+    with pytest.raises(BadRequest, match="correctOptionKey"):
+        repo.publish_bank_transaction(
+            course_id="c1", bank_id="b1", module_id="m1", n=1
+        )
+    assert fake.rolled_back == 1
+
+
+def test_publish_bank_transaction_detects_draft_set_changed() -> None:
+    cur = _publish_cursor_success(draft_total=2)
+
+    def on_execute(c: FakeCursor, sql: str, params: Tuple[Any, ...]) -> None:
+        if "UPDATE questions" in sql and "SET status = 'PUBLISHED'" in sql:
+            c.rowcount = 1
+
+    cur._execute_impl = on_execute
+    fake = FakeConn(cursor_obj=cur)
+    repo = QuestionBankRdsRepository(lambda: fake)
+
+    with pytest.raises(BadRequest, match="draft question set changed"):
+        repo.publish_bank_transaction(
+            course_id="c1", bank_id="b1", module_id="m1", n=2
+        )
+    assert fake.rolled_back == 1
