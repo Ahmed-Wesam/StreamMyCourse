@@ -454,10 +454,7 @@ describe('LessonPlayerPage', () => {
 
     renderLessonPlayer('/courses/c1/lessons/l1')
 
-    const quizOnlyToggle = await screen.findByRole('button', { name: 'Quiz Only Section' })
-    if (quizOnlyToggle?.getAttribute('aria-expanded') !== 'true') {
-      fireEvent.click(quizOnlyToggle)
-    }
+    expect(await screen.findByRole('button', { name: 'Quiz Only Section' })).toBeTruthy()
     const quizLink = await screen.findByRole('link', { name: /Module quiz/i })
     expect(quizLink.getAttribute('href')).toBe('/courses/c1/modules/m2/quiz')
   })
