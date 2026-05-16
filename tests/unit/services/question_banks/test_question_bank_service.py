@@ -12,8 +12,9 @@ from services.question_banks.models import Question, QuestionBank
 from services.question_banks.service import QuestionBankService
 
 _COURSE_ID = "course-11111111-1111-1111-1111-111111111111"
+_OTHER_COURSE_ID = "course-99999999-9999-9999-9999-999999999999"
 _MODULE_ID = "module-22222222-2222-2222-2222-222222222222"
-_BANK_ID = "bank-33333333-3333-3333-3333-333333333333"
+_BANK_ID = "33333333-3333-4333-8333-333333333333"
 _QUESTION_ID = "quest-44444444-4444-4444-4444-444444444444"
 _COGNITO_SUB = "cognito-sub-actor"
 _ROLE = "teacher"
@@ -165,7 +166,7 @@ def test_authorizer_called_before_insert_module_quiz() -> None:
     repo = MagicMock()
     repo.insert_module_quiz.return_value = "new-quiz-id"
     repo.get_question_bank_by_id.return_value = QuestionBank(
-        id="optional-bank-id",
+        id=_BANK_ID,
         courseId=_COURSE_ID,
         status="DRAFT",
         createdAt="",
@@ -190,7 +191,7 @@ def test_authorizer_called_before_insert_module_quiz() -> None:
         _MODULE_ID,
         cognito_sub=_COGNITO_SUB,
         role=_ROLE,
-        question_bank_id="optional-bank-id",
+        question_bank_id=_BANK_ID,
     )
 
     assert result == "new-quiz-id"
@@ -201,6 +202,61 @@ def test_authorizer_called_before_insert_module_quiz() -> None:
     assert events[0][1] == (_COURSE_ID, _COGNITO_SUB, _ROLE)
     assert events[1][0] == "insert_module_quiz"
     repo.insert_module_quiz.assert_called_once()
+
+
+def test_create_module_quiz_requires_question_bank_id() -> None:
+    """Module quiz create rejects a missing ``questionBankId`` (BadRequest)."""
+    authorizer = MagicMock()
+    repo = MagicMock()
+    svc = _make_service(authorizer, repo)
+    with pytest.raises(BadRequest, match="questionBankId"):
+        svc.create_module_quiz(
+            _COURSE_ID,
+            _MODULE_ID,
+            cognito_sub=_COGNITO_SUB,
+            role=_ROLE,
+            question_bank_id=None,
+        )
+    repo.insert_module_quiz.assert_not_called()
+
+
+def test_create_module_quiz_requires_non_blank_question_bank_id() -> None:
+    """Whitespace-only ``questionBankId`` does not create a quiz row (BadRequest)."""
+    authorizer = MagicMock()
+    repo = MagicMock()
+    svc = _make_service(authorizer, repo)
+    with pytest.raises(BadRequest, match="questionBankId"):
+        svc.create_module_quiz(
+            _COURSE_ID,
+            _MODULE_ID,
+            cognito_sub=_COGNITO_SUB,
+            role=_ROLE,
+            question_bank_id="   ",
+        )
+    repo.insert_module_quiz.assert_not_called()
+
+
+def test_create_module_quiz_rejects_question_bank_from_other_course() -> None:
+    """Bank id must belong to ``course_id`` (BadRequest; no cross-course link)."""
+    authorizer = MagicMock()
+    repo = MagicMock()
+    repo.get_question_bank_by_id.return_value = QuestionBank(
+        id=_BANK_ID,
+        courseId=_OTHER_COURSE_ID,
+        status="DRAFT",
+        createdAt="",
+        updatedAt="",
+    )
+    svc = _make_service(authorizer, repo)
+    with pytest.raises(BadRequest, match="course"):
+        svc.create_module_quiz(
+            _COURSE_ID,
+            _MODULE_ID,
+            cognito_sub=_COGNITO_SUB,
+            role=_ROLE,
+            question_bank_id=_BANK_ID,
+        )
+    repo.insert_module_quiz.assert_not_called()
 
 
 def test_forbidden_from_authorizer_propagates() -> None:
@@ -954,3 +1010,37 @@ def test_list_questions_for_publisher_scope_failure_before_repo() -> None:
             role=_ROLE,
         )
     repo.get_bank_for_course.assert_not_called()
+
+
+def test_list_module_quizzes_for_course_calls_publisher_read_scope_then_repo() -> None:
+    """QB-L Plan 2: ``list_module_quizzes_for_course`` delegates to repo only after publisher read scope."""
+    authorizer = MagicMock()
+    repo = MagicMock()
+    repo.list_module_quizzes_for_course.return_value = []
+    svc = _make_service(authorizer, repo)
+    out = svc.list_module_quizzes_for_course(
+        _READ_COURSE_ID,
+        cognito_sub=_COGNITO_SUB,
+        role=_ROLE,
+    )
+    assert out == []
+    authorizer.ensure_course_publisher_read_scope.assert_called_once_with(
+        _READ_COURSE_ID, cognito_sub=_COGNITO_SUB, role=_ROLE
+    )
+    repo.list_module_quizzes_for_course.assert_called_once_with(course_id=_READ_COURSE_ID)
+
+
+def test_list_module_quizzes_for_course_scope_failure_before_repo() -> None:
+    authorizer = MagicMock()
+    repo = MagicMock()
+    authorizer.ensure_course_publisher_read_scope.side_effect = NotFound(
+        "Course not found", code="not_found"
+    )
+    svc = _make_service(authorizer, repo)
+    with pytest.raises(NotFound, match="Course not found"):
+        svc.list_module_quizzes_for_course(
+            _READ_COURSE_ID,
+            cognito_sub=_COGNITO_SUB,
+            role=_ROLE,
+        )
+    repo.list_module_quizzes_for_course.assert_not_called()

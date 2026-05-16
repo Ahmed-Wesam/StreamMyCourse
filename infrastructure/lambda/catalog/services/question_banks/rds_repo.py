@@ -417,6 +417,43 @@ class QuestionBankRdsRepository:
             )
         return out
 
+    def list_module_quizzes_for_course(self, *, course_id: str) -> list[ModuleQuiz]:
+        cur = self._execute(
+            """
+            SELECT mq.id, mq.course_id, mq.module_id, mq.question_bank_id, mq.served_count_n,
+                   mq.created_at, mq.updated_at
+            FROM module_quizzes mq
+            INNER JOIN course_modules cm
+              ON cm.course_id = mq.course_id AND cm.id = mq.module_id
+            WHERE mq.course_id = %s
+            ORDER BY cm.module_order ASC, mq.module_id ASC
+            """,
+            (course_id,),
+        )
+        out: list[ModuleQuiz] = []
+        for row in cur.fetchall():
+            (
+                qid,
+                cid,
+                mid,
+                bank_id,
+                served_n,
+                created_at,
+                updated_at,
+            ) = row
+            out.append(
+                ModuleQuiz(
+                    id=str(qid),
+                    courseId=str(cid),
+                    moduleId=str(mid),
+                    questionBankId=str(bank_id) if bank_id is not None else None,
+                    servedCountN=int(served_n) if served_n is not None else None,
+                    createdAt=_to_iso(created_at),
+                    updatedAt=_to_iso(updated_at),
+                )
+            )
+        return out
+
     def list_questions_for_course_bank(
         self, *, course_id: str, bank_id: str
     ) -> list[Question]:

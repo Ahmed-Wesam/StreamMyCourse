@@ -4,6 +4,27 @@
 
 ---
 
+## 2026-05-15 — QB-L Plan 2: publisher GET module-quizzes + POST quiz requires bank
+
+### Completed
+
+- [x] **GET module quizzes** — `GET /courses/{courseId}/module-quizzes`: [`controller.py`](infrastructure/lambda/catalog/services/question_banks/controller.py); [`QuestionBankService.list_module_quizzes_for_course`](infrastructure/lambda/catalog/services/question_banks/service.py); [`rds_repo.py`](infrastructure/lambda/catalog/services/question_banks/rds_repo.py) `list_module_quizzes_for_course` (JOIN `course_modules`, order by `module_order` then `module_id`). **200** array of `{ quizId, moduleId, questionBankId, servedCountN, createdAt, updatedAt }`; only rows in `module_quizzes` — no row → omitted from list (aggregate **[]** when none).
+- [x] **POST module quiz contract** — `POST …/modules/{moduleId}/quiz` body **must** include `questionBankId` (UUID for bank in this course); missing/blank/invalid/unknown → **400** `bad_request`; bank in another course → **400** with message referencing course mismatch.
+- [x] **API Gateway** — [`api-stack.yaml`](infrastructure/templates/api-stack.yaml): `CourseModuleQuizzesResource`, GET + OPTIONS, Cognito; **CatalogApiDeploymentV26** + stage `DeploymentId`.
+- [x] **Tests** — integration expectations in [`test_question_bank_publisher_reads.py`](tests/integration/test_question_bank_publisher_reads.py), [`test_question_bank_permissions.py`](tests/integration/test_question_bank_permissions.py); unit routing + service in `tests/unit/services/question_banks/`.
+- [x] **Docs** — [`design.md`](design.md) §7; [`plans/architecture/module-map.md`](plans/architecture/module-map.md).
+
+### Verify
+
+```bash
+python scripts/check_lambda_boundaries.py
+python -m pytest tests/unit/services/question_banks/ -q
+```
+
+HTTPS: `pytest tests/integration/test_question_bank_publisher_reads.py tests/integration/test_question_bank_permissions.py -q` with env from [`tests/integration/README.md`](tests/integration/README.md) after deploy applies **V26**.
+
+---
+
 ## 2026-05-15 — QB-L: publisher GET question banks + questions
 
 ### Completed

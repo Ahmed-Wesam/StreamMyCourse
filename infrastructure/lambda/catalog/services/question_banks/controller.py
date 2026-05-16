@@ -65,6 +65,13 @@ def _route_question_banks(method: str, path: str) -> Tuple[str, Dict[str, str]]:
         return "list_question_banks", {"courseId": parts[1]}
     if (
         method == "GET"
+        and len(parts) == 3
+        and parts[0] == "courses"
+        and parts[2] == "module-quizzes"
+    ):
+        return "list_module_quizzes", {"courseId": parts[1]}
+    if (
+        method == "GET"
         and len(parts) == 5
         and parts[0] == "courses"
         and parts[2] == "question-banks"
@@ -162,6 +169,13 @@ def _route_question_banks(method: str, path: str) -> Tuple[str, Dict[str, str]]:
         return "options_question_bank_collection", {"courseId": parts[1]}
     if (
         method == "OPTIONS"
+        and len(parts) == 3
+        and parts[0] == "courses"
+        and parts[2] == "module-quizzes"
+    ):
+        return "options_module_quizzes_collection", {"courseId": parts[1]}
+    if (
+        method == "OPTIONS"
         and len(parts) == 5
         and parts[0] == "courses"
         and parts[2] == "question-banks"
@@ -241,6 +255,14 @@ def handle_question_banks_request(
             )
             return json_response(200, items, origin)
 
+        if action == "list_module_quizzes":
+            items = qb_svc.list_module_quizzes_for_course(
+                params["courseId"],
+                cognito_sub=_actor_sub(claims),
+                role=_actor_role(claims),
+            )
+            return json_response(200, items, origin)
+
         if action == "list_question_bank_questions":
             items = qb_svc.list_questions_for_publisher(
                 params["courseId"],
@@ -286,7 +308,7 @@ def handle_question_banks_request(
 
         if action == "create_module_quiz":
             body = parse_json_body(event)
-            qbid = optional_str(body, "questionBankId", "").strip() or None
+            qbid = require_str(body, "questionBankId")
             quiz_id = qb_svc.create_module_quiz(
                 params["courseId"],
                 params["moduleId"],
