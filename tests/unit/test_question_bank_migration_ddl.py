@@ -47,6 +47,8 @@ def test_006_migration_file_exists_and_encodes_cardinality() -> None:
     assert "name           VARCHAR(80)" in text
     assert "question_banks_name_non_empty" in text
     assert "CHECK (name IS NULL OR (length(btrim(name)) BETWEEN 1 AND 80))" in text
+    assert "uq_module_quizzes_course_question_bank" in text
+    assert "WHERE question_bank_id IS NOT NULL" in text
     assert "ALTER TABLE" not in text
     assert "DROP CONSTRAINT" not in text
 

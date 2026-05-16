@@ -4,6 +4,17 @@
 
 ---
 
+## 2026-05-16 — One module per question bank
+
+### Completed
+
+- [x] **Partial unique index** — [`006_question_banks_module_quizzes.sql`](infrastructure/database/migrations/006_question_banks_module_quizzes.sql): `uq_module_quizzes_course_question_bank`; applied on dev/prod via query-rds.
+- [x] **Service + repo** — pre-check in [`service.py`](infrastructure/lambda/catalog/services/question_banks/service.py) and unique-constraint mapping in [`rds_repo.py`](infrastructure/lambda/catalog/services/question_banks/rds_repo.py) for **409** `conflict` when a bank is already linked to a different module.
+- [x] **Teacher UI** — [`CourseManagementModuleQuizPanel`](frontend/src/components/course/CourseManagementModuleQuizPanel.tsx) filters the attach picker so banks already linked elsewhere in the course are not offered.
+- [x] **Integration test** — [`tests/integration/test_question_bank_one_bank_per_module.py`](tests/integration/test_question_bank_one_bank_per_module.py).
+
+---
+
 ## 2026-05-16 — CI security scanner baseline
 
 ### Completed

@@ -715,6 +715,31 @@ describe('CourseManagement', () => {
       })
     })
 
+    it('hides bank in attach picker when already linked to another module', async () => {
+      api.listCourseModuleQuizzes.mockResolvedValue([
+        { quizId: 'mq1', moduleId: 'm1', questionBankId: 'qb1', servedCountN: null },
+      ])
+      api.listCourseQuestionBanks.mockResolvedValue([
+        { questionBankId: 'qb1', name: 'Bank 1', status: 'DRAFT' },
+        { questionBankId: 'qb2', name: 'Bank 2', status: 'DRAFT' },
+      ])
+
+      renderCourseManagement()
+
+      const panel = await screen.findByTestId('course-management-module-quizzes')
+
+      const m1Row = within(panel).getByText('Section 1').closest('li')
+      expect(m1Row).toBeTruthy()
+      expect(within(m1Row as HTMLElement).getByText('Quiz linked')).toBeTruthy()
+      expect(within(m1Row as HTMLElement).getByText('Bank 1')).toBeTruthy()
+
+      const m2Row = within(panel).getByText('Section 2').closest('li')
+      expect(m2Row).toBeTruthy()
+      const m2Picker = within(m2Row as HTMLElement).getByLabelText(/^Question bank$/i)
+      expect(within(m2Picker).queryByRole('option', { name: /Bank 1 \(DRAFT\)/i })).toBeNull()
+      expect(within(m2Picker).getByRole('option', { name: /Bank 2 \(DRAFT\)/i })).toBeTruthy()
+    })
+
     it('shows linked quiz summaries with bank name and id', async () => {
       api.listCourseModules.mockResolvedValue([{ id: 'm1', title: 'Section 1', description: '', order: 0 }])
       api.listLessons.mockResolvedValue([

@@ -550,6 +550,11 @@ class QuestionBankService:
         cid = course_id.strip()
         if bank.courseId.strip() != cid:
             raise BadRequest("Question bank does not belong to this course")
+        existing = self._repo.get_module_quiz_by_question_bank_id(
+            course_id=cid, question_bank_id=bid
+        )
+        if existing is not None and existing.moduleId.strip() != module_id.strip():
+            raise Conflict("Question bank is already linked to another module")
         return self._repo.insert_module_quiz(
             course_id=course_id,
             module_id=module_id,

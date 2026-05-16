@@ -103,6 +103,13 @@ class QuestionBankRdsRepository:
             raise exc
         if isinstance(exc, pg_errors.UniqueViolation):
             if for_module_quiz:
+                constraint_name = getattr(
+                    getattr(exc, "diag", None), "constraint_name", None
+                )
+                if constraint_name == "uq_module_quizzes_course_question_bank":
+                    raise Conflict(
+                        "Question bank is already linked to another module"
+                    ) from exc
                 raise Conflict("Module already has a quiz") from exc
             raise Conflict("Question bank insert conflict") from exc
         if isinstance(exc, pg_errors.ForeignKeyViolation):
@@ -1276,6 +1283,40 @@ class QuestionBankRdsRepository:
         return ModuleQuiz(
             id=str(qid),
             courseId=str(course_id),
+            moduleId=str(mid),
+            questionBankId=str(bank_id) if bank_id is not None else None,
+            servedCountN=int(served_n) if served_n is not None else None,
+            createdAt=_to_iso(created_at),
+            updatedAt=_to_iso(updated_at),
+        )
+
+    def get_module_quiz_by_question_bank_id(
+        self, *, course_id: str, question_bank_id: str
+    ) -> Optional[ModuleQuiz]:
+        cur = self._execute(
+            """
+            SELECT id, course_id, module_id, question_bank_id, served_count_n,
+                   created_at, updated_at
+            FROM module_quizzes
+            WHERE course_id = %s AND question_bank_id = %s
+            """,
+            (course_id, question_bank_id),
+        )
+        row = cur.fetchone()
+        if not row:
+            return None
+        (
+            qid,
+            course_id_val,
+            mid,
+            bank_id,
+            served_n,
+            created_at,
+            updated_at,
+        ) = row
+        return ModuleQuiz(
+            id=str(qid),
+            courseId=str(course_id_val),
             moduleId=str(mid),
             questionBankId=str(bank_id) if bank_id is not None else None,
             servedCountN=int(served_n) if served_n is not None else None,
