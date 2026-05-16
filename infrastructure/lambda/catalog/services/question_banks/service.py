@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import random
 from typing import Any, Optional
+from uuid import UUID
 
 from services.common.errors import BadRequest, Conflict, NotFound
 from services.question_banks.binding_draw import draw_question_ids
@@ -22,6 +23,7 @@ from services.question_banks.models import (
     ModuleQuiz,
     ModuleQuizAttempt,
     PublishedQuestionGradingRow,
+    Question,
     QuestionBank,
     StudentModuleQuizBinding,
 )
@@ -420,6 +422,59 @@ class QuestionBankService:
         )
         return self._repo.insert_question_bank(course_id=course_id)
 
+    def list_question_banks_for_course(
+        self,
+        course_id: str,
+        *,
+        cognito_sub: str,
+        role: str,
+    ) -> list[dict[str, Any]]:
+        self._authorizer.ensure_course_publisher_read_scope(
+            course_id, cognito_sub=cognito_sub, role=role
+        )
+        banks = self._repo.list_question_banks_for_course(course_id=course_id)
+        return [
+            {
+                "questionBankId": b.id,
+                "status": b.status,
+                "createdAt": b.createdAt,
+                "updatedAt": b.updatedAt,
+            }
+            for b in banks
+        ]
+
+    def list_questions_for_publisher(
+        self,
+        course_id: str,
+        bank_id: str,
+        *,
+        cognito_sub: str,
+        role: str,
+    ) -> list[dict[str, Any]]:
+        self._authorizer.ensure_course_publisher_read_scope(
+            course_id, cognito_sub=cognito_sub, role=role
+        )
+        bid = (bank_id or "").strip()
+        if not _is_uuid_string(bid):
+            raise NotFound("Question bank not found for this course")
+        bank = self._repo.get_bank_for_course(course_id=course_id, bank_id=bid)
+        if bank is None:
+            raise NotFound("Question bank not found for this course")
+        rows = self._repo.list_questions_for_course_bank(
+            course_id=course_id, bank_id=bid
+        )
+        return [self._publisher_question_read_dict(q) for q in rows]
+
+    @staticmethod
+    def _publisher_question_read_dict(q: Question) -> dict[str, Any]:
+        return {
+            "questionId": q.id,
+            "status": q.status,
+            "promptText": q.promptText,
+            "optionsJson": _parse_options_json(q.optionsJson),
+            "correctOptionKey": q.correctOptionKey,
+        }
+
     def create_module_quiz(
         self,
         course_id: str,
@@ -650,3 +705,11 @@ def _parse_options_json(raw: str) -> Any:
         return json.loads(text)
     except json.JSONDecodeError:
         return raw
+
+
+def _is_uuid_string(value: str) -> bool:
+    try:
+        UUID(value)
+        return True
+    except (ValueError, TypeError, AttributeError):
+        return False

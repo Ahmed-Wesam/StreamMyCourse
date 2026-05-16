@@ -4,6 +4,28 @@
 
 ---
 
+## 2026-05-15 — QB-L: publisher GET question banks + questions
+
+### Completed
+
+- [x] **GET list banks** — `GET /courses/{courseId}/question-banks`: [`controller.py`](infrastructure/lambda/catalog/services/question_banks/controller.py); [`QuestionBankService.list_question_banks_for_course`](infrastructure/lambda/catalog/services/question_banks/service.py); [`rds_repo.py`](infrastructure/lambda/catalog/services/question_banks/rds_repo.py) `list_question_banks_for_course`; **200** JSON array `{ questionBankId, status, createdAt, updatedAt }`; empty course **[]**.
+- [x] **GET list questions** — `GET /courses/{courseId}/question-banks/{questionBankId}/questions`: same layers + `list_questions_for_publisher` / `list_questions_for_course_bank`; **200** array with `questionId`, `status`, `promptText`, `optionsJson`, `correctOptionKey`; wrong bank → **404** `not_found`.
+- [x] **Auth** — [`CourseManagementService.ensure_publisher_question_bank_read`](infrastructure/lambda/catalog/services/course_management/service.py) + [`CourseMutateAuthorizerPort.ensure_course_publisher_read_scope`](infrastructure/lambda/catalog/services/question_banks/ports.py) / [`bootstrap.py`](infrastructure/lambda/catalog/bootstrap.py): same predicate as `_can_manage_course_unenrolled`, **404** on denial (parity with GET modules/lessons on drafts).
+- [x] **API Gateway** — [`api-stack.yaml`](infrastructure/templates/api-stack.yaml): `CourseQuestionBanksGetMethod`, `CourseQuestionBankQuestionsGetMethod` (Cognito + AWS_PROXY); **CatalogApiDeploymentV25** + stage `DeploymentId` + `DependsOn`.
+- [x] **Tests** — integration: [`tests/integration/test_question_bank_publisher_reads.py`](tests/integration/test_question_bank_publisher_reads.py); helpers [`tests/integration/helpers/api.py`](tests/integration/helpers/api.py) `list_question_banks`, `list_question_bank_questions`. Unit: list GET paths in [`test_question_bank_service.py`](tests/unit/services/question_banks/test_question_bank_service.py); `ensure_publisher_question_bank_read` in [`test_service.py`](tests/unit/services/course_management/test_service.py) `TestEnsurePublisherQuestionBankRead`.
+- [x] **Docs** — [`design.md`](design.md) §7 (GET lines + deployment note **V25**).
+
+### Verify
+
+```bash
+python scripts/check_lambda_boundaries.py
+python -m pytest tests/unit/services/question_banks/ -q
+```
+
+HTTPS: `python -m pytest tests/integration/test_question_bank_publisher_reads.py -q` with env from [`tests/integration/README.md`](tests/integration/README.md) after deploy applies **V25** (same bar as other catalog integration tests).
+
+---
+
 ## 2026-05-15 — QB-K: instructor question HTTP (post-publish add, PATCH/DELETE)
 
 ### Completed

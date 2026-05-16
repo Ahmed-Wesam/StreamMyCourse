@@ -57,6 +57,24 @@ def _actor_role(claims: Dict[str, Any]) -> str:
 def _route_question_banks(method: str, path: str) -> Tuple[str, Dict[str, str]]:
     parts = [p for p in path.split("/") if p]
     if (
+        method == "GET"
+        and len(parts) == 3
+        and parts[0] == "courses"
+        and parts[2] == "question-banks"
+    ):
+        return "list_question_banks", {"courseId": parts[1]}
+    if (
+        method == "GET"
+        and len(parts) == 5
+        and parts[0] == "courses"
+        and parts[2] == "question-banks"
+        and parts[4] == "questions"
+    ):
+        return "list_question_bank_questions", {
+            "courseId": parts[1],
+            "questionBankId": parts[3],
+        }
+    if (
         method == "POST"
         and len(parts) == 3
         and parts[0] == "courses"
@@ -214,6 +232,23 @@ def handle_question_banks_request(
     try:
         if not _actor_sub(claims):
             raise Unauthorized("Authentication required")
+
+        if action == "list_question_banks":
+            items = qb_svc.list_question_banks_for_course(
+                params["courseId"],
+                cognito_sub=_actor_sub(claims),
+                role=_actor_role(claims),
+            )
+            return json_response(200, items, origin)
+
+        if action == "list_question_bank_questions":
+            items = qb_svc.list_questions_for_publisher(
+                params["courseId"],
+                params["questionBankId"],
+                cognito_sub=_actor_sub(claims),
+                role=_actor_role(claims),
+            )
+            return json_response(200, items, origin)
 
         if action == "create_question_bank":
             bank_id = qb_svc.create_question_bank(

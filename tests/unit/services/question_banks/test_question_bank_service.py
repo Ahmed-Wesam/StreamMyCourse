@@ -791,3 +791,166 @@ def test_update_question_not_found_when_course_mismatch() -> None:
             cognito_sub=_COGNITO_SUB,
             role=_ROLE,
         )
+
+
+# Valid UUIDs required by ``list_questions_for_publisher`` (``UUID`` gate) and
+# ``ensure_publisher_question_bank_read`` (``_is_valid_uuid`` on course id).
+_READ_COURSE_ID = "11111111-1111-4111-8111-111111111111"
+_READ_BANK_ID = "22222222-2222-4222-8222-222222222222"
+_READ_Q_ID = "33333333-3333-4333-8333-333333333333"
+
+
+def test_list_question_banks_calls_publisher_read_scope_then_repo() -> None:
+    authorizer = MagicMock()
+    repo = MagicMock()
+    repo.list_question_banks_for_course.return_value = []
+    svc = _make_service(authorizer, repo)
+    out = svc.list_question_banks_for_course(
+        _READ_COURSE_ID,
+        cognito_sub=_COGNITO_SUB,
+        role=_ROLE,
+    )
+    assert out == []
+    authorizer.ensure_course_publisher_read_scope.assert_called_once_with(
+        _READ_COURSE_ID, cognito_sub=_COGNITO_SUB, role=_ROLE
+    )
+    repo.list_question_banks_for_course.assert_called_once_with(
+        course_id=_READ_COURSE_ID
+    )
+
+
+def test_list_question_banks_maps_repo_rows() -> None:
+    authorizer = MagicMock()
+    repo = MagicMock()
+    repo.list_question_banks_for_course.return_value = [
+        QuestionBank(
+            id=_READ_BANK_ID,
+            courseId=_READ_COURSE_ID,
+            status="DRAFT",
+            createdAt="2026-01-01T00:00:00Z",
+            updatedAt="2026-01-02T00:00:00Z",
+        )
+    ]
+    svc = _make_service(authorizer, repo)
+    out = svc.list_question_banks_for_course(
+        _READ_COURSE_ID,
+        cognito_sub=_COGNITO_SUB,
+        role=_ROLE,
+    )
+    assert out == [
+        {
+            "questionBankId": _READ_BANK_ID,
+            "status": "DRAFT",
+            "createdAt": "2026-01-01T00:00:00Z",
+            "updatedAt": "2026-01-02T00:00:00Z",
+        }
+    ]
+
+
+def test_list_question_banks_not_found_when_publisher_scope_denies() -> None:
+    authorizer = MagicMock()
+    repo = MagicMock()
+    authorizer.ensure_course_publisher_read_scope.side_effect = NotFound(
+        "Course not found", code="not_found"
+    )
+    svc = _make_service(authorizer, repo)
+    with pytest.raises(NotFound, match="Course not found"):
+        svc.list_question_banks_for_course(
+            _READ_COURSE_ID,
+            cognito_sub=_COGNITO_SUB,
+            role=_ROLE,
+        )
+    repo.list_question_banks_for_course.assert_not_called()
+
+
+def test_list_questions_for_publisher_success_options_json_parsed() -> None:
+    authorizer = MagicMock()
+    repo = MagicMock()
+    repo.get_bank_for_course.return_value = QuestionBank(
+        id=_READ_BANK_ID,
+        courseId=_READ_COURSE_ID,
+        status="DRAFT",
+        createdAt="",
+        updatedAt="",
+    )
+    repo.list_questions_for_course_bank.return_value = [
+        Question(
+            id=_READ_Q_ID,
+            bankId=_READ_BANK_ID,
+            courseId=_READ_COURSE_ID,
+            status="DRAFT",
+            correctOptionKey="A",
+            promptText="Hi?",
+            optionsJson='[{"key": "A", "text": "one"}]',
+            createdAt="",
+            updatedAt="",
+        )
+    ]
+    svc = _make_service(authorizer, repo)
+    out = svc.list_questions_for_publisher(
+        _READ_COURSE_ID,
+        _READ_BANK_ID,
+        cognito_sub=_COGNITO_SUB,
+        role=_ROLE,
+    )
+    assert len(out) == 1
+    assert out[0]["questionId"] == _READ_Q_ID
+    assert out[0]["status"] == "DRAFT"
+    assert out[0]["promptText"] == "Hi?"
+    assert out[0]["correctOptionKey"] == "A"
+    assert out[0]["optionsJson"] == [{"key": "A", "text": "one"}]
+    authorizer.ensure_course_publisher_read_scope.assert_called_once_with(
+        _READ_COURSE_ID, cognito_sub=_COGNITO_SUB, role=_ROLE
+    )
+    repo.get_bank_for_course.assert_called_once_with(
+        course_id=_READ_COURSE_ID, bank_id=_READ_BANK_ID
+    )
+    repo.list_questions_for_course_bank.assert_called_once_with(
+        course_id=_READ_COURSE_ID, bank_id=_READ_BANK_ID
+    )
+
+
+def test_list_questions_for_publisher_bank_not_found() -> None:
+    authorizer = MagicMock()
+    repo = MagicMock()
+    repo.get_bank_for_course.return_value = None
+    svc = _make_service(authorizer, repo)
+    with pytest.raises(NotFound, match="Question bank not found"):
+        svc.list_questions_for_publisher(
+            _READ_COURSE_ID,
+            _READ_BANK_ID,
+            cognito_sub=_COGNITO_SUB,
+            role=_ROLE,
+        )
+    repo.list_questions_for_course_bank.assert_not_called()
+
+
+def test_list_questions_for_publisher_invalid_bank_id() -> None:
+    authorizer = MagicMock()
+    repo = MagicMock()
+    svc = _make_service(authorizer, repo)
+    with pytest.raises(NotFound, match="Question bank not found"):
+        svc.list_questions_for_publisher(
+            _READ_COURSE_ID,
+            "not-a-uuid",
+            cognito_sub=_COGNITO_SUB,
+            role=_ROLE,
+        )
+    repo.get_bank_for_course.assert_not_called()
+
+
+def test_list_questions_for_publisher_scope_failure_before_repo() -> None:
+    authorizer = MagicMock()
+    repo = MagicMock()
+    authorizer.ensure_course_publisher_read_scope.side_effect = NotFound(
+        "Course not found", code="not_found"
+    )
+    svc = _make_service(authorizer, repo)
+    with pytest.raises(NotFound):
+        svc.list_questions_for_publisher(
+            _READ_COURSE_ID,
+            _READ_BANK_ID,
+            cognito_sub=_COGNITO_SUB,
+            role=_ROLE,
+        )
+    repo.get_bank_for_course.assert_not_called()

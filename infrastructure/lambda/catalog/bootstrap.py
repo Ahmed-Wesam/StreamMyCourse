@@ -73,6 +73,13 @@ class _CourseMutateAuthorizerAdapter:
             course_id, cognito_sub=cognito_sub, role=role
         )
 
+    def ensure_course_publisher_read_scope(
+        self, course_id: str, *, cognito_sub: str, role: str
+    ) -> None:
+        self._course.ensure_publisher_question_bank_read(
+            course_id, cognito_sub=cognito_sub, role=role
+        )
+
 
 @dataclass(frozen=True)
 class _CourseReadAdapter:

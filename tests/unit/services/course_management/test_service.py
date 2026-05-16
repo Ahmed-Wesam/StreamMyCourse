@@ -1474,6 +1474,62 @@ class TestEnsureCanModifyCourse:
         repo.get_course.assert_not_called()
 
 
+class TestEnsurePublisherQuestionBankRead:
+    """Publisher GET scope: 404 ``not_found`` on denial (parity with draft GET modules)."""
+
+    def test_invalid_course_uuid_raises_not_found(
+        self, service: CourseManagementService, repo: MagicMock
+    ) -> None:
+        with pytest.raises(NotFound, match="Course not found"):
+            service.ensure_publisher_question_bank_read(
+                "not-a-uuid", cognito_sub="teacher-sub", role="teacher"
+            )
+        repo.get_course.assert_not_called()
+
+    def test_missing_course_raises_not_found(
+        self, service: CourseManagementService, repo: MagicMock
+    ) -> None:
+        repo.get_course.return_value = None
+        with pytest.raises(NotFound, match="Course not found"):
+            service.ensure_publisher_question_bank_read(
+                _VID, cognito_sub="teacher-sub", role="teacher"
+            )
+
+    def test_non_owner_teacher_raises_not_found_not_forbidden(
+        self, service: CourseManagementService, repo: MagicMock
+    ) -> None:
+        repo.get_course.return_value = _course(id_=_VID, created_by="owner-sub")
+        with pytest.raises(NotFound, match="Course not found"):
+            service.ensure_publisher_question_bank_read(
+                _VID, cognito_sub="other-sub", role="teacher"
+            )
+
+    def test_student_raises_not_found(
+        self, service: CourseManagementService, repo: MagicMock
+    ) -> None:
+        repo.get_course.return_value = _course(id_=_VID, created_by="owner-sub")
+        with pytest.raises(NotFound, match="Course not found"):
+            service.ensure_publisher_question_bank_read(
+                _VID, cognito_sub="student-sub", role="student"
+            )
+
+    def test_owner_teacher_passes(
+        self, service: CourseManagementService, repo: MagicMock
+    ) -> None:
+        repo.get_course.return_value = _course(id_=_VID, created_by="teacher-sub")
+        service.ensure_publisher_question_bank_read(
+            _VID, cognito_sub="teacher-sub", role="teacher"
+        )
+
+    def test_admin_passes_with_course_loaded(
+        self, service: CourseManagementService, repo: MagicMock
+    ) -> None:
+        repo.get_course.return_value = _course(id_=_VID, created_by="some-owner")
+        service.ensure_publisher_question_bank_read(
+            _VID, cognito_sub="admin-sub", role="admin"
+        )
+
+
 class TestUuidValidation:
     """Tests for UUID validation across all service methods.
 
