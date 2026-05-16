@@ -4,6 +4,32 @@
 
 ---
 
+## 2026-05-16 — Module quiz retake random redraw
+
+### Completed
+
+- [x] **Retake redraw** — [`service.py`](infrastructure/lambda/catalog/services/question_banks/service.py) `_retake_with_redraw` + [`rds_repo.py`](infrastructure/lambda/catalog/services/question_banks/rds_repo.py) `redraw_binding_and_insert_attempt`: `POST .../quiz/start` with `retake: true` after submit draws a fresh **N** from the current published bank, replaces binding, and shuffles presentation (§8.4).
+- [x] **`latest_results` fix** — recap uses the submitted attempt’s question order / grading rows, not stale binding ids after a redraw ([`test_latest_results_uses_submission_question_order_not_binding`](tests/unit/services/question_banks/test_question_bank_attempts.py)).
+- [x] **Submit set assert** — `submit_module_quiz` rejects when attempt shuffle ids ≠ current binding (`409` *does not match current question set*); covered in [`test_question_bank_submit.py`](tests/unit/services/question_banks/test_question_bank_submit.py).
+- [x] **Docs + student copy** — [`plans/question-banks-requirements.md`](plans/question-banks-requirements.md) §8.2/§8.4/§9.5/§12/§13; [`design.md`](design.md) `quiz/start` binding bullet; [`ModuleQuizPage.tsx`](frontend/src/pages/ModuleQuizPage.tsx) retake helper text.
+
+### Files touched (production slice, prior to this doc/copy pass)
+
+- [`infrastructure/lambda/catalog/services/question_banks/service.py`](infrastructure/lambda/catalog/services/question_banks/service.py)
+- [`infrastructure/lambda/catalog/services/question_banks/rds_repo.py`](infrastructure/lambda/catalog/services/question_banks/rds_repo.py)
+- [`tests/unit/services/question_banks/test_question_bank_attempts.py`](tests/unit/services/question_banks/test_question_bank_attempts.py)
+- [`tests/unit/services/question_banks/test_question_bank_submit.py`](tests/unit/services/question_banks/test_question_bank_submit.py)
+- [`tests/integration/test_question_bank_submit.py`](tests/integration/test_question_bank_submit.py)
+
+### Verify
+
+```bash
+python -m pytest tests/unit/services/question_banks/test_question_bank_attempts.py tests/unit/services/question_banks/test_question_bank_submit.py -q
+cd frontend && npm run test -- ModuleQuizPage.dom.test.tsx -q
+```
+
+---
+
 ## 2026-05-16 — One module per question bank
 
 ### Completed
