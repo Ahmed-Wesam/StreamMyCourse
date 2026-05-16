@@ -311,8 +311,12 @@ if ! aws cloudformation describe-stacks --stack-name "$RDS_STACK_NAME" --region 
     exit 1
 fi
 
+# api-stack.yaml exceeds API Gateway's change-set inline template limit (51,200 bytes);
+# stage the template via the artifacts bucket (same as Lambda zips).
 aws cloudformation deploy \
   --template-file "$TEMPLATE_DIR/api-stack.yaml" \
+  --s3-bucket "$ARTIFACT_BUCKET" \
+  --s3-prefix "cf-api-template/${ENV}/" \
   --stack-name "$API_STACK" \
   --capabilities CAPABILITY_IAM CAPABILITY_NAMED_IAM \
   --region "$REGION" \
