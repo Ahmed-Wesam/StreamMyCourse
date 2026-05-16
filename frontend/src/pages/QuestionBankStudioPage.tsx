@@ -158,7 +158,7 @@ export default function QuestionBankStudioPage() {
         await reload()
       } catch (err) {
         if (!cancelled) {
-          setError(questionBankUserMessage(err))
+          setError(questionBankUserMessage(err, 'loadQuestionBank'))
           setBanks([])
           setQuestions([])
           setModuleQuizzes([])
@@ -181,7 +181,7 @@ export default function QuestionBankStudioPage() {
       await createQuestionBankQuestion(courseId, bankId, body)
       await reload()
     } catch (err) {
-      setError(questionBankUserMessage(err))
+      setError(questionBankUserMessage(err, 'saveQuestionBankQuestion'))
       throw err
     } finally {
       setCreating(false)
@@ -197,7 +197,7 @@ export default function QuestionBankStudioPage() {
       await reload()
       setEditingQuestionId(null)
     } catch (err) {
-      setError(questionBankUserMessage(err))
+      setError(questionBankUserMessage(err, 'publishQuestionBank'))
     } finally {
       setPublishing(false)
     }
@@ -221,7 +221,7 @@ export default function QuestionBankStudioPage() {
       )
       setRenameValue(updated.name)
     } catch (err) {
-      setError(questionBankUserMessage(err))
+      setError(questionBankUserMessage(err, 'saveQuestionBank'))
     } finally {
       setRenaming(false)
     }
@@ -236,7 +236,7 @@ export default function QuestionBankStudioPage() {
       await reload()
       setEditingQuestionId(null)
     } catch (err) {
-      setError(questionBankUserMessage(err))
+      setError(questionBankUserMessage(err, 'saveQuestionBankQuestion'))
     } finally {
       setBusyQuestionId(null)
     }
@@ -252,7 +252,7 @@ export default function QuestionBankStudioPage() {
       await reload()
       if (editingQuestionId === questionId) setEditingQuestionId(null)
     } catch (err) {
-      setError(questionBankUserMessage(err))
+      setError(questionBankUserMessage(err, 'saveQuestionBankQuestion'))
     } finally {
       setBusyQuestionId(null)
     }

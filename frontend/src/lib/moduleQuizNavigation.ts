@@ -81,6 +81,14 @@ export function moduleQuizLinkTo(
   }
 }
 
+function lessonIdFromReturnTo(returnTo: ModuleQuizReturnTo, courseId: string): string | null {
+  const path = pathFromReturnTo(returnTo)
+  const prefix = `/courses/${courseId}/lessons/`
+  if (!path.startsWith(prefix)) return null
+  const segment = path.slice(prefix.length).split('?')[0]?.split('/')[0]
+  return segment?.trim() ? segment : null
+}
+
 export function resolveModuleQuizBackTo(
   courseId: string,
   moduleId: string,
@@ -89,7 +97,10 @@ export function resolveModuleQuizBackTo(
   courseProgress: CourseProgress | null,
 ): ModuleQuizReturnTo {
   if (isModuleQuizReturnTo(returnToFromState) && isPlayerReturnForCourse(returnToFromState, courseId)) {
-    return returnToFromState
+    const lessonId = lessonIdFromReturnTo(returnToFromState, courseId)
+    if (lessonId && lessons.some((lesson) => lesson.id === lessonId)) {
+      return returnToFromState
+    }
   }
 
   const modulePath = modulePlayerReturnPath(courseId, moduleId, lessons, courseProgress)

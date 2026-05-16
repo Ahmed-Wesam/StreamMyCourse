@@ -39,6 +39,16 @@ export function QuestionBankStudioPublishPanel({
           management, then return here to publish.
         </p>
       ) : null}
+      {linkedModuleRows.length > 1 ? (
+        <p
+          className="mb-4 rounded border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900"
+          role="status"
+          data-testid="studio-publish-multiple-modules-warning"
+        >
+          This bank is linked to more than one module quiz. Publishing will apply to the first linked module only.
+          Remove extra links in course management if that is not intended.
+        </p>
+      ) : null}
       <div>
         <label className="mb-1 block text-sm font-medium text-gray-700" htmlFor="studio-publish-n">
           Questions per attempt

@@ -25,7 +25,7 @@ export default function LearnRedirectPage() {
         }
         navigate(`/courses/${first.id}/lessons/${lesson.id}`, { replace: true })
       } catch (e) {
-        setError(catalogApiUserMessage(e, 'learnRedirect'))
+        if (!cancelled) setError(catalogApiUserMessage(e, 'learnRedirect'))
       }
     }
     void run()

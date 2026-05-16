@@ -36,7 +36,7 @@ export default function QuestionBanksListPage() {
       setBanks(rows)
     } catch (err) {
       setBanks([])
-      setError(questionBankUserMessage(err))
+      setError(questionBankUserMessage(err, 'loadQuestionBanks'))
     } finally {
       setLoading(false)
     }
@@ -61,7 +61,7 @@ export default function QuestionBanksListPage() {
       const b = encodeURIComponent(questionBankId)
       navigate(`/courses/${c}/question-banks/${b}`)
     } catch (err) {
-      setError(questionBankUserMessage(err))
+      setError(questionBankUserMessage(err, 'createQuestionBank'))
     } finally {
       setCreating(false)
     }
