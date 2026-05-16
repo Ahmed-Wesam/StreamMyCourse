@@ -17,6 +17,19 @@ function needsAttachUi(row: ModuleQuizRow | undefined): boolean {
   return !row || row.questionBankId == null || row.questionBankId === ''
 }
 
+function banksAvailableForModule(
+  moduleId: string,
+  banks: QuestionBankSummary[],
+  moduleQuizRows: ModuleQuizRow[],
+): QuestionBankSummary[] {
+  return banks.filter(
+    (b) =>
+      !moduleQuizRows.some(
+        (r) => r.questionBankId === b.questionBankId && r.moduleId !== moduleId,
+      ),
+  )
+}
+
 export function CourseManagementModuleQuizPanel({
   courseId,
   sortedModules,
@@ -71,6 +84,7 @@ export function CourseManagementModuleQuizPanel({
             const linkedBank = row?.questionBankId
               ? questionBankSummaries.find((b) => b.questionBankId === row.questionBankId)
               : undefined
+            const availableBanks = banksAvailableForModule(m.id, questionBankSummaries, moduleQuizRows)
 
             return (
               <li
@@ -110,6 +124,13 @@ export function CourseManagementModuleQuizPanel({
                           Create or open question banks
                         </Link>
                       </div>
+                    ) : availableBanks.length === 0 ? (
+                      <div className="max-w-md text-right text-gray-600">
+                        <p className="mb-1">All question banks are already linked to other modules.</p>
+                        <Link to={banksLink} className="text-blue-600 hover:text-blue-800">
+                          Open question banks
+                        </Link>
+                      </div>
                     ) : (
                       <div className="flex flex-col items-stretch gap-2 sm:items-end">
                         <div className="flex flex-col gap-1">
@@ -126,7 +147,7 @@ export function CourseManagementModuleQuizPanel({
                             }
                           >
                             <option value="">Select a bank…</option>
-                            {questionBankSummaries.map((b) => (
+                            {availableBanks.map((b) => (
                               <option key={b.questionBankId} value={b.questionBankId}>
                                 {questionBankDisplayName(b)} ({b.status})
                               </option>

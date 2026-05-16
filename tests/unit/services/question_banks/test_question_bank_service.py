@@ -8,12 +8,13 @@ from unittest.mock import MagicMock
 import pytest
 
 from services.common.errors import BadRequest, Conflict, Forbidden, NotFound
-from services.question_banks.models import Question, QuestionBank
+from services.question_banks.models import ModuleQuiz, Question, QuestionBank
 from services.question_banks.service import QuestionBankService
 
 _COURSE_ID = "course-11111111-1111-1111-1111-111111111111"
 _OTHER_COURSE_ID = "course-99999999-9999-9999-9999-999999999999"
 _MODULE_ID = "module-22222222-2222-2222-2222-222222222222"
+_OTHER_MODULE_ID = "module-aaaa2222-2222-2222-2222-222222222222"
 _BANK_ID = "33333333-3333-4333-8333-333333333333"
 _QUESTION_ID = "quest-44444444-4444-4444-4444-444444444444"
 _COGNITO_SUB = "cognito-sub-actor"
@@ -297,6 +298,35 @@ def test_create_module_quiz_rejects_question_bank_from_other_course() -> None:
             role=_ROLE,
             question_bank_id=_BANK_ID,
         )
+    repo.insert_module_quiz.assert_not_called()
+
+
+def test_create_module_quiz_rejects_bank_already_linked_to_other_module() -> None:
+    """One bank per course: reject attach when bank is linked to a different module."""
+    authorizer = MagicMock()
+    repo = MagicMock()
+    repo.get_question_bank_by_id.return_value = _draft_bank()
+    repo.get_module_quiz_by_question_bank_id.return_value = ModuleQuiz(
+        id="quiz-existing",
+        courseId=_COURSE_ID,
+        moduleId=_OTHER_MODULE_ID,
+        questionBankId=_BANK_ID,
+        servedCountN=None,
+        createdAt="",
+        updatedAt="",
+    )
+    svc = _make_service(authorizer, repo)
+    with pytest.raises(Conflict, match="already linked to another module"):
+        svc.create_module_quiz(
+            _COURSE_ID,
+            _MODULE_ID,
+            cognito_sub=_COGNITO_SUB,
+            role=_ROLE,
+            question_bank_id=_BANK_ID,
+        )
+    repo.get_module_quiz_by_question_bank_id.assert_called_once_with(
+        course_id=_COURSE_ID, question_bank_id=_BANK_ID
+    )
     repo.insert_module_quiz.assert_not_called()
 
 

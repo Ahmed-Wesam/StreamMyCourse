@@ -2,7 +2,8 @@
 --
 -- QB-A: module → quiz → bank (see plans/question-banks-requirements.md §3,
 -- plans/question-banks-mega-plan.md QB-A). Course-scoped banks; at most one
--- quiz per module; optional question_bank_id until linked; served_count_n NULL
+-- quiz per module; at most one module_quizzes row per non-null question_bank_id
+-- per course; optional question_bank_id until linked; served_count_n NULL
 -- until publish (QB-E / QB-C).
 --
 -- Idempotent: CREATE TABLE IF NOT EXISTS, CREATE INDEX IF NOT EXISTS.
@@ -44,3 +45,7 @@ CREATE TABLE IF NOT EXISTS module_quizzes (
 
 CREATE INDEX IF NOT EXISTS idx_module_quizzes_course_id ON module_quizzes (course_id);
 CREATE INDEX IF NOT EXISTS idx_module_quizzes_question_bank_id ON module_quizzes (question_bank_id);
+
+CREATE UNIQUE INDEX IF NOT EXISTS uq_module_quizzes_course_question_bank
+    ON module_quizzes (course_id, question_bank_id)
+    WHERE question_bank_id IS NOT NULL;

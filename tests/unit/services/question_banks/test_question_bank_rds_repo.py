@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from types import SimpleNamespace
 from typing import Any, List, Optional, Sequence, Tuple
 
 import pytest
@@ -59,18 +60,97 @@ class FakeConn:
         self.rolled_back += 1
 
 
+class _UniqueViolationWithConstraint(pg_errors.UniqueViolation):
+    """Test helper: psycopg2 ``diag`` is read-only; expose ``constraint_name`` for repo mapping."""
+
+    def __init__(self, *, constraint_name: str, message: str = "duplicate") -> None:
+        super().__init__(message)
+        self._constraint_name = constraint_name
+
+    @property
+    def diag(self) -> SimpleNamespace:
+        return SimpleNamespace(constraint_name=self._constraint_name)
+
+
+def _unique_violation(*, constraint_name: str, message: str = "duplicate") -> pg_errors.UniqueViolation:
+    return _UniqueViolationWithConstraint(constraint_name=constraint_name, message=message)
+
+
 def test_insert_module_quiz_maps_unique_violation_to_conflict() -> None:
     fake = FakeConn()
 
     def boom(cur: FakeCursor, sql: str, params: Tuple[Any, ...]) -> None:
         if "INSERT INTO module_quizzes" in sql:
-            raise pg_errors.UniqueViolation("duplicate module")
+            raise _unique_violation(constraint_name="module_quizzes_module_id_key")
 
     fake.cursor_obj._execute_impl = boom
     repo = QuestionBankRdsRepository(lambda: fake)
 
     with pytest.raises(Conflict, match="Module already has a quiz"):
         repo.insert_module_quiz(course_id="c1", module_id="m1")
+
+
+def test_insert_module_quiz_maps_bank_unique_violation_to_conflict() -> None:
+    fake = FakeConn()
+
+    def boom(cur: FakeCursor, sql: str, params: Tuple[Any, ...]) -> None:
+        if "INSERT INTO module_quizzes" in sql:
+            raise _unique_violation(
+                constraint_name="uq_module_quizzes_course_question_bank",
+                message="duplicate bank",
+            )
+
+    fake.cursor_obj._execute_impl = boom
+    repo = QuestionBankRdsRepository(lambda: fake)
+
+    with pytest.raises(
+        Conflict, match="Question bank is already linked to another module"
+    ):
+        repo.insert_module_quiz(
+            course_id="c1", module_id="m2", question_bank_id="bank-1"
+        )
+
+
+def test_get_module_quiz_by_question_bank_id_returns_row() -> None:
+    fake = FakeConn()
+    fake.cursor_obj.rows_to_return = [
+        (
+            "quiz-1",
+            "c1",
+            "m1",
+            "bank-1",
+            5,
+            None,
+            None,
+        )
+    ]
+    repo = QuestionBankRdsRepository(lambda: fake)
+
+    out = repo.get_module_quiz_by_question_bank_id(
+        course_id="c1", question_bank_id="bank-1"
+    )
+
+    assert out is not None
+    assert out.id == "quiz-1"
+    assert out.courseId == "c1"
+    assert out.moduleId == "m1"
+    assert out.questionBankId == "bank-1"
+    assert out.servedCountN == 5
+    sql, params = fake.cursor_obj.executions[0]
+    assert "question_bank_id = %s" in sql
+    assert params == ("c1", "bank-1")
+
+
+def test_get_module_quiz_by_question_bank_id_returns_none_when_missing() -> None:
+    fake = FakeConn()
+    fake.cursor_obj.rows_to_return = []
+    repo = QuestionBankRdsRepository(lambda: fake)
+
+    out = repo.get_module_quiz_by_question_bank_id(
+        course_id="c1", question_bank_id="bank-missing"
+    )
+
+    assert out is None
 
 
 def test_insert_module_quiz_maps_foreign_key_violation_to_bad_request() -> None:
