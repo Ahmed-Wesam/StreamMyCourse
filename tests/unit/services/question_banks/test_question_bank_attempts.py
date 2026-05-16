@@ -274,6 +274,7 @@ def test_after_submitted_start_without_retake_returns_latest_results() -> None:
     repo.get_latest_submission_for_binding.return_value = ModuleQuizSubmissionSnapshot(
         attemptId=_ATTEMPT_ID_1,
         attemptNumber=1,
+        questionOrder=["q1", "q2"],
         answersJson={"q1": "A", "q2": "B"},
         correctCount=2,
         totalCount=2,
@@ -313,11 +314,129 @@ def test_after_submitted_start_without_retake_returns_latest_results() -> None:
     assert out["latestSubmission"]["questions"][0]["isCorrect"] is True
 
 
+def test_latest_results_uses_submission_question_order_not_binding() -> None:
+    """Recap must grade against the submitted attempt shuffle, not binding.questionIds."""
+    repo = MagicMock()
+    _wire_start_gate(repo)
+    attempt_order = ["q1", "q2"]
+    binding = _binding_with_id(["q3", "q4"])
+    submitted = _attempt(
+        attempt_id=_ATTEMPT_ID_1,
+        attempt_number=1,
+        status="submitted",
+        question_order=attempt_order,
+        choice_orders={"q1": ["B", "A"], "q2": ["B", "A"]},
+        submitted_at="2026-05-15T13:00:00Z",
+    )
+    repo.get_binding_for_student.return_value = binding
+    repo.get_open_attempt.return_value = None
+    repo.get_latest_attempt.return_value = submitted
+    repo.get_latest_submission_for_binding.return_value = ModuleQuizSubmissionSnapshot(
+        attemptId=_ATTEMPT_ID_1,
+        attemptNumber=1,
+        questionOrder=attempt_order,
+        answersJson={"q1": "A", "q2": "B"},
+        correctCount=2,
+        totalCount=2,
+        submittedAt="2026-05-15T13:00:00Z",
+    )
+    opts = '[{"key":"A","text":"choice A"},{"key":"B","text":"choice B"}]'
+    repo.list_grading_rows_for_questions.return_value = [
+        PublishedQuestionGradingRow(
+            id="q1",
+            promptText="prompt-q1",
+            optionsJson=opts,
+            correctOptionKey="A",
+        ),
+        PublishedQuestionGradingRow(
+            id="q2",
+            promptText="prompt-q2",
+            optionsJson=opts,
+            correctOptionKey="B",
+        ),
+    ]
+    svc = _make_start_service(repo)
+
+    out = svc.start_module_quiz(
+        _COURSE_ID,
+        _MODULE_ID,
+        cognito_sub=_STUDENT_A,
+        role=_ROLE,
+        retake=False,
+    )
+
+    repo.list_grading_rows_for_questions.assert_called_once_with(
+        course_id=_COURSE_ID,
+        question_ids=attempt_order,
+    )
+    assert out["phase"] == "latest_results"
+    recap_ids = [q["id"] for q in out["latestSubmission"]["questions"]]
+    assert recap_ids == attempt_order
+    assert out["latestSubmission"]["questions"][0]["promptText"] == "prompt-q1"
+    assert out["latestSubmission"]["questions"][1]["promptText"] == "prompt-q2"
+
+
+def test_latest_results_returns_recomputed_score_totals() -> None:
+    """Score totals in recap follow recomputed grading, not stale stored counts."""
+    repo = MagicMock()
+    _wire_start_gate(repo)
+    binding = _binding_with_id(["q1", "q2"])
+    submitted = _attempt(
+        attempt_id=_ATTEMPT_ID_1,
+        attempt_number=1,
+        status="submitted",
+        question_order=["q1", "q2"],
+        submitted_at="2026-05-15T13:00:00Z",
+    )
+    repo.get_binding_for_student.return_value = binding
+    repo.get_open_attempt.return_value = None
+    repo.get_latest_attempt.return_value = submitted
+    repo.get_latest_submission_for_binding.return_value = ModuleQuizSubmissionSnapshot(
+        attemptId=_ATTEMPT_ID_1,
+        attemptNumber=1,
+        questionOrder=["q1", "q2"],
+        answersJson={"q1": "A", "q2": "B"},
+        correctCount=0,
+        totalCount=2,
+        submittedAt="2026-05-15T13:00:00Z",
+    )
+    opts = '[{"key":"A","text":"choice A"},{"key":"B","text":"choice B"}]'
+    repo.list_grading_rows_for_questions.return_value = [
+        PublishedQuestionGradingRow(
+            id="q1",
+            promptText="prompt-q1",
+            optionsJson=opts,
+            correctOptionKey="A",
+        ),
+        PublishedQuestionGradingRow(
+            id="q2",
+            promptText="prompt-q2",
+            optionsJson=opts,
+            correctOptionKey="B",
+        ),
+    ]
+    svc = _make_start_service(repo)
+
+    out = svc.start_module_quiz(
+        _COURSE_ID,
+        _MODULE_ID,
+        cognito_sub=_STUDENT_A,
+        role=_ROLE,
+        retake=False,
+    )
+
+    assert out["latestSubmission"]["correctCount"] == 2
+    assert out["latestSubmission"]["totalCount"] == 2
+    assert all(q["isCorrect"] for q in out["latestSubmission"]["questions"])
+
+
 def test_after_submitted_retake_true_inserts_new_attempt_with_shuffle() -> None:
     repo = MagicMock()
     _wire_start_gate(repo)
-    ids = ["q1", "q2"]
-    binding = _binding_with_id(ids)
+    first_ids = ["q1", "q2"]
+    redrawn_ids = ["q3", "q4"]
+    binding_before = _binding_with_id(first_ids)
+    binding_after = _binding_with_id(redrawn_ids)
     submitted = _attempt(
         attempt_id=_ATTEMPT_ID_1,
         attempt_number=1,
@@ -326,47 +445,119 @@ def test_after_submitted_retake_true_inserts_new_attempt_with_shuffle() -> None:
         choice_orders={"q1": ["B", "A"], "q2": ["B", "A"]},
         submitted_at="2026-05-15T13:00:00Z",
     )
-    repo.get_binding_for_student.return_value = binding
+    repo.get_binding_for_student.side_effect = [binding_before, binding_after]
     repo.get_open_attempt.return_value = None
     repo.get_latest_attempt.return_value = submitted
-    repo.insert_attempt_with_shuffle.return_value = _attempt(
+    repo.list_published_question_ids.return_value = [
+        "q1",
+        "q2",
+        "q3",
+        "q4",
+        "q5",
+        "q6",
+    ]
+    repo.redraw_binding_and_insert_attempt.return_value = _attempt(
         attempt_id=_ATTEMPT_ID_2,
         attempt_number=2,
-        question_order=["q1", "q2"],
-        choice_orders={"q1": ["A", "B"], "q2": ["A", "B"]},
+        question_order=["q4", "q3"],
+        choice_orders={"q3": ["A", "B"], "q4": ["A", "B"]},
     )
-    repo.list_student_bound_questions.return_value = _bound_questions(ids)
+
+    def _rows_for_call(*, course_id: str, question_ids: list[str]) -> list[BoundQuestion]:
+        return _bound_questions(question_ids)
+
+    repo.list_student_bound_questions.side_effect = _rows_for_call
     svc = _make_start_service(repo)
+    rng = random.Random(1)
 
     with patch(
-        "services.question_banks.service.shuffle_question_order",
-        return_value=["q1", "q2"],
-    ) as shuffle_q:
+        "services.question_banks.service.draw_question_ids",
+        return_value=redrawn_ids,
+    ) as draw:
         with patch(
-            "services.question_banks.service.shuffle_choice_orders_for_questions",
-            return_value={"q1": ["A", "B"], "q2": ["A", "B"]},
-        ):
-            out = svc.start_module_quiz(
-                _COURSE_ID,
-                _MODULE_ID,
-                cognito_sub=_STUDENT_A,
-                role=_ROLE,
-                rng=random.Random(1),
-                retake=True,
-            )
+            "services.question_banks.service.shuffle_question_order",
+            return_value=["q4", "q3"],
+        ) as shuffle_q:
+            with patch(
+                "services.question_banks.service.shuffle_choice_orders_for_questions",
+                return_value={"q3": ["A", "B"], "q4": ["A", "B"]},
+            ):
+                out = svc.start_module_quiz(
+                    _COURSE_ID,
+                    _MODULE_ID,
+                    cognito_sub=_STUDENT_A,
+                    role=_ROLE,
+                    rng=rng,
+                    retake=True,
+                )
 
-    shuffle_q.assert_called_once()
-    repo.insert_attempt_with_shuffle.assert_called_once_with(
+    draw.assert_called_once()
+    shuffle_q.assert_called_once_with(redrawn_ids, rng)
+    repo.redraw_binding_and_insert_attempt.assert_called_once_with(
         binding_id=_BINDING_ID,
+        question_ids=redrawn_ids,
         attempt_number=2,
-        shuffled_question_order=["q1", "q2"],
-        shuffled_choice_orders={"q1": ["A", "B"], "q2": ["A", "B"]},
+        shuffled_question_order=["q4", "q3"],
+        shuffled_choice_orders={"q3": ["A", "B"], "q4": ["A", "B"]},
     )
+    repo.insert_attempt_with_shuffle.assert_not_called()
     assert out["phase"] == "in_progress"
     assert out["attemptId"] == _ATTEMPT_ID_2
     assert out["attemptNumber"] == 2
-    assert out["questionIds"] == ["q1", "q2"]
-    assert set(out["questionIds"]) == set(ids)
+    assert out["questionIds"] == ["q4", "q3"]
+    assert set(out["questionIds"]) == set(redrawn_ids)
+    assert set(out["questionIds"]) != set(submitted.shuffledQuestionOrder)
+
+
+def test_after_submitted_retake_redraws_different_questions_with_real_draw() -> None:
+    """Bank larger than N: fixed RNG on retake yields a new draw vs attempt 1."""
+    from services.question_banks.binding_draw import draw_question_ids
+
+    repo = MagicMock()
+    _wire_start_gate(repo)
+    published = ["q1", "q2", "q3", "q4", "q5", "q6"]
+    first_ids = draw_question_ids(published, 2, random.Random(0))
+    retake_ids = draw_question_ids(published, 2, random.Random(1))
+    assert set(retake_ids) != set(first_ids)
+
+    binding_before = _binding_with_id(first_ids)
+    binding_after = _binding_with_id(retake_ids)
+    submitted = _attempt(
+        attempt_id=_ATTEMPT_ID_1,
+        attempt_number=1,
+        status="submitted",
+        question_order=list(reversed(first_ids)),
+        choice_orders={qid: ["A", "B"] for qid in first_ids},
+        submitted_at="2026-05-15T13:00:00Z",
+    )
+    repo.get_binding_for_student.side_effect = [binding_before, binding_after]
+    repo.get_open_attempt.return_value = None
+    repo.get_latest_attempt.return_value = submitted
+    repo.list_published_question_ids.return_value = published
+    retake_order = list(reversed(retake_ids))
+    repo.redraw_binding_and_insert_attempt.return_value = _attempt(
+        attempt_id=_ATTEMPT_ID_2,
+        attempt_number=2,
+        question_order=retake_order,
+        choice_orders={qid: ["B", "A"] for qid in retake_ids},
+    )
+    repo.list_student_bound_questions.side_effect = (
+        lambda *, course_id, question_ids: _bound_questions(question_ids)
+    )
+    svc = _make_start_service(repo)
+
+    out = svc.start_module_quiz(
+        _COURSE_ID,
+        _MODULE_ID,
+        cognito_sub=_STUDENT_A,
+        role=_ROLE,
+        rng=random.Random(1),
+        retake=True,
+    )
+
+    repo.redraw_binding_and_insert_attempt.assert_called_once()
+    assert set(out["questionIds"]) == set(retake_ids)
+    assert set(out["questionIds"]) != set(first_ids)
 
 
 def test_corrupt_persisted_shuffle_raises_conflict() -> None:
@@ -392,6 +583,135 @@ def test_corrupt_persisted_shuffle_raises_conflict() -> None:
 
     repo.insert_attempt_with_shuffle.assert_not_called()
     repo.list_student_bound_questions.assert_not_called()
+
+
+def test_latest_results_incomplete_submission_question_order_conflict() -> None:
+    repo = MagicMock()
+    _wire_start_gate(repo)
+    binding = _binding_with_id(["q3", "q4"])
+    submitted = _attempt(
+        attempt_id=_ATTEMPT_ID_1,
+        attempt_number=1,
+        status="submitted",
+        question_order=["q1"],
+        submitted_at="2026-05-15T13:00:00Z",
+    )
+    repo.get_binding_for_student.return_value = binding
+    repo.get_open_attempt.return_value = None
+    repo.get_latest_attempt.return_value = submitted
+    repo.get_latest_submission_for_binding.return_value = ModuleQuizSubmissionSnapshot(
+        attemptId=_ATTEMPT_ID_1,
+        attemptNumber=1,
+        questionOrder=["q1"],
+        answersJson={"q1": "A"},
+        correctCount=1,
+        totalCount=2,
+        submittedAt="2026-05-15T13:00:00Z",
+    )
+    svc = _make_start_service(repo)
+
+    with pytest.raises(Conflict, match="submission is incomplete"):
+        svc.start_module_quiz(
+            _COURSE_ID,
+            _MODULE_ID,
+            cognito_sub=_STUDENT_A,
+            role=_ROLE,
+            retake=False,
+        )
+
+    repo.list_grading_rows_for_questions.assert_not_called()
+
+
+def test_latest_results_mismatched_answer_keys_conflict() -> None:
+    repo = MagicMock()
+    _wire_start_gate(repo)
+    binding = _binding_with_id(["q1", "q2"])
+    submitted = _attempt(
+        attempt_id=_ATTEMPT_ID_1,
+        attempt_number=1,
+        status="submitted",
+        question_order=["q1", "q2"],
+        submitted_at="2026-05-15T13:00:00Z",
+    )
+    repo.get_binding_for_student.return_value = binding
+    repo.get_open_attempt.return_value = None
+    repo.get_latest_attempt.return_value = submitted
+    repo.get_latest_submission_for_binding.return_value = ModuleQuizSubmissionSnapshot(
+        attemptId=_ATTEMPT_ID_1,
+        attemptNumber=1,
+        questionOrder=["q1", "q2"],
+        answersJson={"q1": "A"},
+        correctCount=1,
+        totalCount=2,
+        submittedAt="2026-05-15T13:00:00Z",
+    )
+    svc = _make_start_service(repo)
+
+    with pytest.raises(Conflict, match="submission is incomplete"):
+        svc.start_module_quiz(
+            _COURSE_ID,
+            _MODULE_ID,
+            cognito_sub=_STUDENT_A,
+            role=_ROLE,
+            retake=False,
+        )
+
+    repo.list_grading_rows_for_questions.assert_not_called()
+
+
+def test_retake_redraw_conflict_rereads_open_attempt() -> None:
+    repo = MagicMock()
+    _wire_start_gate(repo)
+    first_ids = ["q1", "q2"]
+    retake_ids = ["q3", "q4"]
+    binding_before = _binding_with_id(first_ids)
+    binding_after = _binding_with_id(retake_ids)
+    submitted = _attempt(
+        attempt_id=_ATTEMPT_ID_1,
+        attempt_number=1,
+        status="submitted",
+        question_order=["q2", "q1"],
+        submitted_at="2026-05-15T13:00:00Z",
+    )
+    winner = _attempt(
+        attempt_id=_ATTEMPT_ID_2,
+        attempt_number=2,
+        question_order=["q4", "q3"],
+        choice_orders={"q3": ["A", "B"], "q4": ["A", "B"]},
+    )
+    repo.get_binding_for_student.side_effect = [binding_before, binding_after]
+    repo.get_open_attempt.side_effect = [None, winner]
+    repo.get_latest_attempt.return_value = submitted
+    repo.list_published_question_ids.return_value = ["q1", "q2", "q3", "q4"]
+    repo.redraw_binding_and_insert_attempt.side_effect = Conflict("in progress")
+    repo.list_student_bound_questions.side_effect = lambda **kwargs: _bound_questions(
+        kwargs["question_ids"]
+    )
+    svc = _make_start_service(repo)
+
+    with patch(
+        "services.question_banks.service.draw_question_ids",
+        return_value=retake_ids,
+    ):
+        with patch(
+            "services.question_banks.service.shuffle_question_order",
+            return_value=["q-should-not-win"],
+        ):
+            with patch(
+                "services.question_banks.service.shuffle_choice_orders_for_questions",
+                return_value={"q3": ["A", "B"], "q4": ["A", "B"]},
+            ):
+                out = svc.start_module_quiz(
+                    _COURSE_ID,
+                    _MODULE_ID,
+                    cognito_sub=_STUDENT_A,
+                    role=_ROLE,
+                    retake=True,
+                )
+
+    assert out["phase"] == "in_progress"
+    assert out["attemptId"] == _ATTEMPT_ID_2
+    assert set(out["questionIds"]) == set(retake_ids)
 
 
 def test_insert_attempt_conflict_rereads_open_attempt() -> None:
@@ -424,7 +744,7 @@ def test_insert_attempt_conflict_rereads_open_attempt() -> None:
     assert out["phase"] == "in_progress"
 
 
-def test_bound_question_id_set_unchanged_across_attempts() -> None:
+def test_in_progress_start_resume_returns_same_attempt_and_shuffle() -> None:
     repo = MagicMock()
     _wire_start_gate(repo)
     ids = ["q1", "q2"]

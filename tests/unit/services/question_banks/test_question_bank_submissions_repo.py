@@ -117,6 +117,7 @@ def test_get_latest_submission_for_binding_orders_by_submitted_at() -> None:
         (
             "attempt-2",
             2,
+            ["q2", "q1"],
             {"q1": "B"},
             1,
             1,
@@ -130,6 +131,7 @@ def test_get_latest_submission_for_binding_orders_by_submitted_at() -> None:
     assert latest is not None
     assert latest.attemptId == "attempt-2"
     assert latest.attemptNumber == 2
+    assert latest.questionOrder == ["q2", "q1"]
     assert latest.answersJson == {"q1": "B"}
     assert latest.correctCount == 1
     assert latest.totalCount == 1
