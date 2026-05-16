@@ -4,6 +4,49 @@
 
 ---
 
+## 2026-05-16 — CI security scanner baseline
+
+### Completed
+
+- [x] **Security CI gate** — [`.github/workflows/ci.yml`](.github/workflows/ci.yml) adds a **Security scans** job with `npm audit --audit-level=high`, **Checkov** CloudFormation scanning, **pip-audit** across Python requirement files, and **Gitleaks** Git secret scanning via [`.gitleaks.toml`](.gitleaks.toml).
+- [x] **Checkov baseline** — [`.checkov.yaml`](.checkov.yaml) documents current MVP hardening skips so new unbaselined CloudFormation findings fail CI while known backlog items remain visible.
+- [x] **RDS TLS enforcement** — [`rds-stack.yaml`](infrastructure/templates/rds-stack.yaml) sets `rds.force_ssl: '1'`; catalog Lambda already connects with `sslmode=require`, so the database now rejects accidental plaintext clients.
+- [x] **Agent workflow updates** — [`.cursor/skills/security-scans/SKILL.md`](.cursor/skills/security-scans/SKILL.md), [`commit`](.cursor/skills/commit/SKILL.md), [`review-and-commit`](.cursor/skills/review-and-commit/SKILL.md), and [`watch-ci-after-push`](.cursor/skills/watch-ci-after-push/SKILL.md) now include the security scanner workflow.
+- [x] **Dependency audit cleanup** — [`frontend/package-lock.json`](frontend/package-lock.json) refreshed by `npm audit fix` to remove the high-severity `fast-xml-builder` advisory pulled through Amplify storage.
+
+### Verify
+
+```bash
+cd frontend && npm audit --audit-level=high
+python -m checkov.main --config-file .checkov.yaml --skip-download
+gitleaks git . --config .gitleaks.toml --redact --no-banner --verbose --log-opts=HEAD
+```
+
+`pip-audit` was not run locally because this Windows environment only exposes Python 3.14 and the repo/CI scanner uses Python 3.11 wheels for `psycopg2-binary`.
+
+---
+
+## 2026-05-16 — Question bank names contract and final verification
+
+### Completed
+
+- [x] **API contract docs** — [`design.md`](design.md) §7 now records named question-bank create/list/rename behavior: `POST /courses/{courseId}/question-banks` requires `{ "name": "..." }` and returns `{ "questionBankId", "name" }`; `GET /courses/{courseId}/question-banks` includes `name`; `PATCH /courses/{courseId}/question-banks/{questionBankId}` renames DRAFT or PUBLISHED banks and returns the same write shape.
+- [x] **MVP baseline docs** — [`design.md`](design.md) §13 and [`roadmap.md`](roadmap.md) MVP baseline now mention stored publisher-editable names folded into [`006_question_banks_module_quizzes.sql`](infrastructure/database/migrations/006_question_banks_module_quizzes.sql), API **CatalogApiDeploymentV27**, and that student quiz routes remain bank-name-free.
+- [x] **Behavioral decisions captured** — names are trimmed, non-empty, max 80 chars, not unique, and editable after publish; older rows keep UI/API fallback behavior where applicable.
+
+### Verify
+
+```bash
+python -m pytest tests/unit/services/question_banks/ -q
+python scripts/check_lambda_boundaries.py
+cd frontend && npm run test -- src/lib/api.questionBanks.test.ts src/pages/QuestionBanksListPage.dom.test.tsx src/pages/QuestionBankStudioPage.dom.test.tsx src/pages/CourseManagement.dom.test.tsx
+cd frontend && npm run lint
+```
+
+Integration tests requiring Cognito/dev-stack secrets were not run in this docs/final-verification slice.
+
+---
+
 ## 2026-05-15 — Frontend Epic 5: smoke checklist notes and docs closure
 
 ### Completed
@@ -1872,4 +1915,4 @@ Cognito / API Gateway authorizer; implement `services/auth` boundary per ADR.
 
 ---
 
-*Last updated: 2026-05-03 (teacher CORS + Cognito URLs + API Gateway deployment drift + claims parsing)*
+*Last updated: 2026-05-16 (question bank names docs + final verification)*
