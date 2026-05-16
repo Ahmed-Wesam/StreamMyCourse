@@ -209,7 +209,7 @@ The frontend is built as **two separate SPAs** deployed to different subdomains:
 
 | Site | Domain | Purpose | Routes |
 |------|--------|---------|--------|
-| **Student** | `streammycourse.com` | Browse and watch courses | `/`, `/catalog`, `/my-course`, `/login`, `/courses/:id`, `/courses/:id/lessons/:id` |
+| **Student** | `streammycourse.com` | Browse and watch courses | `/`, `/catalog`, `/my-course`, `/login`, `/courses/:id`, `/courses/:id/lessons/:id`, `/courses/:id/modules/:moduleId/quiz` |
 | **Teacher** | `teach.streammycourse.com` | Create, edit, upload content | `/`, `/courses/:id` |
 
 ### Student Site Routes (View-Only)
@@ -220,6 +220,7 @@ The frontend is built as **two separate SPAs** deployed to different subdomains:
 /login                               # Student sign-in (Hosted UI / auth shell)
 /courses/:courseId                   # Course detail
 /courses/:courseId/lessons/:lessonId # Video player
+/courses/:courseId/modules/:moduleId/quiz # Module quiz (signed-in when Cognito enforced)
 ```
 
 **Design vs backend gaps (student UI):** Tracked in **[`reports/figma-student-ui-gap-report.md`](reports/figma-student-ui-gap-report.md)** (e.g. catalog pacing, instructor display, pricing plans where the API remains MVP-free).
