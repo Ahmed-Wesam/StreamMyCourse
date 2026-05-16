@@ -5,6 +5,27 @@ from __future__ import annotations
 from typing import Any, List, Literal, NotRequired, TypedDict
 
 
+class QuestionBankCreateRequestDto(TypedDict):
+    name: str
+
+
+class QuestionBankRenameRequestDto(TypedDict):
+    name: str
+
+
+class QuestionBankWriteResponseDto(TypedDict):
+    questionBankId: str
+    name: str
+
+
+class PublisherQuestionBankSummaryDto(TypedDict):
+    questionBankId: str
+    name: str
+    status: str
+    createdAt: str
+    updatedAt: str
+
+
 class StudentQuizQuestionDto(TypedDict):
     id: str
     promptText: str

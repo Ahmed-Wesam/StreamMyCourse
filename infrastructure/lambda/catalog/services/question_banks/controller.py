@@ -89,6 +89,16 @@ def _route_question_banks(method: str, path: str) -> Tuple[str, Dict[str, str]]:
     ):
         return "create_question_bank", {"courseId": parts[1]}
     if (
+        method == "PATCH"
+        and len(parts) == 4
+        and parts[0] == "courses"
+        and parts[2] == "question-banks"
+    ):
+        return "rename_question_bank", {
+            "courseId": parts[1],
+            "questionBankId": parts[3],
+        }
+    if (
         method == "POST"
         and len(parts) == 6
         and parts[0] == "courses"
@@ -167,6 +177,13 @@ def _route_question_banks(method: str, path: str) -> Tuple[str, Dict[str, str]]:
         and parts[2] == "question-banks"
     ):
         return "options_question_bank_collection", {"courseId": parts[1]}
+    if (
+        method == "OPTIONS"
+        and len(parts) == 4
+        and parts[0] == "courses"
+        and parts[2] == "question-banks"
+    ):
+        return "options_question_bank_item", {"courseId": parts[1]}
     if (
         method == "OPTIONS"
         and len(parts) == 3
@@ -273,12 +290,27 @@ def handle_question_banks_request(
             return json_response(200, items, origin)
 
         if action == "create_question_bank":
-            bank_id = qb_svc.create_question_bank(
+            body = parse_json_body(event)
+            name = require_str(body, "name")
+            payload = qb_svc.create_question_bank(
                 params["courseId"],
+                name=name,
                 cognito_sub=_actor_sub(claims),
                 role=_actor_role(claims),
             )
-            return json_response(201, {"questionBankId": bank_id}, origin)
+            return json_response(201, payload, origin)
+
+        if action == "rename_question_bank":
+            body = parse_json_body(event)
+            name = require_str(body, "name")
+            payload = qb_svc.rename_question_bank(
+                params["courseId"],
+                params["questionBankId"],
+                name=name,
+                cognito_sub=_actor_sub(claims),
+                role=_actor_role(claims),
+            )
+            return json_response(200, payload, origin)
 
         if action == "submit_module_quiz":
             body = parse_json_body(event)

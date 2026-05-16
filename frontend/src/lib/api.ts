@@ -231,6 +231,8 @@ export type QuestionBankStatus = 'DRAFT' | 'PUBLISHED'
 
 export type QuestionBankSummary = {
   questionBankId: string
+  /** Human label for instructors. Older API rows may omit it, so UI should keep an id fallback. */
+  name?: string | null
   status: QuestionBankStatus
   createdAt?: string
   updatedAt?: string
@@ -275,6 +277,10 @@ export type PublishQuestionBankBody = {
 
 export type CreateModuleQuizBody = {
   questionBankId: string
+}
+
+export type QuestionBankNameBody = {
+  name: string
 }
 
 export type Lesson = {
@@ -490,9 +496,22 @@ export async function listQuestionBankQuestions(
   return httpGet<QuestionBankQuestion[]>(`/courses/${c}/question-banks/${b}/questions`)
 }
 
-export async function createQuestionBank(courseId: string): Promise<{ questionBankId: string }> {
+export async function createQuestionBank(
+  courseId: string,
+  body: QuestionBankNameBody,
+): Promise<{ questionBankId: string; name: string }> {
   const c = encodeURIComponent(courseId)
-  return httpPost<{ questionBankId: string }>(`/courses/${c}/question-banks`, {})
+  return httpPost<{ questionBankId: string; name: string }>(`/courses/${c}/question-banks`, body)
+}
+
+export async function updateQuestionBankName(
+  courseId: string,
+  bankId: string,
+  body: QuestionBankNameBody,
+): Promise<{ questionBankId: string; name: string }> {
+  const c = encodeURIComponent(courseId)
+  const b = encodeURIComponent(bankId)
+  return httpPatch<{ questionBankId: string; name: string }>(`/courses/${c}/question-banks/${b}`, body)
 }
 
 export async function createQuestionBankQuestion(

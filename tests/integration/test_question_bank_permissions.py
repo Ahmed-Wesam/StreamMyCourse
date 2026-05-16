@@ -2,7 +2,8 @@
 
 Canonical paths:
 
-- ``POST /courses/{courseId}/question-banks`` — body ``{}`` optional
+- ``POST /courses/{courseId}/question-banks`` — body requires ``name``
+- ``PATCH /courses/{courseId}/question-banks/{questionBankId}`` — body requires ``name``
 - ``POST /courses/{courseId}/modules/{moduleId}/quiz`` — body must include ``questionBankId`` (400 ``bad_request`` when missing)
 
 **Successful create:** **201 Created** (same convention as ``create_course_module``).
@@ -102,6 +103,24 @@ def test_alt_teacher_cannot_create_question_bank(
     """Alternate teacher (fixture ``alt_api``) must not create banks on another teacher's course."""
     course_id, _mid = _owner_draft_course_with_module(api, course_factory, label="qb-perm-alt-bank")
     resp = alt_api.create_question_bank(course_id)
+    assert resp.status_code == 403, f"Expected 403, got {resp.status_code}: {resp.text}"
+    body = response_json_dict(resp)
+    if body.get("code") != "forbidden":
+        pytest.fail(f"{EXPECTED_CATALOG_FORBIDDEN_403} Got: {body!r}")
+
+
+def test_alt_teacher_cannot_rename_question_bank(
+    api: ApiClient, alt_api: ApiClient, course_factory
+) -> None:
+    """Rename keeps the same publisher/admin scope as bank create."""
+    course_id, _mid = _owner_draft_course_with_module(
+        api, course_factory, label="qb-perm-alt-rename"
+    )
+    br = api.create_question_bank(course_id, name="Owner bank")
+    assert br.status_code == 201, br.text
+    bank_id = str(br.json()["questionBankId"])
+
+    resp = alt_api.rename_question_bank(course_id, bank_id, name="Alt rename")
     assert resp.status_code == 403, f"Expected 403, got {resp.status_code}: {resp.text}"
     body = response_json_dict(resp)
     if body.get("code") != "forbidden":

@@ -27,6 +27,12 @@ class TestRouteQuestionBanks:
                 {"courseId": "c1"},
             ),
             (
+                "PATCH",
+                "/courses/c1/question-banks/b1",
+                "rename_question_bank",
+                {"courseId": "c1", "questionBankId": "b1"},
+            ),
+            (
                 "POST",
                 "/courses/c1/question-banks/b1/publish",
                 "publish_question_bank",
@@ -49,6 +55,12 @@ class TestRouteQuestionBanks:
                 "/courses/c1/question-banks/b1/questions/q1",
                 "delete_question",
                 {"courseId": "c1", "questionBankId": "b1", "questionId": "q1"},
+            ),
+            (
+                "OPTIONS",
+                "/courses/c1/question-banks/b1",
+                "options_question_bank_item",
+                {"courseId": "c1"},
             ),
             (
                 "OPTIONS",
@@ -97,6 +109,89 @@ def _event(
 
 
 class TestHandleQuestionBanksRequest:
+    def test_create_question_bank_success_with_name(self) -> None:
+        qb_svc = MagicMock()
+        qb_svc.create_question_bank.return_value = {
+            "questionBankId": "bank-new",
+            "name": "Final exam bank",
+        }
+        resp = handle_question_banks_request(
+            _event(
+                method="POST",
+                path="/courses/c1/question-banks",
+                body={"name": " Final exam bank "},
+            ),
+            origin="https://teach.example.com",
+            qb_svc=qb_svc,
+        )
+        assert resp is not None
+        assert resp["statusCode"] == 201
+        assert json.loads(resp["body"]) == {
+            "questionBankId": "bank-new",
+            "name": "Final exam bank",
+        }
+        qb_svc.create_question_bank.assert_called_once_with(
+            "c1",
+            name="Final exam bank",
+            cognito_sub="teacher-sub",
+            role="teacher",
+        )
+
+    def test_create_question_bank_missing_name_returns_400(self) -> None:
+        qb_svc = MagicMock()
+        resp = handle_question_banks_request(
+            _event(method="POST", path="/courses/c1/question-banks", body={}),
+            origin=None,
+            qb_svc=qb_svc,
+        )
+        assert resp is not None
+        assert resp["statusCode"] == 400
+        qb_svc.create_question_bank.assert_not_called()
+
+    def test_rename_question_bank_success(self) -> None:
+        qb_svc = MagicMock()
+        qb_svc.rename_question_bank.return_value = {
+            "questionBankId": "b1",
+            "name": "Renamed bank",
+        }
+        resp = handle_question_banks_request(
+            _event(
+                method="PATCH",
+                path="/courses/c1/question-banks/b1",
+                body={"name": " Renamed bank "},
+            ),
+            origin="https://teach.example.com",
+            qb_svc=qb_svc,
+        )
+        assert resp is not None
+        assert resp["statusCode"] == 200
+        assert json.loads(resp["body"]) == {
+            "questionBankId": "b1",
+            "name": "Renamed bank",
+        }
+        qb_svc.rename_question_bank.assert_called_once_with(
+            "c1",
+            "b1",
+            name="Renamed bank",
+            cognito_sub="teacher-sub",
+            role="teacher",
+        )
+
+    def test_rename_question_bank_missing_name_returns_400(self) -> None:
+        qb_svc = MagicMock()
+        resp = handle_question_banks_request(
+            _event(
+                method="PATCH",
+                path="/courses/c1/question-banks/b1",
+                body={},
+            ),
+            origin=None,
+            qb_svc=qb_svc,
+        )
+        assert resp is not None
+        assert resp["statusCode"] == 400
+        qb_svc.rename_question_bank.assert_not_called()
+
     def test_publish_success(self) -> None:
         qb_svc = MagicMock()
         resp = handle_question_banks_request(
@@ -119,6 +214,7 @@ class TestHandleQuestionBanksRequest:
         qb_svc.get_bank_for_course.return_value = QuestionBank(
             id="b1",
             courseId="c1",
+            name="Draft bank",
             status="DRAFT",
             createdAt="",
             updatedAt="",
@@ -150,6 +246,7 @@ class TestHandleQuestionBanksRequest:
         qb_svc.get_bank_for_course.return_value = QuestionBank(
             id="b1",
             courseId="c1",
+            name="Published bank",
             status="PUBLISHED",
             createdAt="",
             updatedAt="",
@@ -188,6 +285,7 @@ class TestHandleQuestionBanksRequest:
         qb_svc.get_bank_for_course.return_value = QuestionBank(
             id="b1",
             courseId="c1",
+            name="Published bank",
             status="PUBLISHED",
             createdAt="",
             updatedAt="",

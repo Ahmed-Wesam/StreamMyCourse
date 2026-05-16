@@ -53,10 +53,10 @@ describe('QuestionBanksListPage', () => {
     mockRouteParams.courseId = 'c1'
 
     api.listCourseQuestionBanks.mockResolvedValue([
-      { questionBankId: 'qb-a', status: 'DRAFT' },
-      { questionBankId: 'qb-b', status: 'PUBLISHED' },
+      { questionBankId: 'qb-a', name: 'Midterm bank', status: 'DRAFT' },
+      { questionBankId: 'qb-b', name: 'Final review', status: 'PUBLISHED' },
     ])
-    api.createQuestionBank.mockResolvedValue({ questionBankId: 'qb-new' })
+    api.createQuestionBank.mockResolvedValue({ questionBankId: 'qb-new', name: 'Chapter 1 quiz' })
   })
 
   afterEach(() => {
@@ -64,27 +64,30 @@ describe('QuestionBanksListPage', () => {
     vi.restoreAllMocks()
   })
 
-  it('loads and shows a row per bank (id + status)', async () => {
+  it('loads and shows a row per bank with name as the primary label', async () => {
     renderQuestionBanksList()
 
     await waitFor(() => {
       expect(api.listCourseQuestionBanks).toHaveBeenCalledWith('c1')
     })
 
-    expect(screen.getByText('qb-a')).toBeTruthy()
-    expect(screen.getByText('qb-b')).toBeTruthy()
+    expect(screen.getByText('Midterm bank')).toBeTruthy()
+    expect(screen.getByText('Final review')).toBeTruthy()
+    expect(screen.getByText('ID: qb-a')).toBeTruthy()
     expect(screen.getByText('DRAFT')).toBeTruthy()
     expect(screen.getByText('PUBLISHED')).toBeTruthy()
   })
 
-  it('create control calls API then navigates to the new bank route', async () => {
+  it('create control collects a name, calls API, then navigates to the new bank route', async () => {
     renderQuestionBanksList()
 
+    const nameInput = await waitFor(() => screen.getByLabelText(/^New bank name$/i))
+    fireEvent.change(nameInput, { target: { value: 'Chapter 1 quiz' } })
     const createBtn = await waitFor(() => screen.getByTestId('question-banks-create'))
     fireEvent.click(createBtn)
 
     await waitFor(() => {
-      expect(api.createQuestionBank).toHaveBeenCalledWith('c1')
+      expect(api.createQuestionBank).toHaveBeenCalledWith('c1', { name: 'Chapter 1 quiz' })
     })
     expect(mockNavigate).toHaveBeenCalledWith('/courses/c1/question-banks/qb-new')
   })

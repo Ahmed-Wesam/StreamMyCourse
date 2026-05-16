@@ -42,7 +42,7 @@ def _draft_bank_with_one_question(
 ) -> tuple[str, str, str]:
     """Owner course with one bank and one draft question."""
     course_id, _mid = _owner_draft_course_with_module(api, course_factory, label=label)
-    br = api.create_question_bank(course_id)
+    br = api.create_question_bank(course_id, name=make_test_title(f"{label}-bank"))
     assert br.status_code == 201, br.text
     bank_id = str(br.json()["questionBankId"])
     dr = api.create_draft_question(
@@ -97,8 +97,9 @@ def test_owner_lists_bank_and_draft_question_shapes(
     assert len(banks_body) >= 1
     bank_row = next((b for b in banks_body if str(b.get("questionBankId")) == bank_id), None)
     assert bank_row is not None, f"bank {bank_id} not in list: {banks_body!r}"
-    for key in ("questionBankId", "status", "createdAt", "updatedAt"):
+    for key in ("questionBankId", "name", "status", "createdAt", "updatedAt"):
         assert key in bank_row, f"missing key {key} in bank row: {bank_row!r}"
+    assert bank_row["name"], bank_row
 
     qs_r = api.list_question_bank_questions(course_id, bank_id)
     assert qs_r.status_code == 200, qs_r.text
@@ -108,6 +109,45 @@ def test_owner_lists_bank_and_draft_question_shapes(
     q = qs_body[0]
     for key in ("questionId", "status", "promptText", "optionsJson", "correctOptionKey"):
         assert key in q, f"missing key {key} in question row: {q!r}"
+
+
+def test_owner_renames_question_bank(api: ApiClient, course_factory) -> None:
+    course_id, _mid = _owner_draft_course_with_module(
+        api, course_factory, label="qb-read-rename"
+    )
+    create_r = api.create_question_bank(course_id, name="Original bank")
+    assert create_r.status_code == 201, create_r.text
+    bank_id = str(create_r.json()["questionBankId"])
+
+    rename_r = api.rename_question_bank(course_id, bank_id, name=" Renamed bank ")
+    assert rename_r.status_code == 200, rename_r.text
+    assert response_json_dict(rename_r) == {
+        "questionBankId": bank_id,
+        "name": "Renamed bank",
+    }
+
+    banks_r = api.list_question_banks(course_id)
+    assert banks_r.status_code == 200, banks_r.text
+    bank_row = next(
+        (b for b in banks_r.json() if str(b.get("questionBankId")) == bank_id),
+        None,
+    )
+    assert bank_row is not None
+    assert bank_row["name"] == "Renamed bank"
+
+
+def test_owner_rename_rejects_blank_name(api: ApiClient, course_factory) -> None:
+    course_id, _mid = _owner_draft_course_with_module(
+        api, course_factory, label="qb-read-rename-blank"
+    )
+    create_r = api.create_question_bank(course_id, name="Original bank")
+    assert create_r.status_code == 201, create_r.text
+    bank_id = str(create_r.json()["questionBankId"])
+
+    rename_r = api.rename_question_bank(course_id, bank_id, name="   ")
+    assert rename_r.status_code == 400, rename_r.text
+    body = response_json_dict(rename_r)
+    assert body.get("code") == "bad_request"
 
 
 def test_draft_question_banks_parity_with_modules_for_alt_teacher(

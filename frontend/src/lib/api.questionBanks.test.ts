@@ -22,6 +22,7 @@ import {
   listCourseQuestionBanks,
   listQuestionBankQuestions,
   publishQuestionBank,
+  updateQuestionBankName,
   updateQuestionBankQuestion,
 } from './api'
 
@@ -79,8 +80,15 @@ function happyPathQuestionBankResponse(url: string, method: string): Response {
         u.includes(`/courses/${enc.course}/question-banks`) &&
         !u.includes('/questions') &&
         !u.includes('/publish'),
-      body: { questionBankId: 'new-bank' },
+      body: { questionBankId: 'new-bank', name: 'Chapter 1 quiz' },
       status: 201,
+    },
+    {
+      method: 'PATCH',
+      match: (u) =>
+        u.includes(`/courses/${enc.course}/question-banks/${enc.bank}`) &&
+        !u.includes('/questions'),
+      body: { questionBankId: BANK_ID, name: 'Renamed bank' },
     },
     {
       method: 'PATCH',
@@ -150,13 +158,24 @@ describe('question banks & module quiz publisher API (happy paths)', () => {
     expect(String(url)).toContain(`/courses/${enc.course}/question-banks/${enc.bank}/questions`)
   })
 
-  it('createQuestionBank POSTs {} to encoded path', async () => {
-    await createQuestionBank(COURSE_ID)
+  it('createQuestionBank POSTs name to encoded path and returns it', async () => {
+    const result = await createQuestionBank(COURSE_ID, { name: 'Chapter 1 quiz' })
     const [url, init] = vi.mocked(fetch).mock.calls[0]
     expect(String(url)).toContain(`/courses/${enc.course}/question-banks`)
     expect(String(url)).not.toContain(`${enc.course}/question-banks/${enc.bank}`)
     expect(init?.method).toBe('POST')
-    expect(JSON.parse((init?.body as string) ?? '{}')).toEqual({})
+    expect(JSON.parse((init?.body as string) ?? '{}')).toEqual({ name: 'Chapter 1 quiz' })
+    expect(result).toEqual({ questionBankId: 'new-bank', name: 'Chapter 1 quiz' })
+  })
+
+  it('updateQuestionBankName PATCHes name to encoded bank path and returns it', async () => {
+    const result = await updateQuestionBankName(COURSE_ID, BANK_ID, { name: 'Renamed bank' })
+    const [url, init] = vi.mocked(fetch).mock.calls[0]
+    expect(String(url)).toContain(`/courses/${enc.course}/question-banks/${enc.bank}`)
+    expect(String(url)).not.toContain('/questions')
+    expect(init?.method).toBe('PATCH')
+    expect(JSON.parse((init?.body as string) ?? '{}')).toEqual({ name: 'Renamed bank' })
+    expect(result).toEqual({ questionBankId: BANK_ID, name: 'Renamed bank' })
   })
 
   it('createQuestionBankQuestion POSTs JSON body with encoded segments', async () => {

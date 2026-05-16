@@ -58,8 +58,8 @@ else
   cp "${ROOT}/infrastructure/lambda/rds_schema_apply/index.py" "$PKG/"
   # Bundle migrations 001 (canonical fresh-DB schema), 003 (in-place
   # upgrade for the (course_id, lesson_id) FK invariant), 004
-  # (created_by non-blank invariant), 006 (QB-A module quiz + question banks),
-  # and 007 (QB-C questions) as one schema.sql.
+  # (created_by non-blank invariant), and question-bank migrations as one
+  # schema.sql.
   # Each migration is idempotent so re-running on every deploy is safe.
   cat \
     "${ROOT}/infrastructure/database/migrations/001_initial_schema.sql" \
@@ -68,6 +68,8 @@ else
     "${ROOT}/infrastructure/database/migrations/006_question_banks_module_quizzes.sql" \
     "${ROOT}/infrastructure/database/migrations/007_question_bank_questions.sql" \
     "${ROOT}/infrastructure/database/migrations/008_student_module_quiz_bindings.sql" \
+    "${ROOT}/infrastructure/database/migrations/009_module_quiz_attempts.sql" \
+    "${ROOT}/infrastructure/database/migrations/010_module_quiz_attempt_submissions.sql" \
     > "$PKG/schema.sql"
   pip install psycopg2-binary==2.9.9 \
     --quiet \

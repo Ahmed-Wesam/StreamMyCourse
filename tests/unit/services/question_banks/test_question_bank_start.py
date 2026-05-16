@@ -47,6 +47,7 @@ def _published_bank() -> QuestionBank:
     return QuestionBank(
         id=_BANK_ID,
         courseId=_COURSE_ID,
+        name="Published bank",
         status="PUBLISHED",
         createdAt="",
         updatedAt="",

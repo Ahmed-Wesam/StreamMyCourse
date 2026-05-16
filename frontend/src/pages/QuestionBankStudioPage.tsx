@@ -12,6 +12,7 @@ import {
   listCourseQuestionBanks,
   listQuestionBankQuestions,
   publishQuestionBank,
+  updateQuestionBankName,
   updateQuestionBankQuestion,
   type CreateQuestionBankQuestionBody,
   type ModuleQuizRow,
@@ -21,6 +22,71 @@ import {
   type UpdateQuestionBankQuestionBody,
 } from '../lib/api'
 import { questionBankUserMessage } from '../lib/questionBankErrors'
+import { questionBankDisplayName, questionBankIdLabel } from '../lib/questionBankDisplay'
+
+const MAX_BANK_NAME_LENGTH = 80
+
+type QuestionBankStudioHeaderProps = {
+  bankId: string
+  bankDisplayName: string
+  bankMissing: boolean
+  bankStatus: QuestionBankSummary['status']
+  renameValue: string
+  renaming: boolean
+  onRenameValueChange: (value: string) => void
+  onRename: () => void
+}
+
+function QuestionBankStudioHeader({
+  bankId,
+  bankDisplayName,
+  bankMissing,
+  bankStatus,
+  renameValue,
+  renaming,
+  onRenameValueChange,
+  onRename,
+}: QuestionBankStudioHeaderProps) {
+  const saveDisabled = renaming || bankMissing || renameValue.trim() === bankDisplayName
+
+  return (
+    <div className="mb-6 flex flex-wrap items-center justify-between gap-4">
+      <div>
+        <p className="text-sm font-medium uppercase tracking-wide text-gray-500">Question bank studio</p>
+        <h1 className="text-3xl font-bold text-gray-900">{bankDisplayName}</h1>
+        <p className="mt-1 font-mono text-sm text-gray-600">{questionBankIdLabel(bankId)}</p>
+        <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-end">
+          <label className="flex flex-col gap-1 text-sm font-medium text-gray-700">
+            Question bank name
+            <input
+              type="text"
+              value={renameValue}
+              maxLength={MAX_BANK_NAME_LENGTH}
+              disabled={renaming || bankMissing}
+              onChange={(e) => onRenameValueChange(e.target.value)}
+              className="min-h-[44px] rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-transparent focus:ring-2 focus:ring-blue-500 disabled:cursor-not-allowed disabled:bg-gray-100"
+            />
+          </label>
+          <button
+            type="button"
+            disabled={saveDisabled}
+            onClick={onRename}
+            className="min-h-[44px] rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {renaming ? 'Saving…' : 'Save name'}
+          </button>
+        </div>
+      </div>
+      <span
+        className={`rounded-full px-3 py-1 text-sm font-medium ${
+          bankStatus === 'PUBLISHED' ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'
+        }`}
+      >
+        {bankStatus}
+      </span>
+    </div>
+  )
+}
 
 export default function QuestionBankStudioPage() {
   const { courseId: courseIdParam, bankId: bankIdParam } = useParams<{ courseId: string; bankId: string }>()
@@ -36,15 +102,22 @@ export default function QuestionBankStudioPage() {
   const [bankMissing, setBankMissing] = useState(false)
   const [creating, setCreating] = useState(false)
   const [publishing, setPublishing] = useState(false)
+  const [renaming, setRenaming] = useState(false)
+  const [renameValue, setRenameValue] = useState('')
   const [editingQuestionId, setEditingQuestionId] = useState<string | null>(null)
   const [busyQuestionId, setBusyQuestionId] = useState<string | null>(null)
 
   const bank = useMemo(() => banks.find((b) => b.questionBankId === bankId), [banks, bankId])
+  const bankDisplayName = bank ? questionBankDisplayName(bank) : bankId
 
   const linkedModuleRows = useMemo(
     () => moduleQuizzes.filter((r) => r.questionBankId === bankId),
     [moduleQuizzes, bankId],
   )
+
+  useEffect(() => {
+    setRenameValue(bankDisplayName)
+  }, [bankDisplayName])
 
   const reload = useCallback(async () => {
     if (!courseId || !bankId) return
@@ -116,6 +189,30 @@ export default function QuestionBankStudioPage() {
       setError(questionBankUserMessage(err))
     } finally {
       setPublishing(false)
+    }
+  }
+
+  const handleRename = async () => {
+    if (!courseId || !bankId) return
+    const name = renameValue.trim()
+    if (!name) {
+      setError('Enter a question bank name.')
+      return
+    }
+    try {
+      setRenaming(true)
+      setError(null)
+      const updated = await updateQuestionBankName(courseId, bankId, { name })
+      setBanks((prev) =>
+        prev.map((row) =>
+          row.questionBankId === updated.questionBankId ? { ...row, name: updated.name } : row,
+        ),
+      )
+      setRenameValue(updated.name)
+    } catch (err) {
+      setError(questionBankUserMessage(err))
+    } finally {
+      setRenaming(false)
     }
   }
 
@@ -193,19 +290,16 @@ export default function QuestionBankStudioPage() {
         ← Back to question banks
       </button>
 
-      <div className="mb-6 flex flex-wrap items-center justify-between gap-4">
-        <div>
-          <h1 className="text-3xl font-bold text-gray-900">Question bank studio</h1>
-          <p className="mt-1 font-mono text-sm text-gray-600">{bankId}</p>
-        </div>
-        <span
-          className={`rounded-full px-3 py-1 text-sm font-medium ${
-            bankStatus === 'PUBLISHED' ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'
-          }`}
-        >
-          {bankStatus}
-        </span>
-      </div>
+      <QuestionBankStudioHeader
+        bankId={bankId}
+        bankDisplayName={bankDisplayName}
+        bankMissing={bankMissing}
+        bankStatus={bankStatus}
+        renameValue={renameValue}
+        renaming={renaming}
+        onRenameValueChange={setRenameValue}
+        onRename={() => void handleRename()}
+      />
 
       {bankMissing ? (
         <div className="mb-6 rounded-lg border border-amber-200 bg-amber-50 p-4 text-amber-900" role="alert">

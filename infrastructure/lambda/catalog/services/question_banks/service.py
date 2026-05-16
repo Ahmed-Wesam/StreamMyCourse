@@ -40,6 +40,8 @@ from services.question_banks.ports import (
 )
 from services.question_banks.rds_repo import QuestionBankRdsRepository
 
+_QUESTION_BANK_NAME_MAX_LENGTH = 80
+
 
 class QuestionBankService:
     def __init__(
@@ -415,12 +417,16 @@ class QuestionBankService:
         ]
 
     def create_question_bank(
-        self, course_id: str, *, cognito_sub: str, role: str
-    ) -> str:
+        self, course_id: str, *, name: str, cognito_sub: str, role: str
+    ) -> dict[str, str]:
         self._authorizer.ensure_course_mutable_by_actor(
             course_id, cognito_sub=cognito_sub, role=role
         )
-        return self._repo.insert_question_bank(course_id=course_id)
+        normalized_name = _validate_question_bank_name(name)
+        bank_id = self._repo.insert_question_bank(
+            course_id=course_id, name=normalized_name
+        )
+        return {"questionBankId": bank_id, "name": normalized_name}
 
     def list_question_banks_for_course(
         self,
@@ -436,12 +442,34 @@ class QuestionBankService:
         return [
             {
                 "questionBankId": b.id,
+                "name": _question_bank_display_name(b),
                 "status": b.status,
                 "createdAt": b.createdAt,
                 "updatedAt": b.updatedAt,
             }
             for b in banks
         ]
+
+    def rename_question_bank(
+        self,
+        course_id: str,
+        bank_id: str,
+        *,
+        name: str,
+        cognito_sub: str,
+        role: str,
+    ) -> dict[str, str]:
+        self._authorizer.ensure_course_mutable_by_actor(
+            course_id, cognito_sub=cognito_sub, role=role
+        )
+        bank = self._repo.get_bank_for_course(course_id=course_id, bank_id=bank_id)
+        if bank is None:
+            raise NotFound("Question bank not found for this course")
+        normalized_name = _validate_question_bank_name(name)
+        self._repo.update_question_bank_name(
+            course_id=course_id, bank_id=bank_id, name=normalized_name
+        )
+        return {"questionBankId": bank_id, "name": normalized_name}
 
     def list_module_quizzes_for_course(
         self,
@@ -733,6 +761,24 @@ def _parse_options_json(raw: str) -> Any:
         return json.loads(text)
     except json.JSONDecodeError:
         return raw
+
+
+def _validate_question_bank_name(name: str) -> str:
+    normalized = (name or "").strip()
+    if not normalized:
+        raise BadRequest("name must not be empty")
+    if len(normalized) > _QUESTION_BANK_NAME_MAX_LENGTH:
+        raise BadRequest(
+            f"name must be {_QUESTION_BANK_NAME_MAX_LENGTH} characters or fewer"
+        )
+    return normalized
+
+
+def _question_bank_display_name(bank: QuestionBank) -> str:
+    name = (bank.name or "").strip()
+    if name:
+        return name
+    return f"Question bank {bank.id[:8]}"
 
 
 def _is_uuid_string(value: str) -> bool:
