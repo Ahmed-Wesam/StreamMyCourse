@@ -4,6 +4,23 @@
 
 ---
 
+## 2026-05-16 — Frontend API error sanitization and question bank UX
+
+### Completed
+
+- [x] **`catalogApiUserMessage`** — [`apiUserMessages.ts`](frontend/src/lib/apiUserMessages.ts): maps technical catalog API errors to plain-language copy; context-specific fallbacks; passive voice (no “we”); blocks field names and opaque status strings. Re-exported from [`questionBankErrors.ts`](frontend/src/lib/questionBankErrors.ts) for question-bank call sites.
+- [x] **App-wide wiring** — course management, instructor dashboard, student catalog, lesson player, module quiz, learn redirect, and teacher role gate use the sanitizer instead of raw `err.message`.
+- [x] **Question bank studio** — hide raw bank/module IDs in list and studio; friendly Draft/Published labels; linked-module panel; publish uses attached module (no module dropdown); required correct answer on add question.
+- [x] **Quiz navigation** — [`moduleQuizNavigation.ts`](frontend/src/lib/moduleQuizNavigation.ts): “Back” from module quiz returns to lesson player when possible.
+
+### Verify
+
+```bash
+cd frontend && npm run lint && npm run knip && npm run build:all && npm run test
+```
+
+---
+
 ## 2026-05-16 — Module quiz retake random redraw
 
 ### Completed
