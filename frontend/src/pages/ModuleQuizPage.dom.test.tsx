@@ -183,7 +183,9 @@ describe('ModuleQuizPage', () => {
 
     expect(screen.getByText(/These are your latest submitted results./i)).toBeTruthy()
     expect(
-      screen.getByText(/Trying again starts a new attempt and reshuffles the questions./i),
+      screen.getByText(
+        /Trying again draws a new set of questions from the bank and reshuffles them./i,
+      ),
     ).toBeTruthy()
     expect(screen.getByRole('button', { name: /^Try again$/i })).toBeTruthy()
     expect(screen.queryAllByRole('radio')).toHaveLength(0)

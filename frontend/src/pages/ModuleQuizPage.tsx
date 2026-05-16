@@ -271,7 +271,7 @@ function ModuleQuizCardMain({
           <QuizResultsBreakdown questions={results.questions} />
           <div className="space-y-2">
             <p className="text-sm text-gray-600">
-              Trying again starts a new attempt and reshuffles the questions.
+              Trying again draws a new set of questions from the bank and reshuffles them.
             </p>
             <button
               type="button"
