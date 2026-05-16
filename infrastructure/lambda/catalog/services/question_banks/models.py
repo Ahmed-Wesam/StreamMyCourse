@@ -92,6 +92,7 @@ class ModuleQuizSubmissionSnapshot:
 
     attemptId: str
     attemptNumber: int
+    questionOrder: list[str]
     answersJson: dict[str, str]
     correctCount: int
     totalCount: int
