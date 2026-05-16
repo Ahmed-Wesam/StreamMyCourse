@@ -40,6 +40,16 @@ type ApiUserMessageContext =
   | 'loadCatalog'
   | 'loadProfile'
   | 'learnRedirect'
+  | 'loadModuleQuiz'
+  | 'submitModuleQuiz'
+  | 'retakeModuleQuiz'
+  | 'loadQuestionBanks'
+  | 'createQuestionBank'
+  | 'loadQuestionBank'
+  | 'saveQuestionBank'
+  | 'saveQuestionBankQuestion'
+  | 'publishQuestionBank'
+  | 'attachModuleQuiz'
 
 const CONTEXT_FALLBACKS: Record<ApiUserMessageContext, string> = {
   loadCourses: 'Your courses could not be loaded. Please try again.',
@@ -58,6 +68,16 @@ const CONTEXT_FALLBACKS: Record<ApiUserMessageContext, string> = {
   loadCatalog: 'The course catalog could not be loaded. Please try again.',
   loadProfile: 'Your profile could not be loaded. Please try again.',
   learnRedirect: 'Your course could not be opened. Please try again.',
+  loadModuleQuiz: 'This quiz could not be loaded. Refresh the page and try again.',
+  submitModuleQuiz: 'Your answers could not be submitted. Refresh the page and try again.',
+  retakeModuleQuiz: 'A new quiz attempt could not be started. Refresh the page and try again.',
+  loadQuestionBanks: 'Question banks could not be loaded. Please try again.',
+  createQuestionBank: 'The question bank could not be created. Please try again.',
+  loadQuestionBank: 'This question bank could not be loaded. Please try again.',
+  saveQuestionBank: 'The question bank could not be saved. Please try again.',
+  saveQuestionBankQuestion: 'That question could not be saved. Please try again.',
+  publishQuestionBank: 'This question bank could not be published. Please try again.',
+  attachModuleQuiz: 'The module quiz could not be attached. Please try again.',
 }
 
 const CAMEL_CASE_TOKEN = /\b[a-z]+[A-Z][a-zA-Z]*\b/
@@ -65,14 +85,175 @@ const TECHNICAL_TOKEN =
   /\b(questionBankId|moduleId|lessonId|courseId|promptText|optionsJson|correctOptionKey|servedCountN|attemptId|moduleQuizId|quizId|thumbnailKey|cognito_sub|created_by|user_sub|UUID|DRAFT|PUBLISHED|bad_request|not_found|unauthorized|enrollment_required)\b/i
 const QUOTED_FIELD_REQUIRED = /'[^']+' is required/i
 
-/** Short or empty API messages that are not useful to show verbatim (e.g. "boom", "Conflict"). */
-function isOpaqueMessage(message: string): boolean {
-  const trimmed = message.trim()
-  if (!trimmed) return true
-  if (trimmed.length <= 20 && !/\s{2,}/.test(trimmed) && trimmed.split(/\s+/).length <= 2) {
-    return !mapKnownApiMessage(trimmed)
+type MessageRule = {
+  test: (lower: string) => boolean
+  message: string
+}
+
+const KNOWN_MESSAGE_RULES: MessageRule[] = [
+  {
+    test: (l) => l.includes('question bank is already linked to another module'),
+    message: 'That question bank is already linked to a different module.',
+  },
+  {
+    test: (l) => l.includes('module already has a quiz'),
+    message: 'This module already has a quiz attached.',
+  },
+  {
+    test: (l) => l.includes('no module quiz row'),
+    message: 'Attach this bank to a module quiz in course management before publishing.',
+  },
+  {
+    test: (l) => l.includes('not in draft status') || l.includes('cannot accept questions in this status'),
+    message: 'This question bank is no longer in draft. Refresh the page to see its current state.',
+  },
+  {
+    test: (l) => l.includes('published questions cannot be updated'),
+    message: 'Published questions cannot be edited. Add a new question instead.',
+  },
+  {
+    test: (l) => l.includes('published questions cannot be deleted'),
+    message: 'Published questions cannot be deleted.',
+  },
+  {
+    test: (l) => l.includes('no draft questions') || l.includes('has no draft questions'),
+    message: 'Add at least one question before publishing.',
+  },
+  {
+    test: (l) => l.includes('greater than the number of draft questions') || l.includes('n is greater than'),
+    message: 'Choose a question count that is not greater than the number of questions in this bank.',
+  },
+  {
+    test: (l) => l.includes('n must be at least'),
+    message: 'Enter at least one question per attempt.',
+  },
+  {
+    test: (l) => l.includes('designated correct answer'),
+    message: 'Every question needs a correct answer before you can publish.',
+  },
+  {
+    test: (l) => l.includes('prompttext') || l.includes('prompt must') || l.includes('prompt text'),
+    message: 'Enter the question text.',
+  },
+  {
+    test: (l) => l.includes('optionsjson') || l.includes('options json'),
+    message: 'Add at least two answer choices with text for each question.',
+  },
+  {
+    test: (l) => l.includes('correctoptionkey') || l.includes('correct option key'),
+    message: 'Choose the correct answer for this question.',
+  },
+  {
+    test: (l) => l.includes('questionbankid') || l.includes('question bank id'),
+    message: 'Choose a question bank to attach.',
+  },
+  {
+    test: (l) => l.includes('module quiz not available'),
+    message: 'This quiz is not available. It may not be published yet, or you may not have access.',
+  },
+  {
+    test: (l) => l.includes('module quiz questions could not be loaded'),
+    message: 'This quiz could not be loaded. Refresh the page and try again.',
+  },
+  {
+    test: (l) => l.includes('module quiz binding'),
+    message: 'This quiz could not be loaded. Refresh the page and try again.',
+  },
+  {
+    test: (l) => l.includes('module quiz submission is incomplete'),
+    message: 'Your answers could not be submitted. Refresh the page and try again.',
+  },
+  {
+    test: (l) => l.includes('attempt not found') || l.includes('attempt already submitted'),
+    message: 'This quiz attempt is no longer active. Refresh the page and try again.',
+  },
+  {
+    test: (l) => l.includes('answers incomplete') || l.includes('answer every question'),
+    message: 'Answer every question before submitting.',
+  },
+  {
+    test: (l) => l.includes('invalid payload'),
+    message: 'Your answers could not be submitted. Refresh the page and try again.',
+  },
+  {
+    test: (l) => l.includes('stale attempt') || l.includes('does not match current question set'),
+    message: 'This attempt is out of date. Refresh the page and try again.',
+  },
+  {
+    test: (l) => l.includes('cannot start retake'),
+    message: 'You cannot start a new attempt right now. Refresh the page and try again.',
+  },
+  {
+    test: (l) => l.includes('name must not be empty'),
+    message: 'Enter a question bank name.',
+  },
+  {
+    test: (l) =>
+      l.includes('name must be at most') || (l.includes('name must be ') && l.includes('characters or fewer')),
+    message: 'Question bank name is too long.',
+  },
+  {
+    test: (l) => l === 'conflict',
+    message: 'This action conflicts with the current state. Refresh the page and try again.',
+  },
+  {
+    test: (l) => l.includes('cannot delete the last module'),
+    message: "You can't delete the last module — every course needs at least one section.",
+  },
+  {
+    test: (l) => l.includes('media cleanup'),
+    message:
+      "Media cleanup is not configured for this environment, so modules with uploaded videos can't be deleted right now. Contact an admin.",
+  },
+  {
+    test: (l) => l.includes('course needs at least one ready lesson'),
+    message: 'Add at least one lesson with a ready video before you can publish this course.',
+  },
+  {
+    test: (l) => l.includes('no video uploaded') || l.includes('no video uploaded for lesson'),
+    message: 'Upload a video for this lesson first.',
+  },
+  {
+    test: (l) => l.includes('video not ready'),
+    message: "This lesson's video is still processing. Try again in a few minutes.",
+  },
+  {
+    test: (l) => l.includes('invalid thumbnail'),
+    message: 'That image could not be used. Try another file.',
+  },
+  {
+    test: (l) => l.includes('enrollment required') || l.includes('not enrolled'),
+    message: 'Enroll in this course to access this content.',
+  },
+  {
+    test: (l) => l.includes('authentication required') || l === 'unauthorized' || l.includes('sign in'),
+    message: 'Sign in to continue.',
+  },
+  {
+    test: (l) => l === 'course not found' || l.includes('course not found'),
+    message: courseNotFoundMessage,
+  },
+  {
+    test: (l) => l === 'lesson not found' || l.includes('lesson not found'),
+    message: 'That lesson was not found. Refresh the page and try again.',
+  },
+  {
+    test: (l) => l === 'module not found' || l.includes('module not found'),
+    message: 'That module was not found. Refresh the page and try again.',
+  },
+  {
+    test: (l) => l === 'not found',
+    message: 'That item was not found or you no longer have access to it.',
+  },
+]
+
+function mapKnownApiMessage(message: string): string | null {
+  const lower = message.trim().toLowerCase()
+  if (!lower) return null
+  for (const rule of KNOWN_MESSAGE_RULES) {
+    if (rule.test(lower)) return rule.message
   }
-  return false
+  return null
 }
 
 function looksTechnical(message: string): boolean {
@@ -87,123 +268,6 @@ function looksTechnical(message: string): boolean {
   if (/must be (a |valid )?(json|number|boolean|integer)/i.test(trimmed)) return true
   if (/must not be empty/i.test(trimmed) && /[a-z][A-Z]/.test(trimmed)) return true
   return false
-}
-
-function mapKnownApiMessage(message: string): string | null {
-  const m = message.trim()
-  const lower = m.toLowerCase()
-
-  if (lower.includes('question bank is already linked to another module')) {
-    return 'That question bank is already linked to a different module.'
-  }
-  if (lower.includes('module already has a quiz')) {
-    return 'This module already has a quiz attached.'
-  }
-  if (lower.includes('no module quiz row')) {
-    return 'Attach this bank to a module quiz in course management before publishing.'
-  }
-  if (lower.includes('not in draft status') || lower.includes('cannot accept questions in this status')) {
-    return 'This question bank is no longer in draft. Refresh the page to see its current state.'
-  }
-  if (lower.includes('published questions cannot be updated')) {
-    return 'Published questions cannot be edited. Add a new question instead.'
-  }
-  if (lower.includes('published questions cannot be deleted')) {
-    return 'Published questions cannot be deleted.'
-  }
-  if (lower.includes('no draft questions') || lower.includes('has no draft questions')) {
-    return 'Add at least one question before publishing.'
-  }
-  if (lower.includes('greater than the number of draft questions') || lower.includes('n is greater than')) {
-    return 'Choose a question count that is not greater than the number of questions in this bank.'
-  }
-  if (lower.includes('n must be at least')) {
-    return 'Enter at least one question per attempt.'
-  }
-  if (lower.includes('designated correct answer')) {
-    return 'Every question needs a correct answer before you can publish.'
-  }
-  if (lower.includes('prompttext') || lower.includes('prompt must') || lower.includes('prompt text')) {
-    return 'Enter the question text.'
-  }
-  if (lower.includes('optionsjson') || lower.includes('options json') || lower.includes('at least two')) {
-    return 'Add at least two answer choices with text for each question.'
-  }
-  if (lower.includes('correctoptionkey') || lower.includes('correct option key')) {
-    return 'Choose the correct answer for this question.'
-  }
-  if (lower.includes('questionbankid') || lower.includes('question bank id')) {
-    return 'Choose a question bank to attach.'
-  }
-  if (lower.includes('module quiz not available')) {
-    return 'This quiz is not available. It may not be published yet, or you may not have access.'
-  }
-  if (lower.includes('attempt not found') || lower.includes('attempt already submitted')) {
-    return 'This quiz attempt is no longer active. Refresh the page and try again.'
-  }
-  if (lower.includes('answers incomplete') || lower.includes('answer every question')) {
-    return 'Answer every question before submitting.'
-  }
-  if (lower.includes('invalid payload')) {
-    return 'Your answers could not be submitted. Refresh the page and try again.'
-  }
-  if (lower.includes('stale attempt') || lower.includes('does not match')) {
-    return 'This attempt is out of date. Refresh the page and try again.'
-  }
-  if (lower.includes('cannot start retake')) {
-    return 'You cannot start a new attempt right now. Refresh the page and try again.'
-  }
-  if (lower.includes('name must not be empty')) {
-    return 'Enter a question bank name.'
-  }
-  if (
-    lower.includes('name must be at most') ||
-    (lower.includes('name must be ') && lower.includes('characters or fewer'))
-  ) {
-    return 'Question bank name is too long.'
-  }
-  if (lower === 'conflict') {
-    return 'This action conflicts with the current state. Refresh the page and try again.'
-  }
-
-  if (lower.includes('cannot delete the last module')) {
-    return "You can't delete the last module — every course needs at least one section."
-  }
-  if (lower.includes('media cleanup')) {
-    return "Media cleanup is not configured for this environment, so modules with uploaded videos can't be deleted right now. Contact an admin."
-  }
-  if (lower.includes('course needs at least one ready lesson')) {
-    return 'Add at least one lesson with a ready video before you can publish this course.'
-  }
-  if (lower.includes('no video uploaded') || lower.includes('no video uploaded for lesson')) {
-    return 'Upload a video for this lesson first.'
-  }
-  if (lower.includes('video not ready')) {
-    return "This lesson's video is still processing. Try again in a few minutes."
-  }
-  if (lower.includes('invalid thumbnail')) {
-    return 'That image could not be used. Try another file.'
-  }
-  if (lower.includes('enrollment required') || lower.includes('not enrolled')) {
-    return 'Enroll in this course to access this content.'
-  }
-  if (lower.includes('authentication required') || lower === 'unauthorized' || lower.includes('sign in')) {
-    return 'Sign in to continue.'
-  }
-  if (lower === 'course not found' || lower.includes('course not found')) {
-    return 'That course was not found or you no longer have access to it.'
-  }
-  if (lower === 'lesson not found' || lower.includes('lesson not found')) {
-    return 'That lesson was not found. Refresh the page and try again.'
-  }
-  if (lower === 'module not found' || lower.includes('module not found')) {
-    return 'That module was not found. Refresh the page and try again.'
-  }
-  if (lower === 'not found') {
-    return 'That item was not found or you no longer have access to it.'
-  }
-
-  return null
 }
 
 function fallbackForContext(context?: ApiUserMessageContext): string {
@@ -234,40 +298,38 @@ function mapByApiErrorCode(err: ApiError): string | null {
   return null
 }
 
+function messageFromApiError(apiErr: ApiError, context?: ApiUserMessageContext): string {
+  const byCode = mapByApiErrorCode(apiErr)
+  if (byCode) return byCode
+
+  const mapped = mapKnownApiMessage(apiErr.message)
+  if (mapped) return mapped
+
+  if (apiErr.status === 404) {
+    return 'That item was not found or you no longer have access to it.'
+  }
+  if (apiErr.status === 409) {
+    return 'This action conflicts with the current state. Refresh the page and try again.'
+  }
+  if (apiErr.status === 400) {
+    return context
+      ? fallbackForContext(context)
+      : 'That request could not be completed. Check your entries and try again.'
+  }
+  if (apiErr.status === 401 || apiErr.status === 403) {
+    return apiErr.status === 401 ? 'Sign in to continue.' : 'You do not have permission to do that.'
+  }
+
+  return fallbackForContext(context)
+}
+
 /**
  * User-facing copy for catalog API failures and related errors.
  */
 export function catalogApiUserMessage(err: unknown, context?: ApiUserMessageContext): string {
   const apiErr = readApiError(err)
   if (apiErr) {
-    const byCode = mapByApiErrorCode(apiErr)
-    if (byCode) return byCode
-
-    const mapped = mapKnownApiMessage(apiErr.message)
-    if (mapped) return mapped
-
-    if (apiErr.status === 404) {
-      return 'That item was not found or you no longer have access to it.'
-    }
-    if (apiErr.status === 409) {
-      return 'This action conflicts with the current state. Refresh the page and try again.'
-    }
-    if (apiErr.status === 400) {
-      return context
-        ? fallbackForContext(context)
-        : 'That request could not be completed. Check your entries and try again.'
-    }
-    if (apiErr.status === 401 || apiErr.status === 403) {
-      if (apiErr.message.trim() && !looksTechnical(apiErr.message)) {
-        const known = mapKnownApiMessage(apiErr.message)
-        if (known) return known
-      }
-      return apiErr.status === 401 ? 'Sign in to continue.' : 'You do not have permission to do that.'
-    }
-    if (apiErr.message.trim() && !looksTechnical(apiErr.message) && !isOpaqueMessage(apiErr.message)) {
-      return apiErr.message.trim()
-    }
-    return fallbackForContext(context)
+    return messageFromApiError(apiErr, context)
   }
 
   if (err instanceof Error) {
@@ -275,9 +337,8 @@ export function catalogApiUserMessage(err: unknown, context?: ApiUserMessageCont
     if (trimmed && !looksTechnical(trimmed)) {
       const known = mapKnownApiMessage(trimmed)
       if (known) return known
-      if (context) return fallbackForContext(context)
-      return trimmed
     }
+    return fallbackForContext(context)
   }
 
   return fallbackForContext(context)

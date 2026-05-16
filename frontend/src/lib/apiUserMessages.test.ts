@@ -50,20 +50,47 @@ describe('catalogApiUserMessage', () => {
     )
   })
 
-  it('keeps plain-language API messages when safe', () => {
+  it('maps module quiz API messages', () => {
+    expect(catalogApiUserMessage(new ApiError('Module quiz not available', 404))).toBe(
+      'This quiz is not available. It may not be published yet, or you may not have access.',
+    )
+    expect(catalogApiUserMessage(new ApiError('Module quiz questions could not be loaded', 409))).toBe(
+      'This quiz could not be loaded. Refresh the page and try again.',
+    )
+    expect(catalogApiUserMessage(new ApiError('Module quiz binding is incomplete', 409))).toBe(
+      'This quiz could not be loaded. Refresh the page and try again.',
+    )
+    expect(catalogApiUserMessage(new ApiError('Module quiz submission is incomplete', 409))).toBe(
+      'Your answers could not be submitted. Refresh the page and try again.',
+    )
+    expect(catalogApiUserMessage(new ApiError('Module quiz attempt does not match current question set', 409))).toBe(
+      'This attempt is out of date. Refresh the page and try again.',
+    )
+    expect(catalogApiUserMessage(new ApiError('Answers incomplete', 400), 'submitModuleQuiz')).toBe(
+      'Answer every question before submitting.',
+    )
+  })
+
+  it('keeps plain-language API messages when mapped', () => {
     const err = new ApiError('Module already has a quiz', 409, 'conflict')
     expect(catalogApiUserMessage(err)).toBe('This module already has a quiz attached.')
   })
 
-  it('does not surface request failed status codes or opaque errors', () => {
+  it('does not surface request failed status codes, opaque errors, or raw server text', () => {
     expect(catalogApiUserMessage(new ApiError('', 500, 'internal_error'))).toBe(
       'Something went wrong. Please try again.',
     )
     expect(catalogApiUserMessage(new ApiError('boom', 500), 'loadCourse')).toBe(
       'This course could not be loaded. Please try again.',
     )
+    expect(catalogApiUserMessage(new ApiError('Internal Server Error', 500), 'loadModuleQuiz')).toBe(
+      'This quiz could not be loaded. Refresh the page and try again.',
+    )
     expect(catalogApiUserMessage(new ApiError("'title' is required", 400), 'updateCourse')).toBe(
       'Your changes could not be saved. Please try again.',
+    )
+    expect(catalogApiUserMessage(new ApiError('Unmapped plain failure', 502), 'loadLesson')).toBe(
+      'This lesson could not be loaded. Please try again.',
     )
   })
 
@@ -73,6 +100,15 @@ describe('catalogApiUserMessage', () => {
     )
     expect(catalogApiUserMessage(new Error('Boom'), 'learnRedirect')).toBe(
       'Your course could not be opened. Please try again.',
+    )
+    expect(catalogApiUserMessage(new Error('network down'), 'retakeModuleQuiz')).toBe(
+      'A new quiz attempt could not be started. Refresh the page and try again.',
+    )
+    expect(catalogApiUserMessage(new Error('network down'), 'attachModuleQuiz')).toBe(
+      'The module quiz could not be attached. Please try again.',
+    )
+    expect(catalogApiUserMessage(new ApiError('Unmapped attach failure', 502), 'attachModuleQuiz')).toBe(
+      'The module quiz could not be attached. Please try again.',
     )
   })
 })
