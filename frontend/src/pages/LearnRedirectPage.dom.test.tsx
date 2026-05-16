@@ -17,8 +17,10 @@ vi.mock('react-router-dom', async () => {
   }
 })
 
-vi.mock('../lib/api', () => {
+vi.mock('../lib/api', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../lib/api')>()
   return {
+    ...actual,
     listCourses: vi.fn(async () => [{ id: 'c-1', title: 'Course 1', description: '', status: 'PUBLISHED' }]),
     listLessons: vi.fn(async () => [{ id: 'l-1', title: 'Lesson 1', order: 1, moduleId: 'm-1', moduleOrder: 1 }]),
   }
@@ -77,7 +79,7 @@ describe('LearnRedirectPage', () => {
 
   it('shows an error message when API calls fail', async () => {
     const api = await import('../lib/api')
-    vi.mocked(api.listCourses).mockRejectedValueOnce(new Error('Boom'))
+    vi.mocked(api.listCourses).mockRejectedValue(new Error('Boom'))
 
     render(
       <MemoryRouter>
@@ -86,7 +88,7 @@ describe('LearnRedirectPage', () => {
     )
 
     await waitFor(() => {
-      expect(screen.getByText(/boom/i)).toBeTruthy()
+      expect(screen.getByText(/Your course could not be opened/i)).toBeTruthy()
     })
     expect(mockNavigate).not.toHaveBeenCalled()
   })

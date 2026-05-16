@@ -73,9 +73,10 @@ describe('QuestionBanksListPage', () => {
 
     expect(screen.getByText('Midterm bank')).toBeTruthy()
     expect(screen.getByText('Final review')).toBeTruthy()
-    expect(screen.getByText('ID: qb-a')).toBeTruthy()
-    expect(screen.getByText('DRAFT')).toBeTruthy()
-    expect(screen.getByText('PUBLISHED')).toBeTruthy()
+    expect(screen.queryByText('ID: qb-a')).toBeNull()
+    expect(screen.queryByText('qb-a')).toBeNull()
+    expect(screen.getByText('Draft')).toBeTruthy()
+    expect(screen.getByText('Published')).toBeTruthy()
   })
 
   it('create control collects a name, calls API, then navigates to the new bank route', async () => {

@@ -1,6 +1,6 @@
 import { type FormEvent, useCallback, useState } from 'react'
 
-import type { CreateQuestionBankQuestionBody, QuestionBankStatus } from '../../lib/api'
+import type { CreateQuestionBankQuestionBody } from '../../lib/api'
 
 type OptionRow = { key: string; text: string }
 
@@ -10,14 +10,12 @@ const initialRows = (): OptionRow[] => [
 ]
 
 type Props = {
-  bankStatus: QuestionBankStatus
   disabled?: boolean
   submitting?: boolean
   onSubmit: (body: CreateQuestionBankQuestionBody) => void | Promise<void>
 }
 
 export function QuestionBankStudioAddQuestionForm({
-  bankStatus,
   disabled = false,
   submitting = false,
   onSubmit,
@@ -43,19 +41,17 @@ export function QuestionBankStudioAddQuestionForm({
       .map((r) => ({ key: r.key.trim(), text: r.text.trim() }))
       .filter((o) => o.key && o.text)
     if (optionsJson.length < 2) {
-      setLocalError('Add at least two options with keys and text.')
+      setLocalError('Add at least two answer choices with text.')
       return
     }
-    if (bankStatus === 'PUBLISHED' && !correctKey.trim()) {
-      setLocalError('Choose the correct answer before adding a question to a published bank.')
+    if (!correctKey.trim()) {
+      setLocalError('Choose the correct answer.')
       return
     }
     const body: CreateQuestionBankQuestionBody = {
       promptText: promptText.trim(),
       optionsJson,
-    }
-    if (correctKey.trim()) {
-      body.correctOptionKey = correctKey.trim()
+      correctOptionKey: correctKey.trim(),
     }
     try {
       await onSubmit(body)
@@ -91,12 +87,12 @@ export function QuestionBankStudioAddQuestionForm({
           <div key={i} className="flex flex-wrap gap-2">
             <input
               data-testid={`studio-option-key-${i}`}
-              aria-label={`Option ${i + 1} key`}
+              aria-label={`Option ${i + 1} label`}
               value={row.key}
               onChange={(e) =>
                 setRows((prev) => prev.map((r, j) => (j === i ? { ...r, key: e.target.value } : r)))
               }
-              placeholder="Key"
+              placeholder="A"
               className="w-24 min-h-[44px] rounded-lg border border-gray-300 px-2 py-2 text-sm font-mono focus:border-transparent focus:ring-2 focus:ring-blue-500"
               disabled={disabled || submitting}
             />
@@ -125,7 +121,7 @@ export function QuestionBankStudioAddQuestionForm({
       </button>
       <div className="mt-4">
         <label className="mb-1 block text-sm font-medium text-gray-700" htmlFor="studio-correct-select">
-          Correct option {bankStatus === 'PUBLISHED' ? '(required)' : '(optional)'}
+          Correct answer (required)
         </label>
         <select
           id="studio-correct-select"

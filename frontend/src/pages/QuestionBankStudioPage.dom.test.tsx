@@ -24,6 +24,7 @@ const api = vi.hoisted(() => ({
   deleteQuestionBankQuestion: vi.fn(),
   publishQuestionBank: vi.fn(),
   listCourseModuleQuizzes: vi.fn(),
+  listCourseModules: vi.fn(),
 }))
 
 const mockNavigate = vi.fn()
@@ -58,6 +59,8 @@ vi.mock('../lib/api', async (importOriginal) => {
       api.publishQuestionBank(...args) as ReturnType<typeof mod.publishQuestionBank>,
     listCourseModuleQuizzes: (...args: unknown[]) =>
       api.listCourseModuleQuizzes(...args) as ReturnType<typeof mod.listCourseModuleQuizzes>,
+    listCourseModules: (...args: unknown[]) =>
+      api.listCourseModules(...args) as ReturnType<typeof mod.listCourseModules>,
   }
 })
 
@@ -84,6 +87,7 @@ describe('QuestionBankStudioPage', () => {
     api.deleteQuestionBankQuestion.mockReset()
     api.publishQuestionBank.mockReset()
     api.listCourseModuleQuizzes.mockReset()
+    api.listCourseModules.mockReset()
     mockNavigate.mockReset()
     mockRouteParams.courseId = 'c1'
     mockRouteParams.bankId = 'qb1'
@@ -96,6 +100,7 @@ describe('QuestionBankStudioPage', () => {
     api.deleteQuestionBankQuestion.mockResolvedValue({ status: 'deleted' })
     api.publishQuestionBank.mockResolvedValue({ status: 'PUBLISHED' })
     api.listCourseModuleQuizzes.mockResolvedValue([])
+    api.listCourseModules.mockResolvedValue([])
   })
 
   afterEach(() => {
@@ -146,6 +151,25 @@ describe('QuestionBankStudioPage', () => {
     })
   })
 
+  it('DRAFT bank: blocks add when correct answer is not selected', async () => {
+    renderStudio()
+    await screen.findByTestId('question-bank-studio-loaded')
+
+    fireEvent.change(screen.getByTestId('studio-question-prompt'), { target: { value: 'What is 2+2?' } })
+    if (!screen.queryByTestId('studio-option-key-1')) {
+      fireEvent.click(screen.getByTestId('studio-add-option'))
+    }
+    fireEvent.change(screen.getByTestId('studio-option-key-0'), { target: { value: 'a' } })
+    fireEvent.change(screen.getByTestId('studio-option-text-0'), { target: { value: 'Three' } })
+    fireEvent.change(screen.getByTestId('studio-option-key-1'), { target: { value: 'b' } })
+    fireEvent.change(screen.getByTestId('studio-option-text-1'), { target: { value: 'Four' } })
+
+    fireEvent.click(screen.getByTestId('studio-add-question-submit'))
+
+    expect(await screen.findByText('Choose the correct answer.')).toBeTruthy()
+    expect(api.createQuestionBankQuestion).not.toHaveBeenCalled()
+  })
+
   it('shows loaded marker after bank and questions list resolve', async () => {
     renderStudio()
 
@@ -156,13 +180,32 @@ describe('QuestionBankStudioPage', () => {
     expect(await screen.findByTestId('question-bank-studio-loaded')).toBeTruthy()
   })
 
+  it('publish panel shows linked module name without a module dropdown', async () => {
+    const moduleId = 'eb95796c-1175-4691-9cda-7dca03e9d9c7'
+    api.listCourseModuleQuizzes.mockResolvedValue([
+      { quizId: 'mq1', moduleId, questionBankId: 'qb1', servedCountN: null },
+    ])
+    api.listCourseModules.mockResolvedValue([
+      { id: moduleId, title: 'Week 2 review', description: '', order: 1 },
+    ])
+
+    renderStudio()
+    await screen.findByTestId('question-bank-studio-loaded')
+
+    const linkedModule = await screen.findByTestId('studio-linked-module')
+    expect(linkedModule.textContent).toContain('Week 2 review')
+    expect(linkedModule.textContent).toContain('Attached to module:')
+    expect(screen.queryByLabelText(/^Module$/i)).toBeNull()
+    expect(screen.queryByText(moduleId)).toBeNull()
+  })
+
   it('shows the bank name in the header and can rename it', async () => {
     renderStudio()
 
     await screen.findByTestId('question-bank-studio-loaded')
 
     expect(screen.getByRole('heading', { name: 'Chapter 1 quiz' })).toBeTruthy()
-    expect(screen.getByText('ID: qb1')).toBeTruthy()
+    expect(screen.queryByText('ID: qb1')).toBeNull()
 
     fireEvent.change(screen.getByLabelText(/^Question bank name$/i), {
       target: { value: 'Renamed bank' },
@@ -196,7 +239,7 @@ describe('QuestionBankStudioPage', () => {
     expect(screen.queryByTestId('studio-question-edit-pub-q1')).toBeNull()
     expect(screen.queryByTestId('studio-question-delete-pub-q1')).toBeNull()
 
-    const publishedBadges = screen.getAllByText('PUBLISHED')
+    const publishedBadges = screen.getAllByText('Published')
     expect(publishedBadges.length).toBeGreaterThanOrEqual(1)
   })
 
@@ -219,7 +262,7 @@ describe('QuestionBankStudioPage', () => {
     await screen.findByTestId('question-bank-studio-loaded')
     fireEvent.click(screen.getByTestId('studio-question-edit-draft-q1'))
 
-    const correctSelect = screen.getByLabelText('Correct key') as HTMLSelectElement
+    const correctSelect = screen.getByLabelText('Correct answer') as HTMLSelectElement
     const optionValues = Array.from(correctSelect.options).map((option) => option.value)
     expect(optionValues).toEqual(['a', 'b'])
     expect(optionValues).not.toContain('')

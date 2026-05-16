@@ -10,6 +10,7 @@ import {
   type CourseProgress,
   type Lesson,
 } from '../lib/api'
+import { catalogApiUserMessage } from '../lib/apiUserMessages'
 
 type FeaturedCourseState =
   | { status: 'loading' }
@@ -286,7 +287,7 @@ export default function MyCoursePage() {
           })
         }
       } catch (e) {
-        if (!cancelled) setState({ status: 'error', message: e instanceof Error ? e.message : 'Failed to load course' })
+        if (!cancelled) setState({ status: 'error', message: catalogApiUserMessage(e, 'loadCourse') })
       }
     }
 

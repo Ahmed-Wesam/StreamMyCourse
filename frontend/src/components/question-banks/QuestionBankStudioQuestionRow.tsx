@@ -1,6 +1,7 @@
 import { type FormEvent, useEffect, useState } from 'react'
 
 import type { QuestionBankQuestion, UpdateQuestionBankQuestionBody } from '../../lib/api'
+import { questionBankStatusLabel } from '../../lib/questionBankDisplay'
 
 type OptionRow = { key: string; text: string }
 
@@ -78,13 +79,13 @@ export function QuestionBankStudioQuestionRow({
             <ul className="mt-2 list-inside list-disc text-sm text-gray-600">
               {question.optionsJson.map((o) => (
                 <li key={o.key}>
-                  <span className="font-mono text-xs">{o.key}</span>: {o.text}
+                  {o.text}
+                  {question.correctOptionKey === o.key ? (
+                    <span className="ml-2 text-xs font-medium text-emerald-700">(correct)</span>
+                  ) : null}
                 </li>
               ))}
             </ul>
-            {question.correctOptionKey ? (
-              <p className="mt-1 text-xs text-gray-500">Correct: {question.correctOptionKey}</p>
-            ) : null}
           </div>
           <div className="flex shrink-0 flex-wrap items-center gap-2">
             <span
@@ -94,7 +95,7 @@ export function QuestionBankStudioQuestionRow({
                   : 'bg-yellow-100 text-yellow-800'
               }`}
             >
-              {question.status}
+              {questionBankStatusLabel(question.status)}
             </span>
             {allowMutate ? (
               <>
@@ -160,9 +161,9 @@ export function QuestionBankStudioQuestionRow({
             Add option
           </button>
           <div>
-            <label className="text-sm text-gray-700">Correct key</label>
+            <label className="text-sm text-gray-700">Correct answer</label>
             <select
-              aria-label="Correct key"
+              aria-label="Correct answer"
               value={correctKey}
               onChange={(e) => setCorrectKey(e.target.value)}
               disabled={busy}

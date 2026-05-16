@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { listCourses, type Course } from '../lib/api'
+import { catalogApiUserMessage } from '../lib/apiUserMessages'
 import { FIGMA_MOCK_COURSE_INSTRUCTOR_IMAGE_SRC, FIGMA_MOCK_COURSE_INSTRUCTOR_NAME } from '../lib/figma-mocks'
 
 /** Student catalog "Teach" CTA — teacher SPA is a separate origin (not /instructor on student routes).
@@ -36,7 +37,7 @@ export default function CourseCatalogPage() {
         const data = await listCourses()
         if (!cancelled) setCourses(data)
       } catch (e) {
-        if (!cancelled) setError(e instanceof Error ? e.message : 'Failed to load courses')
+        if (!cancelled) setError(catalogApiUserMessage(e, 'loadCatalog'))
       } finally {
         if (!cancelled) setLoading(false)
       }

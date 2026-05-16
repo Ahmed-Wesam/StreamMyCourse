@@ -123,7 +123,7 @@ describe('TeacherRoleGate', () => {
     fetchMeMock.mockRejectedValue(new Error('network down'))
     renderGate()
     await waitFor(() => {
-      expect(screen.getByText('network down')).toBeTruthy()
+      expect(screen.getByText(/Your profile could not be loaded/i)).toBeTruthy()
     })
   })
 

@@ -134,7 +134,7 @@ describe('LessonPlayerPage', () => {
     renderLessonPlayer()
 
     await waitFor(() => {
-      expect(screen.getByText(/Course not found/i)).toBeTruthy()
+      expect(screen.getByText(/That course was not found/i)).toBeTruthy()
     })
     expect(api.listLessons).not.toHaveBeenCalled()
     expect(api.getPlaybackUrl).not.toHaveBeenCalled()
@@ -527,7 +527,7 @@ describe('LessonPlayerPage', () => {
     renderLessonPlayer('/courses/c1/lessons/l1')
 
     await waitFor(() => {
-      expect(screen.getByText(/Modules failed/i)).toBeTruthy()
+      expect(screen.getByText(/This lesson could not be loaded/i)).toBeTruthy()
     })
     expect(screen.queryByText('Alpha')).toBeNull()
   })
@@ -865,7 +865,7 @@ describe('LessonPlayerPage', () => {
     await router.navigate('/courses/c2/lessons/l3')
 
     await waitFor(() => {
-      expect(screen.getByText('boom')).toBeTruthy()
+      expect(screen.getByText(/This lesson could not be loaded/i)).toBeTruthy()
     })
     await waitFor(() => {
       expect(screen.queryByRole('link', { name: 'Stale Breadcrumb Course' })).toBeNull()

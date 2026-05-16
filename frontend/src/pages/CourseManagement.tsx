@@ -22,8 +22,7 @@ import {
   type QuestionBankSummary,
 } from '../lib/api'
 import { createAndUploadDraftLesson } from '../lib/courseManagementLessonUpload'
-import { moduleDeleteFailureMessage } from '../lib/courseManagementModuleErrors'
-import { questionBankUserMessage } from '../lib/questionBankErrors'
+import { catalogApiUserMessage } from '../lib/apiUserMessages'
 import { CourseManagementModuleQuizPanel } from '../components/course/CourseManagementModuleQuizPanel'
 import { CourseThumbnailEditor } from '../components/course/CourseThumbnailEditor'
 import { CourseManagementAddLessonModal } from '../components/course/CourseManagementAddLessonModal'
@@ -119,7 +118,7 @@ export default function CourseManagement() {
       setSelectedModuleId('')
       const is404 = err instanceof ApiError && err.status === 404
       setNotFound(is404)
-      setError(is404 ? null : err instanceof Error ? err.message : 'Failed to load course')
+      setError(is404 ? null : catalogApiUserMessage(err, 'loadCourse'))
       return false
     } finally {
       setLoading(false)
@@ -145,7 +144,7 @@ export default function CourseManagement() {
       })
       await loadCourseData()
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to update course')
+      setError(catalogApiUserMessage(err, 'updateCourse'))
     } finally {
       setSaving(false)
     }
@@ -174,7 +173,7 @@ export default function CourseManagement() {
       setSelectedFile(null)
       await loadCourseData()
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to add lesson')
+      setError(catalogApiUserMessage(err, 'addLesson'))
     } finally {
       setUploading(false)
       setUploadProgress(0)
@@ -189,7 +188,7 @@ export default function CourseManagement() {
       await deleteLesson(courseId, lessonId)
       await loadCourseData()
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to delete lesson')
+      setError(catalogApiUserMessage(err, 'deleteLesson'))
     }
   }
 
@@ -205,7 +204,7 @@ export default function CourseManagement() {
       setNewModuleDescription('')
       await loadCourseData()
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to create module')
+      setError(catalogApiUserMessage(err, 'createModule'))
     }
   }
 
@@ -225,8 +224,7 @@ export default function CourseManagement() {
         }
       }
     } catch (err) {
-      const mapped = moduleDeleteFailureMessage(err)
-      setError(mapped ?? (err instanceof Error ? err.message : 'Failed to delete module'))
+      setError(catalogApiUserMessage(err, 'deleteModule'))
     }
   }
 
@@ -258,7 +256,7 @@ export default function CourseManagement() {
       await createModuleQuiz(courseId, moduleId, { questionBankId })
       await loadCourseData()
     } catch (err) {
-      setError(questionBankUserMessage(err))
+      setError(catalogApiUserMessage(err))
     } finally {
       setAttachingModuleId(null)
     }
@@ -289,7 +287,7 @@ export default function CourseManagement() {
       setThumbFile(null)
       await loadCourseData()
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to upload thumbnail')
+      setError(catalogApiUserMessage(err, 'uploadThumbnail'))
     } finally {
       setThumbUploading(false)
     }
@@ -328,7 +326,7 @@ export default function CourseManagement() {
         navigate('/')
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to publish course')
+      setError(catalogApiUserMessage(err, 'publishCourse'))
     }
   }
 

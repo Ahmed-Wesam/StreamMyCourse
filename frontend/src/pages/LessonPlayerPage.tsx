@@ -7,7 +7,7 @@ import {
   type RefObject,
   type SyntheticEvent,
 } from 'react'
-import { Link, useParams, useSearchParams } from 'react-router-dom'
+import { Link, useParams, useSearchParams, type To } from 'react-router-dom'
 import {
   enrollInCourse,
   getCourse,
@@ -23,7 +23,13 @@ import {
   type CourseProgress,
   type Lesson,
 } from '../lib/api'
+import {
+  catalogApiUserMessage,
+  courseNotFoundMessage,
+  incompleteLessonPlayerLinkMessage,
+} from '../lib/apiUserMessages'
 import { groupLessonsByModule } from '../lib/lessonGrouping'
+import { lessonPlayerPath, moduleQuizLinkTo } from '../lib/moduleQuizNavigation'
 
 // Progress tracking constants
 const PROGRESS_INTERVAL_MS = 15000 // 15 seconds between heartbeat attempts
@@ -178,10 +184,6 @@ function sortLessonsByOrdering(lessons: Lesson[]) {
   return [...lessons].sort((a, b) => a.moduleOrder - b.moduleOrder || a.order - b.order)
 }
 
-function moduleQuizHref(courseId: string, moduleId: string) {
-  return `/courses/${courseId}/modules/${moduleId}/quiz`
-}
-
 function hasAvailableModuleQuiz(
   module: CourseModule | undefined,
 ): module is CourseModule & { moduleQuiz: { available: true; servedCountN: number } } {
@@ -191,15 +193,26 @@ function hasAvailableModuleQuiz(
 function ModuleQuizItem({
   courseId,
   module,
+  sectionLessons,
+  activeLessonId,
 }: {
   courseId: string
   module: CourseModule
+  sectionLessons: Lesson[]
+  activeLessonId: string
 }) {
   const servedCount = module.moduleQuiz?.servedCountN
+  const returnLesson =
+    sectionLessons.find((lesson) => lesson.id === activeLessonId) ??
+    sectionLessons[sectionLessons.length - 1]
+  const quizTo =
+    returnLesson != null
+      ? moduleQuizLinkTo(courseId, module.id, lessonPlayerPath(courseId, returnLesson.id))
+      : `/courses/${courseId}/modules/${module.id}/quiz`
 
   return (
     <Link
-      to={moduleQuizHref(courseId, module.id)}
+      to={quizTo}
       className="group flex items-start border-l-4 border-transparent px-4 py-3 transition-colors hover:bg-slate-50"
     >
       <div className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center text-blue-600">
@@ -322,7 +335,7 @@ function LessonPlaybackNavigation({
   playbackNavLocked: boolean
   prevLesson: Lesson | null
   nextLesson: Lesson | null
-  nextQuizHref?: string | null
+  nextQuizHref?: To | null
 }) {
   const prevLeft =
     prevLesson == null ? (
@@ -431,7 +444,7 @@ function LessonPrimaryColumn({
   courseId: string
   prevLesson: Lesson | null
   nextLesson: Lesson | null
-  nextQuizHref?: string | null
+  nextQuizHref?: To | null
   playbackNavLocked: boolean
 }) {
   const upNextTitle = nextQuizHref ? 'Module quiz' : nextLesson?.title
@@ -693,7 +706,12 @@ function CourseLessonsSidebar({
                       )
                     })}
                     {showModuleQuiz && module ? (
-                      <ModuleQuizItem courseId={courseId} module={module} />
+                      <ModuleQuizItem
+                        courseId={courseId}
+                        module={module}
+                        sectionLessons={section.lessons}
+                        activeLessonId={activeLessonId}
+                      />
                     ) : null}
                   </div>
                 ) : null}
@@ -763,7 +781,7 @@ export default function LessonPlayerPage() {
         const c = await getCourse(courseId)
         if (cancelled) return
         if (!c) {
-          setError('Course not found')
+          setError(courseNotFoundMessage)
           setCourse(null)
           setLessons([])
           setModules([])
@@ -798,12 +816,12 @@ export default function LessonPlayerPage() {
             setCourseProgress(null)
           } else {
             setCourseProgress(null)
-            setError(inner instanceof Error ? inner.message : 'Failed to load')
+            setError(catalogApiUserMessage(inner, 'loadLesson'))
           }
         }
       } catch (e) {
         if (cancelled) return
-        setError(e instanceof Error ? e.message : 'Failed to load')
+        setError(catalogApiUserMessage(e, 'loadLesson'))
         setCourse(null)
         setSrc(null)
         setLessons([])
@@ -814,7 +832,13 @@ export default function LessonPlayerPage() {
       }
     }
 
-    if (courseId && lessonId) void run()
+    if (!courseId || !lessonId) {
+      setLoading(false)
+      setError(incompleteLessonPlayerLinkMessage)
+      return
+    }
+
+    void run()
 
     return () => {
       cancelled = true
@@ -864,7 +888,9 @@ export default function LessonPlayerPage() {
     if (lastLessonInSection?.id !== lessonId) return null
 
     const activeModule = modules.find((module) => module.id === activeSection.id)
-    return hasAvailableModuleQuiz(activeModule) ? moduleQuizHref(courseId, activeModule.id) : null
+    return hasAvailableModuleQuiz(activeModule)
+      ? moduleQuizLinkTo(courseId, activeModule.id, lessonPlayerPath(courseId, lessonId))
+      : null
   }, [courseId, lessonId, lessons, modules, playbackNavLocked])
 
   const isLessonCompleted = useMemo(() => {
@@ -1227,7 +1253,7 @@ export default function LessonPlayerPage() {
         setSrc(null)
         setError(null)
       } else {
-        setError(err instanceof Error ? err.message : 'Failed after enroll')
+        setError(catalogApiUserMessage(err, 'enroll'))
       }
     } finally {
       setEnrolling(false)

@@ -2,7 +2,12 @@ import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 
 import type { CourseModule, ModuleQuizRow, QuestionBankSummary } from '../../lib/api'
-import { questionBankDisplayName, questionBankIdLabel } from '../../lib/questionBankDisplay'
+import {
+  questionBankDisplayName,
+  questionBankStatusLabel,
+  questionsPerAttemptLabel,
+  UNTITLED_QUESTION_BANK_LABEL,
+} from '../../lib/questionBankDisplay'
 
 type Props = {
   courseId: string
@@ -98,15 +103,12 @@ export function CourseManagementModuleQuizPanel({
                       <div>
                         <span className="text-gray-500">Question bank: </span>
                         <span className="font-medium">
-                          {linkedBank ? questionBankDisplayName(linkedBank) : row.questionBankId}
-                        </span>
-                        <span className="ml-2 font-mono text-xs text-gray-500">
-                          {questionBankIdLabel(row.questionBankId)}
+                          {linkedBank ? questionBankDisplayName(linkedBank) : UNTITLED_QUESTION_BANK_LABEL}
                         </span>
                       </div>
                       <div>
-                        <span className="text-gray-500">Served (n): </span>
-                        <span>{row.servedCountN ?? '—'}</span>
+                        <span className="text-gray-500">Questions per attempt: </span>
+                        <span>{questionsPerAttemptLabel(row.servedCountN) ?? 'Not set yet'}</span>
                       </div>
                       <p className="text-xs text-gray-500">
                         The linked question bank cannot be changed after a quiz is attached.
@@ -149,7 +151,7 @@ export function CourseManagementModuleQuizPanel({
                             <option value="">Select a bank…</option>
                             {availableBanks.map((b) => (
                               <option key={b.questionBankId} value={b.questionBankId}>
-                                {questionBankDisplayName(b)} ({b.status})
+                                {questionBankDisplayName(b)} ({questionBankStatusLabel(b.status)})
                               </option>
                             ))}
                           </select>

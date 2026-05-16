@@ -253,7 +253,7 @@ describe('InstructorDashboard', () => {
     renderDashboard()
 
     await waitFor(() => {
-      expect(screen.getByText(/Failed to load/i)).toBeTruthy()
+      expect(screen.getByText(/Your courses could not be loaded/i)).toBeTruthy()
     })
   })
 
