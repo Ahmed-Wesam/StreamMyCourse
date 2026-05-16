@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link, useLocation, useParams } from 'react-router-dom'
 import {
   getCourseProgress,
@@ -52,6 +52,14 @@ export default function ModuleQuizPage() {
   const [taking, setTaking] = useState<ModuleQuizStartInProgress | null>(null)
   const [results, setResults] = useState<ResultsModel | null>(null)
   const [selectedByQuestionId, setSelectedByQuestionId] = useState<Record<string, string>>({})
+  const mountedRef = useRef(true)
+
+  useEffect(() => {
+    mountedRef.current = true
+    return () => {
+      mountedRef.current = false
+    }
+  }, [])
 
   const hydrateFromStart = useCallback((data: ModuleQuizStartResponse) => {
     applyStartResponse(data, setTaking, setResults, setSelectedByQuestionId)
@@ -100,7 +108,7 @@ export default function ModuleQuizPage() {
       })
       .catch((e: unknown) => {
         if (!cancelled) {
-          setError(catalogApiUserMessage(e))
+          setError(catalogApiUserMessage(e, 'loadModuleQuiz'))
         }
       })
       .finally(() => {
@@ -117,11 +125,15 @@ export default function ModuleQuizPage() {
     setRetakeBusy(true)
     setError(null)
     startModuleQuiz(courseId, moduleId, { retake: true })
-      .then(hydrateFromStart)
-      .catch((e: unknown) => {
-        setError(catalogApiUserMessage(e))
+      .then((data) => {
+        if (mountedRef.current) hydrateFromStart(data)
       })
-      .finally(() => setRetakeBusy(false))
+      .catch((e: unknown) => {
+        if (mountedRef.current) setError(catalogApiUserMessage(e, 'retakeModuleQuiz'))
+      })
+      .finally(() => {
+        if (mountedRef.current) setRetakeBusy(false)
+      })
   }
 
   const handleSelect = (questionId: string, optionKey: string) => {
@@ -146,14 +158,17 @@ export default function ModuleQuizPage() {
     setError(null)
     submitModuleQuiz(courseId, moduleId, { attemptId, answers })
       .then((res) => {
+        if (!mountedRef.current) return
         setTaking(null)
         setResults(res)
         setSelectedByQuestionId({})
       })
       .catch((e: unknown) => {
-        setError(catalogApiUserMessage(e))
+        if (mountedRef.current) setError(catalogApiUserMessage(e, 'submitModuleQuiz'))
       })
-      .finally(() => setSubmitting(false))
+      .finally(() => {
+        if (mountedRef.current) setSubmitting(false)
+      })
   }
 
   const allAnswered =
@@ -214,8 +229,7 @@ function ModuleQuizCardHeader({
             {taking.questions.length} of {taking.servedCountN} questions
           </p>
           <p className="mt-2 text-sm text-gray-600">
-            You are taking your current attempt. If you leave and come back before submitting, you
-            can resume this attempt.
+            If you leave this page before submitting, your selected answers will be lost.
           </p>
         </>
       )}

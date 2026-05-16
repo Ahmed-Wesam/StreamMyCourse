@@ -177,7 +177,7 @@ describe('ModuleQuizPage', () => {
 
     expect(
       screen.getByText(
-        /You are taking your current attempt. If you leave and come back before submitting, you can resume this attempt./i,
+        /If you leave this page before submitting, your selected answers will be lost./i,
       ),
     ).toBeTruthy()
 

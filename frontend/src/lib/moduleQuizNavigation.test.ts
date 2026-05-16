@@ -29,10 +29,17 @@ describe('moduleQuizNavigation', () => {
     })
   })
 
-  it('resolveModuleQuizBackTo prefers location state when valid', () => {
-    expect(resolveModuleQuizBackTo('c1', 'm1', '/courses/c1/lessons/l9', lessons, progress)).toBe(
-      '/courses/c1/lessons/l9',
+  it('resolveModuleQuizBackTo prefers location state when lesson exists', () => {
+    expect(resolveModuleQuizBackTo('c1', 'm1', '/courses/c1/lessons/l2', lessons, progress)).toBe(
+      '/courses/c1/lessons/l2',
     )
+  })
+
+  it('resolveModuleQuizBackTo ignores location state when lesson is missing', () => {
+    expect(resolveModuleQuizBackTo('c1', 'm1', '/courses/c1/lessons/l9', lessons, progress)).toEqual({
+      pathname: '/courses/c1/lessons/l2',
+      search: '?t=42',
+    })
   })
 
   it('moduleQuizLinkTo carries returnTo in router state', () => {

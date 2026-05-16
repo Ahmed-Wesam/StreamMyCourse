@@ -799,7 +799,7 @@ describe('CourseManagement', () => {
       await waitFor(() => {
         const inline = screen.getByTestId('course-management-inline-error')
         expect(inline.textContent).toBe(
-          'That request could not be completed. Check your entries and try again.',
+          'The module quiz could not be attached. Please try again.',
         )
       })
     })

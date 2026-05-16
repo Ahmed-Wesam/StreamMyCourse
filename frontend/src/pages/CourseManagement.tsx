@@ -256,7 +256,7 @@ export default function CourseManagement() {
       await createModuleQuiz(courseId, moduleId, { questionBankId })
       await loadCourseData()
     } catch (err) {
-      setError(catalogApiUserMessage(err))
+      setError(catalogApiUserMessage(err, 'attachModuleQuiz'))
     } finally {
       setAttachingModuleId(null)
     }
