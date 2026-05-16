@@ -5,6 +5,8 @@ import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-li
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
+import { ApiError } from '../lib/api'
+import { catalogApiUserMessage } from '../lib/questionBankErrors'
 import ModuleQuizPage from './ModuleQuizPage'
 
 const api = vi.hoisted(() => ({
@@ -129,6 +131,12 @@ describe('ModuleQuizPage', () => {
       expect(screen.getByText('Capital of France?')).toBeTruthy()
     })
 
+    expect(
+      screen.getByText(
+        /You are taking your current attempt. If you leave and come back before submitting, you can resume this attempt./i,
+      ),
+    ).toBeTruthy()
+
     const fieldsets = screen.getAllByRole('group')
     expect(fieldsets).toHaveLength(2)
 
@@ -151,13 +159,18 @@ describe('ModuleQuizPage', () => {
 
     const submit = screen.getByRole('button', { name: /submit answers/i }) as HTMLButtonElement
     expect(submit.disabled).toBe(true)
+    const helperText = screen.getByText(/answer every question before submitting/i)
+    expect(helperText).toBeTruthy()
+    expect(submit.getAttribute('aria-describedby')).toBe(helperText.id)
 
     const fieldsets = screen.getAllByRole('group')
     fireEvent.click(within(fieldsets[0]!).getAllByRole('radio')[0]!)
     expect(submit.disabled).toBe(true)
+    expect(screen.getByText(/answer every question before submitting/i)).toBeTruthy()
 
     fireEvent.click(within(fieldsets[1]!).getAllByRole('radio')[0]!)
     expect(submit.disabled).toBe(false)
+    expect(screen.queryByText(/answer every question before submitting/i)).toBeNull()
   })
 
   it('renders latest submission summary and Try again without MCQ controls', async () => {
@@ -168,6 +181,10 @@ describe('ModuleQuizPage', () => {
       expect(screen.getByText(/Score 1 \/ 2/)).toBeTruthy()
     })
 
+    expect(screen.getByText(/These are your latest submitted results./i)).toBeTruthy()
+    expect(
+      screen.getByText(/Trying again starts a new attempt and reshuffles the questions./i),
+    ).toBeTruthy()
     expect(screen.getByRole('button', { name: /^Try again$/i })).toBeTruthy()
     expect(screen.queryAllByRole('radio')).toHaveLength(0)
     expect(screen.queryByRole('button', { name: /submit answers/i })).toBeNull()
@@ -227,5 +244,109 @@ describe('ModuleQuizPage', () => {
       expect(screen.getByRole('button', { name: /^Try again$/i })).toBeTruthy()
     })
     expect(screen.queryAllByRole('radio')).toHaveLength(0)
+  })
+
+  it('shows catalog API user message when startModuleQuiz rejects with ApiError 404', async () => {
+    const err = new ApiError('Module not found', 404)
+    api.startModuleQuiz.mockRejectedValueOnce(err)
+    renderModuleQuiz()
+
+    await waitFor(() => {
+      expect(screen.getByText(catalogApiUserMessage(err))).toBeTruthy()
+    })
+    expect(screen.queryByText('Capital of France?')).toBeNull()
+  })
+
+  it('shows catalog API user message when startModuleQuiz rejects with ApiError 409', async () => {
+    const err = new ApiError('Conflict', 409)
+    api.startModuleQuiz.mockRejectedValueOnce(err)
+    renderModuleQuiz()
+
+    await waitFor(() => {
+      expect(screen.getByText(catalogApiUserMessage(err))).toBeTruthy()
+    })
+  })
+
+  it('shows catalog API user message when startModuleQuiz rejects with ApiError 400', async () => {
+    const err = new ApiError('Answers incomplete', 400)
+    api.startModuleQuiz.mockRejectedValueOnce(err)
+    renderModuleQuiz()
+
+    await waitFor(() => {
+      expect(screen.getByText(catalogApiUserMessage(err))).toBeTruthy()
+    })
+  })
+
+  it('shows catalog API user message when submitModuleQuiz rejects with ApiError 404', async () => {
+    const err = new ApiError('Attempt not found', 404)
+    api.submitModuleQuiz.mockRejectedValueOnce(err)
+    renderModuleQuiz()
+
+    await waitFor(() => {
+      expect(screen.getByText('Capital of France?')).toBeTruthy()
+    })
+
+    const fieldsets = screen.getAllByRole('group')
+    fireEvent.click(within(fieldsets[0]!).getAllByRole('radio')[0]!)
+    fireEvent.click(within(fieldsets[1]!).getAllByRole('radio')[0]!)
+    fireEvent.click(screen.getByRole('button', { name: /submit answers/i }))
+
+    await waitFor(() => {
+      expect(screen.getByText(catalogApiUserMessage(err))).toBeTruthy()
+    })
+  })
+
+  it('shows catalog API user message when submitModuleQuiz rejects with ApiError 409', async () => {
+    const err = new ApiError('Stale attempt', 409)
+    api.submitModuleQuiz.mockRejectedValueOnce(err)
+    renderModuleQuiz()
+
+    await waitFor(() => {
+      expect(screen.getByText('Capital of France?')).toBeTruthy()
+    })
+
+    const fieldsets = screen.getAllByRole('group')
+    fireEvent.click(within(fieldsets[0]!).getAllByRole('radio')[0]!)
+    fireEvent.click(within(fieldsets[1]!).getAllByRole('radio')[0]!)
+    fireEvent.click(screen.getByRole('button', { name: /submit answers/i }))
+
+    await waitFor(() => {
+      expect(screen.getByText(catalogApiUserMessage(err))).toBeTruthy()
+    })
+  })
+
+  it('shows catalog API user message when submitModuleQuiz rejects with ApiError 400', async () => {
+    const err = new ApiError('Invalid payload', 400)
+    api.submitModuleQuiz.mockRejectedValueOnce(err)
+    renderModuleQuiz()
+
+    await waitFor(() => {
+      expect(screen.getByText('Capital of France?')).toBeTruthy()
+    })
+
+    const fieldsets = screen.getAllByRole('group')
+    fireEvent.click(within(fieldsets[0]!).getAllByRole('radio')[0]!)
+    fireEvent.click(within(fieldsets[1]!).getAllByRole('radio')[0]!)
+    fireEvent.click(screen.getByRole('button', { name: /submit answers/i }))
+
+    await waitFor(() => {
+      expect(screen.getByText(catalogApiUserMessage(err))).toBeTruthy()
+    })
+  })
+
+  it('shows catalog API user message when retake startModuleQuiz rejects with ApiError 409', async () => {
+    const err = new ApiError('Cannot start retake', 409)
+    api.startModuleQuiz.mockResolvedValueOnce(LATEST_RESULTS_RESPONSE).mockRejectedValueOnce(err)
+    renderModuleQuiz()
+
+    await waitFor(() => {
+      expect(screen.getByText(/Score 1 \/ 2/)).toBeTruthy()
+    })
+
+    fireEvent.click(screen.getByRole('button', { name: /^Try again$/i }))
+
+    await waitFor(() => {
+      expect(screen.getByText(catalogApiUserMessage(err))).toBeTruthy()
+    })
   })
 })

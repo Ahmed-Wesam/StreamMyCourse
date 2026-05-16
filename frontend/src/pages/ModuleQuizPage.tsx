@@ -10,6 +10,7 @@ import {
   type ModuleQuizStartResponse,
   type ModuleQuizSubmitResponse,
 } from '../lib/api'
+import { catalogApiUserMessage } from '../lib/questionBankErrors'
 
 type ResultsModel = ModuleQuizLatestSubmission | ModuleQuizSubmitResponse
 
@@ -61,7 +62,7 @@ export default function ModuleQuizPage() {
       })
       .catch((e: unknown) => {
         if (!cancelled) {
-          setError(e instanceof Error ? e.message : 'Failed to load quiz.')
+          setError(catalogApiUserMessage(e))
         }
       })
       .finally(() => {
@@ -80,7 +81,7 @@ export default function ModuleQuizPage() {
     startModuleQuiz(courseId, moduleId, { retake: true })
       .then(hydrateFromStart)
       .catch((e: unknown) => {
-        setError(e instanceof Error ? e.message : 'Failed to start a new attempt.')
+        setError(catalogApiUserMessage(e))
       })
       .finally(() => setRetakeBusy(false))
   }
@@ -112,7 +113,7 @@ export default function ModuleQuizPage() {
         setSelectedByQuestionId({})
       })
       .catch((e: unknown) => {
-        setError(e instanceof Error ? e.message : 'Submit failed.')
+        setError(catalogApiUserMessage(e))
       })
       .finally(() => setSubmitting(false))
   }
@@ -170,14 +171,23 @@ function ModuleQuizCardHeader({
       </Link>
       <h1 className="text-lg font-semibold text-gray-900">Module quiz</h1>
       {showTaking && taking && (
-        <p className="mt-1 text-sm text-gray-500">
-          {taking.questions.length} of {taking.servedCountN} questions
-        </p>
+        <>
+          <p className="mt-1 text-sm text-gray-500">
+            {taking.questions.length} of {taking.servedCountN} questions
+          </p>
+          <p className="mt-2 text-sm text-gray-600">
+            You are taking your current attempt. If you leave and come back before submitting, you
+            can resume this attempt.
+          </p>
+        </>
       )}
       {showResults && results && (
-        <p className="mt-1 text-sm text-gray-500">
-          Attempt {results.attemptNumber} · Score {results.correctCount} / {results.totalCount}
-        </p>
+        <>
+          <p className="mt-1 text-sm text-gray-500">
+            Attempt {results.attemptNumber} · Score {results.correctCount} / {results.totalCount}
+          </p>
+          <p className="mt-2 text-sm text-gray-600">These are your latest submitted results.</p>
+        </>
       )}
     </div>
   )
@@ -210,6 +220,7 @@ function ModuleQuizCardMain({
 }) {
   const showResults = results !== null && taking === null
   const showTaking = taking !== null
+  const submitHelperId = 'module-quiz-submit-helper'
 
   return (
     <>
@@ -241,10 +252,16 @@ function ModuleQuizCardMain({
               type="button"
               onClick={onSubmit}
               disabled={!allAnswered || submitting}
+              aria-describedby={!allAnswered ? submitHelperId : undefined}
               className="rounded-lg bg-indigo-600 px-4 py-2.5 text-sm font-medium text-white transition-colors hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-50"
             >
               {submitting ? 'Submitting…' : 'Submit answers'}
             </button>
+            {!allAnswered && (
+              <p id={submitHelperId} className="mt-2 text-sm text-gray-500">
+                Answer every question before submitting.
+              </p>
+            )}
           </div>
         </>
       )}
@@ -252,7 +269,10 @@ function ModuleQuizCardMain({
       {!pageLoading && showResults && results && (
         <div className="space-y-4 px-6 py-6">
           <QuizResultsBreakdown questions={results.questions} />
-          <div>
+          <div className="space-y-2">
+            <p className="text-sm text-gray-600">
+              Trying again starts a new attempt and reshuffles the questions.
+            </p>
             <button
               type="button"
               onClick={onTryAgain}

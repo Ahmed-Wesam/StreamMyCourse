@@ -227,6 +227,56 @@ export type ModuleQuizSubmitResponse = {
   questions: ModuleQuizResultQuestion[]
 }
 
+export type QuestionBankStatus = 'DRAFT' | 'PUBLISHED'
+
+export type QuestionBankSummary = {
+  questionBankId: string
+  status: QuestionBankStatus
+  createdAt?: string
+  updatedAt?: string
+}
+
+/** One `module_quizzes` row for publisher list (modules without a quiz are omitted). */
+export type ModuleQuizRow = {
+  quizId: string
+  moduleId: string
+  questionBankId: string | null
+  servedCountN: number | null
+  createdAt?: string
+  updatedAt?: string
+}
+
+export type QuestionBankQuestion = {
+  questionId: string
+  status: QuestionBankStatus
+  promptText: string
+  optionsJson: ModuleQuizOption[]
+  correctOptionKey?: string | null
+}
+
+export type CreateQuestionBankQuestionBody = {
+  promptText: string
+  optionsJson: ModuleQuizOption[]
+  /** Must match a key in `optionsJson` when set; required when appending to a PUBLISHED bank. */
+  correctOptionKey?: string
+}
+
+/**
+ * PATCH body for a **DRAFT** MCQ only. The server requires **at least one** of these fields per request.
+ */
+export type UpdateQuestionBankQuestionBody = Partial<
+  Pick<CreateQuestionBankQuestionBody, 'promptText' | 'optionsJson' | 'correctOptionKey'>
+>
+
+export type PublishQuestionBankBody = {
+  n: number
+  moduleId: string
+}
+
+export type CreateModuleQuizBody = {
+  questionBankId: string
+}
+
 export type Lesson = {
   id: string
   title: string
@@ -328,6 +378,21 @@ async function httpPost<T>(path: string, body: unknown): Promise<T> {
   return (await res.json()) as T
 }
 
+async function httpPatch<T>(path: string, body: unknown): Promise<T> {
+  const API_BASE_URL = requireApiBaseUrl()
+  const headers = await mergeHeaders({ 'Content-Type': 'application/json' })
+  const res = await fetch(`${API_BASE_URL}${path}`, {
+    method: 'PATCH',
+    cache: 'no-store',
+    headers,
+    body: JSON.stringify(body),
+  })
+  if (!res.ok) {
+    throw await failedResponseError(res)
+  }
+  return (await res.json()) as T
+}
+
 async function httpPut<T>(path: string, body?: unknown): Promise<T> {
   const API_BASE_URL = requireApiBaseUrl()
   const headers = await mergeHeaders({ 'Content-Type': 'application/json' })
@@ -404,6 +469,83 @@ export async function submitModuleQuiz(
     `/courses/${courseId}/modules/${moduleId}/quiz/submit`,
     body,
   )
+}
+
+export async function listCourseQuestionBanks(courseId: string): Promise<QuestionBankSummary[]> {
+  const c = encodeURIComponent(courseId)
+  return httpGet<QuestionBankSummary[]>(`/courses/${c}/question-banks`)
+}
+
+export async function listCourseModuleQuizzes(courseId: string): Promise<ModuleQuizRow[]> {
+  const c = encodeURIComponent(courseId)
+  return httpGet<ModuleQuizRow[]>(`/courses/${c}/module-quizzes`)
+}
+
+export async function listQuestionBankQuestions(
+  courseId: string,
+  bankId: string,
+): Promise<QuestionBankQuestion[]> {
+  const c = encodeURIComponent(courseId)
+  const b = encodeURIComponent(bankId)
+  return httpGet<QuestionBankQuestion[]>(`/courses/${c}/question-banks/${b}/questions`)
+}
+
+export async function createQuestionBank(courseId: string): Promise<{ questionBankId: string }> {
+  const c = encodeURIComponent(courseId)
+  return httpPost<{ questionBankId: string }>(`/courses/${c}/question-banks`, {})
+}
+
+export async function createQuestionBankQuestion(
+  courseId: string,
+  bankId: string,
+  body: CreateQuestionBankQuestionBody,
+): Promise<{ questionId: string }> {
+  const c = encodeURIComponent(courseId)
+  const b = encodeURIComponent(bankId)
+  return httpPost<{ questionId: string }>(`/courses/${c}/question-banks/${b}/questions`, body)
+}
+
+export async function updateQuestionBankQuestion(
+  courseId: string,
+  bankId: string,
+  questionId: string,
+  body: UpdateQuestionBankQuestionBody,
+): Promise<{ status: 'updated' }> {
+  const c = encodeURIComponent(courseId)
+  const b = encodeURIComponent(bankId)
+  const q = encodeURIComponent(questionId)
+  return httpPatch<{ status: 'updated' }>(`/courses/${c}/question-banks/${b}/questions/${q}`, body)
+}
+
+export async function deleteQuestionBankQuestion(
+  courseId: string,
+  bankId: string,
+  questionId: string,
+): Promise<{ status: 'deleted' }> {
+  const c = encodeURIComponent(courseId)
+  const b = encodeURIComponent(bankId)
+  const q = encodeURIComponent(questionId)
+  return httpDelete<{ status: 'deleted' }>(`/courses/${c}/question-banks/${b}/questions/${q}`)
+}
+
+export async function publishQuestionBank(
+  courseId: string,
+  bankId: string,
+  body: PublishQuestionBankBody,
+): Promise<{ status: 'PUBLISHED' }> {
+  const c = encodeURIComponent(courseId)
+  const b = encodeURIComponent(bankId)
+  return httpPost<{ status: 'PUBLISHED' }>(`/courses/${c}/question-banks/${b}/publish`, body)
+}
+
+export async function createModuleQuiz(
+  courseId: string,
+  moduleId: string,
+  body: CreateModuleQuizBody,
+): Promise<{ quizId: string }> {
+  const c = encodeURIComponent(courseId)
+  const m = encodeURIComponent(moduleId)
+  return httpPost<{ quizId: string }>(`/courses/${c}/modules/${m}/quiz`, body)
 }
 
 export async function getPlaybackUrl(courseId: string, lessonId: string): Promise<Playback> {

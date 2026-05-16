@@ -178,6 +178,57 @@ function sortLessonsByOrdering(lessons: Lesson[]) {
   return [...lessons].sort((a, b) => a.moduleOrder - b.moduleOrder || a.order - b.order)
 }
 
+function moduleQuizHref(courseId: string, moduleId: string) {
+  return `/courses/${courseId}/modules/${moduleId}/quiz`
+}
+
+function hasAvailableModuleQuiz(
+  module: CourseModule | undefined,
+): module is CourseModule & { moduleQuiz: { available: true; servedCountN: number } } {
+  return module?.moduleQuiz?.available === true
+}
+
+function ModuleQuizItem({
+  courseId,
+  module,
+}: {
+  courseId: string
+  module: CourseModule
+}) {
+  const servedCount = module.moduleQuiz?.servedCountN
+
+  return (
+    <Link
+      to={moduleQuizHref(courseId, module.id)}
+      className="group flex items-start border-l-4 border-transparent px-4 py-3 transition-colors hover:bg-slate-50"
+    >
+      <div className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center text-blue-600">
+        <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+          <path
+            d="M8 5h8M8 9h8M8 13h5M6 3h12a1 1 0 0 1 1 1v16l-3-2-3 2-3-2-3 2V4a1 1 0 0 1 1-1Z"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        </svg>
+      </div>
+
+      <div className="ml-3 flex-1 min-w-0">
+        <div className="flex items-start justify-between gap-3">
+          <h4 className="truncate text-sm font-medium text-slate-600">Module quiz</h4>
+          <div className="shrink-0 rounded-full bg-blue-50 px-2 py-0.5 text-[11px] font-semibold text-blue-700 ring-1 ring-blue-100">
+            Quiz
+          </div>
+        </div>
+        <p className="mt-0.5 truncate text-xs text-slate-500">
+          {servedCount ? `${servedCount} questions` : 'Quiz'}
+        </p>
+      </div>
+    </Link>
+  )
+}
+
 function LessonPlayerAlerts({
   needsSignIn,
   needsEnrollment,
@@ -265,11 +316,13 @@ function LessonPlaybackNavigation({
   playbackNavLocked,
   prevLesson,
   nextLesson,
+  nextQuizHref,
 }: {
   courseId: string
   playbackNavLocked: boolean
   prevLesson: Lesson | null
   nextLesson: Lesson | null
+  nextQuizHref?: string | null
 }) {
   const prevLeft =
     prevLesson == null ? (
@@ -311,13 +364,15 @@ function LessonPlaybackNavigation({
     </Link>
   )
 
+  const nextHref = nextQuizHref ?? (nextLesson ? `/courses/${courseId}/lessons/${nextLesson.id}` : null)
+
   const nextRight =
-    nextLesson != null ? (
+    nextHref != null ? (
       playbackNavLocked ? (
         nextLockedMarkup
       ) : (
         <Link
-          to={`/courses/${courseId}/lessons/${nextLesson.id}`}
+          to={nextHref}
           className="inline-flex items-center rounded-lg bg-gradient-to-r from-blue-600 to-blue-700 px-4 py-2 text-sm font-semibold text-white shadow-md shadow-blue-900/10 transition-all hover:from-blue-700 hover:to-blue-800"
         >
           Next
@@ -357,6 +412,7 @@ function LessonPrimaryColumn({
   courseId,
   prevLesson,
   nextLesson,
+  nextQuizHref,
   playbackNavLocked,
 }: {
   loading: boolean
@@ -375,8 +431,12 @@ function LessonPrimaryColumn({
   courseId: string
   prevLesson: Lesson | null
   nextLesson: Lesson | null
+  nextQuizHref?: string | null
   playbackNavLocked: boolean
 }) {
+  const upNextTitle = nextQuizHref ? 'Module quiz' : nextLesson?.title
+  const upNextDescription = nextQuizHref ? 'Continue to the module quiz' : 'Continue to the next lesson'
+
   return (
     <div className="lg:col-span-2 space-y-4">
       {loading ? (
@@ -431,7 +491,7 @@ function LessonPrimaryColumn({
 
         <p className="mt-2 text-slate-600">{courseDescription}</p>
 
-        {nextLesson && (
+        {upNextTitle && (
           <div className="mt-5 rounded-xl border border-slate-200 bg-gradient-to-r from-slate-50/90 to-blue-50/50 p-4 shadow-sm">
             <div className="flex items-start gap-3">
               <div
@@ -465,9 +525,9 @@ function LessonPrimaryColumn({
                 <div className="text-[11px] font-semibold uppercase tracking-wider text-blue-600/90">
                   Up next
                 </div>
-                <div className="mt-1 truncate text-sm font-semibold text-slate-900">{nextLesson.title}</div>
+                <div className="mt-1 truncate text-sm font-semibold text-slate-900">{upNextTitle}</div>
                 <div className="mt-0.5 text-xs text-slate-500">
-                  {playbackNavLocked ? 'Complete this lesson to unlock' : 'Continue to the next lesson'}
+                  {playbackNavLocked ? 'Complete this lesson to unlock' : upNextDescription}
                 </div>
               </div>
             </div>
@@ -479,6 +539,7 @@ function LessonPrimaryColumn({
           playbackNavLocked={playbackNavLocked}
           prevLesson={prevLesson}
           nextLesson={nextLesson}
+          nextQuizHref={nextQuizHref}
         />
       </div>
     </div>
@@ -575,6 +636,8 @@ function CourseLessonsSidebar({
         <div className="flex-1 overflow-y-auto">
           {sections.map((section) => {
             const expanded = playbackNavLocked ? true : Boolean(openSections[section.id])
+            const module = modules.find((m) => m.id === section.id)
+            const showModuleQuiz = !playbackNavLocked && hasAvailableModuleQuiz(module)
             return (
               <div key={section.id}>
                 <button
@@ -629,6 +692,9 @@ function CourseLessonsSidebar({
                         />
                       )
                     })}
+                    {showModuleQuiz && module ? (
+                      <ModuleQuizItem courseId={courseId} module={module} />
+                    ) : null}
                   </div>
                 ) : null}
               </div>
@@ -785,6 +851,21 @@ export default function LessonPlayerPage() {
     }
     return null
   }, [lessons, activeLessonIndex])
+
+  const nextQuizHref = useMemo(() => {
+    if (playbackNavLocked) return null
+    const sections = groupLessonsByModule(lessons, modules)
+    const activeSection = sections.find((section) =>
+      section.lessons.some((lesson) => lesson.id === lessonId),
+    )
+    if (!activeSection) return null
+
+    const lastLessonInSection = activeSection.lessons[activeSection.lessons.length - 1]
+    if (lastLessonInSection?.id !== lessonId) return null
+
+    const activeModule = modules.find((module) => module.id === activeSection.id)
+    return hasAvailableModuleQuiz(activeModule) ? moduleQuizHref(courseId, activeModule.id) : null
+  }, [courseId, lessonId, lessons, modules, playbackNavLocked])
 
   const isLessonCompleted = useMemo(() => {
     const lessonProgress = courseProgress?.lessons.find((l) => l.lessonId === lessonId)
@@ -1155,6 +1236,7 @@ export default function LessonPlayerPage() {
   }, [courseId, lessonId])
 
   const [sidebarOpen, setSidebarOpen] = useState(true)
+  const nextHeaderHref = nextQuizHref ?? (nextLesson ? `/courses/${courseId}/lessons/${nextLesson.id}` : null)
 
   return (
     <div className="flex h-[calc(100vh-64px)] overflow-hidden bg-gradient-to-br from-slate-100 via-white to-blue-50/70">
@@ -1222,7 +1304,7 @@ export default function LessonPlayerPage() {
               )
             ) : null}
 
-            {nextLesson ? (
+            {nextHeaderHref ? (
               playbackNavLocked ? (
                 <span className="inline-flex cursor-not-allowed items-center rounded-lg border border-slate-200 bg-slate-100 px-3 py-1.5 text-sm font-medium text-slate-400 opacity-90">
                   Next
@@ -1232,7 +1314,7 @@ export default function LessonPlayerPage() {
                 </span>
               ) : (
                 <Link
-                  to={`/courses/${courseId}/lessons/${nextLesson.id}`}
+                  to={nextHeaderHref}
                   className="inline-flex items-center rounded-md bg-gradient-to-r from-blue-600 to-blue-700 px-3 py-1.5 text-sm font-semibold text-white shadow-md shadow-blue-900/10 transition-all hover:from-blue-700 hover:to-blue-800"
                 >
                   Next
@@ -1274,6 +1356,7 @@ export default function LessonPlayerPage() {
               courseId={courseId}
               prevLesson={prevLesson}
               nextLesson={nextLesson}
+              nextQuizHref={nextQuizHref}
               playbackNavLocked={playbackNavLocked}
             />
           </main>

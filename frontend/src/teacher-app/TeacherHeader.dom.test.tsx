@@ -59,6 +59,18 @@ describe('TeacherHeader', () => {
     expect(within(main).getByRole('link', { name: 'Dashboard' }).getAttribute('href')).toBe('/')
   })
 
+  it('uses sticky positioning so page content is not hidden under the header', async () => {
+    useAuthenticatorMock.mockReturnValue({
+      user: { username: 'teacher@example.com' },
+      signOut: vi.fn(),
+      authStatus: 'authenticated',
+    })
+    const { container } = await renderTestRoot()
+    const header = container.querySelector('header')
+    expect(header?.className).toMatch(/sticky/)
+    expect(header?.className).not.toMatch(/fixed/)
+  })
+
   it('uses VITE_STUDENT_SITE_URL for student site link when set', async () => {
     vi.stubEnv('VITE_STUDENT_SITE_URL', 'https://student.example.test/')
     vi.resetModules()

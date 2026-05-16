@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
-import { useParams, useNavigate } from 'react-router-dom'
+import { Link, useParams, useNavigate } from 'react-router-dom'
 import {
   getCourse,
   updateCourse,
@@ -11,13 +11,20 @@ import {
   getUploadUrl,
   markCourseThumbnailReady,
   publishCourse,
+  listCourseModuleQuizzes,
+  listCourseQuestionBanks,
+  createModuleQuiz,
   ApiError,
   type Course,
   type CourseModule,
   type Lesson,
+  type ModuleQuizRow,
+  type QuestionBankSummary,
 } from '../lib/api'
 import { createAndUploadDraftLesson } from '../lib/courseManagementLessonUpload'
 import { moduleDeleteFailureMessage } from '../lib/courseManagementModuleErrors'
+import { questionBankUserMessage } from '../lib/questionBankErrors'
+import { CourseManagementModuleQuizPanel } from '../components/course/CourseManagementModuleQuizPanel'
 import { CourseThumbnailEditor } from '../components/course/CourseThumbnailEditor'
 import { CourseManagementAddLessonModal } from '../components/course/CourseManagementAddLessonModal'
 import { CourseManagementLessonsPanel } from '../components/course/CourseManagementLessonsPanel'
@@ -34,6 +41,8 @@ export default function CourseManagement() {
   const [course, setCourse] = useState<Course | null>(null)
   const [lessons, setLessons] = useState<Lesson[]>([])
   const [modules, setModules] = useState<CourseModule[]>([])
+  const [moduleQuizRows, setModuleQuizRows] = useState<ModuleQuizRow[]>([])
+  const [questionBankSummaries, setQuestionBankSummaries] = useState<QuestionBankSummary[]>([])
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -52,6 +61,7 @@ export default function CourseManagement() {
 
   const [thumbFile, setThumbFile] = useState<File | null>(null)
   const [thumbUploading, setThumbUploading] = useState(false)
+  const [attachingModuleId, setAttachingModuleId] = useState<string | null>(null)
 
   const [newModuleTitle, setNewModuleTitle] = useState('')
   const [newModuleDescription, setNewModuleDescription] = useState('')
@@ -64,16 +74,20 @@ export default function CourseManagement() {
       setError(null)
       setNotFound(false)
       setInfo(null)
-      const [courseData, lessonsData, modulesData] = await Promise.all([
+      const [courseData, lessonsData, modulesData, moduleQuizzesData, questionBanksData] = await Promise.all([
         getCourse(courseId),
         listLessons(courseId),
         listCourseModules(courseId),
+        listCourseModuleQuizzes(courseId),
+        listCourseQuestionBanks(courseId),
       ])
 
       if (!courseData) {
         setCourse(null)
         setLessons([])
         setModules([])
+        setModuleQuizRows([])
+        setQuestionBankSummaries([])
         setEditTitle('')
         setEditDescription('')
         setSelectedModuleId('')
@@ -83,6 +97,8 @@ export default function CourseManagement() {
         setCourse(courseData)
         setLessons(lessonsData)
         setModules(modulesData)
+        setModuleQuizRows(moduleQuizzesData)
+        setQuestionBankSummaries(questionBanksData)
         setEditTitle(courseData.title)
         setEditDescription(courseData.description)
         if (modulesData.length > 0) {
@@ -96,6 +112,8 @@ export default function CourseManagement() {
       setCourse(null)
       setLessons([])
       setModules([])
+      setModuleQuizRows([])
+      setQuestionBankSummaries([])
       setEditTitle('')
       setEditDescription('')
       setSelectedModuleId('')
@@ -232,6 +250,20 @@ export default function CourseManagement() {
     }
   }
 
+  const handleAttachModuleQuiz = async (moduleId: string, questionBankId: string) => {
+    if (!courseId) return
+    try {
+      setError(null)
+      setAttachingModuleId(moduleId)
+      await createModuleQuiz(courseId, moduleId, { questionBankId })
+      await loadCourseData()
+    } catch (err) {
+      setError(questionBankUserMessage(err))
+    } finally {
+      setAttachingModuleId(null)
+    }
+  }
+
   const handleThumbnailUpload = async () => {
     if (!courseId || !thumbFile) return
     setThumbUploading(true)
@@ -312,13 +344,23 @@ export default function CourseManagement() {
     <div className="mx-auto max-w-4xl">
       <div className="mb-8 flex items-center justify-between">
         <div>
-          <button
-            type="button"
-            onClick={() => navigate('/')}
-            className="text-blue-600 hover:text-blue-800 text-sm mb-2"
-          >
-            ← Back to Dashboard
-          </button>
+          <div className="mb-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm">
+            <button
+              type="button"
+              onClick={() => navigate('/')}
+              className="text-blue-600 hover:text-blue-800"
+            >
+              ← Back to Dashboard
+            </button>
+            {courseId ? (
+              <Link
+                to={`/courses/${encodeURIComponent(courseId)}/question-banks`}
+                className="text-blue-600 hover:text-blue-800"
+              >
+                Question banks
+              </Link>
+            ) : null}
+          </div>
           <h1 className="text-3xl font-bold text-gray-900">Manage Course</h1>
         </div>
         <span
@@ -399,6 +441,15 @@ export default function CourseManagement() {
         thumbUploading={thumbUploading}
         onThumbFileChange={handleThumbFileChange}
         onUpload={() => void handleThumbnailUpload()}
+      />
+
+      <CourseManagementModuleQuizPanel
+        courseId={courseId ?? ''}
+        sortedModules={sortedModules}
+        moduleQuizRows={moduleQuizRows}
+        questionBankSummaries={questionBankSummaries}
+        attachingModuleId={attachingModuleId}
+        onAttachQuiz={handleAttachModuleQuiz}
       />
 
       {course.status === 'DRAFT' && (

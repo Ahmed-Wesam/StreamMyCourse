@@ -7,6 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import CourseManagement from './CourseManagement'
 import { ApiError } from '../lib/api'
+import { questionBankUserMessage } from '../lib/questionBankErrors'
 
 const api = vi.hoisted(() => ({
   getCourse: vi.fn(),
@@ -21,6 +22,9 @@ const api = vi.hoisted(() => ({
   markLessonVideoReady: vi.fn(),
   markCourseThumbnailReady: vi.fn(),
   publishCourse: vi.fn(),
+  listCourseModuleQuizzes: vi.fn(),
+  listCourseQuestionBanks: vi.fn(),
+  createModuleQuiz: vi.fn(),
 }))
 
 const mockNavigate = vi.fn()
@@ -54,6 +58,12 @@ vi.mock('../lib/api', async (importOriginal) => {
     markLessonVideoReady: (...args: unknown[]) => api.markLessonVideoReady(...args) as ReturnType<typeof mod.markLessonVideoReady>,
     markCourseThumbnailReady: (...args: unknown[]) => api.markCourseThumbnailReady(...args) as ReturnType<typeof mod.markCourseThumbnailReady>,
     publishCourse: (...args: unknown[]) => api.publishCourse(...args) as ReturnType<typeof mod.publishCourse>,
+    listCourseModuleQuizzes: (...args: unknown[]) =>
+      api.listCourseModuleQuizzes(...args) as ReturnType<typeof mod.listCourseModuleQuizzes>,
+    listCourseQuestionBanks: (...args: unknown[]) =>
+      api.listCourseQuestionBanks(...args) as ReturnType<typeof mod.listCourseQuestionBanks>,
+    createModuleQuiz: (...args: unknown[]) =>
+      api.createModuleQuiz(...args) as ReturnType<typeof mod.createModuleQuiz>,
   }
 })
 
@@ -113,6 +123,9 @@ describe('CourseManagement', () => {
     api.listCourseModules.mockReset()
     api.createCourseModule.mockReset()
     api.deleteCourseModule.mockReset()
+    api.listCourseModuleQuizzes.mockReset()
+    api.listCourseQuestionBanks.mockReset()
+    api.createModuleQuiz.mockReset()
     mockNavigate.mockReset()
     mockConfirm.mockReset()
     mockRouteParams.courseId = 'c1'
@@ -156,6 +169,8 @@ describe('CourseManagement', () => {
     api.markCourseThumbnailReady.mockResolvedValue({ ok: true })
     api.publishCourse.mockResolvedValue({ ok: true })
     api.deleteLesson.mockResolvedValue({ ok: true })
+    api.listCourseModuleQuizzes.mockResolvedValue([])
+    api.listCourseQuestionBanks.mockResolvedValue([])
   })
 
   afterEach(() => {
@@ -193,6 +208,17 @@ describe('CourseManagement', () => {
       expect(screen.getByText('Manage Course')).toBeTruthy()
     })
     expect(screen.getByText('DRAFT')).toBeTruthy()
+  })
+
+  it('renders a course-scoped Question banks link after course data loads', async () => {
+    renderCourseManagement()
+
+    await waitFor(() => {
+      expect(screen.getByText('Manage Course')).toBeTruthy()
+    })
+
+    const questionBanksLink = screen.getByRole('link', { name: /^Question banks$/i })
+    expect(questionBanksLink.getAttribute('href')).toBe('/courses/c1/question-banks')
   })
 
   it('renders list of lessons', async () => {
@@ -619,6 +645,148 @@ describe('CourseManagement', () => {
 
     await waitFor(() => {
       expect(api.createLesson).toHaveBeenCalledWith('c1', { title: 'New Lesson', moduleId: 'm1' })
+    })
+  })
+
+  describe('module quiz wiring', () => {
+    it('shows module quiz wiring section when the course has modules', async () => {
+      renderCourseManagement()
+
+      await waitFor(() => {
+        expect(screen.getByText('Manage Course')).toBeTruthy()
+      })
+
+      expect(screen.getByTestId('course-management-module-quizzes')).toBeTruthy()
+      expect(screen.getByRole('heading', { name: /module quizzes/i })).toBeTruthy()
+    })
+
+    it('shows empty-state guidance when the course has no modules yet', async () => {
+      api.listCourseModules.mockResolvedValue([])
+      api.listLessons.mockResolvedValue([])
+      api.listCourseModuleQuizzes.mockResolvedValue([])
+      api.listCourseQuestionBanks.mockResolvedValue([])
+
+      renderCourseManagement()
+
+      await waitFor(() => {
+        expect(screen.getByText('Manage Course')).toBeTruthy()
+      })
+
+      // GREEN slice: show this exact sentence in the module-quiz wiring panel when there are zero modules.
+      expect(screen.getByText('Add a module first to attach bank quizzes.')).toBeTruthy()
+    })
+
+    it('attaches a draft bank quiz for the module after bank selection and Attach quiz', async () => {
+      api.listCourseModules.mockResolvedValue([{ id: 'm1', title: 'Section 1', description: '', order: 0 }])
+      api.listLessons.mockResolvedValue([
+        {
+          id: 'l1',
+          title: 'Lesson 1',
+          order: 1,
+          moduleId: 'm1',
+          moduleOrder: 0,
+          videoStatus: 'ready',
+          duration: 100,
+        },
+      ])
+      api.listCourseModuleQuizzes.mockResolvedValue([])
+      api.listCourseQuestionBanks.mockResolvedValue([{ questionBankId: 'qb1', status: 'DRAFT' }])
+      api.createModuleQuiz.mockResolvedValue({ moduleQuizId: 'mq1', moduleId: 'm1', questionBankId: 'qb1' })
+
+      renderCourseManagement()
+
+      await waitFor(() => {
+        expect(screen.getByTestId('course-management-module-quizzes')).toBeTruthy()
+      })
+
+      const panel = screen.getByTestId('course-management-module-quizzes')
+      // GREEN contract: bank picker is a labeled control; native <select> is exposed as role "combobox" in a11y tree.
+      // Use <label htmlFor> + id on the select so tests can use getByLabelText(/^Question bank$/i) (or getByRole('combobox', { name: /^Question bank$/i })).
+      const bankPicker = within(panel).getByLabelText(/^Question bank$/i)
+      fireEvent.change(bankPicker, { target: { value: 'qb1' } })
+
+      fireEvent.click(within(panel).getByRole('button', { name: 'Attach quiz' }))
+
+      await waitFor(() => {
+        expect(api.createModuleQuiz).toHaveBeenCalledWith('c1', 'm1', { questionBankId: 'qb1' })
+      })
+    })
+
+    it('shows inline error on attach when createModuleQuiz fails with 400', async () => {
+      api.listCourseModules.mockResolvedValue([{ id: 'm1', title: 'Section 1', description: '', order: 0 }])
+      api.listLessons.mockResolvedValue([
+        {
+          id: 'l1',
+          title: 'Lesson 1',
+          order: 1,
+          moduleId: 'm1',
+          moduleOrder: 0,
+          videoStatus: 'ready',
+          duration: 100,
+        },
+      ])
+      api.listCourseModuleQuizzes.mockResolvedValue([])
+      api.listCourseQuestionBanks.mockResolvedValue([{ questionBankId: 'qb1', status: 'DRAFT' }])
+      api.createModuleQuiz.mockRejectedValueOnce(new ApiError('bad', 400, 'bad_request'))
+
+      renderCourseManagement()
+
+      await waitFor(() => {
+        expect(screen.getByTestId('course-management-module-quizzes')).toBeTruthy()
+      })
+
+      const panel = screen.getByTestId('course-management-module-quizzes')
+      const bankPicker = within(panel).getByLabelText(/^Question bank$/i)
+      fireEvent.change(bankPicker, { target: { value: 'qb1' } })
+      fireEvent.click(within(panel).getByRole('button', { name: 'Attach quiz' }))
+
+      await waitFor(() => {
+        const inline = screen.getByTestId('course-management-inline-error')
+        expect(inline.textContent).toMatch(/bad/i)
+        expect(inline.textContent).toBe(
+          questionBankUserMessage(new ApiError('bad', 400, 'bad_request')),
+        )
+      })
+    })
+
+    it('shows inline error on attach when createModuleQuiz fails with 409 conflict', async () => {
+      api.listCourseModules.mockResolvedValue([{ id: 'm1', title: 'Section 1', description: '', order: 0 }])
+      api.listLessons.mockResolvedValue([
+        {
+          id: 'l1',
+          title: 'Lesson 1',
+          order: 1,
+          moduleId: 'm1',
+          moduleOrder: 0,
+          videoStatus: 'ready',
+          duration: 100,
+        },
+      ])
+      api.listCourseModuleQuizzes.mockResolvedValue([])
+      api.listCourseQuestionBanks.mockResolvedValue([{ questionBankId: 'qb1', status: 'DRAFT' }])
+      api.createModuleQuiz.mockRejectedValueOnce(
+        new ApiError('Module already has a quiz', 409, 'conflict'),
+      )
+
+      renderCourseManagement()
+
+      await waitFor(() => {
+        expect(screen.getByTestId('course-management-module-quizzes')).toBeTruthy()
+      })
+
+      const panel = screen.getByTestId('course-management-module-quizzes')
+      const bankPicker = within(panel).getByLabelText(/^Question bank$/i)
+      fireEvent.change(bankPicker, { target: { value: 'qb1' } })
+      fireEvent.click(within(panel).getByRole('button', { name: 'Attach quiz' }))
+
+      await waitFor(() => {
+        const inline = screen.getByTestId('course-management-inline-error')
+        const expected = questionBankUserMessage(
+          new ApiError('Module already has a quiz', 409, 'conflict'),
+        )
+        expect(inline.textContent).toBe(expected)
+        expect(inline.textContent).toMatch(/conflict|refresh/i)
+      })
     })
   })
 })

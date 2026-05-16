@@ -404,6 +404,78 @@ describe('LessonPlayerPage', () => {
     expect(prevLinks.some((a) => a.getAttribute('href') === '/courses/c1/lessons/l2')).toBe(true)
   })
 
+  it('shows an available module quiz as a lesson-like sidebar row', async () => {
+    api.listCourseModules.mockResolvedValue([
+      {
+        id: 'm1',
+        title: 'Section 1',
+        description: '',
+        order: 0,
+        moduleQuiz: { available: true, servedCountN: 2 },
+      },
+      { id: 'm2', title: 'Section 2', description: '', order: 1 },
+    ])
+
+    renderLessonPlayer('/courses/c1/lessons/l1')
+
+    const quizLink = await screen.findByRole('link', { name: /Module quiz/i })
+    expect(quizLink.getAttribute('href')).toBe('/courses/c1/modules/m1/quiz')
+  })
+
+  it('sends Next to the module quiz before the next module lesson', async () => {
+    api.listCourseModules.mockResolvedValue([
+      {
+        id: 'm1',
+        title: 'Section 1',
+        description: '',
+        order: 0,
+        moduleQuiz: { available: true, servedCountN: 2 },
+      },
+      { id: 'm2', title: 'Section 2', description: '', order: 1 },
+    ])
+
+    renderLessonPlayer('/courses/c1/lessons/l2')
+
+    const nextLinks = await waitFor(() => screen.getAllByRole('link', { name: /Next/i }))
+    expect(nextLinks.some((a) => a.getAttribute('href') === '/courses/c1/modules/m1/quiz')).toBe(true)
+    expect(nextLinks.some((a) => a.getAttribute('href') === '/courses/c1/lessons/l3')).toBe(false)
+  })
+
+  it('does not send Next to a quiz when moduleQuiz is absent', async () => {
+    renderLessonPlayer('/courses/c1/lessons/l2')
+
+    await waitFor(() => {
+      expect(screen.queryByRole('link', { name: /Module quiz/i })).toBeNull()
+    })
+    const nextLinks = screen.getAllByRole('link', { name: /Next/i })
+    expect(nextLinks.some((a) => a.getAttribute('href') === '/courses/c1/modules/m1/quiz')).toBe(false)
+    expect(nextLinks.some((a) => a.getAttribute('href') === '/courses/c1/lessons/l3')).toBe(true)
+  })
+
+  it('hides module quiz navigation when enrollment is required', async () => {
+    api.listCourseModules.mockResolvedValue([
+      {
+        id: 'm1',
+        title: 'Section 1',
+        description: '',
+        order: 0,
+        moduleQuiz: { available: true, servedCountN: 2 },
+      },
+      { id: 'm2', title: 'Section 2', description: '', order: 1 },
+    ])
+    api.getPlaybackUrl.mockRejectedValue(new ApiError('Enrollment required', 403, 'enrollment_required'))
+
+    renderLessonPlayer('/courses/c1/lessons/l2')
+
+    expect((await screen.findByRole('heading', { name: /Enroll to watch/i })).isConnected).toBe(true)
+    expect(screen.queryByRole('link', { name: /Module quiz/i })).toBeNull()
+    expect(
+      screen
+        .queryAllByRole('link')
+        .some((a) => a.getAttribute('href') === '/courses/c1/modules/m1/quiz'),
+    ).toBe(false)
+  })
+
   it('does not render Lesson N subtitle in sidebar items', async () => {
     renderLessonPlayer('/courses/c1/lessons/l1')
 
