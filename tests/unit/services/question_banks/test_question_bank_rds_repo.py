@@ -100,7 +100,7 @@ def test_insert_question_bank_maps_foreign_key_violation_to_bad_request() -> Non
     repo = QuestionBankRdsRepository(lambda: fake)
 
     with pytest.raises(BadRequest, match="existing course"):
-        repo.insert_question_bank(course_id="deadbeef")
+        repo.insert_question_bank(course_id="deadbeef", name="Missing course")
 
 
 def test_insert_question_bank_maps_check_violation_to_bad_request() -> None:
@@ -114,7 +114,7 @@ def test_insert_question_bank_maps_check_violation_to_bad_request() -> None:
     repo = QuestionBankRdsRepository(lambda: fake)
 
     with pytest.raises(BadRequest, match="DRAFT"):
-        repo.insert_question_bank(course_id="c1", status="INVALID")
+        repo.insert_question_bank(course_id="c1", name="Invalid", status="INVALID")
 
 
 def test_insert_question_bank_success_returns_id() -> None:
@@ -122,13 +122,75 @@ def test_insert_question_bank_success_returns_id() -> None:
     fake.cursor_obj.rows_to_return = [("bank-row-id",)]
     repo = QuestionBankRdsRepository(lambda: fake)
 
-    bid = repo.insert_question_bank(course_id="c1", status="DRAFT")
+    bid = repo.insert_question_bank(course_id="c1", name="Final exam", status="DRAFT")
 
     assert bid == "bank-row-id"
     assert fake.committed >= 1
     insert_sql = [e[0] for e in fake.cursor_obj.executions if "INSERT INTO question_banks" in e[0]]
     assert insert_sql
-    assert "VALUES (%s, %s)" in insert_sql[0]
+    assert "course_id, name, status" in insert_sql[0]
+    assert "VALUES (%s, %s, %s)" in insert_sql[0]
+    assert fake.cursor_obj.executions[0][1] == ("c1", "Final exam", "DRAFT")
+
+
+def test_get_bank_for_course_maps_name() -> None:
+    fake = FakeConn()
+    fake.cursor_obj.rows_to_return = [
+        ("bank-row-id", "c1", "Display name", "DRAFT", None, None)
+    ]
+    repo = QuestionBankRdsRepository(lambda: fake)
+
+    bank = repo.get_bank_for_course(course_id="c1", bank_id="bank-row-id")
+
+    assert bank is not None
+    assert bank.name == "Display name"
+    sql, params = fake.cursor_obj.executions[0]
+    assert "name" in sql
+    assert params == ("bank-row-id", "c1")
+
+
+def test_list_question_banks_maps_nullable_name() -> None:
+    fake = FakeConn()
+    fake.cursor_obj.fetchall_batches = [
+        [("bank-row-id", "c1", None, "DRAFT", None, None)]
+    ]
+    repo = QuestionBankRdsRepository(lambda: fake)
+
+    banks = repo.list_question_banks_for_course(course_id="c1")
+
+    assert len(banks) == 1
+    assert banks[0].name is None
+    sql, params = fake.cursor_obj.executions[0]
+    assert "name" in sql
+    assert params == ("c1",)
+
+
+def test_update_question_bank_name_scoped_by_course_and_bank() -> None:
+    fake = FakeConn()
+    fake.cursor_obj.rowcount = 1
+    repo = QuestionBankRdsRepository(lambda: fake)
+
+    repo.update_question_bank_name(
+        course_id="c1", bank_id="bank-row-id", name="Renamed bank"
+    )
+
+    assert fake.committed >= 1
+    sql, params = fake.cursor_obj.executions[0]
+    assert "UPDATE question_banks" in sql
+    assert "name = %s" in sql
+    assert "WHERE id = %s AND course_id = %s" in sql
+    assert params == ("Renamed bank", "bank-row-id", "c1")
+
+
+def test_update_question_bank_name_not_found_when_no_scoped_row() -> None:
+    fake = FakeConn()
+    fake.cursor_obj.rowcount = 0
+    repo = QuestionBankRdsRepository(lambda: fake)
+
+    with pytest.raises(NotFound, match="Question bank not found"):
+        repo.update_question_bank_name(
+            course_id="wrong-course", bank_id="bank-row-id", name="Nope"
+        )
 
 
 def test_insert_module_quiz_success_returns_id() -> None:

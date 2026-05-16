@@ -70,13 +70,25 @@ class ApiClient:
     def delete_course_module(self, course_id: str, module_id: str) -> httpx.Response:
         return self._client.delete(f"/courses/{course_id}/modules/{module_id}")
 
-    def create_question_bank(self, course_id: str) -> httpx.Response:
-        """POST /courses/{courseId}/question-banks — body optional (empty object)."""
-        return self._client.post(f"/courses/{course_id}/question-banks", json={})
+    def create_question_bank(
+        self, course_id: str, *, name: str = "Integration question bank"
+    ) -> httpx.Response:
+        """POST /courses/{courseId}/question-banks with required display name."""
+        return self._client.post(
+            f"/courses/{course_id}/question-banks", json={"name": name}
+        )
 
     def list_question_banks(self, course_id: str) -> httpx.Response:
         """GET /courses/{courseId}/question-banks — publisher list (QB-L)."""
         return self._client.get(f"/courses/{course_id}/question-banks")
+
+    def rename_question_bank(
+        self, course_id: str, bank_id: str, *, name: str
+    ) -> httpx.Response:
+        """PATCH /courses/{courseId}/question-banks/{questionBankId}."""
+        return self._client.patch(
+            f"/courses/{course_id}/question-banks/{bank_id}", json={"name": name}
+        )
 
     def list_question_bank_questions(self, course_id: str, bank_id: str) -> httpx.Response:
         """GET /courses/{courseId}/question-banks/{questionBankId}/questions."""

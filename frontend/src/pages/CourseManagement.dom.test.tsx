@@ -690,7 +690,9 @@ describe('CourseManagement', () => {
         },
       ])
       api.listCourseModuleQuizzes.mockResolvedValue([])
-      api.listCourseQuestionBanks.mockResolvedValue([{ questionBankId: 'qb1', status: 'DRAFT' }])
+      api.listCourseQuestionBanks.mockResolvedValue([
+        { questionBankId: 'qb1', name: 'Section 1 practice', status: 'DRAFT' },
+      ])
       api.createModuleQuiz.mockResolvedValue({ moduleQuizId: 'mq1', moduleId: 'm1', questionBankId: 'qb1' })
 
       renderCourseManagement()
@@ -703,6 +705,7 @@ describe('CourseManagement', () => {
       // GREEN contract: bank picker is a labeled control; native <select> is exposed as role "combobox" in a11y tree.
       // Use <label htmlFor> + id on the select so tests can use getByLabelText(/^Question bank$/i) (or getByRole('combobox', { name: /^Question bank$/i })).
       const bankPicker = within(panel).getByLabelText(/^Question bank$/i)
+      expect(within(panel).getByRole('option', { name: /Section 1 practice \(DRAFT\)/i })).toBeTruthy()
       fireEvent.change(bankPicker, { target: { value: 'qb1' } })
 
       fireEvent.click(within(panel).getByRole('button', { name: 'Attach quiz' }))
@@ -710,6 +713,34 @@ describe('CourseManagement', () => {
       await waitFor(() => {
         expect(api.createModuleQuiz).toHaveBeenCalledWith('c1', 'm1', { questionBankId: 'qb1' })
       })
+    })
+
+    it('shows linked quiz summaries with bank name and id', async () => {
+      api.listCourseModules.mockResolvedValue([{ id: 'm1', title: 'Section 1', description: '', order: 0 }])
+      api.listLessons.mockResolvedValue([
+        {
+          id: 'l1',
+          title: 'Lesson 1',
+          order: 1,
+          moduleId: 'm1',
+          moduleOrder: 0,
+          videoStatus: 'ready',
+          duration: 100,
+        },
+      ])
+      api.listCourseModuleQuizzes.mockResolvedValue([
+        { quizId: 'mq1', moduleId: 'm1', questionBankId: 'qb1', servedCountN: 3 },
+      ])
+      api.listCourseQuestionBanks.mockResolvedValue([
+        { questionBankId: 'qb1', name: 'Section 1 practice', status: 'PUBLISHED' },
+      ])
+
+      renderCourseManagement()
+
+      const panel = await screen.findByTestId('course-management-module-quizzes')
+
+      expect(within(panel).getByText('Section 1 practice')).toBeTruthy()
+      expect(within(panel).getByText('ID: qb1')).toBeTruthy()
     })
 
     it('shows inline error on attach when createModuleQuiz fails with 400', async () => {

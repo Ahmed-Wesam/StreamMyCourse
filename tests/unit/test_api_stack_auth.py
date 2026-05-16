@@ -62,3 +62,15 @@ def test_only_expected_methods_are_unauthenticated() -> None:
 
     assert offenders == [], "Unexpected unauthenticated methods:\\n" + "\\n".join(offenders)
 
+
+def test_question_bank_item_patch_is_authenticated_and_deployed() -> None:
+    text = _API_STACK.read_text(encoding="utf-8")
+
+    assert "# API Gateway Method: PATCH /courses/{courseId}/question-banks/{questionBankId}" in text
+    assert "CourseQuestionBankIdPatchMethod:" in text
+    assert "ResourceId: !Ref CourseQuestionBankIdResource" in text
+    assert "HttpMethod: PATCH" in text
+    assert "AuthorizationType: COGNITO_USER_POOLS" in text
+    assert "AuthorizerId: !Ref CatalogApiTokenAuthorizer" in text
+    assert "CourseQuestionBankIdPatchMethod" in text
+

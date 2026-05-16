@@ -48,6 +48,7 @@ def _draft_bank() -> QuestionBank:
     return QuestionBank(
         id=_BANK_ID,
         courseId=_COURSE_ID,
+        name="Draft bank",
         status="DRAFT",
         createdAt="",
         updatedAt="",
@@ -58,6 +59,7 @@ def _published_bank() -> QuestionBank:
     return QuestionBank(
         id=_BANK_ID,
         courseId=_COURSE_ID,
+        name="Published bank",
         status="PUBLISHED",
         createdAt="",
         updatedAt="",
@@ -129,7 +131,7 @@ def test_get_bank_for_course_forbidden_before_repo() -> None:
     repo.get_bank_for_course.assert_not_called()
 
 
-def test_authorizer_called_before_insert_question_bank() -> None:
+def test_create_question_bank_trims_name_and_returns_payload() -> None:
     authorizer = MagicMock()
     repo = MagicMock()
     repo.insert_question_bank.return_value = "new-bank-id"
@@ -148,17 +150,54 @@ def test_authorizer_called_before_insert_question_bank() -> None:
 
     svc = _make_service(authorizer, repo)
     result = svc.create_question_bank(
-        _COURSE_ID, cognito_sub=_COGNITO_SUB, role=_ROLE
+        _COURSE_ID,
+        name="  Final exam bank  ",
+        cognito_sub=_COGNITO_SUB,
+        role=_ROLE,
     )
 
-    assert result == "new-bank-id"
+    assert result == {"questionBankId": "new-bank-id", "name": "Final exam bank"}
     authorizer.ensure_course_mutable_by_actor.assert_called_once_with(
         _COURSE_ID, cognito_sub=_COGNITO_SUB, role=_ROLE
     )
     assert events[0][0] == "authorizer"
     assert events[0][1] == (_COURSE_ID, _COGNITO_SUB, _ROLE)
     assert events[1][0] == "insert_question_bank"
-    repo.insert_question_bank.assert_called_once()
+    repo.insert_question_bank.assert_called_once_with(
+        course_id=_COURSE_ID, name="Final exam bank"
+    )
+
+
+def test_create_question_bank_rejects_blank_name_before_repo() -> None:
+    authorizer = MagicMock()
+    repo = MagicMock()
+    svc = _make_service(authorizer, repo)
+
+    with pytest.raises(BadRequest, match="name"):
+        svc.create_question_bank(
+            _COURSE_ID,
+            name="   ",
+            cognito_sub=_COGNITO_SUB,
+            role=_ROLE,
+        )
+
+    repo.insert_question_bank.assert_not_called()
+
+
+def test_create_question_bank_rejects_long_name_before_repo() -> None:
+    authorizer = MagicMock()
+    repo = MagicMock()
+    svc = _make_service(authorizer, repo)
+
+    with pytest.raises(BadRequest, match="80"):
+        svc.create_question_bank(
+            _COURSE_ID,
+            name="x" * 81,
+            cognito_sub=_COGNITO_SUB,
+            role=_ROLE,
+        )
+
+    repo.insert_question_bank.assert_not_called()
 
 
 def test_authorizer_called_before_insert_module_quiz() -> None:
@@ -168,6 +207,7 @@ def test_authorizer_called_before_insert_module_quiz() -> None:
     repo.get_question_bank_by_id.return_value = QuestionBank(
         id=_BANK_ID,
         courseId=_COURSE_ID,
+        name="Reusable bank",
         status="DRAFT",
         createdAt="",
         updatedAt="",
@@ -243,6 +283,7 @@ def test_create_module_quiz_rejects_question_bank_from_other_course() -> None:
     repo.get_question_bank_by_id.return_value = QuestionBank(
         id=_BANK_ID,
         courseId=_OTHER_COURSE_ID,
+        name="Other course bank",
         status="DRAFT",
         createdAt="",
         updatedAt="",
@@ -269,7 +310,12 @@ def test_forbidden_from_authorizer_propagates() -> None:
     svc = _make_service(authorizer, repo)
 
     with pytest.raises(Forbidden, match="not allowed"):
-        svc.create_question_bank(_COURSE_ID, cognito_sub=_COGNITO_SUB, role=_ROLE)
+        svc.create_question_bank(
+            _COURSE_ID,
+            name="Blocked bank",
+            cognito_sub=_COGNITO_SUB,
+            role=_ROLE,
+        )
 
     authorizer.ensure_course_mutable_by_actor.assert_called_once_with(
         _COURSE_ID, cognito_sub=_COGNITO_SUB, role=_ROLE
@@ -882,6 +928,7 @@ def test_list_question_banks_maps_repo_rows() -> None:
         QuestionBank(
             id=_READ_BANK_ID,
             courseId=_READ_COURSE_ID,
+            name="Midterm bank",
             status="DRAFT",
             createdAt="2026-01-01T00:00:00Z",
             updatedAt="2026-01-02T00:00:00Z",
@@ -896,11 +943,119 @@ def test_list_question_banks_maps_repo_rows() -> None:
     assert out == [
         {
             "questionBankId": _READ_BANK_ID,
+            "name": "Midterm bank",
             "status": "DRAFT",
             "createdAt": "2026-01-01T00:00:00Z",
             "updatedAt": "2026-01-02T00:00:00Z",
         }
     ]
+
+
+def test_list_question_banks_uses_legacy_name_fallback() -> None:
+    authorizer = MagicMock()
+    repo = MagicMock()
+    repo.list_question_banks_for_course.return_value = [
+        QuestionBank(
+            id=_READ_BANK_ID,
+            courseId=_READ_COURSE_ID,
+            name=None,
+            status="DRAFT",
+            createdAt="2026-01-01T00:00:00Z",
+            updatedAt="2026-01-02T00:00:00Z",
+        )
+    ]
+    svc = _make_service(authorizer, repo)
+    out = svc.list_question_banks_for_course(
+        _READ_COURSE_ID,
+        cognito_sub=_COGNITO_SUB,
+        role=_ROLE,
+    )
+    assert out[0]["name"] == f"Question bank {_READ_BANK_ID[:8]}"
+
+
+@pytest.mark.parametrize("bank", [_draft_bank(), _published_bank()])
+def test_rename_question_bank_updates_draft_and_published(bank: QuestionBank) -> None:
+    authorizer = MagicMock()
+    repo = MagicMock()
+    repo.get_bank_for_course.return_value = bank
+    svc = _make_service(authorizer, repo)
+
+    out = svc.rename_question_bank(
+        _COURSE_ID,
+        _BANK_ID,
+        name="  Renamed bank  ",
+        cognito_sub=_COGNITO_SUB,
+        role=_ROLE,
+    )
+
+    assert out == {"questionBankId": _BANK_ID, "name": "Renamed bank"}
+    authorizer.ensure_course_mutable_by_actor.assert_called_once_with(
+        _COURSE_ID, cognito_sub=_COGNITO_SUB, role=_ROLE
+    )
+    repo.get_bank_for_course.assert_called_once_with(
+        course_id=_COURSE_ID, bank_id=_BANK_ID
+    )
+    repo.update_question_bank_name.assert_called_once_with(
+        course_id=_COURSE_ID, bank_id=_BANK_ID, name="Renamed bank"
+    )
+
+
+def test_rename_question_bank_not_found_when_wrong_course() -> None:
+    authorizer = MagicMock()
+    repo = MagicMock()
+    repo.get_bank_for_course.return_value = None
+    svc = _make_service(authorizer, repo)
+
+    with pytest.raises(NotFound, match="Question bank not found"):
+        svc.rename_question_bank(
+            _COURSE_ID,
+            _BANK_ID,
+            name="New name",
+            cognito_sub=_COGNITO_SUB,
+            role=_ROLE,
+        )
+
+    repo.update_question_bank_name.assert_not_called()
+
+
+def test_rename_question_bank_scope_failure_before_repo() -> None:
+    authorizer = MagicMock()
+    repo = MagicMock()
+    authorizer.ensure_course_mutable_by_actor.side_effect = NotFound(
+        "Course not found", code="not_found"
+    )
+    svc = _make_service(authorizer, repo)
+
+    with pytest.raises(NotFound, match="Course not found"):
+        svc.rename_question_bank(
+            _COURSE_ID,
+            _BANK_ID,
+            name="New name",
+            cognito_sub=_COGNITO_SUB,
+            role="student",
+        )
+
+    repo.get_bank_for_course.assert_not_called()
+    repo.update_question_bank_name.assert_not_called()
+
+
+def test_rename_question_bank_rejects_invalid_names() -> None:
+    authorizer = MagicMock()
+    repo = MagicMock()
+    repo.get_bank_for_course.return_value = _draft_bank()
+    svc = _make_service(authorizer, repo)
+
+    for bad_name in ("", "   ", "x" * 81):
+        with pytest.raises(BadRequest, match="name"):
+            svc.rename_question_bank(
+                _COURSE_ID,
+                _BANK_ID,
+                name=bad_name,
+                cognito_sub=_COGNITO_SUB,
+                role=_ROLE,
+            )
+
+    repo.update_question_bank_name.assert_not_called()
 
 
 def test_list_question_banks_not_found_when_publisher_scope_denies() -> None:
@@ -925,6 +1080,7 @@ def test_list_questions_for_publisher_success_options_json_parsed() -> None:
     repo.get_bank_for_course.return_value = QuestionBank(
         id=_READ_BANK_ID,
         courseId=_READ_COURSE_ID,
+        name="Question bank",
         status="DRAFT",
         createdAt="",
         updatedAt="",

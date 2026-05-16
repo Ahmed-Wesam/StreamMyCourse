@@ -20,6 +20,7 @@ const api = vi.hoisted(() => ({
   listQuestionBankQuestions: vi.fn(),
   createQuestionBankQuestion: vi.fn(),
   updateQuestionBankQuestion: vi.fn(),
+  updateQuestionBankName: vi.fn(),
   deleteQuestionBankQuestion: vi.fn(),
   publishQuestionBank: vi.fn(),
   listCourseModuleQuizzes: vi.fn(),
@@ -49,6 +50,8 @@ vi.mock('../lib/api', async (importOriginal) => {
       api.createQuestionBankQuestion(...args) as ReturnType<typeof mod.createQuestionBankQuestion>,
     updateQuestionBankQuestion: (...args: unknown[]) =>
       api.updateQuestionBankQuestion(...args) as ReturnType<typeof mod.updateQuestionBankQuestion>,
+    updateQuestionBankName: (...args: unknown[]) =>
+      api.updateQuestionBankName(...args) as ReturnType<typeof mod.updateQuestionBankName>,
     deleteQuestionBankQuestion: (...args: unknown[]) =>
       api.deleteQuestionBankQuestion(...args) as ReturnType<typeof mod.deleteQuestionBankQuestion>,
     publishQuestionBank: (...args: unknown[]) =>
@@ -77,6 +80,7 @@ describe('QuestionBankStudioPage', () => {
     api.listQuestionBankQuestions.mockReset()
     api.createQuestionBankQuestion.mockReset()
     api.updateQuestionBankQuestion.mockReset()
+    api.updateQuestionBankName.mockReset()
     api.deleteQuestionBankQuestion.mockReset()
     api.publishQuestionBank.mockReset()
     api.listCourseModuleQuizzes.mockReset()
@@ -84,10 +88,11 @@ describe('QuestionBankStudioPage', () => {
     mockRouteParams.courseId = 'c1'
     mockRouteParams.bankId = 'qb1'
 
-    api.listCourseQuestionBanks.mockResolvedValue([{ questionBankId: 'qb1', status: 'DRAFT' }])
+    api.listCourseQuestionBanks.mockResolvedValue([{ questionBankId: 'qb1', name: 'Chapter 1 quiz', status: 'DRAFT' }])
     api.listQuestionBankQuestions.mockResolvedValue([])
     api.createQuestionBankQuestion.mockResolvedValue({ questionId: 'q-new' })
     api.updateQuestionBankQuestion.mockResolvedValue({ status: 'updated' })
+    api.updateQuestionBankName.mockResolvedValue({ questionBankId: 'qb1', name: 'Renamed bank' })
     api.deleteQuestionBankQuestion.mockResolvedValue({ status: 'deleted' })
     api.publishQuestionBank.mockResolvedValue({ status: 'PUBLISHED' })
     api.listCourseModuleQuizzes.mockResolvedValue([])
@@ -151,8 +156,26 @@ describe('QuestionBankStudioPage', () => {
     expect(await screen.findByTestId('question-bank-studio-loaded')).toBeTruthy()
   })
 
+  it('shows the bank name in the header and can rename it', async () => {
+    renderStudio()
+
+    await screen.findByTestId('question-bank-studio-loaded')
+
+    expect(screen.getByRole('heading', { name: 'Chapter 1 quiz' })).toBeTruthy()
+    expect(screen.getByText('ID: qb1')).toBeTruthy()
+
+    fireEvent.change(screen.getByLabelText(/^Question bank name$/i), {
+      target: { value: 'Renamed bank' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: /^Save name$/i }))
+
+    await waitFor(() => {
+      expect(api.updateQuestionBankName).toHaveBeenCalledWith('c1', 'qb1', { name: 'Renamed bank' })
+    })
+  })
+
   it('PUBLISHED bank: published question row has no Edit or Delete controls', async () => {
-    api.listCourseQuestionBanks.mockResolvedValue([{ questionBankId: 'qb1', status: 'PUBLISHED' }])
+    api.listCourseQuestionBanks.mockResolvedValue([{ questionBankId: 'qb1', name: 'Published bank', status: 'PUBLISHED' }])
     api.listQuestionBankQuestions.mockResolvedValue([
       {
         questionId: 'pub-q1',
@@ -203,7 +226,7 @@ describe('QuestionBankStudioPage', () => {
   })
 
   it('PUBLISHED bank: add question form is shown and submit sends correctOptionKey', async () => {
-    api.listCourseQuestionBanks.mockResolvedValue([{ questionBankId: 'qb1', status: 'PUBLISHED' }])
+    api.listCourseQuestionBanks.mockResolvedValue([{ questionBankId: 'qb1', name: 'Published bank', status: 'PUBLISHED' }])
     api.listQuestionBankQuestions.mockResolvedValue([])
 
     renderStudio()

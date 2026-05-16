@@ -8,6 +8,9 @@ import {
   listCourseQuestionBanks,
   type QuestionBankSummary,
 } from '../lib/api'
+import { questionBankDisplayName, questionBankIdLabel } from '../lib/questionBankDisplay'
+
+const MAX_BANK_NAME_LENGTH = 80
 
 export default function QuestionBanksListPage() {
   const { courseId: courseIdParam } = useParams<{ courseId: string }>()
@@ -18,6 +21,7 @@ export default function QuestionBanksListPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [creating, setCreating] = useState(false)
+  const [newBankName, setNewBankName] = useState('')
 
   const load = useCallback(async () => {
     if (!courseId) {
@@ -45,10 +49,15 @@ export default function QuestionBanksListPage() {
 
   const handleCreate = async () => {
     if (!courseId || creating) return
+    const name = newBankName.trim()
+    if (!name) {
+      setError('Enter a question bank name.')
+      return
+    }
     try {
       setCreating(true)
       setError(null)
-      const { questionBankId } = await createQuestionBank(courseId)
+      const { questionBankId } = await createQuestionBank(courseId, { name })
       const c = encodeURIComponent(courseId)
       const b = encodeURIComponent(questionBankId)
       navigate(`/courses/${c}/question-banks/${b}`)
@@ -87,15 +96,28 @@ export default function QuestionBanksListPage() {
         </button>
         <div className="flex flex-wrap items-center justify-between gap-4">
           <h1 className="text-3xl font-bold text-gray-900">Question banks</h1>
-          <button
-            type="button"
-            data-testid="question-banks-create"
-            disabled={creating}
-            onClick={() => void handleCreate()}
-            className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
-          >
-            {creating ? 'Creating…' : 'Create bank'}
-          </button>
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
+            <label className="flex flex-col gap-1 text-sm font-medium text-gray-700">
+              New bank name
+              <input
+                type="text"
+                value={newBankName}
+                maxLength={MAX_BANK_NAME_LENGTH}
+                onChange={(e) => setNewBankName(e.target.value)}
+                className="min-h-[44px] rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-transparent focus:ring-2 focus:ring-blue-500"
+                placeholder="e.g. Chapter 1 quiz"
+              />
+            </label>
+            <button
+              type="button"
+              data-testid="question-banks-create"
+              disabled={creating}
+              onClick={() => void handleCreate()}
+              className="min-h-[44px] rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {creating ? 'Creating…' : 'Create bank'}
+            </button>
+          </div>
         </div>
       </div>
 
@@ -117,7 +139,12 @@ export default function QuestionBanksListPage() {
                   to={to}
                   className="flex items-center justify-between gap-4 px-4 py-3 text-gray-900 hover:bg-gray-50"
                 >
-                  <span className="font-mono text-sm">{bank.questionBankId}</span>
+                  <span className="min-w-0">
+                    <span className="block truncate font-medium">{questionBankDisplayName(bank)}</span>
+                    <span className="block font-mono text-xs text-gray-500">
+                      {questionBankIdLabel(bank.questionBankId)}
+                    </span>
+                  </span>
                   <span className="text-sm text-gray-600">{bank.status}</span>
                 </Link>
               </li>

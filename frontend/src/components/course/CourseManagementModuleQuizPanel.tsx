@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 
 import type { CourseModule, ModuleQuizRow, QuestionBankSummary } from '../../lib/api'
+import { questionBankDisplayName, questionBankIdLabel } from '../../lib/questionBankDisplay'
 
 type Props = {
   courseId: string
@@ -67,6 +68,9 @@ export function CourseManagementModuleQuizPanel({
             const selectId = `course-management-module-qb-${m.id}`
             const selectedBankId = selectedBankByModuleId[m.id] ?? ''
             const busy = attachingModuleId === m.id
+            const linkedBank = row?.questionBankId
+              ? questionBankSummaries.find((b) => b.questionBankId === row.questionBankId)
+              : undefined
 
             return (
               <li
@@ -79,7 +83,12 @@ export function CourseManagementModuleQuizPanel({
                     <div className="mt-2 space-y-1 text-gray-700">
                       <div>
                         <span className="text-gray-500">Question bank: </span>
-                        <span className="font-mono text-xs">{row.questionBankId}</span>
+                        <span className="font-medium">
+                          {linkedBank ? questionBankDisplayName(linkedBank) : row.questionBankId}
+                        </span>
+                        <span className="ml-2 font-mono text-xs text-gray-500">
+                          {questionBankIdLabel(row.questionBankId)}
+                        </span>
                       </div>
                       <div>
                         <span className="text-gray-500">Served (n): </span>
@@ -119,7 +128,7 @@ export function CourseManagementModuleQuizPanel({
                             <option value="">Select a bank…</option>
                             {questionBankSummaries.map((b) => (
                               <option key={b.questionBankId} value={b.questionBankId}>
-                                {b.questionBankId} ({b.status})
+                                {questionBankDisplayName(b)} ({b.status})
                               </option>
                             ))}
                           </select>

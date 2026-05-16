@@ -10,6 +10,7 @@ from typing import Optional
 class QuestionBank:
     id: str
     courseId: str
+    name: Optional[str]
     status: str
     createdAt: str
     updatedAt: str

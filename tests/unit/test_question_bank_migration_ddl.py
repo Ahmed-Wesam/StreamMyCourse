@@ -44,6 +44,11 @@ def test_006_migration_file_exists_and_encodes_cardinality() -> None:
     )
     assert "module_quizzes_served_count_n_positive" in text
     assert "CHECK (served_count_n IS NULL OR served_count_n >= 1)" in text
+    assert "name           VARCHAR(80)" in text
+    assert "question_banks_name_non_empty" in text
+    assert "CHECK (name IS NULL OR (length(btrim(name)) BETWEEN 1 AND 80))" in text
+    assert "ALTER TABLE" not in text
+    assert "DROP CONSTRAINT" not in text
 
 
 def test_007_migration_file_exists_and_questions_table() -> None:
@@ -128,3 +133,4 @@ def test_010_migration_listed_in_deploy_backend_workflow() -> None:
     assert _DEPLOY_BACKEND.is_file()
     text = _DEPLOY_BACKEND.read_text(encoding="utf-8")
     assert "010_module_quiz_attempt_submissions.sql" in text
+    assert "011_question_bank_names.sql" not in text

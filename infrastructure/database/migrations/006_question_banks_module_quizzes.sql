@@ -11,10 +11,13 @@
 CREATE TABLE IF NOT EXISTS question_banks (
     id             UUID         PRIMARY KEY DEFAULT uuid_generate_v4(),
     course_id      UUID         NOT NULL REFERENCES courses(id) ON DELETE CASCADE,
+    name           VARCHAR(80),
     status         VARCHAR(20)  NOT NULL DEFAULT 'DRAFT',
     created_at     TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
     updated_at     TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
-    CONSTRAINT question_banks_status_valid CHECK (status IN ('DRAFT', 'PUBLISHED'))
+    CONSTRAINT question_banks_status_valid CHECK (status IN ('DRAFT', 'PUBLISHED')),
+    CONSTRAINT question_banks_name_non_empty
+        CHECK (name IS NULL OR (length(btrim(name)) BETWEEN 1 AND 80))
 );
 
 -- Composite key target so module_quizzes can enforce same-course bank attachment.

@@ -300,17 +300,17 @@ class QuestionBankRdsRepository:
         )
 
     def insert_question_bank(
-        self, *, course_id: str, status: str = "DRAFT"
+        self, *, course_id: str, name: str, status: str = "DRAFT"
     ) -> str:
         """Create a course-scoped bank; returns new bank id."""
         try:
             cur = self._execute(
                 """
-                INSERT INTO question_banks (course_id, status)
-                VALUES (%s, %s)
+                INSERT INTO question_banks (course_id, name, status)
+                VALUES (%s, %s, %s)
                 RETURNING id
                 """,
-                (course_id, status),
+                (course_id, name, status),
                 commit=True,
             )
         except Exception as exc:
@@ -351,7 +351,7 @@ class QuestionBankRdsRepository:
     def get_question_bank_by_id(self, *, bank_id: str) -> Optional[QuestionBank]:
         cur = self._execute(
             """
-            SELECT id, course_id, status, created_at, updated_at
+            SELECT id, course_id, name, status, created_at, updated_at
             FROM question_banks
             WHERE id = %s
             """,
@@ -360,10 +360,11 @@ class QuestionBankRdsRepository:
         row = cur.fetchone()
         if not row:
             return None
-        bid, course_id, status, created_at, updated_at = row
+        bid, course_id, name, status, created_at, updated_at = row
         return QuestionBank(
             id=str(bid),
             courseId=str(course_id),
+            name=str(name) if name is not None else None,
             status=str(status),
             createdAt=_to_iso(created_at),
             updatedAt=_to_iso(updated_at),
@@ -374,7 +375,7 @@ class QuestionBankRdsRepository:
     ) -> Optional[QuestionBank]:
         cur = self._execute(
             """
-            SELECT id, course_id, status, created_at, updated_at
+            SELECT id, course_id, name, status, created_at, updated_at
             FROM question_banks
             WHERE id = %s AND course_id = %s
             """,
@@ -383,10 +384,11 @@ class QuestionBankRdsRepository:
         row = cur.fetchone()
         if not row:
             return None
-        bid, cid, status, created_at, updated_at = row
+        bid, cid, name, status, created_at, updated_at = row
         return QuestionBank(
             id=str(bid),
             courseId=str(cid),
+            name=str(name) if name is not None else None,
             status=str(status),
             createdAt=_to_iso(created_at),
             updatedAt=_to_iso(updated_at),
@@ -395,7 +397,7 @@ class QuestionBankRdsRepository:
     def list_question_banks_for_course(self, *, course_id: str) -> list[QuestionBank]:
         cur = self._execute(
             """
-            SELECT id, course_id, status, created_at, updated_at
+            SELECT id, course_id, name, status, created_at, updated_at
             FROM question_banks
             WHERE course_id = %s
             ORDER BY created_at ASC, id ASC
@@ -405,17 +407,36 @@ class QuestionBankRdsRepository:
         rows = cur.fetchall()
         out: list[QuestionBank] = []
         for row in rows:
-            bid, cid, status, created_at, updated_at = row
+            bid, cid, name, status, created_at, updated_at = row
             out.append(
                 QuestionBank(
                     id=str(bid),
                     courseId=str(cid),
+                    name=str(name) if name is not None else None,
                     status=str(status),
                     createdAt=_to_iso(created_at),
                     updatedAt=_to_iso(updated_at),
                 )
             )
         return out
+
+    def update_question_bank_name(
+        self, *, course_id: str, bank_id: str, name: str
+    ) -> None:
+        try:
+            cur = self._execute(
+                """
+                UPDATE question_banks
+                SET name = %s, updated_at = NOW()
+                WHERE id = %s AND course_id = %s
+                """,
+                (name, bank_id, course_id),
+                commit=True,
+            )
+        except Exception as exc:
+            self._raise_integrity(exc, for_module_quiz=False)
+        if cur.rowcount != 1:
+            raise NotFound("Question bank not found for this course")
 
     def list_module_quizzes_for_course(self, *, course_id: str) -> list[ModuleQuiz]:
         cur = self._execute(
