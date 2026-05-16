@@ -70,6 +70,14 @@ class ApiClient:
         """POST /courses/{courseId}/question-banks — body optional (empty object)."""
         return self._client.post(f"/courses/{course_id}/question-banks", json={})
 
+    def list_question_banks(self, course_id: str) -> httpx.Response:
+        """GET /courses/{courseId}/question-banks — publisher list (QB-L)."""
+        return self._client.get(f"/courses/{course_id}/question-banks")
+
+    def list_question_bank_questions(self, course_id: str, bank_id: str) -> httpx.Response:
+        """GET /courses/{courseId}/question-banks/{questionBankId}/questions."""
+        return self._client.get(f"/courses/{course_id}/question-banks/{bank_id}/questions")
+
     def create_module_quiz(
         self,
         course_id: str,

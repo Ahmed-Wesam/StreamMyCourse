@@ -765,6 +765,20 @@ Resources:
         Type: AWS_PROXY
         Uri: !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${CatalogLambda.Arn}/invocations'
 
+  # API Gateway Method: GET /courses/{courseId}/question-banks
+  CourseQuestionBanksGetMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref CatalogApi
+      ResourceId: !Ref CourseQuestionBanksResource
+      HttpMethod: GET
+      AuthorizationType: COGNITO_USER_POOLS
+      AuthorizerId: !Ref CatalogApiTokenAuthorizer
+      Integration:
+        IntegrationHttpMethod: POST
+        Type: AWS_PROXY
+        Uri: !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${CatalogLambda.Arn}/invocations'
+
   # API Gateway Method: OPTIONS /courses/{courseId}/question-banks
   CourseQuestionBanksOptionsMethod:
     Type: AWS::ApiGateway::Method
@@ -812,6 +826,20 @@ Resources:
       RestApiId: !Ref CatalogApi
       ResourceId: !Ref CourseQuestionBankQuestionsResource
       HttpMethod: POST
+      AuthorizationType: COGNITO_USER_POOLS
+      AuthorizerId: !Ref CatalogApiTokenAuthorizer
+      Integration:
+        IntegrationHttpMethod: POST
+        Type: AWS_PROXY
+        Uri: !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${CatalogLambda.Arn}/invocations'
+
+  # API Gateway Method: GET /courses/{courseId}/question-banks/{questionBankId}/questions
+  CourseQuestionBankQuestionsGetMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref CatalogApi
+      ResourceId: !Ref CourseQuestionBankQuestionsResource
+      HttpMethod: GET
       AuthorizationType: COGNITO_USER_POOLS
       AuthorizerId: !Ref CatalogApiTokenAuthorizer
       Integration:
@@ -1315,7 +1343,7 @@ Resources:
   # Bump logical id when API methods/resources change so CloudFormation always
   # creates a new deployment; otherwise the stage can keep serving an old snapshot
   # (symptom: GET /courses/{id}/lessons returns API GW 403 Missing Authentication Token).
-  CatalogApiDeploymentV24:
+  CatalogApiDeploymentV25:
     Type: AWS::ApiGateway::Deployment
     DependsOn:
       - CatalogLambdaApiPermission
@@ -1360,10 +1388,12 @@ Resources:
       - CourseModuleIdDeleteMethod
       - CourseModuleIdOptionsMethod
       - CourseQuestionBanksPostMethod
+      - CourseQuestionBanksGetMethod
       - CourseQuestionBanksOptionsMethod
       - CourseQuestionBankPublishPostMethod
       - CourseQuestionBankPublishOptionsMethod
       - CourseQuestionBankQuestionsPostMethod
+      - CourseQuestionBankQuestionsGetMethod
       - CourseQuestionBankQuestionsOptionsMethod
       - CourseQuestionBankQuestionIdPatchMethod
       - CourseQuestionBankQuestionIdDeleteMethod
@@ -1383,7 +1413,7 @@ Resources:
     Type: AWS::ApiGateway::Stage
     Properties:
       RestApiId: !Ref CatalogApi
-      DeploymentId: !Ref CatalogApiDeploymentV24
+      DeploymentId: !Ref CatalogApiDeploymentV25
       StageName: !Ref Environment
       Description: !Sub '${Environment} stage for Catalog API'
       MethodSettings:

@@ -316,6 +316,24 @@ class CourseManagementService:
         if owner != sub:
             raise Forbidden("Not allowed to modify this course")
 
+    def ensure_publisher_question_bank_read(
+        self,
+        course_id: str,
+        *,
+        cognito_sub: str,
+        role: str,
+    ) -> None:
+        """Publisher-only question-bank reads: same manage predicate as draft modules; 404 on denial."""
+        if not _is_valid_uuid(course_id):
+            raise NotFound("Course not found")
+        course = self._repo.get_course(course_id)
+        if not course:
+            raise NotFound("Course not found")
+        if not self._can_manage_course_unenrolled(
+            course, cognito_sub=cognito_sub, role=role
+        ):
+            raise NotFound("Course not found")
+
     def update_course(self, course_id: str, title: str, description: str) -> Dict[str, Any]:
         if not _is_valid_uuid(course_id):
             raise NotFound("Course not found")

@@ -392,6 +392,46 @@ class QuestionBankRdsRepository:
             updatedAt=_to_iso(updated_at),
         )
 
+    def list_question_banks_for_course(self, *, course_id: str) -> list[QuestionBank]:
+        cur = self._execute(
+            """
+            SELECT id, course_id, status, created_at, updated_at
+            FROM question_banks
+            WHERE course_id = %s
+            ORDER BY created_at ASC, id ASC
+            """,
+            (course_id,),
+        )
+        rows = cur.fetchall()
+        out: list[QuestionBank] = []
+        for row in rows:
+            bid, cid, status, created_at, updated_at = row
+            out.append(
+                QuestionBank(
+                    id=str(bid),
+                    courseId=str(cid),
+                    status=str(status),
+                    createdAt=_to_iso(created_at),
+                    updatedAt=_to_iso(updated_at),
+                )
+            )
+        return out
+
+    def list_questions_for_course_bank(
+        self, *, course_id: str, bank_id: str
+    ) -> list[Question]:
+        cur = self._execute(
+            """
+            SELECT id, course_id, question_bank_id, status, prompt_text, options_json,
+                   correct_option_key, created_at, updated_at
+            FROM questions
+            WHERE course_id = %s AND question_bank_id = %s
+            ORDER BY created_at ASC, id ASC
+            """,
+            (course_id, bank_id),
+        )
+        return [self._question_from_row(row) for row in cur.fetchall()]
+
     def list_draft_questions(self, *, bank_id: str) -> list[Question]:
         cur = self._execute(
             """

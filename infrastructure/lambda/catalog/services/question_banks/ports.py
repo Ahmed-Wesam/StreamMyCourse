@@ -10,6 +10,10 @@ class CourseMutateAuthorizerPort(Protocol):
         self, course_id: str, *, cognito_sub: str, role: str
     ) -> None: ...
 
+    def ensure_course_publisher_read_scope(
+        self, course_id: str, *, cognito_sub: str, role: str
+    ) -> None: ...
+
 
 class StudentLessonAccessPort(Protocol):
     def viewer_has_lesson_access(
