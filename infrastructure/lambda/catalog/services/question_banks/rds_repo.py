@@ -941,6 +941,47 @@ class QuestionBankRdsRepository:
         finally:
             conn.autocommit = prev_autocommit
 
+    @staticmethod
+    def _replace_binding_questions_on_cursor(
+        cur: Any, *, binding_id: str, question_ids: list[str]
+    ) -> None:
+        cur.execute(
+            """
+            DELETE FROM student_module_quiz_binding_questions
+            WHERE binding_id = %s
+            """,
+            (binding_id,),
+        )
+        for position, question_id in enumerate(question_ids):
+            cur.execute(
+                """
+                INSERT INTO student_module_quiz_binding_questions (
+                    binding_id, position, question_id
+                )
+                VALUES (%s, %s, %s)
+                """,
+                (binding_id, position, question_id),
+            )
+
+    def replace_binding_questions(
+        self, *, binding_id: str, question_ids: list[str]
+    ) -> None:
+        """Replace all binding question rows for a binding (single transaction)."""
+        conn = self._connection()
+        prev_autocommit = getattr(conn, "autocommit", False)
+        conn.autocommit = False
+        cur = conn.cursor()
+        try:
+            self._replace_binding_questions_on_cursor(
+                cur, binding_id=binding_id, question_ids=question_ids
+            )
+            conn.commit()
+        except Exception as exc:
+            conn.rollback()
+            self._raise_binding_integrity(exc)
+        finally:
+            conn.autocommit = prev_autocommit
+
     def insert_binding_with_questions_and_initial_attempt(
         self,
         *,
@@ -1101,6 +1142,58 @@ class QuestionBankRdsRepository:
         finally:
             conn.autocommit = prev_autocommit
 
+    def redraw_binding_and_insert_attempt(
+        self,
+        *,
+        binding_id: str,
+        question_ids: list[str],
+        attempt_number: int,
+        shuffled_question_order: list[str],
+        shuffled_choice_orders: dict[str, list[str]],
+    ) -> ModuleQuizAttempt:
+        """Redraw binding questions and insert a new attempt in one transaction."""
+        conn = self._connection()
+        prev_autocommit = getattr(conn, "autocommit", False)
+        conn.autocommit = False
+        cur = conn.cursor()
+        try:
+            self._replace_binding_questions_on_cursor(
+                cur, binding_id=binding_id, question_ids=question_ids
+            )
+            cur.execute(
+                """
+                INSERT INTO module_quiz_attempts (
+                    binding_id,
+                    attempt_number,
+                    status,
+                    shuffled_question_order,
+                    shuffled_choice_orders
+                )
+                VALUES (%s, %s, 'in_progress', %s, %s)
+                RETURNING id, binding_id, attempt_number, status,
+                          shuffled_question_order, shuffled_choice_orders,
+                          started_at, submitted_at
+                """,
+                (
+                    binding_id,
+                    attempt_number,
+                    _pg_json(shuffled_question_order),
+                    _pg_json(shuffled_choice_orders),
+                ),
+            )
+            row = cur.fetchone()
+            if not row:
+                raise RuntimeError("INSERT module_quiz_attempts returned no row")
+            conn.commit()
+            return self._row_to_attempt(row)
+        except Exception as exc:
+            conn.rollback()
+            if isinstance(exc, pg_errors.UniqueViolation):
+                self._raise_attempt_integrity(exc)
+            self._raise_binding_integrity(exc)
+        finally:
+            conn.autocommit = prev_autocommit
+
     def mark_attempt_submitted(
         self,
         *,
@@ -1176,8 +1269,8 @@ class QuestionBankRdsRepository:
     ) -> Optional[ModuleQuizSubmissionSnapshot]:
         cur = self._execute(
             """
-            SELECT s.attempt_id, a.attempt_number, s.answers_json, s.correct_count,
-                   s.total_count, s.submitted_at
+            SELECT s.attempt_id, a.attempt_number, a.shuffled_question_order,
+                   s.answers_json, s.correct_count, s.total_count, s.submitted_at
             FROM module_quiz_attempt_submissions s
             INNER JOIN module_quiz_attempts a ON a.id = s.attempt_id
             WHERE a.binding_id = %s
@@ -1192,6 +1285,7 @@ class QuestionBankRdsRepository:
         (
             att_id,
             attempt_number,
+            question_order_raw,
             answers_raw,
             correct_count,
             total_count,
@@ -1200,6 +1294,7 @@ class QuestionBankRdsRepository:
         return ModuleQuizSubmissionSnapshot(
             attemptId=str(att_id),
             attemptNumber=int(attempt_number),
+            questionOrder=self._jsonb_to_list(question_order_raw),
             answersJson=self._jsonb_to_answers_map(answers_raw),
             correctCount=int(correct_count),
             totalCount=int(total_count),

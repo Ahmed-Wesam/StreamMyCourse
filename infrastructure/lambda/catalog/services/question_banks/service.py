@@ -20,6 +20,7 @@ from services.question_banks.mcq_validation import (
     validate_mcq_options_json,
 )
 from services.question_banks.models import (
+    BoundQuestion,
     ModuleQuiz,
     ModuleQuizAttempt,
     PublishedQuestionGradingRow,
@@ -95,6 +96,10 @@ class QuestionBankService:
         shuffle_rng = rng if rng is not None else random.Random()
         if latest is not None and latest.status == "in_progress":
             attempt = latest
+        elif latest is not None and latest.status == "submitted" and retake:
+            attempt, binding = self._retake_with_redraw(
+                module_quiz, binding, latest=latest, rng=shuffle_rng
+            )
         else:
             attempt = self._insert_new_attempt(
                 binding, latest=latest, rng=shuffle_rng
@@ -134,7 +139,11 @@ class QuestionBankService:
         )
         if binding is None or binding.id != ctx.attempt.bindingId:
             raise NotFound("Module quiz attempt not found")
-        ordered_ids = binding.questionIds
+        if set(binding.questionIds) != set(ctx.attempt.shuffledQuestionOrder):
+            raise Conflict(
+                "Module quiz attempt does not match current question set"
+            )
+        ordered_ids = list(ctx.attempt.shuffledQuestionOrder)
         grading_rows = self._repo.list_grading_rows_for_questions(
             course_id=cid,
             question_ids=ordered_ids,
@@ -208,6 +217,28 @@ class QuestionBankService:
             raise NotFound("Module quiz not available")
         return module_quiz
 
+    def _draw_published_questions_for_quiz(
+        self,
+        *,
+        course_id: str,
+        bank_id: str,
+        served_n: int,
+        rng: random.Random,
+    ) -> tuple[list[str], list[BoundQuestion]]:
+        published_ids = self._repo.list_published_question_ids(
+            course_id=course_id, bank_id=bank_id
+        )
+        try:
+            drawn_ids = draw_question_ids(published_ids, served_n, rng)
+        except ValueError as exc:
+            raise Conflict(str(exc)) from exc
+        bound_rows = self._repo.list_student_bound_questions(
+            course_id=course_id, question_ids=drawn_ids
+        )
+        if len(bound_rows) != len(drawn_ids):
+            raise Conflict("Module quiz questions could not be loaded")
+        return drawn_ids, bound_rows
+
     def _create_binding_for_student(
         self,
         module_quiz: ModuleQuiz,
@@ -220,19 +251,13 @@ class QuestionBankService:
         assert bank_id is not None
         served_n = module_quiz.servedCountN
         assert served_n is not None and served_n >= 1
-        published_ids = self._repo.list_published_question_ids(
-            course_id=course_id, bank_id=bank_id
-        )
         draw_rng = rng if rng is not None else random.Random()
-        try:
-            drawn_ids = draw_question_ids(published_ids, served_n, draw_rng)
-        except ValueError as exc:
-            raise Conflict(str(exc)) from exc
-        bound_rows = self._repo.list_student_bound_questions(
-            course_id=course_id, question_ids=drawn_ids
+        drawn_ids, bound_rows = self._draw_published_questions_for_quiz(
+            course_id=course_id,
+            bank_id=bank_id,
+            served_n=served_n,
+            rng=draw_rng,
         )
-        if len(bound_rows) != len(drawn_ids):
-            raise Conflict("Module quiz questions could not be loaded")
         try:
             question_order = shuffle_question_order(drawn_ids, draw_rng)
             choice_orders = shuffle_choice_orders_for_questions(
@@ -262,6 +287,54 @@ class QuestionBankService:
         if binding is None:
             raise Conflict("Module quiz binding could not be loaded after create")
         return binding
+
+    def _retake_with_redraw(
+        self,
+        module_quiz: ModuleQuiz,
+        binding: StudentModuleQuizBinding,
+        *,
+        latest: ModuleQuizAttempt,
+        rng: random.Random,
+    ) -> tuple[ModuleQuizAttempt, StudentModuleQuizBinding]:
+        bank_id = module_quiz.questionBankId
+        assert bank_id is not None
+        served_n = module_quiz.servedCountN
+        assert served_n is not None and served_n >= 1
+        drawn_ids, bound_rows = self._draw_published_questions_for_quiz(
+            course_id=binding.courseId,
+            bank_id=bank_id,
+            served_n=served_n,
+            rng=rng,
+        )
+        try:
+            question_order = shuffle_question_order(drawn_ids, rng)
+            choice_orders = shuffle_choice_orders_for_questions(
+                bound_rows, rng
+            )
+        except ValueError as exc:
+            raise Conflict(str(exc)) from exc
+        attempt_number = latest.attemptNumber + 1
+        try:
+            attempt = self._repo.redraw_binding_and_insert_attempt(
+                binding_id=binding.id,
+                question_ids=drawn_ids,
+                attempt_number=attempt_number,
+                shuffled_question_order=question_order,
+                shuffled_choice_orders=choice_orders,
+            )
+        except Conflict:
+            open_attempt = self._repo.get_open_attempt(binding_id=binding.id)
+            if open_attempt is None:
+                raise
+            attempt = open_attempt
+        reloaded = self._repo.get_binding_for_student(
+            module_quiz_id=module_quiz.id, user_sub=binding.userSub
+        )
+        if reloaded is None:
+            raise Conflict("Module quiz binding could not be loaded after retake")
+        if set(reloaded.questionIds) != set(attempt.shuffledQuestionOrder):
+            raise Conflict("Module quiz attempt does not match current question set")
+        return attempt, reloaded
 
     def _insert_new_attempt(
         self,
@@ -343,14 +416,19 @@ class QuestionBankService:
     ) -> dict[str, Any]:
         served_n = module_quiz.servedCountN
         assert served_n is not None
-        if len(binding.questionIds) != served_n:
-            raise Conflict("Module quiz binding is incomplete")
         snapshot = self._repo.get_latest_submission_for_binding(
             binding_id=binding.id
         )
         if snapshot is None:
             raise Conflict("Quiz submission record not found")
-        ordered_ids = binding.questionIds
+        ordered_ids = snapshot.questionOrder
+        if (
+            len(ordered_ids) != served_n
+            or snapshot.totalCount != served_n
+            or len(set(ordered_ids)) != len(ordered_ids)
+            or set(snapshot.answersJson.keys()) != set(ordered_ids)
+        ):
+            raise Conflict("Module quiz submission is incomplete")
         grading_rows = self._repo.list_grading_rows_for_questions(
             course_id=binding.courseId,
             question_ids=ordered_ids,
@@ -374,8 +452,8 @@ class QuestionBankService:
             "moduleId": module_quiz.moduleId,
             "servedCountN": served_n,
             "latestSubmission": {
-                "correctCount": snapshot.correctCount,
-                "totalCount": snapshot.totalCount,
+                "correctCount": grade_result.correct_count,
+                "totalCount": grade_result.total_count,
                 "attemptNumber": snapshot.attemptNumber,
                 "submittedAt": snapshot.submittedAt,
                 "questions": self._questions_result_breakdown(
