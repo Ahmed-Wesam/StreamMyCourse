@@ -12,6 +12,8 @@ import ModuleQuizPage from './ModuleQuizPage'
 const api = vi.hoisted(() => ({
   startModuleQuiz: vi.fn(),
   submitModuleQuiz: vi.fn(),
+  listLessons: vi.fn(),
+  getCourseProgress: vi.fn(),
 }))
 
 vi.mock('../lib/api', async (importOriginal) => {
@@ -22,6 +24,9 @@ vi.mock('../lib/api', async (importOriginal) => {
       api.startModuleQuiz(...args) as ReturnType<typeof mod.startModuleQuiz>,
     submitModuleQuiz: (...args: unknown[]) =>
       api.submitModuleQuiz(...args) as ReturnType<typeof mod.submitModuleQuiz>,
+    listLessons: (...args: unknown[]) => api.listLessons(...args) as ReturnType<typeof mod.listLessons>,
+    getCourseProgress: (...args: unknown[]) =>
+      api.getCourseProgress(...args) as ReturnType<typeof mod.getCourseProgress>,
   }
 })
 
@@ -82,9 +87,11 @@ const LATEST_RESULTS_RESPONSE = {
   },
 } as const
 
-function renderModuleQuiz(path = '/courses/c1/modules/m1/quiz') {
+type QuizEntry = string | { pathname: string; state?: { returnTo?: string } }
+
+function renderModuleQuiz(entry: QuizEntry = '/courses/c1/modules/m1/quiz') {
   return render(
-    <MemoryRouter initialEntries={[path]}>
+    <MemoryRouter initialEntries={[entry]}>
       <Routes>
         <Route path="/courses/:courseId/modules/:moduleId/quiz" element={<ModuleQuizPage />} />
       </Routes>
@@ -108,12 +115,49 @@ describe('ModuleQuizPage', () => {
   beforeEach(() => {
     api.startModuleQuiz.mockReset()
     api.submitModuleQuiz.mockReset()
+    api.listLessons.mockReset()
+    api.getCourseProgress.mockReset()
     api.startModuleQuiz.mockResolvedValue(REVERSED_START_RESPONSE)
+    api.listLessons.mockResolvedValue([
+      { id: 'l1', title: 'Lesson 1', order: 0, moduleId: 'm1', moduleOrder: 0, videoStatus: 'ready' as const },
+    ])
+    api.getCourseProgress.mockResolvedValue({
+      courseId: 'c1',
+      totalReadyLessons: 1,
+      completedCount: 0,
+      percentComplete: 0,
+      lessons: [],
+    })
   })
 
   afterEach(() => {
     cleanup()
     vi.restoreAllMocks()
+  })
+
+  it('Back to course links to the lesson player when returnTo is in location state', async () => {
+    renderModuleQuiz({
+      pathname: '/courses/c1/modules/m1/quiz',
+      state: { returnTo: '/courses/c1/lessons/l1' },
+    })
+
+    await waitFor(() => {
+      expect(screen.getByRole('link', { name: /Back to course/i })).toBeTruthy()
+    })
+
+    expect(screen.getByRole('link', { name: /Back to course/i }).getAttribute('href')).toBe(
+      '/courses/c1/lessons/l1',
+    )
+  })
+
+  it('Back to course resolves to a lesson in the module when returnTo is absent', async () => {
+    renderModuleQuiz()
+
+    await waitFor(() => {
+      expect(screen.getByRole('link', { name: /Back to course/i }).getAttribute('href')).toBe(
+        '/courses/c1/lessons/l1',
+      )
+    })
   })
 
   it('calls startModuleQuiz on mount with route params', async () => {

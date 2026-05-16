@@ -2,13 +2,12 @@ import { useCallback, useEffect, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 
 import { CourseManagementLoadingSkeleton } from '../components/course/CourseManagementPageStates'
+import { createQuestionBank, listCourseQuestionBanks, type QuestionBankSummary } from '../lib/api'
+import { questionBankDisplayName, questionBankStatusLabel } from '../lib/questionBankDisplay'
 import {
-  ApiError,
-  createQuestionBank,
-  listCourseQuestionBanks,
-  type QuestionBankSummary,
-} from '../lib/api'
-import { questionBankDisplayName, questionBankIdLabel } from '../lib/questionBankDisplay'
+  incompleteQuestionBanksListLinkMessage,
+  questionBankUserMessage,
+} from '../lib/questionBankErrors'
 
 const MAX_BANK_NAME_LENGTH = 80
 
@@ -26,7 +25,7 @@ export default function QuestionBanksListPage() {
   const load = useCallback(async () => {
     if (!courseId) {
       setBanks([])
-      setError('Missing course id.')
+      setError(incompleteQuestionBanksListLinkMessage)
       setLoading(false)
       return
     }
@@ -37,7 +36,7 @@ export default function QuestionBanksListPage() {
       setBanks(rows)
     } catch (err) {
       setBanks([])
-      setError(err instanceof Error ? err.message : 'Failed to load question banks')
+      setError(questionBankUserMessage(err))
     } finally {
       setLoading(false)
     }
@@ -62,9 +61,7 @@ export default function QuestionBanksListPage() {
       const b = encodeURIComponent(questionBankId)
       navigate(`/courses/${c}/question-banks/${b}`)
     } catch (err) {
-      const msg =
-        err instanceof ApiError ? err.message : err instanceof Error ? err.message : 'Failed to create bank'
-      setError(msg)
+      setError(questionBankUserMessage(err))
     } finally {
       setCreating(false)
     }
@@ -74,7 +71,7 @@ export default function QuestionBanksListPage() {
     return (
       <div className="mx-auto max-w-4xl">
         <div className="mb-6 rounded-lg border border-red-200 bg-red-50 p-4 text-red-700" role="alert">
-          Missing course id.
+          {incompleteQuestionBanksListLinkMessage}
         </div>
       </div>
     )
@@ -139,13 +136,8 @@ export default function QuestionBanksListPage() {
                   to={to}
                   className="flex items-center justify-between gap-4 px-4 py-3 text-gray-900 hover:bg-gray-50"
                 >
-                  <span className="min-w-0">
-                    <span className="block truncate font-medium">{questionBankDisplayName(bank)}</span>
-                    <span className="block font-mono text-xs text-gray-500">
-                      {questionBankIdLabel(bank.questionBankId)}
-                    </span>
-                  </span>
-                  <span className="text-sm text-gray-600">{bank.status}</span>
+                  <span className="min-w-0 truncate font-medium">{questionBankDisplayName(bank)}</span>
+                  <span className="text-sm text-gray-600">{questionBankStatusLabel(bank.status)}</span>
                 </Link>
               </li>
             )

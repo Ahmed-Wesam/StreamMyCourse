@@ -355,7 +355,7 @@ describe('CourseManagement', () => {
     fireEvent.click(saveButton)
 
     await waitFor(() => {
-      expect(screen.getByText(/Failed to save/i)).toBeTruthy()
+      expect(screen.getByText(/Your changes could not be saved/i)).toBeTruthy()
     })
   })
 
@@ -581,7 +581,7 @@ describe('CourseManagement', () => {
     )
 
     await waitFor(() => {
-      expect(screen.getByText('boom')).toBeTruthy()
+      expect(screen.getByText(/This course could not be loaded/i)).toBeTruthy()
     })
     expect(screen.queryByDisplayValue('Test Course')).toBeNull()
     expect(screen.queryByText('Lesson 1')).toBeNull()
@@ -595,7 +595,7 @@ describe('CourseManagement', () => {
 
     await waitFor(() => {
       expect(screen.getByTestId('course-management-load-error')).toBeTruthy()
-      expect(screen.getByText('boom')).toBeTruthy()
+      expect(screen.getByText(/This course could not be loaded/i)).toBeTruthy()
     })
     expect(screen.queryByText(/^Course not found$/i)).toBeNull()
     expect(screen.queryByTestId('course-management-inline-error')).toBeNull()
@@ -705,7 +705,7 @@ describe('CourseManagement', () => {
       // GREEN contract: bank picker is a labeled control; native <select> is exposed as role "combobox" in a11y tree.
       // Use <label htmlFor> + id on the select so tests can use getByLabelText(/^Question bank$/i) (or getByRole('combobox', { name: /^Question bank$/i })).
       const bankPicker = within(panel).getByLabelText(/^Question bank$/i)
-      expect(within(panel).getByRole('option', { name: /Section 1 practice \(DRAFT\)/i })).toBeTruthy()
+      expect(within(panel).getByRole('option', { name: /Section 1 practice \(Draft\)/i })).toBeTruthy()
       fireEvent.change(bankPicker, { target: { value: 'qb1' } })
 
       fireEvent.click(within(panel).getByRole('button', { name: 'Attach quiz' }))
@@ -736,8 +736,8 @@ describe('CourseManagement', () => {
       const m2Row = within(panel).getByText('Section 2').closest('li')
       expect(m2Row).toBeTruthy()
       const m2Picker = within(m2Row as HTMLElement).getByLabelText(/^Question bank$/i)
-      expect(within(m2Picker).queryByRole('option', { name: /Bank 1 \(DRAFT\)/i })).toBeNull()
-      expect(within(m2Picker).getByRole('option', { name: /Bank 2 \(DRAFT\)/i })).toBeTruthy()
+      expect(within(m2Picker).queryByRole('option', { name: /Bank 1 \(Draft\)/i })).toBeNull()
+      expect(within(m2Picker).getByRole('option', { name: /Bank 2 \(Draft\)/i })).toBeTruthy()
     })
 
     it('shows linked quiz summaries with bank name and id', async () => {
@@ -765,7 +765,7 @@ describe('CourseManagement', () => {
       const panel = await screen.findByTestId('course-management-module-quizzes')
 
       expect(within(panel).getByText('Section 1 practice')).toBeTruthy()
-      expect(within(panel).getByText('ID: qb1')).toBeTruthy()
+      expect(within(panel).queryByText('ID: qb1')).toBeNull()
     })
 
     it('shows inline error on attach when createModuleQuiz fails with 400', async () => {
@@ -798,9 +798,8 @@ describe('CourseManagement', () => {
 
       await waitFor(() => {
         const inline = screen.getByTestId('course-management-inline-error')
-        expect(inline.textContent).toMatch(/bad/i)
         expect(inline.textContent).toBe(
-          questionBankUserMessage(new ApiError('bad', 400, 'bad_request')),
+          'That request could not be completed. Check your entries and try again.',
         )
       })
     })
@@ -841,7 +840,7 @@ describe('CourseManagement', () => {
           new ApiError('Module already has a quiz', 409, 'conflict'),
         )
         expect(inline.textContent).toBe(expected)
-        expect(inline.textContent).toMatch(/conflict|refresh/i)
+        expect(inline.textContent).toMatch(/already has a quiz/i)
       })
     })
   })

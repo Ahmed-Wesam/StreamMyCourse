@@ -14,7 +14,9 @@ import {
   type Lesson,
   type LessonProgressItem,
 } from '../lib/api'
+import { catalogApiUserMessage, courseNotFoundMessage } from '../lib/apiUserMessages'
 import { groupLessonsByModule } from '../lib/lessonGrouping'
+import { lessonPlayerPath, moduleQuizLinkTo } from '../lib/moduleQuizNavigation'
 import { PricingSection } from '../components/course/PricingSection'
 import { FIGMA_MOCK_COURSE_INSTRUCTOR_NAME, FIGMA_MOCK_COURSE_PRICING_PLANS } from '../lib/figma-mocks'
 
@@ -275,6 +277,17 @@ function CourseDetailBody({
                 {lessonSections.map((section) => {
                   const moduleQuiz = moduleById.get(section.id)?.moduleQuiz
                   const quizAvailable = showModuleQuizBadge && moduleQuiz?.available === true
+                  const quizReturnLesson = section.lessons[section.lessons.length - 1]
+                  const quizTo =
+                    quizAvailable && quizReturnLesson
+                      ? moduleQuizLinkTo(
+                          courseId,
+                          section.id,
+                          lessonPlayerPath(courseId, quizReturnLesson.id),
+                        )
+                      : quizAvailable
+                        ? `/courses/${courseId}/modules/${section.id}/quiz`
+                        : null
                   return (
                   <div key={section.id}>
                     <div className="bg-gray-50 px-6 py-3">
@@ -285,14 +298,14 @@ function CourseDetailBody({
                             Module quiz
                           </span>
                         )}
-                        {quizAvailable && (
+                        {quizTo ? (
                           <Link
-                            to={`/courses/${courseId}/modules/${section.id}/quiz`}
+                            to={quizTo}
                             className="ml-auto inline-flex items-center rounded-lg bg-indigo-600 px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-indigo-700"
                           >
                             Start quiz
                           </Link>
-                        )}
+                        ) : null}
                       </div>
                       {section.description && (
                         <div className="mt-1 text-sm text-gray-600">{section.description}</div>
@@ -566,7 +579,7 @@ export default function CourseDetailPage() {
         setCourse(null)
         setLessons([])
         setModules([])
-        setError('Course not found')
+        setError(courseNotFoundMessage)
         return
       }
       setCourse(c)
@@ -585,7 +598,7 @@ export default function CourseDetailPage() {
         }
       }
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Failed to load')
+      setError(catalogApiUserMessage(e, 'loadCourse'))
       setCourse(null)
       setLessons([])
       setModules([])
@@ -642,7 +655,7 @@ export default function CourseDetailPage() {
       await enrollInCourse(courseId)
       await loadCourseData()
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Enrollment failed')
+      setError(catalogApiUserMessage(e, 'enroll'))
     } finally {
       setEnrolling(false)
     }

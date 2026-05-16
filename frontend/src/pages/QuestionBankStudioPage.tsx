@@ -3,17 +3,20 @@ import { useNavigate, useParams } from 'react-router-dom'
 
 import { CourseManagementLoadingSkeleton } from '../components/course/CourseManagementPageStates'
 import { QuestionBankStudioAddQuestionForm } from '../components/question-banks/QuestionBankStudioAddQuestionForm'
+import { QuestionBankStudioLinkedModule } from '../components/question-banks/QuestionBankStudioLinkedModule'
 import { QuestionBankStudioPublishPanel } from '../components/question-banks/QuestionBankStudioPublishPanel'
 import { QuestionBankStudioQuestionRow } from '../components/question-banks/QuestionBankStudioQuestionRow'
 import {
   createQuestionBankQuestion,
   deleteQuestionBankQuestion,
+  listCourseModules,
   listCourseModuleQuizzes,
   listCourseQuestionBanks,
   listQuestionBankQuestions,
   publishQuestionBank,
   updateQuestionBankName,
   updateQuestionBankQuestion,
+  type CourseModule,
   type CreateQuestionBankQuestionBody,
   type ModuleQuizRow,
   type PublishQuestionBankBody,
@@ -21,13 +24,19 @@ import {
   type QuestionBankSummary,
   type UpdateQuestionBankQuestionBody,
 } from '../lib/api'
-import { questionBankUserMessage } from '../lib/questionBankErrors'
-import { questionBankDisplayName, questionBankIdLabel } from '../lib/questionBankDisplay'
+import {
+  incompleteQuestionBankStudioLinkMessage,
+  questionBankUserMessage,
+} from '../lib/questionBankErrors'
+import {
+  questionBankDisplayName,
+  questionBankStatusLabel,
+  UNTITLED_QUESTION_BANK_LABEL,
+} from '../lib/questionBankDisplay'
 
 const MAX_BANK_NAME_LENGTH = 80
 
 type QuestionBankStudioHeaderProps = {
-  bankId: string
   bankDisplayName: string
   bankMissing: boolean
   bankStatus: QuestionBankSummary['status']
@@ -38,7 +47,6 @@ type QuestionBankStudioHeaderProps = {
 }
 
 function QuestionBankStudioHeader({
-  bankId,
   bankDisplayName,
   bankMissing,
   bankStatus,
@@ -54,7 +62,6 @@ function QuestionBankStudioHeader({
       <div>
         <p className="text-sm font-medium uppercase tracking-wide text-gray-500">Question bank studio</p>
         <h1 className="text-3xl font-bold text-gray-900">{bankDisplayName}</h1>
-        <p className="mt-1 font-mono text-sm text-gray-600">{questionBankIdLabel(bankId)}</p>
         <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-end">
           <label className="flex flex-col gap-1 text-sm font-medium text-gray-700">
             Question bank name
@@ -82,7 +89,7 @@ function QuestionBankStudioHeader({
           bankStatus === 'PUBLISHED' ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'
         }`}
       >
-        {bankStatus}
+        {questionBankStatusLabel(bankStatus)}
       </span>
     </div>
   )
@@ -96,6 +103,7 @@ export default function QuestionBankStudioPage() {
 
   const [banks, setBanks] = useState<QuestionBankSummary[]>([])
   const [questions, setQuestions] = useState<QuestionBankQuestion[]>([])
+  const [courseModules, setCourseModules] = useState<CourseModule[]>([])
   const [moduleQuizzes, setModuleQuizzes] = useState<ModuleQuizRow[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -108,7 +116,7 @@ export default function QuestionBankStudioPage() {
   const [busyQuestionId, setBusyQuestionId] = useState<string | null>(null)
 
   const bank = useMemo(() => banks.find((b) => b.questionBankId === bankId), [banks, bankId])
-  const bankDisplayName = bank ? questionBankDisplayName(bank) : bankId
+  const bankDisplayName = bank ? questionBankDisplayName(bank) : UNTITLED_QUESTION_BANK_LABEL
 
   const linkedModuleRows = useMemo(
     () => moduleQuizzes.filter((r) => r.questionBankId === bankId),
@@ -121,14 +129,16 @@ export default function QuestionBankStudioPage() {
 
   const reload = useCallback(async () => {
     if (!courseId || !bankId) return
-    const [b, q, m] = await Promise.all([
+    const [b, q, m, mods] = await Promise.all([
       listCourseQuestionBanks(courseId),
       listQuestionBankQuestions(courseId, bankId),
       listCourseModuleQuizzes(courseId),
+      listCourseModules(courseId),
     ])
     setBanks(b)
     setQuestions(q)
     setModuleQuizzes(m)
+    setCourseModules(mods)
     const found = b.some((row) => row.questionBankId === bankId)
     setBankMissing(!found)
   }, [courseId, bankId])
@@ -136,7 +146,7 @@ export default function QuestionBankStudioPage() {
   useEffect(() => {
     if (!courseId || !bankId) {
       setLoading(false)
-      setError('Missing course or bank id.')
+      setError(incompleteQuestionBankStudioLinkMessage)
       return
     }
     let cancelled = false
@@ -152,6 +162,7 @@ export default function QuestionBankStudioPage() {
           setBanks([])
           setQuestions([])
           setModuleQuizzes([])
+          setCourseModules([])
         }
       } finally {
         if (!cancelled) setLoading(false)
@@ -251,7 +262,7 @@ export default function QuestionBankStudioPage() {
     return (
       <div className="mx-auto max-w-4xl">
         <div className="mb-6 rounded-lg border border-red-200 bg-red-50 p-4 text-red-700" role="alert">
-          Missing course or bank id.
+          {incompleteQuestionBankStudioLinkMessage}
         </div>
       </div>
     )
@@ -291,7 +302,6 @@ export default function QuestionBankStudioPage() {
       </button>
 
       <QuestionBankStudioHeader
-        bankId={bankId}
         bankDisplayName={bankDisplayName}
         bankMissing={bankMissing}
         bankStatus={bankStatus}
@@ -299,6 +309,11 @@ export default function QuestionBankStudioPage() {
         renaming={renaming}
         onRenameValueChange={setRenameValue}
         onRename={() => void handleRename()}
+      />
+
+      <QuestionBankStudioLinkedModule
+        courseModules={courseModules}
+        linkedModuleRows={linkedModuleRows}
       />
 
       {bankMissing ? (
@@ -338,7 +353,6 @@ export default function QuestionBankStudioPage() {
         </section>
 
         <QuestionBankStudioAddQuestionForm
-          bankStatus={bankStatus}
           disabled={bankMissing}
           submitting={creating}
           onSubmit={handleAddQuestion}

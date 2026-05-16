@@ -96,7 +96,7 @@ describe('CourseCatalogPage', () => {
     renderCatalog()
 
     await waitFor(() => {
-      expect(screen.getByText(/Network error/i)).toBeTruthy()
+      expect(screen.getByText(/course catalog could not be loaded/i)).toBeTruthy()
     })
   })
 

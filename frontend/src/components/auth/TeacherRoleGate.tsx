@@ -1,6 +1,7 @@
 import { useAuthenticator } from '@aws-amplify/ui-react'
 import { useEffect, useState, type ReactNode } from 'react'
 import { ApiError, fetchMe, type UserProfile } from '../../lib/api'
+import { catalogApiUserMessage } from '../../lib/apiUserMessages'
 import { isAuthConfigured } from '../../lib/auth'
 
 /**
@@ -97,7 +98,7 @@ export function TeacherRoleGate({ children }: { children: ReactNode }) {
       )
     }
 
-    const msg = err instanceof Error ? err.message : 'Failed to load profile'
+    const msg = catalogApiUserMessage(err, 'loadProfile')
     return <div className="p-8 text-center text-red-600">{msg}</div>
   }
 

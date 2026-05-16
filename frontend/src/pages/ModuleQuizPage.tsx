@@ -1,6 +1,9 @@
 import { useCallback, useEffect, useState } from 'react'
-import { Link, useParams } from 'react-router-dom'
+import { Link, useLocation, useParams } from 'react-router-dom'
 import {
+  getCourseProgress,
+  isProgressRdsUnavailableError,
+  listLessons,
   startModuleQuiz,
   submitModuleQuiz,
   type ModuleQuizLatestSubmission,
@@ -10,7 +13,14 @@ import {
   type ModuleQuizStartResponse,
   type ModuleQuizSubmitResponse,
 } from '../lib/api'
-import { catalogApiUserMessage } from '../lib/questionBankErrors'
+import {
+  resolveModuleQuizBackTo,
+  type ModuleQuizReturnTo,
+} from '../lib/moduleQuizNavigation'
+import {
+  catalogApiUserMessage,
+  incompleteModuleQuizLinkMessage,
+} from '../lib/questionBankErrors'
 
 type ResultsModel = ModuleQuizLatestSubmission | ModuleQuizSubmitResponse
 
@@ -33,6 +43,8 @@ function applyStartResponse(
 
 export default function ModuleQuizPage() {
   const { courseId, moduleId } = useParams<{ courseId: string; moduleId: string }>()
+  const location = useLocation()
+  const [backTo, setBackTo] = useState<ModuleQuizReturnTo>('/catalog')
   const [pageLoading, setPageLoading] = useState(true)
   const [retakeBusy, setRetakeBusy] = useState(false)
   const [submitting, setSubmitting] = useState(false)
@@ -46,8 +58,34 @@ export default function ModuleQuizPage() {
   }, [])
 
   useEffect(() => {
+    if (!courseId || !moduleId) return
+
+    let cancelled = false
+    ;(async () => {
+      try {
+        const lessons = await listLessons(courseId)
+        let progress = null
+        try {
+          progress = await getCourseProgress(courseId)
+        } catch (e) {
+          if (!isProgressRdsUnavailableError(e)) throw e
+        }
+        if (!cancelled) {
+          setBackTo(resolveModuleQuizBackTo(courseId, moduleId, location.state?.returnTo, lessons, progress))
+        }
+      } catch {
+        if (!cancelled) setBackTo('/catalog')
+      }
+    })()
+
+    return () => {
+      cancelled = true
+    }
+  }, [courseId, moduleId, location.state])
+
+  useEffect(() => {
     if (!courseId || !moduleId) {
-      setError('Missing course or module.')
+      setError(incompleteModuleQuizLinkMessage)
       setPageLoading(false)
       return
     }
@@ -126,7 +164,7 @@ export default function ModuleQuizPage() {
   return (
     <div className="space-y-8 py-6 sm:py-8">
       <div className="overflow-hidden rounded-xl border border-gray-100 bg-white shadow-sm">
-        <ModuleQuizCardHeader courseId={courseId} taking={taking} results={results} />
+        <ModuleQuizCardHeader backTo={backTo} taking={taking} results={results} />
 
         <ModuleQuizCardMain
           pageLoading={pageLoading}
@@ -147,11 +185,11 @@ export default function ModuleQuizPage() {
 }
 
 function ModuleQuizCardHeader({
-  courseId,
+  backTo,
   taking,
   results,
 }: {
-  courseId: string | undefined
+  backTo: ModuleQuizReturnTo
   taking: ModuleQuizStartInProgress | null
   results: ResultsModel | null
 }) {
@@ -161,7 +199,7 @@ function ModuleQuizCardHeader({
   return (
     <div className="border-b border-gray-100 px-6 py-4">
       <Link
-        to={courseId ? `/courses/${courseId}` : '/catalog'}
+        to={backTo}
         className="mb-3 inline-flex items-center text-sm text-gray-500 transition-colors hover:text-gray-900"
       >
         <svg className="mr-1 h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -303,9 +341,9 @@ function QuizResultsBreakdown({ questions }: { questions: ModuleQuizResultQuesti
             {q.promptText}
           </p>
           <p className="mt-2 text-sm text-gray-700">
-            Your answer: <span className="font-mono">{q.selectedOptionKey}</span>
+            Your answer: <span className="font-medium">{q.selectedOptionKey}</span>
             {' · '}
-            Correct: <span className="font-mono">{q.correctOptionKey}</span>
+            Correct answer: <span className="font-medium">{q.correctOptionKey}</span>
             {' · '}
             {q.isCorrect ? (
               <span className="text-emerald-800">Correct</span>

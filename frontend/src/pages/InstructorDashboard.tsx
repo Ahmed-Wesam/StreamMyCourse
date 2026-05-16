@@ -8,6 +8,7 @@ import {
   deleteCourse,
   type Course,
 } from '../lib/api'
+import { catalogApiUserMessage } from '../lib/apiUserMessages'
 
 export default function InstructorDashboard() {
   const navigate = useNavigate()
@@ -42,7 +43,7 @@ export default function InstructorDashboard() {
       )
       setLessonCounts(counts)
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load courses')
+      setError(catalogApiUserMessage(err, 'loadCourses'))
     } finally {
       setLoading(false)
     }
@@ -70,7 +71,7 @@ export default function InstructorDashboard() {
       // Navigate to course management page
       navigate(`/courses/${result.id}`)
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to create course')
+      setError(catalogApiUserMessage(err, 'createCourse'))
     } finally {
       setCreating(false)
     }
@@ -84,7 +85,7 @@ export default function InstructorDashboard() {
       await publishCourse(courseId)
       await loadCourses()
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to publish course')
+      setError(catalogApiUserMessage(err, 'publishCourse'))
     } finally {
       setPublishing(null)
     }
@@ -100,7 +101,7 @@ export default function InstructorDashboard() {
       await deleteCourse(courseId)
       await loadCourses()
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to delete course')
+      setError(catalogApiUserMessage(err, 'deleteCourse'))
     } finally {
       setDeleting(null)
     }

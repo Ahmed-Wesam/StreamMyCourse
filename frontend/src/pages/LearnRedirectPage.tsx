@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { listCourses, listLessons } from '../lib/api'
+import { catalogApiUserMessage } from '../lib/apiUserMessages'
 
 export default function LearnRedirectPage() {
   const navigate = useNavigate()
@@ -24,7 +25,7 @@ export default function LearnRedirectPage() {
         }
         navigate(`/courses/${first.id}/lessons/${lesson.id}`, { replace: true })
       } catch (e) {
-        if (!cancelled) setError(e instanceof Error ? e.message : 'Failed to load course.')
+        setError(catalogApiUserMessage(e, 'learnRedirect'))
       }
     }
     void run()
@@ -36,10 +37,11 @@ export default function LearnRedirectPage() {
   return (
     <div className="min-h-[50vh] flex items-center justify-center px-6">
       <div className="max-w-md w-full bg-card border border-border rounded-xl p-6 text-center">
-        <p className="text-sm text-muted-foreground">Loading your course…</p>
         {error ? (
-          <p className="mt-3 text-sm text-destructive">{error}</p>
-        ) : null}
+          <p className="text-sm text-destructive">{error}</p>
+        ) : (
+          <p className="text-sm text-muted-foreground">Loading your course…</p>
+        )}
       </div>
     </div>
   )

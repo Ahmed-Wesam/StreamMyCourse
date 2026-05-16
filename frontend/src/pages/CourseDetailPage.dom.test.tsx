@@ -438,7 +438,7 @@ describe('CourseDetailPage', () => {
     renderCourseDetail()
 
     await waitFor(() => {
-      expect(screen.getByText(/Failed to fetch/i)).toBeTruthy()
+      expect(screen.getByText(/This course could not be loaded/i)).toBeTruthy()
     })
   })
 
@@ -448,7 +448,7 @@ describe('CourseDetailPage', () => {
     renderCourseDetail()
 
     await waitFor(() => {
-      expect(screen.getByText(/Course not found/i)).toBeTruthy()
+      expect(screen.getByText(/That course was not found/i)).toBeTruthy()
     })
     expect(screen.queryByText('First Lesson')).toBeNull()
   })
@@ -458,7 +458,7 @@ describe('CourseDetailPage', () => {
     renderCourseDetail()
 
     await waitFor(() => {
-      expect(screen.getByText(/Modules failed/i)).toBeTruthy()
+      expect(screen.getByText(/This course could not be loaded/i)).toBeTruthy()
     })
     expect(screen.queryByText('First Lesson')).toBeNull()
     expect(screen.queryByText('Second Lesson')).toBeNull()
@@ -633,7 +633,7 @@ describe('CourseDetailPage', () => {
     await router.navigate('/courses/c2')
 
     await waitFor(() => {
-      expect(screen.getByText('boom')).toBeTruthy()
+      expect(screen.getByText(/This course could not be loaded/i)).toBeTruthy()
     })
     await waitFor(() => {
       expect(screen.queryByText('Stale Hero Title')).toBeNull()
