@@ -15,7 +15,7 @@ function compareLessonOrdering(a: Lesson, b: Lesson): number {
 }
 
 /**
- * Builds ordered lesson sections: one per known module (with lessons),
+ * Builds ordered lesson sections: one per known module with lessons or a visible quiz,
  * stable module order via `CourseModule.order`, then optional Unsorted tail.
  */
 export function groupLessonsByModule(lessons: Lesson[], modules: CourseModule[]): LessonModuleSection[] {
@@ -29,7 +29,7 @@ export function groupLessonsByModule(lessons: Lesson[], modules: CourseModule[])
     const moduleLessons = sortedLessons
       .filter((l) => l.moduleId === mod.id)
       .sort(compareLessonOrdering)
-    if (moduleLessons.length === 0) continue
+    if (moduleLessons.length === 0 && mod.moduleQuiz?.available !== true) continue
     sections.push({
       id: mod.id,
       title: mod.title,

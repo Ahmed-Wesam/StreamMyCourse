@@ -422,6 +422,46 @@ describe('LessonPlayerPage', () => {
     expect(quizLink.getAttribute('href')).toBe('/courses/c1/modules/m1/quiz')
   })
 
+  it('shows a quiz-only module in the sidebar', async () => {
+    api.listLessons.mockResolvedValue([
+      {
+        id: 'l1',
+        title: 'Only Lesson',
+        order: 1,
+        moduleId: 'm1',
+        moduleOrder: 0,
+        videoStatus: 'ready',
+        duration: 400,
+      },
+    ])
+    api.listCourseModules.mockResolvedValue([
+      { id: 'm1', title: 'Lesson Section', description: '', order: 0 },
+      {
+        id: 'm2',
+        title: 'Quiz Only Section',
+        description: '',
+        order: 1,
+        moduleQuiz: { available: true, servedCountN: 2 },
+      },
+    ])
+    api.getCourseProgress.mockResolvedValue({
+      courseId: 'c1',
+      totalReadyLessons: 1,
+      completedCount: 0,
+      percentComplete: 0,
+      lessons: [{ lessonId: 'l1', completed: false, lastPositionSec: 0 }],
+    })
+
+    renderLessonPlayer('/courses/c1/lessons/l1')
+
+    const quizOnlyToggle = await screen.findByRole('button', { name: 'Quiz Only Section' })
+    if (quizOnlyToggle?.getAttribute('aria-expanded') !== 'true') {
+      fireEvent.click(quizOnlyToggle)
+    }
+    const quizLink = screen.getByRole('link', { name: /Module quiz/i })
+    expect(quizLink.getAttribute('href')).toBe('/courses/c1/modules/m2/quiz')
+  })
+
   it('sends Next to the module quiz before the next module lesson', async () => {
     api.listCourseModules.mockResolvedValue([
       {

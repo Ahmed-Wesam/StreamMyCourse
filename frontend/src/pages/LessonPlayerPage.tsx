@@ -568,7 +568,7 @@ function CourseLessonsSidebar({
   onClose: () => void
 }) {
   const sections = useMemo(
-    () => groupLessonsByModule(lessons, modules).filter((s) => s.lessons.length > 0),
+    () => groupLessonsByModule(lessons, modules),
     [lessons, modules],
   )
   const percent = courseProgress?.percentComplete ?? 0
