@@ -458,7 +458,7 @@ describe('LessonPlayerPage', () => {
     if (quizOnlyToggle?.getAttribute('aria-expanded') !== 'true') {
       fireEvent.click(quizOnlyToggle)
     }
-    const quizLink = screen.getByRole('link', { name: /Module quiz/i })
+    const quizLink = await screen.findByRole('link', { name: /Module quiz/i })
     expect(quizLink.getAttribute('href')).toBe('/courses/c1/modules/m2/quiz')
   })
 
