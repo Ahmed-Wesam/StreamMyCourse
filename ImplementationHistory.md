@@ -12,6 +12,7 @@
 - [x] **App-wide wiring** — course management, instructor dashboard, student catalog, lesson player, module quiz, learn redirect, and teacher role gate use the sanitizer instead of raw `err.message`.
 - [x] **Question bank studio** — hide raw bank/module IDs in list and studio; friendly Draft/Published labels; linked-module panel; publish uses attached module (no module dropdown); required correct answer on add question.
 - [x] **Quiz navigation** — [`moduleQuizNavigation.ts`](frontend/src/lib/moduleQuizNavigation.ts): “Back” from module quiz returns to lesson player when possible.
+- [x] **Review follow-up** — no verbatim pass-through of unmapped API text; operation-specific contexts (quiz, question banks, attach module quiz); `LearnRedirectPage` and module quiz retake/submit guard state updates after unmount; quiz `returnTo` validated against loaded lessons; publish warning when multiple module links exist.
 
 ### Verify
 
