@@ -268,6 +268,9 @@ Resources:
       # lockstep when changing DbEngineVersion across major versions.
       Family: postgres16
       Parameters:
+        # Require TLS for PostgreSQL clients. Catalog Lambda connections already
+        # use sslmode=require; this makes the database reject accidental plaintext.
+        rds.force_ssl: '1'
         # 60_000 ms = 60s. Long enough that no legitimate write transaction
         # in the catalog Lambda could hit it (single-statement upserts and
         # the 2-statement create_course block are sub-second under load),

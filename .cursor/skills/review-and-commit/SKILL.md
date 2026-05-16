@@ -3,7 +3,7 @@ name: review-and-commit
 description: >-
   Runs a code review on pending changes (bugs, regressions, security, missing tests;
   findings by severity), implements fixes for issues found, then performs the /commit
-  workflow (CI-parity checks, conventional commits, /update-docs when warranted).
+  workflow (CI-parity checks including security scans, conventional commits, /update-docs when warranted).
   Local HTTPS integration against dev follows commit/SKILL.md including omitting it when
   backend or integration expectations would fail until deploy.
   Use when the user invokes /review_and_commit or asks to review then commit without pushing.
@@ -46,7 +46,7 @@ Combine **code review** and **`/commit`** in one workflow: review first, fix wha
 
 When Phase 1 is complete, follow **[`.cursor/skills/commit/SKILL.md`](../commit/SKILL.md)** end-to-end:
 
-- Analyze changes, **CI parity** checks (same as `ci.yml` jobs: frontend, lambda, cloudformation, workflow-lint, lambda-unit-tests, integration-tests-static), **local HTTPS integration** when **[`../commit/SKILL.md`](../commit/SKILL.md)** says to run it—**omit** that script under the same **deploy mismatch** rules there (Lambda/API/infra or integration tests that assume a backend not yet on dev). When running: verify repo-root **`.env.local`** has **`LOCAL_COGNITO_PASSWORD`**, then `./scripts/run-local-integration-tests.sh`. Group commits, conventional messages, **`/update-docs`** when warranted.
+- Analyze changes, **CI parity** checks (same as `ci.yml` jobs: frontend, lambda, cloudformation, security, workflow-lint, lambda-unit-tests, integration-tests-static), **local HTTPS integration** when **[`../commit/SKILL.md`](../commit/SKILL.md)** says to run it—**omit** that script under the same **deploy mismatch** rules there (Lambda/API/infra or integration tests that assume a backend not yet on dev). When running: verify repo-root **`.env.local`** has **`LOCAL_COGNITO_PASSWORD`**, then `./scripts/run-local-integration-tests.sh`. Group commits, conventional messages, **`/update-docs`** when warranted.
 - Obey **Git safety** and **never push** rules from that skill.
 
 **Push:** Do **not** run `git push` unless the user explicitly requested push in the same instruction or a clear follow-up.
