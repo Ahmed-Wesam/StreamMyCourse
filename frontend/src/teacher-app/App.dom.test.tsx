@@ -24,6 +24,12 @@ vi.mock('../pages/InstructorDashboard', () => ({
 vi.mock('../pages/CourseManagement', () => ({
   default: () => <div data-testid="teacher-page-course-mgmt" />,
 }))
+vi.mock('../pages/QuestionBanksListPage', () => ({
+  default: () => <div data-testid="teacher-page-question-banks-list" />,
+}))
+vi.mock('../pages/QuestionBankStudioPage', () => ({
+  default: () => <div data-testid="teacher-page-question-bank-studio" />,
+}))
 
 import TeacherApp from './App'
 
@@ -49,6 +55,16 @@ describe('TeacherApp', () => {
   it('mounts course management at /courses/:courseId', () => {
     renderAt('/courses/c-1')
     expect(screen.getByTestId('teacher-page-course-mgmt')).toBeTruthy()
+  })
+
+  it('mounts the question banks list at /courses/:courseId/question-banks', () => {
+    renderAt('/courses/c-1/question-banks')
+    expect(screen.getByTestId('teacher-page-question-banks-list')).toBeTruthy()
+  })
+
+  it('mounts the question bank studio at /courses/:courseId/question-banks/:bankId', () => {
+    renderAt('/courses/c-1/question-banks/qb-1')
+    expect(screen.getByTestId('teacher-page-question-bank-studio')).toBeTruthy()
   })
 
   it('redirects unknown paths to dashboard', async () => {
