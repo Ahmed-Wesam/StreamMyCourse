@@ -1,0 +1,7 @@
+title = "StreamMyCourse Gitleaks config"
+
+[allowlist]
+description = "Intentional test fixture that verifies JWT log handling"
+paths = [
+  '''tests/unit/services/common/test_pii_filter\.py''',
+]

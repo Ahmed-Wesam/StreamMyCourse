@@ -1,0 +1,35 @@
+# Baseline skips for StreamMyCourse's current MVP infrastructure posture.
+# Keep this list small and remove entries as the corresponding hardening work ships.
+framework:
+  - cloudformation
+directory:
+  - infrastructure/templates
+quiet: true
+skip-check:
+  # Known MVP hardening backlog: Lambda DLQs, reserved concurrency, KMS CMKs,
+  # VPC placement for edge/cleanup helpers, API logging/tracing/cache, WAF,
+  # S3/CloudFront access logging, RDS Multi-AZ/monitoring/IAM auth, and
+  # deploy-role IAM wildcard constraints. These are tracked in roadmap/design.
+  - CKV_AWS_18
+  - CKV_AWS_21
+  - CKV_AWS_23
+  - CKV_AWS_26
+  - CKV_AWS_27
+  - CKV_AWS_59
+  - CKV_AWS_68
+  - CKV_AWS_73
+  - CKV_AWS_76
+  - CKV_AWS_86
+  - CKV_AWS_109
+  - CKV_AWS_111
+  - CKV_AWS_115
+  - CKV_AWS_116
+  - CKV_AWS_117
+  - CKV_AWS_118
+  - CKV_AWS_120
+  - CKV_AWS_149
+  - CKV_AWS_157
+  - CKV_AWS_158
+  - CKV_AWS_161
+  - CKV_AWS_173
+  - CKV_AWS_174

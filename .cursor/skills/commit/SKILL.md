@@ -1,6 +1,6 @@
 ---
 name: commit
-description: Commit local changes in small logical groupings with conventional commit messages. Use when the user asks to commit changes, save work, or create commits from modified files. Before committing, run CI-parity checks from ci.yml (frontend, lambda, cloudformation, actionlint, lambda unit tests, integration-tests-static) plus local HTTPS integration against dev when the diff warrants it and dev would still match the branch; skip that script when backend/API/infra or integration-test expectations would fail against current dev until deploy. After committing, follow /update-docs (design.md, roadmap.md, ImplementationHistory.md) when the session warrants it. Does not push unless the user explicitly asks to push.
+description: Commit local changes in small logical groupings with conventional commit messages. Use when the user asks to commit changes, save work, or create commits from modified files. Before committing, run CI-parity checks from ci.yml (frontend, lambda, cloudformation, security, actionlint, lambda unit tests, integration-tests-static) plus local HTTPS integration against dev when the diff warrants it and dev would still match the branch; skip that script when backend/API/infra or integration-test expectations would fail against current dev until deploy. After committing, follow /update-docs (design.md, roadmap.md, ImplementationHistory.md) when the session warrants it. Does not push unless the user explicitly asks to push.
 disable-model-invocation: true
 ---
 
@@ -13,7 +13,7 @@ Commit unstaged and staged changes as small, logical commits using conventional 
 ## Workflow
 
 1. **Analyze changes** - Check git status and diff to understand what changed
-2. **Run pre-deploy checks (CI parity)** - Run the same gates as GitHub Actions **CI** (see [`.github/workflows/ci.yml`](../../../.github/workflows/ci.yml)) for every job. That means: **frontend**, **lambda**, **cloudformation**, **workflow-lint** (actionlint on `.github/workflows`), **lambda-unit-tests**, **integration-tests-static**, and **local HTTPS integration against dev** only when Step 2’s **Local HTTPS integration** subsection applies *and* is not omitted as a **deploy mismatch** (inspect **`.env.local`** before running—do not commit around a missing **`LOCAL_COGNITO_PASSWORD`** only when you are actually running that script). Fix failures before committing. Skip individual commands that clearly do not apply to the touched files only when it saves time and risk is low (e.g. skip frontend installs if the diff is doc-only); otherwise run the full set.
+2. **Run pre-deploy checks (CI parity)** - Run the same gates as GitHub Actions **CI** (see [`.github/workflows/ci.yml`](../../../.github/workflows/ci.yml)) for every job. That means: **frontend**, **lambda**, **cloudformation**, **security**, **workflow-lint** (actionlint on `.github/workflows`), **lambda-unit-tests**, **integration-tests-static**, and **local HTTPS integration against dev** only when Step 2’s **Local HTTPS integration** subsection applies *and* is not omitted as a **deploy mismatch** (inspect **`.env.local`** before running—do not commit around a missing **`LOCAL_COGNITO_PASSWORD`** only when you are actually running that script). Fix failures before committing. Skip individual commands that clearly do not apply to the touched files only when it saves time and risk is low (e.g. skip frontend installs if the diff is doc-only); otherwise run the full set.
 3. **Group logically** - Organize files into related groups (by feature, module, or change type)
 4. **Stage and commit each group** - Create focused commits with conventional commit messages
 5. **Update project docs (`/update-docs`)** - After commits, follow [`.cursor/skills/update-docs/SKILL.md`](../update-docs/SKILL.md): refresh `design.md`, `roadmap.md`, and `ImplementationHistory.md` when the session’s changes warrant it (features, APIs, infra, CI/CD, security, shipped behavior). If you edit those files, commit them (e.g. `docs: sync project docs` or a scoped `docs(...)`). Skip when nothing material changed (e.g. typo-only or the three files were already the only commits).
@@ -33,7 +33,7 @@ git diff HEAD
 
 ### Step 2: Pre-deploy checks (matches CI, plus local HTTPS integration when warranted)
 
-Run from the **repository root** unless noted. Mirrors [`.github/workflows/ci.yml`](../../../.github/workflows/ci.yml) jobs **`frontend`**, **`lambda`**, **`cloudformation`**, **`workflow-lint`**, **`lambda-unit-tests`**, and **`integration-tests-static`**.
+Run from the **repository root** unless noted. Mirrors [`.github/workflows/ci.yml`](../../../.github/workflows/ci.yml) jobs **`frontend`**, **`lambda`**, **`cloudformation`**, **`security`**, **`workflow-lint`**, **`lambda-unit-tests`**, and **`integration-tests-static`**.
 
 **Prerequisites:** Node 20+, Python 3.11+, `pip` available, **bash** (for actionlint install script, **`run-local-integration-tests.sh`**, and the actionlint downloader; Git Bash on Windows is fine).
 
@@ -70,6 +70,26 @@ The **Radon** step matches CI (there it has `continue-on-error: true`); treat a 
 pip install cfn-lint
 ./scripts/cfn-lint-templates.sh
 ```
+
+**Security scans** (same as CI job `security`; repo root). Full notes: [`.cursor/skills/security-scans/SKILL.md`](../security-scans/SKILL.md).
+
+```bash
+cd frontend
+npm ci
+npm audit --audit-level=high
+cd ..
+pip install checkov pip-audit
+checkov --config-file .checkov.yaml --skip-download
+pip-audit \
+  -r infrastructure/lambda/catalog/requirements.txt \
+  -r infrastructure/lambda/cognito_user_profile_sync/requirements.txt \
+  -r infrastructure/lambda/catalog_token_authorizer/requirements.txt \
+  -r tests/unit/requirements.txt \
+  -r tests/integration/requirements.txt
+gitleaks git . --config .gitleaks.toml --redact --no-banner --verbose --log-opts=HEAD
+```
+
+Use Python 3.11 for `pip-audit` to match CI. If Gitleaks is not installed locally, install it or report that only the local Gitleaks slice was skipped while CI will run it.
 
 **GitHub Actions workflow lint** (same as CI job `workflow-lint`; repo root). You **do not** need a committed `actionlint` binary: either install **actionlint** on your **`PATH`** once (e.g. [releases](https://github.com/rhysd/actionlint/releases), `go install github.com/rhysd/actionlint/cmd/actionlint@v1.7.7`, or a package manager), or download per run (ignored by git — see root [`.gitignore`](../../../.gitignore) **`/actionlint`** / **`/actionlint.exe`**).
 
