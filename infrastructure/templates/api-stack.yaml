@@ -422,6 +422,14 @@ Resources:
       ParentId: !Ref CourseIdResource
       PathPart: question-banks
 
+  # API Gateway Resource: /courses/{courseId}/module-quizzes
+  CourseModuleQuizzesResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref CatalogApi
+      ParentId: !Ref CourseIdResource
+      PathPart: module-quizzes
+
   # API Gateway Resource: /courses/{courseId}/question-banks/{questionBankId}
   CourseQuestionBankIdResource:
     Type: AWS::ApiGateway::Resource
@@ -785,6 +793,33 @@ Resources:
     Properties:
       RestApiId: !Ref CatalogApi
       ResourceId: !Ref CourseQuestionBanksResource
+      HttpMethod: OPTIONS
+      AuthorizationType: NONE
+      Integration:
+        IntegrationHttpMethod: POST
+        Type: AWS_PROXY
+        Uri: !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${CatalogLambda.Arn}/invocations'
+
+  # API Gateway Method: GET /courses/{courseId}/module-quizzes
+  CourseModuleQuizzesGetMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref CatalogApi
+      ResourceId: !Ref CourseModuleQuizzesResource
+      HttpMethod: GET
+      AuthorizationType: COGNITO_USER_POOLS
+      AuthorizerId: !Ref CatalogApiTokenAuthorizer
+      Integration:
+        IntegrationHttpMethod: POST
+        Type: AWS_PROXY
+        Uri: !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${CatalogLambda.Arn}/invocations'
+
+  # API Gateway Method: OPTIONS /courses/{courseId}/module-quizzes
+  CourseModuleQuizzesOptionsMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref CatalogApi
+      ResourceId: !Ref CourseModuleQuizzesResource
       HttpMethod: OPTIONS
       AuthorizationType: NONE
       Integration:
@@ -1343,7 +1378,7 @@ Resources:
   # Bump logical id when API methods/resources change so CloudFormation always
   # creates a new deployment; otherwise the stage can keep serving an old snapshot
   # (symptom: GET /courses/{id}/lessons returns API GW 403 Missing Authentication Token).
-  CatalogApiDeploymentV25:
+  CatalogApiDeploymentV26:
     Type: AWS::ApiGateway::Deployment
     DependsOn:
       - CatalogLambdaApiPermission
@@ -1390,6 +1425,8 @@ Resources:
       - CourseQuestionBanksPostMethod
       - CourseQuestionBanksGetMethod
       - CourseQuestionBanksOptionsMethod
+      - CourseModuleQuizzesGetMethod
+      - CourseModuleQuizzesOptionsMethod
       - CourseQuestionBankPublishPostMethod
       - CourseQuestionBankPublishOptionsMethod
       - CourseQuestionBankQuestionsPostMethod
@@ -1413,7 +1450,7 @@ Resources:
     Type: AWS::ApiGateway::Stage
     Properties:
       RestApiId: !Ref CatalogApi
-      DeploymentId: !Ref CatalogApiDeploymentV25
+      DeploymentId: !Ref CatalogApiDeploymentV26
       StageName: !Ref Environment
       Description: !Sub '${Environment} stage for Catalog API'
       MethodSettings:

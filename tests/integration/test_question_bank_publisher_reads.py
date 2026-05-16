@@ -1,8 +1,10 @@
-"""HTTPS integration tests for publisher question-bank reads (QB-L Plan 1).
+"""HTTPS integration tests for publisher question-bank reads (QB-L Plan 1 + Plan 2).
 
 Covers GET ``/courses/{courseId}/question-banks`` and
 GET ``/courses/{courseId}/question-banks/{questionBankId}/questions`` with
 draft visibility parity against ``GET /courses/{id}/modules`` (and lessons).
+
+Plan 2 adds GET ``/courses/{courseId}/module-quizzes`` (publisher module-quiz rows).
 
 See ``tests/integration/README.md`` for required env (JWTs, API base URL).
 """
@@ -64,6 +66,23 @@ def test_owner_lists_empty_question_banks(api: ApiClient, course_factory) -> Non
     assert data == []
 
 
+def test_owner_lists_empty_module_quizzes(api: ApiClient, course_factory) -> None:
+    """Owner draft course, no ``module_quiz`` rows → **200** and JSON list ``[]`` (contract).
+
+    Until ``GET /courses/{courseId}/module-quizzes`` is handled by the question-banks
+    controller (QB-L Plan 2 green slice), the request may fall through to the catalog
+    ``not_found`` path (**404** + ``code`` ``not_found``) or, if API Gateway has no
+    route to Lambda, **403** with a non-catalog body. This test asserts the eventual
+    success contract and stays **RED** until routing + handler return **200** + ``[]``.
+    """
+    course = course_factory(label="qb-read-empty-module-quizzes")
+    resp = api.list_module_quizzes(course.course_id)
+    assert resp.status_code == 200, resp.text
+    data = resp.json()
+    assert isinstance(data, list), f"Expected JSON list, got {type(data).__name__}: {data!r}"
+    assert data == []
+
+
 def test_owner_lists_bank_and_draft_question_shapes(
     api: ApiClient, course_factory
 ) -> None:
@@ -118,6 +137,38 @@ def test_draft_question_banks_parity_with_modules_for_alt_teacher(
     assert mb.get("code") == qb.get("code"), f"modules body {mb!r} vs questions body {qb!r}"
 
 
+def test_draft_module_quizzes_parity_with_modules_for_alt_teacher(
+    api: ApiClient, alt_api: ApiClient, course_factory
+) -> None:
+    """``GET .../module-quizzes`` denial matches ``GET .../modules`` on owner draft (404 + same ``code``)."""
+    course = course_factory(label="qb-read-mq-parity-alt")
+    course_id = course.course_id
+    br = api.create_question_bank(course_id)
+    assert br.status_code == 201, br.text
+    bank_id = str(br.json()["questionBankId"])
+
+    lessons_r = alt_api.list_lessons(course_id)
+    modules_r = alt_api.list_course_modules(course_id)
+    banks_r = alt_api.list_question_banks(course_id)
+    questions_r = alt_api.list_question_bank_questions(course_id, bank_id)
+    mq_r = alt_api.list_module_quizzes(course_id)
+
+    assert lessons_r.status_code == modules_r.status_code == 404
+    assert mq_r.status_code == modules_r.status_code
+    assert banks_r.status_code == modules_r.status_code
+    assert questions_r.status_code == modules_r.status_code
+
+    lb = response_json_dict(lessons_r)
+    mb = response_json_dict(modules_r)
+    mqb = response_json_dict(mq_r)
+    bb = response_json_dict(banks_r)
+    qb = response_json_dict(questions_r)
+    assert lb.get("code") == mb.get("code"), f"lesson body {lb!r} vs modules body {mb!r}"
+    assert mb.get("code") == mqb.get("code"), f"modules body {mb!r} vs module-quizzes body {mqb!r}"
+    assert mb.get("code") == bb.get("code"), f"modules body {mb!r} vs banks body {bb!r}"
+    assert mb.get("code") == qb.get("code"), f"modules body {mb!r} vs questions body {qb!r}"
+
+
 def test_draft_question_banks_parity_with_modules_for_student(
     api: ApiClient, student_api: ApiClient, course_factory
 ) -> None:
@@ -143,6 +194,60 @@ def test_draft_question_banks_parity_with_modules_for_student(
     assert lb.get("code") == mb.get("code"), f"lesson body {lb!r} vs modules body {mb!r}"
     assert mb.get("code") == bb.get("code"), f"modules body {mb!r} vs banks body {bb!r}"
     assert mb.get("code") == qb.get("code"), f"modules body {mb!r} vs questions body {qb!r}"
+
+
+def test_draft_module_quizzes_parity_with_modules_for_student(
+    api: ApiClient, student_api: ApiClient, course_factory
+) -> None:
+    course = course_factory(label="qb-read-mq-parity-student")
+    course_id = course.course_id
+    br = api.create_question_bank(course_id)
+    assert br.status_code == 201, br.text
+    bank_id = str(br.json()["questionBankId"])
+
+    lessons_r = student_api.list_lessons(course_id)
+    modules_r = student_api.list_course_modules(course_id)
+    banks_r = student_api.list_question_banks(course_id)
+    questions_r = student_api.list_question_bank_questions(course_id, bank_id)
+    mq_r = student_api.list_module_quizzes(course_id)
+
+    assert lessons_r.status_code == modules_r.status_code == 404
+    assert mq_r.status_code == modules_r.status_code
+    assert banks_r.status_code == modules_r.status_code
+    assert questions_r.status_code == modules_r.status_code
+
+    lb = response_json_dict(lessons_r)
+    mb = response_json_dict(modules_r)
+    mqb = response_json_dict(mq_r)
+    bb = response_json_dict(banks_r)
+    qb = response_json_dict(questions_r)
+    assert lb.get("code") == mb.get("code"), f"lesson body {lb!r} vs modules body {mb!r}"
+    assert mb.get("code") == mqb.get("code"), f"modules body {mb!r} vs module-quizzes body {mqb!r}"
+    assert mb.get("code") == bb.get("code"), f"modules body {mb!r} vs banks body {bb!r}"
+    assert mb.get("code") == qb.get("code"), f"modules body {mb!r} vs questions body {qb!r}"
+
+
+def test_owner_list_module_quizzes_after_post_quiz_with_bank(
+    api: ApiClient, course_factory
+) -> None:
+    """Optional shape check: one module quiz row linked to a bank (RED until list + repo ship)."""
+    course_id, module_id = _owner_draft_course_with_module(
+        api, course_factory, label="qb-read-mq-one-row"
+    )
+    br = api.create_question_bank(course_id)
+    assert br.status_code == 201, br.text
+    bank_id = str(br.json()["questionBankId"])
+    qr = api.create_module_quiz(course_id, module_id, question_bank_id=bank_id)
+    assert qr.status_code == 201, qr.text
+
+    resp = api.list_module_quizzes(course_id)
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert isinstance(body, list), body
+    assert len(body) == 1
+    row = body[0]
+    for key in ("quizId", "moduleId", "questionBankId", "servedCountN"):
+        assert key in row, f"missing key {key} in row: {row!r}"
 
 
 def test_owner_list_questions_unknown_bank_returns_404(

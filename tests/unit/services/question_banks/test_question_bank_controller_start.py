@@ -57,6 +57,17 @@ class TestRouteQuizStart:
         assert params == {"courseId": "c1", "moduleId": "m1"}
 
 
+class TestRouteListModuleQuizzes:
+    """GET /courses/{courseId}/module-quizzes (QB-L Plan 2) — RED until router branch exists."""
+
+    def test_get_course_module_quizzes_maps_to_list_action(self) -> None:
+        action, params = _route_question_banks(
+            "GET", "/courses/c1/module-quizzes"
+        )
+        assert action == "list_module_quizzes"
+        assert params == {"courseId": "c1"}
+
+
 class TestHandleStartModuleQuiz:
     def test_post_routes_to_start_and_returns_200(self) -> None:
         qb_svc = MagicMock()

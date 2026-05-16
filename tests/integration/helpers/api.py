@@ -55,6 +55,10 @@ class ApiClient:
     def list_course_modules(self, course_id: str) -> httpx.Response:
         return self._client.get(f"/courses/{course_id}/modules")
 
+    def list_module_quizzes(self, course_id: str) -> httpx.Response:
+        """GET /courses/{courseId}/module-quizzes — publisher list (QB-L Plan 2)."""
+        return self._client.get(f"/courses/{course_id}/module-quizzes")
+
     def create_course_module(
         self, course_id: str, *, title: str, description: str = ""
     ) -> httpx.Response:
@@ -85,7 +89,11 @@ class ApiClient:
         *,
         question_bank_id: str | None = None,
     ) -> httpx.Response:
-        """POST /courses/{courseId}/modules/{moduleId}/quiz — optional ``questionBankId`` links the quiz row."""
+        """POST /courses/{courseId}/modules/{moduleId}/quiz — body must include ``questionBankId``.
+
+        Pass ``question_bank_id=...`` from ``POST .../question-banks``. Omitting it yields **400**
+        with ``code: bad_request``.
+        """
         body: Dict[str, Any] = {}
         if question_bank_id:
             body["questionBankId"] = question_bank_id

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 import random
-from typing import Any, Optional
+from typing import Any
 from uuid import UUID
 
 from services.common.errors import BadRequest, Conflict, NotFound
@@ -443,6 +443,30 @@ class QuestionBankService:
             for b in banks
         ]
 
+    def list_module_quizzes_for_course(
+        self,
+        course_id: str,
+        *,
+        cognito_sub: str,
+        role: str,
+    ) -> list[dict[str, Any]]:
+        self._authorizer.ensure_course_publisher_read_scope(
+            course_id, cognito_sub=cognito_sub, role=role
+        )
+        rows = self._repo.list_module_quizzes_for_course(course_id=course_id)
+        return [self._publisher_module_quiz_read_dict(mq) for mq in rows]
+
+    @staticmethod
+    def _publisher_module_quiz_read_dict(mq: ModuleQuiz) -> dict[str, Any]:
+        return {
+            "quizId": mq.id,
+            "moduleId": mq.moduleId,
+            "questionBankId": mq.questionBankId,
+            "servedCountN": mq.servedCountN,
+            "createdAt": mq.createdAt,
+            "updatedAt": mq.updatedAt,
+        }
+
     def list_questions_for_publisher(
         self,
         course_id: str,
@@ -487,17 +511,21 @@ class QuestionBankService:
         self._authorizer.ensure_course_mutable_by_actor(
             course_id, cognito_sub=cognito_sub, role=role
         )
-        resolved: Optional[str] = None
-        bank_ref = (question_bank_id or "").strip()
-        if bank_ref:
-            bank = self._repo.get_question_bank_by_id(bank_id=bank_ref)
-            if bank is None or bank.courseId != course_id:
-                raise NotFound("Question bank not found for this course")
-            resolved = bank_ref
+        bid = (question_bank_id or "").strip()
+        if not bid:
+            raise BadRequest("questionBankId is required")
+        if not _is_uuid_string(bid):
+            raise BadRequest("questionBankId must be a valid UUID")
+        bank = self._repo.get_question_bank_by_id(bank_id=bid)
+        if bank is None:
+            raise BadRequest("questionBankId does not reference a question bank")
+        cid = course_id.strip()
+        if bank.courseId.strip() != cid:
+            raise BadRequest("Question bank does not belong to this course")
         return self._repo.insert_module_quiz(
             course_id=course_id,
             module_id=module_id,
-            question_bank_id=resolved,
+            question_bank_id=bid,
         )
 
     def get_bank_for_course(
