@@ -4,6 +4,61 @@
 
 ---
 
+## 2026-05-15 — Frontend Epic 5: smoke checklist notes and docs closure
+
+### Completed
+
+- [x] **Route hardening coverage** — [`frontend/src/pages/CourseManagement.dom.test.tsx`](frontend/src/pages/CourseManagement.dom.test.tsx) and [`frontend/src/teacher-app/App.dom.test.tsx`](frontend/src/teacher-app/App.dom.test.tsx) cover the teacher course-management route flows added in prior slices.
+- [x] **Production nav unchanged** — no production navigation or API/product contract changes were needed for this hardening slice.
+- [x] **Docs closure** — `design.md` and `roadmap.md` already describe the current MVP/product contract; no product-scope doc changes were required.
+
+### Verify
+
+Automated smoke/status from prior Epic 5 slices:
+
+```bash
+cd frontend && npm run test -- src/pages/CourseManagement.dom.test.tsx src/teacher-app/App.dom.test.tsx
+cd frontend && npm ci && npm run lint && npm run knip && npm run build:all && npm run test
+```
+
+Focused route tests passed: **2 files / 40 tests**. Full frontend quality gate passed: **39 files / 336 tests**. Warnings were existing React peer/audit notices, Vite chunk-size/plugin timing warnings, and known Amplify/`scrollTo` test stderr noise. No live manual browser smoke was performed for this docs-only closure.
+
+---
+
+## 2026-05-15 — Frontend Epic 4: student module quiz UX and lesson-player entry
+
+### Completed
+
+- [x] **Catalog error copy** — [`frontend/src/lib/questionBankErrors.ts`](frontend/src/lib/questionBankErrors.ts): `catalogApiUserMessage`; `questionBankUserMessage` delegates so teacher + student share 404/409/fallback rules.
+- [x] **Module quiz page** — [`frontend/src/pages/ModuleQuizPage.tsx`](frontend/src/pages/ModuleQuizPage.tsx): `catalogApiUserMessage` on start / retake / submit errors; copy for `in_progress` vs `latest_results`; retake explainer; submit-disabled helper + `aria-describedby`.
+- [x] **Tests** — [`frontend/src/pages/ModuleQuizPage.dom.test.tsx`](frontend/src/pages/ModuleQuizPage.dom.test.tsx): ApiError branches, phase copy, submit helper when incomplete.
+- [x] **Lesson player** — [`frontend/src/pages/LessonPlayerPage.tsx`](frontend/src/pages/LessonPlayerPage.tsx): module quiz as sidebar row when `moduleQuiz.available` and enrolled; **Next** targets module quiz after the last lesson in that module before the next lesson.
+- [x] **Lesson player tests** — [`frontend/src/pages/LessonPlayerPage.dom.test.tsx`](frontend/src/pages/LessonPlayerPage.dom.test.tsx): quiz row + Next routing scenarios.
+
+### Verify
+
+```bash
+cd frontend && npm run test -- ModuleQuizPage.dom.test.tsx LessonPlayerPage.dom.test.tsx && npm run lint && npm run test
+```
+
+---
+
+## 2026-05-15 — Frontend Epic 3: teacher module quiz wiring (Course management)
+
+### Completed
+
+- [x] **Course management** — [`frontend/src/pages/CourseManagement.tsx`](frontend/src/pages/CourseManagement.tsx): `loadCourseData` loads `listCourseModuleQuizzes` + `listCourseQuestionBanks` in the same `Promise.all` as course/lessons/modules (fail-whole on error); `createModuleQuiz` for attach with `questionBankUserMessage` on failure and `loadCourseData` refresh on success; `attachingModuleId` busy state.
+- [x] **Module quiz panel** — [`frontend/src/components/course/CourseManagementModuleQuizPanel.tsx`](frontend/src/components/course/CourseManagementModuleQuizPanel.tsx): `data-testid="course-management-module-quizzes"`, empty modules copy, per-module join to quiz rows, labeled **Question bank** `<select>` + **Attach quiz** when not linked, empty-banks link to question banks route, read-only bank + served **N** + immutability note when linked.
+- [x] **Tests** — [`frontend/src/pages/CourseManagement.dom.test.tsx`](frontend/src/pages/CourseManagement.dom.test.tsx): module quiz wiring describe (section, empty course, attach happy path, 400/409 inline errors).
+
+### Verify
+
+```bash
+cd frontend && npm run test -- CourseManagement.dom.test.tsx && npm run lint && npm run knip && npm run build:all && npm run test
+```
+
+---
+
 ## 2026-05-15 — QB-L Plan 2: publisher GET module-quizzes + POST quiz requires bank
 
 ### Completed
