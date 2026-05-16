@@ -512,6 +512,23 @@ describe('CourseDetailPage', () => {
       expect(startLink.getAttribute('href')).toBe('/courses/c1/modules/m1/quiz')
     })
 
+    it('shows a quiz-only module when it has no lessons', async () => {
+      api.listLessons.mockResolvedValue([])
+      api.listCourseModules.mockResolvedValue([
+        { id: 'm1', title: 'Quiz Only Section', description: '', order: 0, moduleQuiz: { available: true, servedCountN: 2 } },
+      ])
+
+      renderCourseDetail()
+
+      await waitFor(() => {
+        expect(screen.getByText('Quiz Only Section')).toBeTruthy()
+      })
+      expect(screen.getByRole('link', { name: /start quiz/i }).getAttribute('href')).toBe(
+        '/courses/c1/modules/m1/quiz',
+      )
+      expect(screen.queryByText(/No lessons yet/i)).toBeNull()
+    })
+
     it('navigates to module quiz route when Start quiz is clicked', async () => {
       api.listCourseModules.mockResolvedValue([
         { id: 'm1', title: 'Section 1', description: '', order: 0, moduleQuiz: { available: true, servedCountN: 2 } },

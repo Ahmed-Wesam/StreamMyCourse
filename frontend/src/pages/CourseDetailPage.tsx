@@ -319,7 +319,7 @@ function CourseDetailBody({
                   )
                 })}
               </div>
-              {lessons.length === 0 && (
+              {lessonSections.length === 0 && (
                 <div className="px-6 py-12 text-center">
                   <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-gray-100">
                     <svg className="h-6 w-6 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
