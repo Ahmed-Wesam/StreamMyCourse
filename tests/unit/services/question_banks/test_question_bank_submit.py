@@ -148,10 +148,12 @@ def test_submit_happy_path_persists_and_returns_breakdown() -> None:
     assert out["correctCount"] == 2
     assert out["totalCount"] == 2
     assert len(out["questions"]) == 2
-    assert out["questions"][0]["promptText"] == "prompt-q1"
-    assert out["questions"][0]["selectedOptionKey"] == "A"
-    assert out["questions"][0]["correctOptionKey"] == "A"
+    assert [q["id"] for q in out["questions"]] == ["q2", "q1"]
+    assert out["questions"][0]["promptText"] == "prompt-q2"
+    assert out["questions"][0]["selectedOptionKey"] == "B"
+    assert out["questions"][0]["correctOptionKey"] == "B"
     assert out["questions"][0]["isCorrect"] is True
+    assert out["questions"][1]["id"] == "q1"
 
 
 def test_submit_wrong_user_not_found() -> None:
@@ -227,6 +229,50 @@ def test_submit_duplicate_persist_conflict() -> None:
             attempt_id=_ATTEMPT_ID,
             answers={"q1": "A", "q2": "B"},
         )
+
+
+def test_submit_binding_attempt_question_set_mismatch_conflict() -> None:
+    repo = MagicMock()
+    _wire_gate(repo)
+    attempt = ModuleQuizAttempt(
+        id=_ATTEMPT_ID,
+        bindingId=_BINDING_ID,
+        attemptNumber=1,
+        status="in_progress",
+        shuffledQuestionOrder=["q1", "q2"],
+        shuffledChoiceOrders={"q1": ["B", "A"], "q2": ["B", "A"]},
+        startedAt="2026-05-15T12:00:00Z",
+    )
+    ctx = ModuleQuizAttemptBindingContext(
+        attempt=attempt,
+        moduleQuizId=_MQ_ID,
+        courseId=_COURSE_ID,
+        moduleId=_MODULE_ID,
+        userSub=_STUDENT_A,
+    )
+    mismatch_binding = StudentModuleQuizBinding(
+        id=_BINDING_ID,
+        moduleQuizId=_MQ_ID,
+        courseId=_COURSE_ID,
+        userSub=_STUDENT_A,
+        questionIds=["q3", "q4"],
+    )
+    repo.get_attempt_with_binding_rows.return_value = ctx
+    repo.get_binding_for_student.return_value = mismatch_binding
+    svc = _make_service(repo)
+
+    with pytest.raises(Conflict, match="does not match current question set"):
+        svc.submit_module_quiz(
+            _COURSE_ID,
+            _MODULE_ID,
+            cognito_sub=_STUDENT_A,
+            role=_ROLE,
+            attempt_id=_ATTEMPT_ID,
+            answers={"q1": "A", "q2": "B"},
+        )
+
+    repo.list_grading_rows_for_questions.assert_not_called()
+    repo.insert_submission_and_mark_submitted.assert_not_called()
 
 
 def test_submit_unknown_attempt_not_found() -> None:

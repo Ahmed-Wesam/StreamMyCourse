@@ -54,7 +54,7 @@ def _setup_bank_quiz_and_drafts(
     module_id: str,
     *,
     draft_count: int = 2,
-) -> str:
+) -> tuple[str, list[str]]:
     br = api.create_question_bank(course_id)
     assert br.status_code == 201, br.text
     bank_id = str(br.json()["questionBankId"])
@@ -62,6 +62,7 @@ def _setup_bank_quiz_and_drafts(
     qr = api.create_module_quiz(course_id, module_id, question_bank_id=bank_id)
     assert qr.status_code == 201, qr.text
 
+    question_ids: list[str] = []
     for i in range(draft_count):
         dr = api.create_draft_question(
             course_id,
@@ -71,8 +72,9 @@ def _setup_bank_quiz_and_drafts(
             correct_option_key="A",
         )
         assert dr.status_code == 201, dr.text
+        question_ids.append(str(dr.json()["questionId"]))
 
-    return bank_id
+    return bank_id, question_ids
 
 
 def _publish_course_with_ready_lesson(
@@ -103,13 +105,19 @@ def _publish_bank_and_course(
     *,
     label: str,
     served_n: int = 2,
-) -> tuple[str, str]:
-    """Owner setup: bank + drafts + publish bank + publish course + enroll student."""
+    draft_count: int | None = None,
+) -> tuple[str, str, list[str]]:
+    """Owner setup: bank + drafts + publish bank + publish course + enroll student.
+
+    ``draft_count`` defaults to ``served_n``. When larger than ``served_n``, all drafts
+    are published but the module quiz still serves ``served_n`` questions per attempt.
+    """
+    pool_n = draft_count if draft_count is not None else served_n
     course_id, module_id = _owner_draft_course_with_module(
         api, course_factory, label=label
     )
-    bank_id = _setup_bank_quiz_and_drafts(
-        api, course_id, module_id, draft_count=served_n
+    bank_id, published_question_ids = _setup_bank_quiz_and_drafts(
+        api, course_id, module_id, draft_count=pool_n
     )
     pub_bank = api.publish_question_bank(
         course_id, bank_id, n=served_n, module_id=module_id
@@ -119,7 +127,7 @@ def _publish_bank_and_course(
         api, course_id, lesson_factory, label=f"{label}-lesson"
     )
     _enroll_student(student_api, course_id)
-    return course_id, module_id
+    return course_id, module_id, published_question_ids
 
 
 def _collect_json_keys(obj: Any) -> set[str]:
@@ -180,7 +188,7 @@ def test_enrolled_student_start_returns_bound_questions(
     lesson_factory,
 ) -> None:
     served_n = 2
-    course_id, module_id = _publish_bank_and_course(
+    course_id, module_id, _ = _publish_bank_and_course(
         api,
         student_api,
         course_factory,
@@ -207,7 +215,7 @@ def test_second_start_returns_same_question_ids(
     lesson_factory,
 ) -> None:
     served_n = 2
-    course_id, module_id = _publish_bank_and_course(
+    course_id, module_id, _ = _publish_bank_and_course(
         api,
         student_api,
         course_factory,
@@ -244,7 +252,9 @@ def test_unenrolled_student_start_returns_404(
     course_id, module_id = _owner_draft_course_with_module(
         api, course_factory, label="qb-start-unenrolled"
     )
-    bank_id = _setup_bank_quiz_and_drafts(api, course_id, module_id, draft_count=served_n)
+    bank_id, _ = _setup_bank_quiz_and_drafts(
+        api, course_id, module_id, draft_count=served_n
+    )
     pub_bank = api.publish_question_bank(
         course_id, bank_id, n=served_n, module_id=module_id
     )
@@ -268,7 +278,7 @@ def test_start_before_bank_publish_returns_404(
     course_id, module_id = _owner_draft_course_with_module(
         api, course_factory, label="qb-start-draft-bank"
     )
-    _setup_bank_quiz_and_drafts(api, course_id, module_id, draft_count=2)
+    _setup_bank_quiz_and_drafts(api, course_id, module_id, draft_count=2)[0]
     _publish_course_with_ready_lesson(
         api, course_id, lesson_factory, label="qb-start-draft-bank-lesson"
     )
@@ -288,7 +298,7 @@ def test_start_wrong_course_id_returns_404(
 ) -> None:
     """IDOR: valid moduleId from course A must not start under course B path."""
     served_n = 2
-    course_a_id, module_a_id = _publish_bank_and_course(
+    course_a_id, module_a_id, _ = _publish_bank_and_course(
         api,
         student_api,
         course_factory,

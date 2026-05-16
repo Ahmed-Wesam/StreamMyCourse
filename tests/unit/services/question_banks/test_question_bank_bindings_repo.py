@@ -172,6 +172,55 @@ def test_list_student_bound_questions_casts_ids_to_uuid_array() -> None:
     assert params == ("c1", ["q1", "q2"])
 
 
+def test_replace_binding_questions_deletes_old_rows_and_inserts_new() -> None:
+    """Replace binding questions in one transaction; binding id unchanged."""
+    store: dict[str, Any] = {"questions": []}
+
+    def on_execute(cur: FakeCursor, sql: str, params: Tuple[Any, ...]) -> None:
+        if "DELETE FROM student_module_quiz_binding_questions" in sql:
+            store["questions"] = [
+                q
+                for q in store["questions"]
+                if q["binding_id"] != params[0]
+            ]
+        elif "INSERT INTO student_module_quiz_binding_questions" in sql:
+            store["questions"].append(
+                {
+                    "binding_id": params[0],
+                    "position": params[1],
+                    "question_id": params[2],
+                }
+            )
+
+    fake = FakeConn()
+    fake.cursor_obj._execute_impl = on_execute
+    repo = QuestionBankRdsRepository(lambda: fake)
+    binding_id = "binding-uuid-1"
+    store["questions"] = [
+        {"binding_id": binding_id, "position": 0, "question_id": "q-old-1"},
+        {"binding_id": binding_id, "position": 1, "question_id": "q-old-2"},
+    ]
+
+    repo.replace_binding_questions(
+        binding_id=binding_id, question_ids=["q-new-3", "q-new-1", "q-new-2"]
+    )
+
+    assert fake.committed == 1
+    sqls = [e[0] for e in fake.cursor_obj.executions]
+    assert any("DELETE FROM student_module_quiz_binding_questions" in s for s in sqls)
+    inserts = [
+        e for e in fake.cursor_obj.executions
+        if "INSERT INTO student_module_quiz_binding_questions" in e[0]
+    ]
+    assert len(inserts) == 3
+    assert all(e[1][0] == binding_id for e in inserts)
+    assert [q["question_id"] for q in sorted(store["questions"], key=lambda x: x["position"])] == [
+        "q-new-3",
+        "q-new-1",
+        "q-new-2",
+    ]
+
+
 def test_insert_binding_maps_unique_violation_to_conflict() -> None:
     """Slice 3 will re-read binding on Conflict; repo must map UniqueViolation."""
     fake = FakeConn()
