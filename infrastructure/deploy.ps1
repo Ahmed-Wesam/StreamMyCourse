@@ -537,6 +537,9 @@ if ($Template -eq "edge-hosting") {
         $RdsStackName = "StreamMyCourse-Rds-$Environment"
         Write-Host "Note: RdsStackName defaulting to $RdsStackName" -ForegroundColor Yellow
     }
+    # api-stack.yaml can exceed CloudFormation's 51,200-byte inline template limit.
+    $cfDeployArgs += '--s3-bucket', $artifactBucket
+    $cfDeployArgs += '--s3-prefix', "cf-api-template/$Environment/"
     $apiOverrides = @(
         "Environment=$Environment",
         "LambdaCodeS3Bucket=$artifactBucket",
