@@ -213,6 +213,7 @@ def test_authorizer_called_before_insert_module_quiz() -> None:
         createdAt="",
         updatedAt="",
     )
+    repo.get_module_quiz_by_question_bank_id.return_value = None
 
     events: List[Tuple[str, Any]] = []
 
