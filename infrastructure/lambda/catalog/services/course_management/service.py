@@ -432,6 +432,7 @@ class CourseManagementService:
                 course_id,
                 course_status=course.status,
                 has_lesson_access=has_lesson_access,
+                cognito_sub=cognito_sub,
             )
         return [
             self._public_module_dict(m, module_quiz=visibility.get(m.id))

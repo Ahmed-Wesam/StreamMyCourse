@@ -28,6 +28,7 @@ class LessonDto(TypedDict):
 class ModuleQuizDto(TypedDict):
     available: bool
     servedCountN: int
+    latestScorePercent: NotRequired[int]
 
 
 class CourseModuleDto(TypedDict):
@@ -174,10 +175,14 @@ def as_course_module_dto(obj: Dict[str, Any]) -> CourseModuleDto:
         dto["updatedAt"] = str(obj.get("updatedAt", ""))
     if obj.get("moduleQuiz") is not None:
         mq = obj["moduleQuiz"]
-        dto["moduleQuiz"] = {
+        mq_dto: ModuleQuizDto = {
             "available": bool(mq.get("available")),
             "servedCountN": int(mq.get("servedCountN", 0) or 0),
         }
+        latest_pct = mq.get("latestScorePercent")
+        if latest_pct is not None:
+            mq_dto["latestScorePercent"] = int(latest_pct)
+        dto["moduleQuiz"] = mq_dto
     return dto
 
 

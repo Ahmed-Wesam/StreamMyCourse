@@ -32,7 +32,10 @@ from services.progress.rds_repo import LessonProgressRdsRepository
 from services.progress.service import LessonProgressService
 from services.question_banks.rds_repo import QuestionBankRdsRepository
 from services.question_banks.service import QuestionBankService
-from services.question_banks.visibility import apply_module_quiz_visibility
+from services.question_banks.visibility import (
+    apply_module_quiz_visibility,
+    module_quiz_score_percent,
+)
 
 
 @dataclass(frozen=True)
@@ -47,17 +50,33 @@ class _ModuleQuizVisibilityAdapter:
         *,
         course_status: str,
         has_lesson_access: bool,
+        cognito_sub: str,
     ) -> Dict[str, Dict[str, Any]]:
         if course_status != "PUBLISHED" or not has_lesson_access:
             return {}
         repo_map = self._qb_repo.list_module_quiz_visibility_for_course(
             course_id=course_id
         )
-        return apply_module_quiz_visibility(
+        visibility = apply_module_quiz_visibility(
             repo_map,
             course_status=course_status,
             has_lesson_access=has_lesson_access,
         )
+        if not visibility or not cognito_sub.strip():
+            return visibility
+        scores = self._qb_repo.list_latest_submission_scores_for_course(
+            course_id=course_id,
+            user_sub=cognito_sub.strip(),
+        )
+        for module_id, entry in visibility.items():
+            score = scores.get(module_id)
+            if score is None:
+                continue
+            entry["latestScorePercent"] = module_quiz_score_percent(
+                correct_count=score["correctCount"],
+                total_count=score["totalCount"],
+            )
+        return visibility
 
 
 @dataclass(frozen=True)

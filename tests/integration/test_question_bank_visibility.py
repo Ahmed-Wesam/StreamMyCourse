@@ -22,10 +22,13 @@ from helpers.module_contract import (
     response_json_dict,
 )
 
+from test_question_bank_start import _publish_bank_and_course
+from test_question_bank_submit import _answers_all_first_choice
+
 _FORBIDDEN_JSON_KEYS = frozenset(
     {"questionBankId", "promptText", "correctOptionKey", "optionsJson"}
 )
-_ALLOWED_MODULE_QUIZ_KEYS = frozenset({"available", "servedCountN"})
+_ALLOWED_MODULE_QUIZ_KEYS = frozenset({"available", "servedCountN", "latestScorePercent"})
 
 
 def _owner_draft_course_with_module(
@@ -230,6 +233,56 @@ def test_unenrolled_no_quiz(
     modules = require_course_modules_list(student_api.list_course_modules(course_id))
     for row in modules:
         assert "moduleQuiz" not in row, f"unenrolled viewer must not see quiz on {row!r}"
+
+
+def _score_percent_from_counts(*, correct_count: int, total_count: int) -> int:
+    return (correct_count * 100 + total_count // 2) // total_count
+
+
+def test_module_list_includes_latest_score_percent_after_submit(
+    api: ApiClient,
+    student_api: ApiClient,
+    course_factory,
+    lesson_factory,
+) -> None:
+    served_n = 2
+    course_id, module_id, _ = _publish_bank_and_course(
+        api,
+        student_api,
+        course_factory,
+        lesson_factory,
+        label="qb-vis-latest-score",
+        served_n=served_n,
+    )
+
+    modules_before = require_course_modules_list(student_api.list_course_modules(course_id))
+    quiz_before = _module_row(modules_before, module_id).get("moduleQuiz")
+    assert quiz_before is not None
+    assert quiz_before.get("latestScorePercent") is None
+
+    start = student_api.start_module_quiz(course_id, module_id)
+    assert start.status_code == 200, start.text
+    start_body = response_json_dict(start)
+    attempt_id = str(start_body["attemptId"])
+    answers = _answers_all_first_choice(start_body)
+
+    sub = student_api.submit_module_quiz(
+        course_id,
+        module_id,
+        {"attemptId": attempt_id, "answers": answers},
+    )
+    assert sub.status_code == 200, sub.text
+    sub_body = response_json_dict(sub)
+    correct_count = int(sub_body["correctCount"])
+    total_count = int(sub_body["totalCount"])
+    expected_pct = _score_percent_from_counts(
+        correct_count=correct_count, total_count=total_count
+    )
+
+    modules_after = require_course_modules_list(student_api.list_course_modules(course_id))
+    quiz_after = _module_row(modules_after, module_id).get("moduleQuiz")
+    assert quiz_after is not None
+    assert quiz_after.get("latestScorePercent") == expected_pct
 
 
 def test_leak_scan(

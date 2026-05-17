@@ -463,3 +463,27 @@ def test_list_module_quiz_visibility_for_course_filters_by_course_id() -> None:
 
     _, params = fake.cursor_obj.executions[0]
     assert params == ("c-target", "c-target")
+
+
+def test_list_latest_submission_scores_for_course_maps_rows() -> None:
+    repo, fake = _visibility_repo([("m1", 2, 3)])
+
+    result = repo.list_latest_submission_scores_for_course(
+        course_id="c1", user_sub="student-sub"
+    )
+
+    assert result == {"m1": {"correctCount": 2, "totalCount": 3}}
+    sql, params = fake.cursor_obj.executions[0]
+    assert "module_quiz_attempt_submissions" in sql
+    assert "DISTINCT ON (mq.module_id)" in sql
+    assert params == ("c1", "c1", "student-sub", "c1")
+
+
+def test_list_latest_submission_scores_for_course_empty_when_no_rows() -> None:
+    repo, _ = _visibility_repo([])
+
+    result = repo.list_latest_submission_scores_for_course(
+        course_id="c1", user_sub="student-sub"
+    )
+
+    assert result == {}
