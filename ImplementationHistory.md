@@ -4,6 +4,16 @@
 
 ---
 
+## 2026-05-17 — Draggable mobile curriculum bottom sheet
+
+### Completed
+
+- [x] **Snap math** — [`bottomSheetSnap.ts`](frontend/src/lib/bottomSheetSnap.ts): partial cap (88% viewport, max 720px), drag-relative dismiss/expand thresholds; unit tests in [`bottomSheetSnap.test.ts`](frontend/src/lib/bottomSheetSnap.test.ts).
+- [x] **Component** — [`DraggableBottomSheet.tsx`](frontend/src/components/layout/DraggableBottomSheet.tsx): drag handle, partial/full snaps, keyboard (Arrow up/down, Escape), deferred height measure with safe listener cleanup; DOM tests in [`DraggableBottomSheet.dom.test.tsx`](frontend/src/components/layout/DraggableBottomSheet.dom.test.tsx).
+- [x] **Lesson player** — [`LessonPlayerMobileView.tsx`](frontend/src/pages/lesson-player/LessonPlayerMobileView.tsx) replaces static overlay; [`LessonPlayerPage.dom.test.tsx`](frontend/src/pages/LessonPlayerPage.dom.test.tsx) asserts drag handle `role="slider"`.
+
+---
+
 ## 2026-05-17 — Question bank duplicate MCQ option key guard
 
 ### Completed
