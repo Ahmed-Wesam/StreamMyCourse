@@ -4,6 +4,17 @@
 
 ---
 
+## 2026-05-16 — Module quiz latest score on course modules list
+
+### Completed
+
+- [x] **`moduleQuiz.latestScorePercent`** — [`GET /courses/{id}/modules`](design.md): optional whole percent (half away from zero) when the viewer has a latest submitted attempt; batch-loaded in [`bootstrap.py`](infrastructure/lambda/catalog/bootstrap.py) via [`list_latest_submission_scores_for_course`](infrastructure/lambda/catalog/services/question_banks/rds_repo.py).
+- [x] **Lesson player sidebar** — [`LessonPlayerPage.tsx`](frontend/src/pages/LessonPlayerPage.tsx) shows the percent under the Quiz pill when present.
+- [x] **Tests** — integration [`test_module_list_includes_latest_score_percent_after_submit`](tests/integration/test_question_bank_visibility.py); unit coverage for rounding, adapter merge, and RDS query.
+- [x] **Review follow-up** — `deleteQuestionBankQuestion` error context in question bank studio; [`design.md`](design.md) QB-D contract updated.
+
+---
+
 ## 2026-05-16 — Frontend API error sanitization and question bank UX
 
 ### Completed
