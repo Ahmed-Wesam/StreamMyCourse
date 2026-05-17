@@ -797,9 +797,8 @@ class QuestionBankService:
             if correct_option_key is not None
             else existing.correctOptionKey
         )
-        if options_json is not None:
-            validate_mcq_options_json(options_json)
         if options_json is not None or correct_option_key is not None:
+            validate_mcq_options_json(merged_options)
             validate_correct_option_key(merged_correct, options_json=merged_options)
         self._repo.update_question(
             course_id=course_id,

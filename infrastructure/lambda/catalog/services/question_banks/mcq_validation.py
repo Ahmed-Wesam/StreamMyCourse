@@ -20,33 +20,39 @@ def _parse_options_value(options_json: Any) -> Any:
     return options_json
 
 
-def extract_option_keys(options_json: Any) -> Set[str]:
-    """Return non-empty choice keys from ``optionsJson`` (array or object shape)."""
+def _non_empty_option_keys_in_order(options_json: Any) -> list[str]:
     parsed = _parse_options_value(options_json)
-    keys: set[str] = set()
+    keys: list[str] = []
     if isinstance(parsed, list):
         for item in parsed:
             if not isinstance(item, dict):
                 continue
             raw = item.get("key")
             if isinstance(raw, str) and raw.strip():
-                keys.add(raw.strip())
+                keys.append(raw.strip())
         return keys
     if isinstance(parsed, dict):
         for raw_key in parsed:
             key = str(raw_key).strip()
             if key:
-                keys.add(key)
-        return keys
+                keys.append(key)
     return keys
+
+
+def extract_option_keys(options_json: Any) -> Set[str]:
+    """Return non-empty choice keys from ``optionsJson`` (array or object shape)."""
+    return set(_non_empty_option_keys_in_order(options_json))
 
 
 def validate_mcq_options_json(options_json: Any) -> None:
     """Require at least one choice with a non-empty key."""
-    if not extract_option_keys(options_json):
+    keys = _non_empty_option_keys_in_order(options_json)
+    if not keys:
         raise BadRequest(
             "optionsJson must include at least one choice with a non-empty key"
         )
+    if len(keys) != len(set(keys)):
+        raise BadRequest("optionsJson must not contain duplicate option keys")
 
 
 def validate_correct_option_key(
