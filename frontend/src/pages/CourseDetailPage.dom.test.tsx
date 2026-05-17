@@ -419,6 +419,8 @@ describe('CourseDetailPage', () => {
     const heroHeading = await waitFor(() => screen.getByRole('heading', { level: 1, name: 'Test Course' }))
     expect(heroHeading).toBeTruthy()
 
+    expect(screen.getByRole('region', { name: /course stats/i })).toBeTruthy()
+
     const curriculum = screen.getByRole('region', { name: /curriculum/i })
     expect(curriculum).toBeTruthy()
     expect(screen.getByRole('heading', { level: 2, name: 'Curriculum' })).toBeTruthy()
@@ -440,6 +442,8 @@ describe('CourseDetailPage', () => {
     await waitFor(() => {
       expect(screen.getByText(/This course could not be loaded/i)).toBeTruthy()
     })
+    expect(screen.getByRole('heading', { level: 1, name: 'Unable to load course' })).toBeTruthy()
+    expect(screen.queryByRole('region', { name: /course stats/i })).toBeNull()
   })
 
   it('shows course not found when getCourse returns null', async () => {
@@ -450,6 +454,8 @@ describe('CourseDetailPage', () => {
     await waitFor(() => {
       expect(screen.getByText(/That course was not found/i)).toBeTruthy()
     })
+    expect(screen.getByRole('heading', { level: 1, name: 'Course not found' })).toBeTruthy()
+    expect(screen.queryByRole('region', { name: /course stats/i })).toBeNull()
     expect(screen.queryByText('First Lesson')).toBeNull()
   })
 
@@ -460,6 +466,8 @@ describe('CourseDetailPage', () => {
     await waitFor(() => {
       expect(screen.getByText(/This course could not be loaded/i)).toBeTruthy()
     })
+    expect(screen.getByRole('heading', { level: 1, name: 'Unable to load course' })).toBeTruthy()
+    expect(screen.queryByRole('region', { name: /course stats/i })).toBeNull()
     expect(screen.queryByText('First Lesson')).toBeNull()
     expect(screen.queryByText('Second Lesson')).toBeNull()
   })
@@ -477,9 +485,8 @@ describe('CourseDetailPage', () => {
   it('links back to all courses', async () => {
     renderCourseDetail()
 
-    await waitFor(() => {
-      expect(screen.getByText('Back to all courses')).toBeTruthy()
-    })
+    const back = await waitFor(() => screen.getByRole('link', { name: /Back to all courses/i }))
+    expect(back.getAttribute('href')).toBe('/courses')
   })
 
   describe('module quiz badge', () => {

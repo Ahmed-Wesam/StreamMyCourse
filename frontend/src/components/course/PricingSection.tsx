@@ -73,7 +73,7 @@ function PlanCard({
   )
 }
 
-export function PricingSection({ id }: { id?: string }) {
+export function PricingSection({ id, variant = 'boxed' }: { id?: string; variant?: 'boxed' | 'band' }) {
   const [selectedPlanId, setSelectedPlanId] = useState<string>(FIGMA_MOCK_COURSE_PRICING_PLANS[1]?.id ?? 'default')
 
   const selectedPlan = useMemo(
@@ -86,7 +86,11 @@ export function PricingSection({ id }: { id?: string }) {
       id={id}
       aria-label="Pricing"
       data-testid="course-pricing"
-      className="rounded-2xl bg-slate-50/80 py-14 ring-1 ring-slate-200 sm:py-16"
+      className={
+        variant === 'band'
+          ? 'border-t border-border bg-white py-16 sm:py-20'
+          : 'rounded-2xl bg-slate-50/80 py-14 ring-1 ring-slate-200 sm:py-16'
+      }
     >
       <div className="mx-auto max-w-6xl px-5 sm:px-8">
         <h2 className="text-center text-2xl font-bold text-slate-900 sm:text-3xl">Choose Your Plan</h2>
