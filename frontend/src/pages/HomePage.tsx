@@ -111,14 +111,14 @@ export default function HomePage() {
 
           <div className="flex flex-wrap gap-4 justify-center">
             <Link
-              to="/course#pricing"
+              to="/details#pricing"
               className="bg-white text-primary px-8 py-3.5 rounded-lg hover:bg-blue-50 transition-colors inline-flex items-center gap-2"
               style={{ fontWeight: 600 }}
             >
               View Course &amp; Pricing <ArrowRight className="w-4 h-4" />
             </Link>
             <Link
-              to="/course"
+              to="/details"
               className="border border-white/40 text-white px-8 py-3.5 rounded-lg hover:bg-white/10 transition-colors"
               style={{ fontWeight: 500 }}
             >
@@ -308,7 +308,7 @@ export default function HomePage() {
             analysis skills with SPSS Spectrum.
           </p>
           <Link
-            to="/course#pricing"
+            to="/details#pricing"
             className="bg-white text-primary px-10 py-4 rounded-lg hover:bg-blue-50 transition-colors inline-flex items-center gap-2"
             style={{ fontWeight: 600 }}
           >

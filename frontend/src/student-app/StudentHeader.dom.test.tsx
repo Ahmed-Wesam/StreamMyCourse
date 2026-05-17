@@ -56,8 +56,8 @@ describe('StudentHeader', () => {
     )
 
     expect(screen.getByRole('link', { name: 'Home' })).toBeTruthy()
-    expect(screen.getByRole('link', { name: 'Course' })).toBeTruthy()
-    expect(screen.getByRole('link', { name: 'My Course' })).toBeTruthy()
+    expect(screen.getByRole('link', { name: 'Details' })).toBeTruthy()
+    expect(screen.getByRole('link', { name: 'Courses' })).toBeTruthy()
     expect(screen.getAllByRole('link', { name: 'Pricing' }).length).toBeGreaterThan(0)
     expect(screen.getAllByRole('link', { name: 'Enroll Now' }).length).toBeGreaterThan(0)
   })
@@ -105,7 +105,7 @@ describe('StudentHeader', () => {
           <StudentHeader />
           <Routes>
             <Route path="/" element={<div>Home body</div>} />
-            <Route path="/course" element={<div>Course body</div>} />
+            <Route path="/details" element={<div>Details body</div>} />
           </Routes>
         </>
       )
@@ -121,7 +121,7 @@ describe('StudentHeader', () => {
     const mobileNav = screen.getByRole('navigation', { name: /mobile/i })
     expect(mobileNav).toBeTruthy()
 
-    fireEvent.click(within(mobileNav).getByRole('link', { name: 'Course' }))
+    fireEvent.click(within(mobileNav).getByRole('link', { name: 'Details' }))
     await waitFor(() => {
       expect(screen.queryByRole('navigation', { name: /mobile/i })).toBeNull()
     })

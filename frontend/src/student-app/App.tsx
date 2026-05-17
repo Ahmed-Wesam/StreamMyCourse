@@ -1,5 +1,4 @@
-import { Navigate, Route, Routes } from 'react-router-dom'
-import CourseCatalogPage from '../pages/CourseCatalogPage'
+import { Navigate, Route, Routes, useLocation } from 'react-router-dom'
 import CourseDetailPage from '../pages/CourseDetailPage'
 import { StudentModuleQuizAuth } from '../components/auth/StudentModuleQuizAuth'
 import CoursePage from '../pages/CoursePage'
@@ -14,6 +13,11 @@ import { StudentHeader } from './StudentHeader'
 import { Layout } from '../components/layout/Layout'
 import { ScrollToTop } from './ScrollToTop'
 
+function LegacyPathRedirect({ to }: { to: string }) {
+  const location = useLocation()
+  return <Navigate to={`${to}${location.hash}`} replace />
+}
+
 function StudentApp() {
   return (
     <Layout chromeHeader={<StudentHeader />}>
@@ -22,10 +26,12 @@ function StudentApp() {
       <StudentProfileBootstrap />
       <Routes>
         <Route path="/" element={<HomePage />} />
-        <Route path="/course" element={<CoursePage />} />
+        <Route path="/details" element={<CoursePage />} />
+        <Route path="/course" element={<LegacyPathRedirect to="/details" />} />
         <Route path="/learn" element={<LearnRedirectPage />} />
-        <Route path="/catalog" element={<CourseCatalogPage />} />
-        <Route path="/my-course" element={<MyCoursePage />} />
+        <Route path="/courses" element={<MyCoursePage />} />
+        <Route path="/catalog" element={<LegacyPathRedirect to="/courses" />} />
+        <Route path="/my-course" element={<Navigate to="/courses" replace />} />
         <Route path="/courses/:courseId" element={<CourseDetailPage />} />
         <Route path="/courses/:courseId/modules/:moduleId/quiz" element={<StudentModuleQuizAuth />} />
         <Route path="/login" element={<StudentLoginPage />} />

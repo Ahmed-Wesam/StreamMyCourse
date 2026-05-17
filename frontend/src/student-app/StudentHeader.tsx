@@ -42,7 +42,8 @@ export function StudentHeader() {
   const pathname = location.pathname
   const hash = location.hash
   const isActive = (to: string) => pathname === to
-  const isCoursePricing = pathname === '/course' && hash === '#pricing'
+  const isCoursesList = pathname === '/courses'
+  const isCoursePricing = pathname === '/details' && hash === '#pricing'
   const navItemClass = (active: boolean) =>
     [
       'px-4 py-2 rounded-xl text-sm transition-colors',
@@ -112,14 +113,14 @@ export function StudentHeader() {
           <Link className={navItemClass(isActive('/'))} to="/">
             Home
           </Link>
-          <Link className={navItemClass(isActive('/course') && !isCoursePricing)} to="/course">
-            Course
+          <Link className={navItemClass(isActive('/details') && !isCoursePricing)} to="/details">
+            Details
           </Link>
-          <a className={navItemClass(isCoursePricing)} href="/course#pricing">
+          <a className={navItemClass(isCoursePricing)} href="/details#pricing">
             Pricing
           </a>
-          <Link className={navItemClass(isActive('/my-course'))} to="/my-course">
-            My Course
+          <Link className={navItemClass(isCoursesList)} to="/courses">
+            Courses
           </Link>
         </nav>
 
@@ -142,7 +143,7 @@ export function StudentHeader() {
               </Link>
             )
           ) : null}
-          <a className="bg-primary text-white px-5 py-2 rounded-lg text-sm hover:bg-blue-700 transition-colors font-semibold" href="/course#pricing">
+          <a className="bg-primary text-white px-5 py-2 rounded-lg text-sm hover:bg-blue-700 transition-colors font-semibold" href="/details#pricing">
             Enroll Now
           </a>
         </div>
@@ -166,21 +167,21 @@ export function StudentHeader() {
               Home
             </Link>
             <Link
-              to="/course"
+              to="/details"
               onClick={() => setMobileOpen(false)}
-              className={navItemClass(isActive('/course') && !isCoursePricing)}
+              className={navItemClass(isActive('/details') && !isCoursePricing)}
             >
-              Course
+              Details
             </Link>
             <a
-              href="/course#pricing"
+              href="/details#pricing"
               onClick={() => setMobileOpen(false)}
               className={navItemClass(isCoursePricing)}
             >
               Pricing
             </a>
-            <Link to="/my-course" onClick={() => setMobileOpen(false)} className={navItemClass(isActive('/my-course'))}>
-              My Course
+            <Link to="/courses" onClick={() => setMobileOpen(false)} className={navItemClass(isCoursesList)}>
+              Courses
             </Link>
             {isAuthConfigured() ? (
               signedIn ? (
@@ -201,7 +202,7 @@ export function StudentHeader() {
                 </Link>
               )
             ) : null}
-            <a href="/course#pricing" className="mt-2 bg-primary text-white px-4 py-2 rounded-lg text-sm font-semibold text-center">
+            <a href="/details#pricing" className="mt-2 bg-primary text-white px-4 py-2 rounded-lg text-sm font-semibold text-center">
               Enroll Now
             </a>
           </div>

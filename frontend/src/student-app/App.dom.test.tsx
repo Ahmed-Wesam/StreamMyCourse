@@ -5,9 +5,6 @@ import { cleanup, render, screen, waitFor } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
-vi.mock('../pages/CourseCatalogPage', () => ({
-  default: () => <div data-testid="student-page-catalog" />,
-}))
 vi.mock('../pages/HomePage', () => ({
   default: () => <div data-testid="student-page-home" />,
 }))
@@ -54,19 +51,28 @@ describe('StudentApp', () => {
     expect(screen.getByTestId('student-page-home')).toBeTruthy()
   })
 
-  it('mounts the catalog route at /catalog', () => {
-    renderAt('/catalog')
-    expect(screen.getByTestId('student-page-catalog')).toBeTruthy()
-  })
-
   it('mounts the course detail route at /courses/:courseId', () => {
     renderAt('/courses/c-1')
     expect(screen.getByTestId('student-page-detail')).toBeTruthy()
   })
 
-  it('mounts the my course route at /my-course', () => {
-    renderAt('/my-course')
+  it('mounts the courses list route at /courses', () => {
+    renderAt('/courses')
     expect(screen.getByTestId('student-page-my-course')).toBeTruthy()
+  })
+
+  it('redirects /catalog to the courses list', async () => {
+    renderAt('/catalog')
+    await waitFor(() => {
+      expect(screen.getByTestId('student-page-my-course')).toBeTruthy()
+    })
+  })
+
+  it('redirects /my-course to the courses list', async () => {
+    renderAt('/my-course')
+    await waitFor(() => {
+      expect(screen.getByTestId('student-page-my-course')).toBeTruthy()
+    })
   })
 
   it('mounts the login route at /login', () => {
