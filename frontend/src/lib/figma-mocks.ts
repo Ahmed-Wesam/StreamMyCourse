@@ -5,7 +5,6 @@
  * `reports/figma-student-ui-gap-report.md`.
  */
 import instructorImageSrc from '../assets/instructors/dr-bahaa-aburayya.png'
-export const FIGMA_MOCK_CATALOG_COURSE_PACING = 'Self-paced (sample)'
 
 export const FIGMA_MOCK_COURSE_INSTRUCTOR_NAME = 'Dr. Bahaa Aburayya'
 
