@@ -64,8 +64,8 @@ vi.mock('../lib/api', async (importOriginal) => {
   }
 })
 
-function renderStudio(initialEntries: string[] = ['/courses/c1/question-banks/qb1']) {
-  return render(
+function studioTree(initialEntries: string[]) {
+  return (
     <MemoryRouter initialEntries={initialEntries}>
       <Routes>
         <Route
@@ -73,8 +73,12 @@ function renderStudio(initialEntries: string[] = ['/courses/c1/question-banks/qb
           element={<QuestionBankStudioPage />}
         />
       </Routes>
-    </MemoryRouter>,
+    </MemoryRouter>
   )
+}
+
+function renderStudio(initialEntries: string[] = ['/courses/c1/question-banks/qb1']) {
+  return render(studioTree(initialEntries))
 }
 
 describe('QuestionBankStudioPage', () => {
@@ -338,5 +342,55 @@ describe('QuestionBankStudioPage', () => {
         }),
       )
     })
+  })
+
+  it('ignores stale reload results when bankId changes during fetch', async () => {
+    let resolveQb1Questions!: (rows: Awaited<ReturnType<typeof api.listQuestionBankQuestions>>) => void
+    const staleQuestion = {
+      questionId: 'q-stale',
+      status: 'DRAFT' as const,
+      promptText: 'Stale QB1 prompt only',
+      optionsJson: [
+        { key: 'a', text: 'A' },
+        { key: 'b', text: 'B' },
+      ],
+      correctOptionKey: 'a',
+    }
+    const freshQuestion = {
+      questionId: 'q-fresh',
+      status: 'DRAFT' as const,
+      promptText: 'Fresh QB2 prompt',
+      optionsJson: [
+        { key: 'a', text: 'A' },
+        { key: 'b', text: 'B' },
+      ],
+      correctOptionKey: 'a',
+    }
+
+    api.listCourseQuestionBanks.mockResolvedValue([
+      { questionBankId: 'qb1', name: 'Bank 1', status: 'DRAFT' },
+      { questionBankId: 'qb2', name: 'Bank 2', status: 'DRAFT' },
+    ])
+    api.listQuestionBankQuestions.mockImplementation((_courseId, bankId) => {
+      if (bankId === 'qb1') {
+        return new Promise((resolve) => {
+          resolveQb1Questions = resolve
+        })
+      }
+      return Promise.resolve([freshQuestion])
+    })
+
+    const view = renderStudio()
+    mockRouteParams.bankId = 'qb2'
+    view.rerender(studioTree(['/courses/c1/question-banks/qb2']))
+
+    await waitFor(() => {
+      expect(screen.getByText('Fresh QB2 prompt')).toBeTruthy()
+    })
+
+    resolveQb1Questions([staleQuestion])
+    await new Promise((resolve) => setTimeout(resolve, 0))
+
+    expect(screen.queryByText('Stale QB1 prompt only')).toBeNull()
   })
 })
