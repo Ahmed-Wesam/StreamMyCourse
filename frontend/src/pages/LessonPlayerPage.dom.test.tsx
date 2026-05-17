@@ -436,7 +436,26 @@ describe('LessonPlayerPage', () => {
     renderLessonPlayer('/courses/c1/lessons/l1')
 
     await screen.findByRole('link', { name: /Module quiz/i })
-    expect(screen.getByText('67%')).toBeTruthy()
+    const score = screen.getByText('67%')
+    expect(score.className).toContain('bg-amber-100')
+  })
+
+  it('shows green score pill at 100%', async () => {
+    api.listCourseModules.mockResolvedValue([
+      {
+        id: 'm1',
+        title: 'Section 1',
+        description: '',
+        order: 0,
+        moduleQuiz: { available: true, servedCountN: 1, latestScorePercent: 100 },
+      },
+    ])
+
+    renderLessonPlayer('/courses/c1/lessons/l1')
+
+    await screen.findByRole('link', { name: /Module quiz/i })
+    expect(screen.getByText('100%').className).toContain('bg-emerald-100')
+    expect(screen.getByText('1 question')).toBeTruthy()
   })
 
   it('shows a quiz-only module in the sidebar', async () => {
