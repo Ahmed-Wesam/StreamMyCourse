@@ -4,6 +4,22 @@
 
 ---
 
+## 2026-05-17 — Student courses UI restyle and route consolidation
+
+### Completed
+
+- [x] **Routes** — [`App.tsx`](frontend/src/student-app/App.tsx): **`/courses`** → enrolled hub ([`MyCoursePage.tsx`](frontend/src/pages/MyCoursePage.tsx)); **`/details`** marketing page; legacy **`/catalog`**, **`/my-course`**, and **`/course`** redirect. Removed standalone [`CourseCatalogPage`](frontend/src/pages/CourseCatalogPage.tsx) and catalog card components.
+- [x] **Header** — [`StudentHeader.tsx`](frontend/src/student-app/StudentHeader.tsx): Home / Details / Pricing / Courses nav aligned with new paths.
+- [x] **Course detail** — [`CourseDetailPage.tsx`](frontend/src/pages/CourseDetailPage.tsx): Home-style hero, stats strip, flowing curriculum layout; error-safe hero title and hidden stats on load failure; [`PricingSection`](frontend/src/components/course/PricingSection.tsx) `band` variant.
+- [x] **Lesson player** — [`quizScoreDisplay.ts`](frontend/src/lib/quizScoreDisplay.ts): colored score pill thresholds and singular/plural question count in module quiz sidebar row.
+- [x] **Docs** — [`design.md`](design.md) student route table and frontend tree updated.
+
+### Verify
+
+- [ ] `cd frontend && npm ci && npm run lint && npm run test && npm run build:all`
+
+---
+
 ## 2026-05-16 — Module quiz latest score on course modules list
 
 ### Completed
