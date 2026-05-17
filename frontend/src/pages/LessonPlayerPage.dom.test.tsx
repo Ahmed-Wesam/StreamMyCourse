@@ -422,6 +422,23 @@ describe('LessonPlayerPage', () => {
     expect(quizLink.getAttribute('href')).toBe('/courses/c1/modules/m1/quiz')
   })
 
+  it('shows latest quiz score percent under the Quiz label when present', async () => {
+    api.listCourseModules.mockResolvedValue([
+      {
+        id: 'm1',
+        title: 'Section 1',
+        description: '',
+        order: 0,
+        moduleQuiz: { available: true, servedCountN: 3, latestScorePercent: 67 },
+      },
+    ])
+
+    renderLessonPlayer('/courses/c1/lessons/l1')
+
+    await screen.findByRole('link', { name: /Module quiz/i })
+    expect(screen.getByText('67%')).toBeTruthy()
+  })
+
   it('shows a quiz-only module in the sidebar', async () => {
     api.listLessons.mockResolvedValue([
       {

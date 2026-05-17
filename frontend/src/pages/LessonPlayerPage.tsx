@@ -202,6 +202,7 @@ function ModuleQuizItem({
   activeLessonId: string
 }) {
   const servedCount = module.moduleQuiz?.servedCountN
+  const latestScorePercent = module.moduleQuiz?.latestScorePercent
   const returnLesson =
     sectionLessons.find((lesson) => lesson.id === activeLessonId) ??
     sectionLessons[sectionLessons.length - 1]
@@ -230,8 +231,13 @@ function ModuleQuizItem({
       <div className="ml-3 flex-1 min-w-0">
         <div className="flex items-start justify-between gap-3">
           <h4 className="truncate text-sm font-medium text-slate-600">Module quiz</h4>
-          <div className="shrink-0 rounded-full bg-blue-50 px-2 py-0.5 text-[11px] font-semibold text-blue-700 ring-1 ring-blue-100">
-            Quiz
+          <div className="flex shrink-0 flex-col items-end gap-0.5">
+            <span className="rounded-full bg-blue-50 px-2 py-0.5 text-[11px] font-semibold text-blue-700 ring-1 ring-blue-100">
+              Quiz
+            </span>
+            {latestScorePercent != null ? (
+              <span className="text-[11px] font-medium text-slate-500">{latestScorePercent}%</span>
+            ) : null}
           </div>
         </div>
         <p className="mt-0.5 truncate text-xs text-slate-500">
