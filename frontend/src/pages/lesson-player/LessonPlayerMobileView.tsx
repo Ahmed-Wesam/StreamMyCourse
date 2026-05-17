@@ -1,6 +1,7 @@
 import { useEffect, useState, type RefObject, type SyntheticEvent } from 'react'
 import { Link, type To } from 'react-router-dom'
 import type { CourseModule, CourseProgress, Lesson } from '../../lib/api'
+import { DraggableBottomSheet } from '../../components/layout/DraggableBottomSheet'
 import {
   CourseLessonsCurriculum,
   LessonPlayerAlerts,
@@ -265,32 +266,24 @@ export function LessonPlayerMobileView({
         </nav>
       </div>
 
-      {curriculumOpen ? (
-        <div className="fixed inset-0 z-50 flex flex-col justify-end" role="dialog" aria-modal="true" aria-label="Course lessons">
-          <button
-            type="button"
-            className="absolute inset-0 bg-slate-900/50 backdrop-blur-[2px]"
-            aria-label="Close curriculum"
-            onClick={() => setCurriculumOpen(false)}
-          />
-          <div className="relative flex max-h-[min(88dvh,720px)] flex-col overflow-hidden rounded-t-2xl bg-white shadow-2xl">
-            <div className="flex shrink-0 justify-center pt-2 pb-1" aria-hidden="true">
-              <div className="h-1 w-10 rounded-full bg-slate-300" />
-            </div>
-            <CourseLessonsCurriculum
-              error={error}
-              lessons={lessons}
-              modules={modules}
-              courseId={courseId}
-              activeLessonId={lessonId}
-              playbackNavLocked={playbackNavLocked}
-              courseProgress={courseProgress}
-              onClose={() => setCurriculumOpen(false)}
-              showCloseButton
-            />
-          </div>
-        </div>
-      ) : null}
+      <DraggableBottomSheet
+        open={curriculumOpen}
+        onClose={() => setCurriculumOpen(false)}
+        ariaLabel="Course lessons"
+      >
+        <CourseLessonsCurriculum
+          error={error}
+          lessons={lessons}
+          modules={modules}
+          courseId={courseId}
+          activeLessonId={lessonId}
+          playbackNavLocked={playbackNavLocked}
+          courseProgress={courseProgress}
+          onClose={() => setCurriculumOpen(false)}
+          showCloseButton
+        />
+      </DraggableBottomSheet>
+
     </div>
   )
 }
