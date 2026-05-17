@@ -47,8 +47,49 @@ function renderLessonPlayer(path = '/courses/c1/lessons/l1') {
   )
 }
 
+function mockMatchMedia(matchesMdUp: boolean) {
+  return vi.spyOn(window, 'matchMedia').mockImplementation((query: string) => {
+    const matches = query.includes('min-width: 768px') ? matchesMdUp : false
+    return {
+      matches,
+      media: query,
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      dispatchEvent: vi.fn(),
+      addListener: vi.fn(),
+      removeListener: vi.fn(),
+    } as MediaQueryList
+  })
+}
+
+function mockMatchMediaReactive(getMatches: () => boolean) {
+  const listeners = new Set<() => void>()
+  vi.spyOn(window, 'matchMedia').mockImplementation((query: string) => {
+    const matches = query.includes('min-width: 768px') ? getMatches() : false
+    return {
+      matches,
+      media: query,
+      addEventListener: (_: string, cb: () => void) => {
+        listeners.add(cb)
+      },
+      removeEventListener: (_: string, cb: () => void) => {
+        listeners.delete(cb)
+      },
+      dispatchEvent: vi.fn(),
+      addListener: vi.fn(),
+      removeListener: vi.fn(),
+    } as MediaQueryList
+  })
+  return {
+    emitChange() {
+      listeners.forEach((cb) => cb())
+    },
+  }
+}
+
 describe('LessonPlayerPage', () => {
   beforeEach(() => {
+    mockMatchMedia(true)
     api.getCourse.mockReset()
     api.listLessons.mockReset()
     api.listCourseModules.mockReset()
@@ -913,5 +954,77 @@ describe('LessonPlayerPage', () => {
     const videoAfter = document.querySelector('video')
     const srcAfter = videoAfter?.getAttribute('src')
     expect(srcAfter === null || srcAfter === '').toBe(true)
+  })
+
+  it('does not render an empty course description paragraph on desktop', async () => {
+    api.getCourse.mockResolvedValue({
+      id: 'c1',
+      title: 'Course',
+      description: '',
+      status: 'PUBLISHED',
+    })
+    renderLessonPlayer()
+
+    await waitFor(() => {
+      expect(screen.getByRole('heading', { level: 1, name: 'Alpha' })).toBeTruthy()
+    })
+    expect(document.querySelectorAll('p.mt-2.text-slate-600').length).toBe(0)
+  })
+
+  it('keeps the desktop sidebar closed after returning to md', async () => {
+    let mdUp = true
+    const media = mockMatchMediaReactive(() => mdUp)
+    renderLessonPlayer()
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Close curriculum' })).toBeTruthy()
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Close curriculum' }))
+
+    mdUp = false
+    media.emitChange()
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /Open course curriculum/i })).toBeTruthy()
+    })
+
+    mdUp = true
+    media.emitChange()
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Show sidebar' })).toBeTruthy()
+    })
+    expect(screen.queryByRole('button', { name: 'Close curriculum' })).toBeNull()
+  })
+
+  it('hides the desktop sidebar toggle while the sidebar is open', async () => {
+    mockMatchMedia(true)
+    renderLessonPlayer()
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Close curriculum' })).toBeTruthy()
+    })
+    expect(screen.queryByRole('button', { name: 'Show sidebar' })).toBeNull()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Close curriculum' }))
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Show sidebar' })).toBeTruthy()
+    })
+    expect(screen.queryByRole('button', { name: 'Close curriculum' })).toBeNull()
+  })
+
+  it('renders mobile layout with a curriculum bottom sheet', async () => {
+    mockMatchMedia(false)
+    renderLessonPlayer()
+
+    await waitFor(() => {
+      expect(document.querySelector('video')).toBeTruthy()
+    })
+
+    fireEvent.click(screen.getByRole('button', { name: /Open course curriculum/i }))
+
+    await waitFor(() => {
+      expect(screen.getByRole('dialog', { name: /Course lessons/i })).toBeTruthy()
+      expect(screen.getByRole('button', { name: 'Section 1' })).toBeTruthy()
+    })
   })
 })

@@ -28,394 +28,25 @@ import {
   courseNotFoundMessage,
   incompleteLessonPlayerLinkMessage,
 } from '../lib/apiUserMessages'
-import { formatModuleQuizQuestionCount, quizScorePercentPillClass } from '../lib/quizScoreDisplay'
 import { groupLessonsByModule } from '../lib/lessonGrouping'
 import { lessonPlayerPath, moduleQuizLinkTo } from '../lib/moduleQuizNavigation'
+import { readMdUpMatch, useIsMdUp } from '../lib/useMediaQuery'
+import { LessonPlayerMobileView } from './lesson-player/LessonPlayerMobileView'
+import {
+  CourseLessonsSidebar,
+  hasAvailableModuleQuiz,
+  LessonPlaybackNavigation,
+  LessonPlayerAlerts,
+  LessonUpNextCard,
+  sortLessonsByOrdering,
+  sortModulesByOrder,
+  VideoSkeleton,
+} from './lesson-player/lessonPlayerUi'
 
 // Progress tracking constants
 const PROGRESS_INTERVAL_MS = 15000 // 15 seconds between heartbeat attempts
 const MAX_CONSECUTIVE_FAILURES = 10 // Circuit breaker threshold
 const MAX_SAME_POSITION_STREAK = 20 // Stop saving if timestamp doesn't change
-
-/** Progress fills — layered blues (professional). */
-const PRO_BLUE_STRIP =
-  'linear-gradient(90deg, #bfdbfe, #93c5fd, #60a5fa, #3b82f6, #2563eb, #60a5fa)'
-/** Compact chrome (e.g. Up next icon shell) — white through sky into blue. */
-const PRO_BLUE_FRAME =
-  'linear-gradient(155deg, #ffffff, #eff6ff, #dbeafe, #93c5fd, #60a5fa)'
-
-function formatDurationMmSs(durationSec: number | undefined): string {
-  if (!durationSec || durationSec <= 0) return ''
-  const total = Math.round(durationSec)
-  const m = Math.floor(total / 60)
-  const s = total % 60
-  return `${m}:${String(s).padStart(2, '0')}`
-}
-
-function LessonItem({
-  lesson,
-  courseId,
-  active,
-  linkDisabled,
-  completed,
-  progressPct,
-  durationLabel,
-}: {
-  lesson: Lesson
-  courseId: string
-  active: boolean
-  linkDisabled: boolean
-  completed?: boolean
-  progressPct?: number
-  durationLabel?: string
-}) {
-  const rowClass = `group flex items-start px-4 py-3 transition-colors ${
-    active
-      ? 'border-l-[3px] border-blue-600 bg-gradient-to-r from-blue-50 to-white shadow-sm'
-      : linkDisabled
-        ? 'cursor-default border-l-4 border-transparent opacity-80'
-        : 'border-l-4 border-transparent hover:bg-slate-50'
-  }`
-  const inner = (
-    <>
-      <div className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center text-slate-400">
-        {linkDisabled ? (
-          <>
-            <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-              <path
-                d="M7 10V8a5 5 0 0 1 10 0v2"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-              />
-              <path
-                d="M7 10h10v10H7V10Z"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinejoin="round"
-              />
-            </svg>
-            <span className="sr-only">Locked</span>
-          </>
-        ) : active ? (
-          <svg className="h-4 w-4 text-blue-600" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-            <path d="M8 5v14l11-7z" />
-          </svg>
-        ) : (
-          <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-            <path d="M8 5v14l11-7z" stroke="currentColor" strokeWidth="2" strokeLinejoin="round" />
-          </svg>
-        )}
-      </div>
-
-      <div className="ml-3 flex-1 min-w-0">
-        <div className="flex items-start justify-between gap-3">
-          <h4
-            className={`text-sm truncate ${active ? 'font-semibold text-slate-900' : 'font-medium text-slate-600'}`}
-          >
-            {lesson.title}
-          </h4>
-          <div className="shrink-0 flex items-center justify-end gap-3 pl-2">
-            {durationLabel ? (
-              <div className="text-xs tabular-nums tracking-wider text-slate-600">{durationLabel}</div>
-            ) : null}
-            {!active && completed ? (
-              <div className="pt-0.5">
-                <span className="sr-only">Completed lesson</span>
-                <svg
-                  className="h-4 w-4 text-emerald-600"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  aria-label="Completed lesson"
-                >
-                  <path
-                    d="M20 6 9 17l-5-5"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  />
-                </svg>
-              </div>
-            ) : null}
-          </div>
-        </div>
-        {progressPct != null ? (
-          <div
-            className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-slate-100 ring-1 ring-slate-200/80"
-            aria-label="Lesson progress"
-          >
-            <div
-              className="h-full overflow-hidden transition-[width] duration-300 rounded-full"
-              style={{ width: `${progressPct}%` }}
-            >
-              <div
-                className="h-full w-full"
-                style={{ backgroundImage: PRO_BLUE_STRIP }}
-              />
-            </div>
-          </div>
-        ) : null}
-      </div>
-    </>
-  )
-  if (linkDisabled) {
-    return <div className={rowClass}>{inner}</div>
-  }
-  return (
-    <Link to={`/courses/${courseId}/lessons/${lesson.id}`} className={rowClass}>
-      {inner}
-    </Link>
-  )
-}
-
-function VideoSkeleton() {
-  return (
-    <div className="flex aspect-video animate-pulse items-center justify-center overflow-hidden rounded-xl bg-gradient-to-br from-slate-100 to-slate-200/90 shadow-sm">
-      <div className="h-14 w-14 rounded-full bg-slate-300/50" />
-    </div>
-  )
-}
-
-function sortModulesByOrder(modules: CourseModule[]) {
-  return [...modules].sort((a, b) => a.order - b.order)
-}
-
-function sortLessonsByOrdering(lessons: Lesson[]) {
-  return [...lessons].sort((a, b) => a.moduleOrder - b.moduleOrder || a.order - b.order)
-}
-
-function hasAvailableModuleQuiz(
-  module: CourseModule | undefined,
-): module is CourseModule & { moduleQuiz: { available: true; servedCountN: number } } {
-  return module?.moduleQuiz?.available === true
-}
-
-function ModuleQuizItem({
-  courseId,
-  module,
-  sectionLessons,
-  activeLessonId,
-}: {
-  courseId: string
-  module: CourseModule
-  sectionLessons: Lesson[]
-  activeLessonId: string
-}) {
-  const servedCount = module.moduleQuiz?.servedCountN
-  const latestScorePercent = module.moduleQuiz?.latestScorePercent
-  const returnLesson =
-    sectionLessons.find((lesson) => lesson.id === activeLessonId) ??
-    sectionLessons[sectionLessons.length - 1]
-  const quizTo =
-    returnLesson != null
-      ? moduleQuizLinkTo(courseId, module.id, lessonPlayerPath(courseId, returnLesson.id))
-      : `/courses/${courseId}/modules/${module.id}/quiz`
-
-  return (
-    <Link
-      to={quizTo}
-      className="group flex items-start border-l-4 border-transparent px-4 py-3 transition-colors hover:bg-slate-50"
-    >
-      <div className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center text-blue-600">
-        <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-          <path
-            d="M8 5h8M8 9h8M8 13h5M6 3h12a1 1 0 0 1 1 1v16l-3-2-3 2-3-2-3 2V4a1 1 0 0 1 1-1Z"
-            stroke="currentColor"
-            strokeWidth="2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          />
-        </svg>
-      </div>
-
-      <div className="ml-3 flex-1 min-w-0">
-        <div className="flex items-start justify-between gap-3">
-          <h4 className="truncate text-sm font-medium text-slate-600">Module quiz</h4>
-          <div className="flex shrink-0 items-center gap-2 pt-0.5">
-            <span className="rounded-full bg-blue-50 px-2 py-0.5 text-[11px] font-semibold text-blue-700 ring-1 ring-blue-100">
-              Quiz
-            </span>
-            {latestScorePercent != null ? (
-              <span className={`${quizScorePercentPillClass(latestScorePercent)} mt-0.5`}>
-                {latestScorePercent}%
-              </span>
-            ) : null}
-          </div>
-        </div>
-        <p className="mt-0.5 truncate text-xs text-slate-500">
-          {servedCount ? formatModuleQuizQuestionCount(servedCount) : 'Quiz'}
-        </p>
-      </div>
-    </Link>
-  )
-}
-
-function LessonPlayerAlerts({
-  needsSignIn,
-  needsEnrollment,
-  enrolling,
-  error,
-  courseId,
-  onEnroll,
-}: {
-  needsSignIn: boolean
-  needsEnrollment: boolean
-  enrolling: boolean
-  error: string | null
-  courseId: string
-  onEnroll: () => void
-}) {
-  return (
-    <>
-      {needsSignIn && (
-        <div className="mb-6 rounded-2xl border border-slate-200/90 bg-gradient-to-br from-white via-white to-blue-50/50 p-5 shadow-sm shadow-slate-200/60 ring-1 ring-blue-100/80">
-          <h3 className="text-sm font-semibold text-slate-900">Sign in to watch</h3>
-          <p className="mt-1 text-sm text-slate-600">
-            Sign in to your account to play this lesson and track your progress.
-          </p>
-          <div className="mt-4 flex flex-wrap gap-3">
-            <Link
-              to="/login"
-              className="inline-flex items-center rounded-lg bg-gradient-to-r from-blue-600 via-blue-600 to-blue-700 px-4 py-2 text-sm font-semibold text-white shadow-md shadow-blue-900/15 transition-all hover:from-blue-700 hover:to-blue-800"
-            >
-              Sign in
-            </Link>
-            <Link
-              to={`/courses/${courseId}`}
-              className="inline-flex items-center rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 shadow-sm transition-colors hover:border-blue-200 hover:bg-blue-50/60"
-            >
-              Course page
-            </Link>
-          </div>
-        </div>
-      )}
-
-      {needsEnrollment && (
-        <div className="mb-6 rounded-2xl border border-slate-200/90 bg-gradient-to-br from-white via-blue-50/30 to-slate-50/80 p-5 shadow-sm shadow-slate-200/60 ring-1 ring-slate-100">
-          <h3 className="text-sm font-semibold text-slate-900">Enroll to watch</h3>
-          <p className="mt-1 text-sm text-slate-600">
-            You need to enroll in this course before playback is available.
-          </p>
-          <div className="mt-4 flex flex-wrap gap-3">
-            <button
-              type="button"
-              disabled={enrolling}
-              onClick={onEnroll}
-              className="rounded-lg bg-gradient-to-r from-blue-600 to-blue-700 px-4 py-2 text-sm font-semibold text-white shadow-md shadow-blue-900/15 transition-all hover:from-blue-700 hover:to-blue-800 disabled:opacity-60"
-            >
-              {enrolling ? 'Enrolling…' : 'Enroll for free'}
-            </button>
-            <Link
-              to={`/courses/${courseId}`}
-              className="inline-flex items-center rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 shadow-sm transition-colors hover:border-blue-200 hover:bg-blue-50/60"
-            >
-              Course page
-            </Link>
-          </div>
-        </div>
-      )}
-
-      {error && (
-        <div className="mb-6 rounded-2xl border border-red-200 bg-red-50/80 p-4 shadow-sm">
-          <div className="flex">
-            <svg className="mt-0.5 h-5 w-5 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-            </svg>
-            <div className="ml-3">
-              <h3 className="text-sm font-semibold text-red-900">Error loading video</h3>
-              <p className="mt-1 text-sm text-red-800/90">{error}</p>
-            </div>
-          </div>
-        </div>
-      )}
-    </>
-  )
-}
-
-function LessonPlaybackNavigation({
-  courseId,
-  playbackNavLocked,
-  prevLesson,
-  nextLesson,
-  nextQuizHref,
-}: {
-  courseId: string
-  playbackNavLocked: boolean
-  prevLesson: Lesson | null
-  nextLesson: Lesson | null
-  nextQuizHref?: To | null
-}) {
-  const prevLeft =
-    prevLesson == null ? (
-      <div />
-    ) : playbackNavLocked ? (
-      <span className="inline-flex cursor-not-allowed items-center rounded-lg border border-slate-200 bg-slate-100 px-4 py-2 text-sm font-medium text-slate-400 opacity-90">
-        <svg className="mr-2 h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-        </svg>
-        Previous
-      </span>
-    ) : (
-      <Link
-        to={`/courses/${courseId}/lessons/${prevLesson.id}`}
-        className="inline-flex items-center rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 shadow-sm transition-all hover:border-blue-200 hover:bg-slate-50"
-      >
-        <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-        </svg>
-        Previous
-      </Link>
-    )
-
-  const nextLockedMarkup = (
-    <span className="inline-flex cursor-not-allowed items-center rounded-lg border border-slate-200 bg-slate-100 px-4 py-2 text-sm font-medium text-slate-400 opacity-80">
-      Next
-      <svg className="ml-2 h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-      </svg>
-    </span>
-  )
-
-  const coursePageMarkup = (
-    <Link
-      to={`/courses/${courseId}`}
-      className="inline-flex items-center rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 shadow-sm transition-colors hover:border-blue-200 hover:bg-slate-50"
-    >
-      Course page
-    </Link>
-  )
-
-  const nextHref = nextQuizHref ?? (nextLesson ? `/courses/${courseId}/lessons/${nextLesson.id}` : null)
-
-  const nextRight =
-    nextHref != null ? (
-      playbackNavLocked ? (
-        nextLockedMarkup
-      ) : (
-        <Link
-          to={nextHref}
-          className="inline-flex items-center rounded-lg bg-gradient-to-r from-blue-600 to-blue-700 px-4 py-2 text-sm font-semibold text-white shadow-md shadow-blue-900/10 transition-all hover:from-blue-700 hover:to-blue-800"
-        >
-          Next
-          <svg className="w-4 h-4 ml-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-          </svg>
-        </Link>
-      )
-    ) : playbackNavLocked ? (
-      coursePageMarkup
-    ) : (
-      <div />
-    )
-
-  return (
-    <div className="mt-6 flex items-center justify-between">
-      {prevLeft}
-      {nextRight}
-    </div>
-  )
-}
 
 function LessonPrimaryColumn({
   loading,
@@ -511,50 +142,17 @@ function LessonPrimaryColumn({
           </button>
         </div>
 
-        <p className="mt-2 text-slate-600">{courseDescription}</p>
+        {courseDescription ? (
+          <p className="mt-2 text-slate-600">{courseDescription}</p>
+        ) : null}
 
-        {upNextTitle && (
-          <div className="mt-5 rounded-xl border border-slate-200 bg-gradient-to-r from-slate-50/90 to-blue-50/50 p-4 shadow-sm">
-            <div className="flex items-start gap-3">
-              <div
-                className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl p-0.5 text-white shadow-md"
-                style={{ background: PRO_BLUE_FRAME }}
-              >
-                <div className="flex h-full w-full items-center justify-center rounded-[10px] bg-white text-blue-600 ring-1 ring-slate-200">
-                {playbackNavLocked ? (
-                  <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-                    <path
-                      d="M7 10V8a5 5 0 0 1 10 0v2"
-                      stroke="currentColor"
-                      strokeWidth="2"
-                      strokeLinecap="round"
-                    />
-                    <path
-                      d="M7 10h10v10H7V10Z"
-                      stroke="currentColor"
-                      strokeWidth="2"
-                      strokeLinejoin="round"
-                    />
-                  </svg>
-                ) : (
-                  <svg className="h-4 w-4" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-                    <path d="M8 5v14l11-7z" />
-                  </svg>
-                )}
-                </div>
-              </div>
-              <div className="min-w-0">
-                <div className="text-[11px] font-semibold uppercase tracking-wider text-blue-600/90">
-                  Up next
-                </div>
-                <div className="mt-1 truncate text-sm font-semibold text-slate-900">{upNextTitle}</div>
-                <div className="mt-0.5 text-xs text-slate-500">
-                  {playbackNavLocked ? 'Complete this lesson to unlock' : upNextDescription}
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
+        {upNextTitle ? (
+          <LessonUpNextCard
+            upNextTitle={upNextTitle}
+            upNextDescription={upNextDescription}
+            playbackNavLocked={playbackNavLocked}
+          />
+        ) : null}
 
         <LessonPlaybackNavigation
           courseId={courseId}
@@ -568,170 +166,6 @@ function LessonPrimaryColumn({
   )
 }
 
-function CourseLessonsSidebar({
-  error,
-  lessons,
-  modules,
-  courseId,
-  activeLessonId,
-  playbackNavLocked,
-  courseProgress,
-  sidebarOpen,
-  onClose,
-}: {
-  error: string | null
-  lessons: Lesson[]
-  modules: CourseModule[]
-  courseId: string
-  activeLessonId: string
-  playbackNavLocked: boolean
-  courseProgress: CourseProgress | null
-  sidebarOpen: boolean
-  onClose: () => void
-}) {
-  const sections = useMemo(
-    () => groupLessonsByModule(lessons, modules),
-    [lessons, modules],
-  )
-  const percent = courseProgress?.percentComplete ?? 0
-  const completed = courseProgress?.completedCount ?? 0
-  const total = courseProgress?.totalReadyLessons ?? lessons.length
-
-  const [openSections, setOpenSections] = useState<Record<string, boolean>>({})
-
-  useEffect(() => {
-    setOpenSections((prev) => {
-      // Preserve manual toggles, but ensure we have keys for all sections.
-      const next = { ...prev }
-      for (const section of sections) {
-        if (next[section.id] === undefined) next[section.id] = true
-      }
-      // When playback navigation is locked, keep everything expanded so the user can see locked items.
-      if (playbackNavLocked) {
-        for (const section of sections) next[section.id] = true
-        return next
-      }
-      return next
-    })
-  }, [sections, activeLessonId, playbackNavLocked])
-
-  return (
-    <aside
-      className={`${sidebarOpen ? 'w-80' : 'w-0'} flex shrink-0 flex-col overflow-hidden border-r border-slate-200 bg-gradient-to-b from-white via-slate-50/80 to-blue-50/30 transition-all duration-300 shadow-sm shadow-slate-200/40`}
-      aria-label="Course sidebar"
-    >
-      <div className="shrink-0 border-b border-slate-200 bg-gradient-to-r from-white to-blue-50/50 p-4">
-        <div className="flex items-center justify-between gap-3">
-          <div>
-            <p className="mb-1 text-[11px] font-semibold uppercase tracking-wider text-blue-700/90">
-              Course Progress
-            </p>
-            <p className="text-xs font-medium text-slate-600">
-              {completed} of {total} lessons completed
-            </p>
-          </div>
-          <button
-            type="button"
-            className="rounded-md p-2 text-slate-500 hover:bg-slate-100 hover:text-slate-800 md:hidden"
-            aria-label="Close sidebar"
-            onClick={onClose}
-          >
-            <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-              <path d="M18 6 6 18M6 6l12 12" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-            </svg>
-          </button>
-        </div>
-        <div className="mt-3 flex items-center gap-2">
-          <div className="h-2 flex-1 overflow-hidden rounded-full bg-slate-200/90 ring-1 ring-slate-200">
-            <div
-              className="h-full rounded-full transition-all shadow-sm shadow-blue-900/5"
-              style={{ width: `${percent}%`, backgroundImage: PRO_BLUE_STRIP }}
-            />
-          </div>
-          <span className="shrink-0 text-xs font-semibold tabular-nums tracking-wide text-blue-700">
-            {percent}%
-          </span>
-        </div>
-      </div>
-
-      {!error && (
-        <div className="flex-1 overflow-y-auto">
-          {sections.map((section) => {
-            const expanded = playbackNavLocked ? true : Boolean(openSections[section.id])
-            const module = modules.find((m) => m.id === section.id)
-            const showModuleQuiz = !playbackNavLocked && hasAvailableModuleQuiz(module)
-            return (
-              <div key={section.id}>
-                <button
-                  type="button"
-                  className="flex w-full items-center justify-between rounded-lg border border-slate-200/90 bg-white/80 px-4 py-2.5 text-left text-xs font-semibold tracking-wide text-slate-700 shadow-sm transition-colors hover:border-blue-200 hover:bg-blue-50/40"
-                  aria-expanded={expanded}
-                  onClick={() =>
-                    setOpenSections((s) => ({ ...s, [section.id]: !s[section.id] }))
-                  }
-                >
-                  <span>{section.title}</span>
-                  <svg
-                    className={`h-4 w-4 transition-transform ${expanded ? 'rotate-180' : ''}`}
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    aria-hidden="true"
-                  >
-                    <path
-                      d="M6 9l6 6 6-6"
-                      stroke="currentColor"
-                      strokeWidth="2"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                    />
-                  </svg>
-                </button>
-
-                {expanded ? (
-                  <div>
-                    {section.lessons.map((lesson) => {
-                      const lessonProgressEntry = courseProgress?.lessons.find((l) => l.lessonId === lesson.id)
-                      const durationSec = lesson.duration ?? 0
-                      const rawPct =
-                        durationSec > 0
-                          ? Math.round(((lessonProgressEntry?.lastPositionSec ?? 0) / durationSec) * 100)
-                          : 0
-                      const progressPct = lessonProgressEntry?.completed
-                        ? 100
-                        : durationSec > 0
-                          ? Math.max(0, Math.min(99, rawPct))
-                          : undefined
-                      return (
-                        <LessonItem
-                          key={lesson.id}
-                          lesson={lesson}
-                          courseId={courseId}
-                          active={lesson.id === activeLessonId}
-                          linkDisabled={playbackNavLocked}
-                          completed={lessonProgressEntry?.completed}
-                          progressPct={progressPct}
-                          durationLabel={formatDurationMmSs(lesson.duration)}
-                        />
-                      )
-                    })}
-                    {showModuleQuiz && module ? (
-                      <ModuleQuizItem
-                        courseId={courseId}
-                        module={module}
-                        sectionLessons={section.lessons}
-                        activeLessonId={activeLessonId}
-                      />
-                    ) : null}
-                  </div>
-                ) : null}
-              </div>
-            )
-          })}
-        </div>
-      )}
-    </aside>
-  )
-}
 
 export default function LessonPlayerPage() {
   const params = useParams()
@@ -1270,11 +704,62 @@ export default function LessonPlayerPage() {
     }
   }, [courseId, lessonId])
 
-  const [sidebarOpen, setSidebarOpen] = useState(true)
+  const isMdUp = useIsMdUp()
+  const [sidebarOpen, setSidebarOpen] = useState(readMdUpMatch)
+  const desktopSidebarDismissedRef = useRef(false)
   const nextHeaderHref = nextQuizHref ?? (nextLesson ? `/courses/${courseId}/lessons/${nextLesson.id}` : null)
 
+  useEffect(() => {
+    if (isMdUp && !desktopSidebarDismissedRef.current) {
+      setSidebarOpen(true)
+    }
+  }, [isMdUp])
+
+  const openDesktopSidebar = useCallback(() => {
+    desktopSidebarDismissedRef.current = false
+    setSidebarOpen(true)
+  }, [])
+
+  const closeDesktopSidebar = useCallback(() => {
+    desktopSidebarDismissedRef.current = true
+    setSidebarOpen(false)
+  }, [])
+
+  if (!isMdUp) {
+    return (
+      <LessonPlayerMobileView
+        courseId={courseId}
+        lessons={lessons}
+        modules={modules}
+        lessonId={lessonId}
+        activeLessonTitle={activeLessonTitle}
+        activeModuleLabel={activeModuleLabel}
+        loading={loading}
+        src={src}
+        videoRef={videoRef}
+        onLoadedMetadata={handleLoadedMetadata}
+        onTimeUpdate={handleTimeUpdate}
+        onEnded={handleVideoEnded}
+        onPause={handlePause}
+        needsSignIn={needsSignIn}
+        needsEnrollment={needsEnrollment}
+        enrolling={enrolling}
+        error={error}
+        onEnroll={() => void handleEnroll()}
+        playbackNavLocked={playbackNavLocked}
+        courseProgress={courseProgress}
+        isLessonCompleted={isLessonCompleted}
+        onMarkComplete={() => void handleMarkComplete()}
+        onMarkIncomplete={() => void handleMarkIncomplete()}
+        prevLesson={prevLesson}
+        nextLesson={nextLesson}
+        nextQuizHref={nextQuizHref}
+      />
+    )
+  }
+
   return (
-    <div className="flex h-[calc(100vh-64px)] overflow-hidden bg-gradient-to-br from-slate-100 via-white to-blue-50/70">
+    <div className="flex min-h-[calc(100vh-64px)] bg-gradient-to-br from-slate-100 via-white to-blue-50/70">
       <CourseLessonsSidebar
         error={error}
         lessons={lessons}
@@ -1284,27 +769,29 @@ export default function LessonPlayerPage() {
         playbackNavLocked={playbackNavLocked}
         courseProgress={courseProgress}
         sidebarOpen={sidebarOpen}
-        onClose={() => setSidebarOpen(false)}
+        onClose={closeDesktopSidebar}
       />
 
-      <div className="flex flex-1 flex-col overflow-hidden">
+      <div className="flex min-w-0 flex-1 flex-col">
         <div className="flex shrink-0 flex-col">
           <div
             className="h-1 w-full shrink-0 bg-gradient-to-r from-blue-400 via-blue-600 to-sky-500"
             aria-hidden
           />
           <div className="flex shrink-0 items-center gap-3 border-b border-slate-200 bg-gradient-to-r from-white via-white to-blue-50/60 px-4 py-3 shadow-sm shadow-slate-200/40">
-          <button
-            type="button"
-            onClick={() => setSidebarOpen((s) => !s)}
-            className="rounded-lg p-2 text-slate-600 transition-colors hover:bg-slate-100 hover:text-slate-900"
-            aria-label={sidebarOpen ? 'Hide sidebar' : 'Show sidebar'}
-            title={sidebarOpen ? 'Hide sidebar' : 'Show sidebar'}
-          >
-            <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-              <path d="M4 6h16M4 12h16M4 18h16" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-            </svg>
-          </button>
+          {!sidebarOpen ? (
+            <button
+              type="button"
+              onClick={openDesktopSidebar}
+              className="rounded-lg p-2 text-slate-600 transition-colors hover:bg-slate-100 hover:text-slate-900"
+              aria-label="Show sidebar"
+              title="Show sidebar"
+            >
+              <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                <path d="M4 6h16M4 12h16M4 18h16" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+              </svg>
+            </button>
+          ) : null}
 
           <div className="min-w-0 flex-1">
             <p className="truncate text-xs font-medium uppercase tracking-wide text-slate-500">
@@ -1363,7 +850,7 @@ export default function LessonPlayerPage() {
         </div>
         </div>
 
-        <div className="flex-1 overflow-y-auto bg-gradient-to-b from-transparent via-white/50 to-blue-50/30">
+        <div className="bg-gradient-to-b from-transparent via-white/50 to-blue-50/30">
           <main className="mx-auto max-w-4xl px-6 py-8">
             <LessonPlayerAlerts
               needsSignIn={needsSignIn}
