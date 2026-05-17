@@ -12,18 +12,22 @@ export default function LearnRedirectPage() {
     async function run() {
       try {
         const courses = await listCourses()
+        if (cancelled) return
         const first = courses[0]
         if (!first) {
           if (!cancelled) setError('No courses available yet.')
           return
         }
         const lessons = await listLessons(first.id)
+        if (cancelled) return
         const lesson = lessons[0]
         if (!lesson) {
           if (!cancelled) setError('No lessons available yet.')
           return
         }
-        navigate(`/courses/${first.id}/lessons/${lesson.id}`, { replace: true })
+        if (!cancelled) {
+          navigate(`/courses/${first.id}/lessons/${lesson.id}`, { replace: true })
+        }
       } catch (e) {
         if (!cancelled) setError(catalogApiUserMessage(e, 'learnRedirect'))
       }

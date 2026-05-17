@@ -135,26 +135,26 @@ describe('ModuleQuizPage', () => {
     vi.restoreAllMocks()
   })
 
-  it('Back to course links to the lesson player when returnTo is in location state', async () => {
+  it('Back to lesson links to the lesson player when returnTo is in location state', async () => {
     renderModuleQuiz({
       pathname: '/courses/c1/modules/m1/quiz',
       state: { returnTo: '/courses/c1/lessons/l1' },
     })
 
     await waitFor(() => {
-      expect(screen.getByRole('link', { name: /Back to course/i })).toBeTruthy()
+      expect(screen.getByRole('link', { name: /Back to lesson/i })).toBeTruthy()
     })
 
-    expect(screen.getByRole('link', { name: /Back to course/i }).getAttribute('href')).toBe(
+    expect(screen.getByRole('link', { name: /Back to lesson/i }).getAttribute('href')).toBe(
       '/courses/c1/lessons/l1',
     )
   })
 
-  it('Back to course resolves to a lesson in the module when returnTo is absent', async () => {
+  it('Back to lesson resolves to a lesson in the module when returnTo is absent', async () => {
     renderModuleQuiz()
 
     await waitFor(() => {
-      expect(screen.getByRole('link', { name: /Back to course/i }).getAttribute('href')).toBe(
+      expect(screen.getByRole('link', { name: /Back to lesson/i }).getAttribute('href')).toBe(
         '/courses/c1/lessons/l1',
       )
     })
@@ -292,13 +292,25 @@ describe('ModuleQuizPage', () => {
     expect(screen.queryAllByRole('radio')).toHaveLength(0)
   })
 
+  it('shows Back to lesson when returnTo points at a lesson player URL', async () => {
+    api.startModuleQuiz.mockResolvedValueOnce(REVERSED_START_RESPONSE)
+    renderModuleQuiz({
+      pathname: '/courses/c1/modules/m1/quiz',
+      state: { returnTo: '/courses/c1/lessons/l1' },
+    })
+
+    await waitFor(() => {
+      expect(screen.getByRole('link', { name: 'Back to lesson' })).toBeTruthy()
+    })
+  })
+
   it('shows catalog API user message when startModuleQuiz rejects with ApiError 404', async () => {
     const err = new ApiError('Module not found', 404)
     api.startModuleQuiz.mockRejectedValueOnce(err)
     renderModuleQuiz()
 
     await waitFor(() => {
-      expect(screen.getByText(catalogApiUserMessage(err))).toBeTruthy()
+      expect(screen.getByText(catalogApiUserMessage(err, 'loadModuleQuiz'))).toBeTruthy()
     })
     expect(screen.queryByText('Capital of France?')).toBeNull()
   })
@@ -309,7 +321,7 @@ describe('ModuleQuizPage', () => {
     renderModuleQuiz()
 
     await waitFor(() => {
-      expect(screen.getByText(catalogApiUserMessage(err))).toBeTruthy()
+      expect(screen.getByText(catalogApiUserMessage(err, 'loadModuleQuiz'))).toBeTruthy()
     })
   })
 
@@ -319,7 +331,7 @@ describe('ModuleQuizPage', () => {
     renderModuleQuiz()
 
     await waitFor(() => {
-      expect(screen.getByText(catalogApiUserMessage(err))).toBeTruthy()
+      expect(screen.getByText(catalogApiUserMessage(err, 'loadModuleQuiz'))).toBeTruthy()
     })
   })
 
@@ -338,7 +350,7 @@ describe('ModuleQuizPage', () => {
     fireEvent.click(screen.getByRole('button', { name: /submit answers/i }))
 
     await waitFor(() => {
-      expect(screen.getByText(catalogApiUserMessage(err))).toBeTruthy()
+      expect(screen.getByText(catalogApiUserMessage(err, 'submitModuleQuiz'))).toBeTruthy()
     })
   })
 
@@ -357,7 +369,7 @@ describe('ModuleQuizPage', () => {
     fireEvent.click(screen.getByRole('button', { name: /submit answers/i }))
 
     await waitFor(() => {
-      expect(screen.getByText(catalogApiUserMessage(err))).toBeTruthy()
+      expect(screen.getByText(catalogApiUserMessage(err, 'submitModuleQuiz'))).toBeTruthy()
     })
   })
 
@@ -376,7 +388,7 @@ describe('ModuleQuizPage', () => {
     fireEvent.click(screen.getByRole('button', { name: /submit answers/i }))
 
     await waitFor(() => {
-      expect(screen.getByText(catalogApiUserMessage(err))).toBeTruthy()
+      expect(screen.getByText(catalogApiUserMessage(err, 'submitModuleQuiz'))).toBeTruthy()
     })
   })
 
@@ -392,7 +404,7 @@ describe('ModuleQuizPage', () => {
     fireEvent.click(screen.getByRole('button', { name: /^Try again$/i }))
 
     await waitFor(() => {
-      expect(screen.getByText(catalogApiUserMessage(err))).toBeTruthy()
+      expect(screen.getByText(catalogApiUserMessage(err, 'retakeModuleQuiz'))).toBeTruthy()
     })
   })
 })

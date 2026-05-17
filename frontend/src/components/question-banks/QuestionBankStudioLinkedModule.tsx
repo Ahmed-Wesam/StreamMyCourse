@@ -26,10 +26,22 @@ export function QuestionBankStudioLinkedModule({ courseModules, linkedModuleRows
   const perAttempt = questionsPerAttemptLabel(row.servedCountN)
 
   return (
-    <p className="mt-2 text-sm text-gray-600" data-testid="studio-linked-module">
-      <span className="text-gray-500">Attached to module: </span>
-      <span className="font-medium text-gray-900">{title}</span>
-      {perAttempt ? <span className="text-gray-500">{` · ${perAttempt}`}</span> : null}
-    </p>
+    <div className="mt-2 space-y-2">
+      {linkedModuleRows.length > 1 ? (
+        <p
+          className="rounded border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900"
+          role="status"
+          data-testid="studio-linked-multiple-modules-warning"
+        >
+          This bank is linked to more than one module quiz. The module shown below is the first link
+          only. Remove extra links in course management if that is not intended.
+        </p>
+      ) : null}
+      <p className="text-sm text-gray-600" data-testid="studio-linked-module">
+        <span className="text-gray-500">Attached to module: </span>
+        <span className="font-medium text-gray-900">{title}</span>
+        {perAttempt ? <span className="text-gray-500">{` · ${perAttempt}`}</span> : null}
+      </p>
+    </div>
   )
 }

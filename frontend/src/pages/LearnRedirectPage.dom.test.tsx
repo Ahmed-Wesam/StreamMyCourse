@@ -77,6 +77,29 @@ describe('LearnRedirectPage', () => {
     expect(mockNavigate).not.toHaveBeenCalled()
   })
 
+  it('does not navigate after unmount while courses are loading', async () => {
+    const apiMod = await import('../lib/api')
+    let resolveCourses!: (value: Awaited<ReturnType<typeof apiMod.listCourses>>) => void
+    vi.mocked(apiMod.listCourses).mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resolveCourses = resolve
+        }),
+    )
+
+    const { unmount } = render(
+      <MemoryRouter>
+        <LearnRedirectPage />
+      </MemoryRouter>,
+    )
+
+    unmount()
+    resolveCourses([{ id: 'c-1', title: 'Course 1', description: '', status: 'PUBLISHED' }])
+    await new Promise((resolve) => setTimeout(resolve, 0))
+
+    expect(mockNavigate).not.toHaveBeenCalled()
+  })
+
   it('shows an error message when API calls fail', async () => {
     const api = await import('../lib/api')
     vi.mocked(api.listCourses).mockRejectedValue(new Error('Boom'))

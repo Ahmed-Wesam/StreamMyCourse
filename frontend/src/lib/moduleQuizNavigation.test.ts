@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 
 import {
   modulePlayerReturnPath,
+  moduleQuizBackLabel,
   moduleQuizLinkTo,
   resolveModuleQuizBackTo,
 } from './moduleQuizNavigation'
@@ -40,6 +41,14 @@ describe('moduleQuizNavigation', () => {
       pathname: '/courses/c1/lessons/l2',
       search: '?t=42',
     })
+  })
+
+  it('moduleQuizBackLabel matches return target', () => {
+    expect(moduleQuizBackLabel('/courses/c1/lessons/l2')).toBe('Back to lesson')
+    expect(moduleQuizBackLabel({ pathname: '/courses/c1/lessons/l2', search: '?t=42' })).toBe(
+      'Back to lesson',
+    )
+    expect(moduleQuizBackLabel('/catalog')).toBe('Back to catalog')
   })
 
   it('moduleQuizLinkTo carries returnTo in router state', () => {
