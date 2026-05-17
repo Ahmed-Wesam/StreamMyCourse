@@ -110,22 +110,23 @@ export function resolvePrevModuleQuizHref({
 
   const returnTo = lessonPlayerPath(courseId, lessonId)
 
+  let quizOnlyCandidate: To | null = null
   for (let i = moduleIndex - 1; i >= 0; i--) {
     const mod = sortedModules[i]!
     const modLessonCount = sortedLessons.filter((lesson) => lesson.moduleId === mod.id).length
     if (modLessonCount === 0) {
-      if (hasAvailableModuleQuiz(mod)) {
-        return moduleQuizLinkTo(courseId, mod.id, returnTo)
+      if (hasAvailableModuleQuiz(mod) && quizOnlyCandidate === null) {
+        quizOnlyCandidate = moduleQuizLinkTo(courseId, mod.id, returnTo)
       }
       continue
     }
     if (hasAvailableModuleQuiz(mod)) {
       return moduleQuizLinkTo(courseId, mod.id, returnTo)
     }
-    return null
+    return quizOnlyCandidate
   }
 
-  return null
+  return quizOnlyCandidate
 }
 
 function LessonItem({
