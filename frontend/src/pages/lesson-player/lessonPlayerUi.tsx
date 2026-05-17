@@ -9,10 +9,10 @@ import { lessonPlayerPath, moduleQuizLinkTo } from '../../lib/moduleQuizNavigati
 export const PRO_BLUE_STRIP =
   'linear-gradient(90deg, #bfdbfe, #93c5fd, #60a5fa, #3b82f6, #2563eb, #60a5fa)'
 /** Compact chrome (e.g. Up next icon shell) — white through sky into blue. */
-export const PRO_BLUE_FRAME =
+const PRO_BLUE_FRAME =
   'linear-gradient(155deg, #ffffff, #eff6ff, #dbeafe, #93c5fd, #60a5fa)'
 
-export function formatDurationMmSs(durationSec: number | undefined): string {
+function formatDurationMmSs(durationSec: number | undefined): string {
   if (!durationSec || durationSec <= 0) return ''
   const total = Math.round(durationSec)
   const m = Math.floor(total / 60)
@@ -128,7 +128,7 @@ export function resolvePrevModuleQuizHref({
   return null
 }
 
-export function LessonItem({
+function LessonItem({
   lesson,
   courseId,
   active,
@@ -256,7 +256,7 @@ export function VideoSkeleton({ edgeToEdge = false }: { edgeToEdge?: boolean }) 
   )
 }
 
-export function ModuleQuizItem({
+function ModuleQuizItem({
   courseId,
   module,
   sectionLessons,
@@ -552,7 +552,7 @@ export function LessonPlaybackNavigation({
   )
 }
 
-export type CourseLessonsCurriculumProps = {
+type CourseLessonsCurriculumProps = {
   error: string | null
   lessons: Lesson[]
   modules: CourseModule[]

@@ -53,12 +53,13 @@ function mockMatchMedia(matchesMdUp: boolean) {
     return {
       matches,
       media: query,
+      onchange: null,
       addEventListener: vi.fn(),
       removeEventListener: vi.fn(),
       dispatchEvent: vi.fn(),
       addListener: vi.fn(),
       removeListener: vi.fn(),
-    } as MediaQueryList
+    } as unknown as MediaQueryList
   })
 }
 
@@ -69,6 +70,7 @@ function mockMatchMediaReactive(getMatches: () => boolean) {
     return {
       matches,
       media: query,
+      onchange: null,
       addEventListener: (_: string, cb: () => void) => {
         listeners.add(cb)
       },
@@ -78,7 +80,7 @@ function mockMatchMediaReactive(getMatches: () => boolean) {
       dispatchEvent: vi.fn(),
       addListener: vi.fn(),
       removeListener: vi.fn(),
-    } as MediaQueryList
+    } as unknown as MediaQueryList
   })
   return {
     emitChange() {
