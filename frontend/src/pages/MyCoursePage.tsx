@@ -178,7 +178,7 @@ async function loadCourseRow(course: Course): Promise<CourseRowData> {
   try {
     progress = await getCourseProgress(course.id)
   } catch {
-    progress = null
+    // Progress optional when RDS/auth unavailable
   }
 
   return {
