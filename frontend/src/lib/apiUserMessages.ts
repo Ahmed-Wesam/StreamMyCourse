@@ -136,6 +136,10 @@ const KNOWN_MESSAGE_RULES: MessageRule[] = [
     message: 'Enter the question text.',
   },
   {
+    test: (l) => l.includes('duplicate option key'),
+    message: 'Each answer choice needs a unique label (for example A, B, C).',
+  },
+  {
     test: (l) => l.includes('optionsjson') || l.includes('options json'),
     message: 'Add at least two answer choices with text for each question.',
   },

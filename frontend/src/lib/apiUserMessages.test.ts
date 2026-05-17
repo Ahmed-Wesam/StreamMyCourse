@@ -23,6 +23,24 @@ describe('incomplete route link messages', () => {
 })
 
 describe('catalogApiUserMessage', () => {
+  it('maps duplicate MCQ option key errors for question bank save', () => {
+    const message = catalogApiUserMessage(
+      new ApiError('optionsJson must not contain duplicate option keys', 400),
+      'saveQuestionBankQuestion',
+    )
+    expect(message).toBe('Each answer choice needs a unique label (for example A, B, C).')
+    expect(message).not.toContain('optionsJson')
+  })
+
+  it('maps duplicate MCQ option key errors for question bank publish', () => {
+    const message = catalogApiUserMessage(
+      new ApiError('optionsJson must not contain duplicate option keys', 400),
+      'publishQuestionBank',
+    )
+    expect(message).toBe('Each answer choice needs a unique label (for example A, B, C).')
+    expect(message).not.toContain('optionsJson')
+  })
+
   it('maps technical field names to friendly copy', () => {
     expect(catalogApiUserMessage(new ApiError('questionBankId is required', 400, 'bad_request'))).toBe(
       'Choose a question bank to attach.',
