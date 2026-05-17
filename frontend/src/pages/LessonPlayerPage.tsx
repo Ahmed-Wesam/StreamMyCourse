@@ -28,13 +28,12 @@ import {
   courseNotFoundMessage,
   incompleteLessonPlayerLinkMessage,
 } from '../lib/apiUserMessages'
-import { groupLessonsByModule } from '../lib/lessonGrouping'
-import { lessonPlayerPath, moduleQuizLinkTo } from '../lib/moduleQuizNavigation'
 import { readMdUpMatch, useIsMdUp } from '../lib/useMediaQuery'
 import { LessonPlayerMobileView } from './lesson-player/LessonPlayerMobileView'
 import {
   CourseLessonsSidebar,
-  hasAvailableModuleQuiz,
+  resolveNextModuleQuizHref,
+  resolvePrevModuleQuizHref,
   LessonPlaybackNavigation,
   LessonPlayerAlerts,
   LessonUpNextCard,
@@ -64,6 +63,7 @@ function LessonPrimaryColumn({
   onMarkIncomplete,
   courseId,
   prevLesson,
+  prevQuizHref,
   nextLesson,
   nextQuizHref,
   playbackNavLocked,
@@ -83,6 +83,7 @@ function LessonPrimaryColumn({
   onMarkIncomplete: () => void
   courseId: string
   prevLesson: Lesson | null
+  prevQuizHref?: To | null
   nextLesson: Lesson | null
   nextQuizHref?: To | null
   playbackNavLocked: boolean
@@ -158,6 +159,7 @@ function LessonPrimaryColumn({
           courseId={courseId}
           playbackNavLocked={playbackNavLocked}
           prevLesson={prevLesson}
+          prevQuizHref={prevQuizHref}
           nextLesson={nextLesson}
           nextQuizHref={nextQuizHref}
         />
@@ -319,22 +321,29 @@ export default function LessonPlayerPage() {
     return null
   }, [lessons, activeLessonIndex])
 
-  const nextQuizHref = useMemo(() => {
-    if (playbackNavLocked) return null
-    const sections = groupLessonsByModule(lessons, modules)
-    const activeSection = sections.find((section) =>
-      section.lessons.some((lesson) => lesson.id === lessonId),
-    )
-    if (!activeSection) return null
+  const nextQuizHref = useMemo(
+    () =>
+      resolveNextModuleQuizHref({
+        courseId,
+        lessonId,
+        lessons,
+        modules,
+        playbackNavLocked,
+      }),
+    [courseId, lessonId, lessons, modules, playbackNavLocked],
+  )
 
-    const lastLessonInSection = activeSection.lessons[activeSection.lessons.length - 1]
-    if (lastLessonInSection?.id !== lessonId) return null
-
-    const activeModule = modules.find((module) => module.id === activeSection.id)
-    return hasAvailableModuleQuiz(activeModule)
-      ? moduleQuizLinkTo(courseId, activeModule.id, lessonPlayerPath(courseId, lessonId))
-      : null
-  }, [courseId, lessonId, lessons, modules, playbackNavLocked])
+  const prevQuizHref = useMemo(
+    () =>
+      resolvePrevModuleQuizHref({
+        courseId,
+        lessonId,
+        lessons,
+        modules,
+        playbackNavLocked,
+      }),
+    [courseId, lessonId, lessons, modules, playbackNavLocked],
+  )
 
   const isLessonCompleted = useMemo(() => {
     const lessonProgress = courseProgress?.lessons.find((l) => l.lessonId === lessonId)
@@ -707,6 +716,8 @@ export default function LessonPlayerPage() {
   const isMdUp = useIsMdUp()
   const [sidebarOpen, setSidebarOpen] = useState(readMdUpMatch)
   const desktopSidebarDismissedRef = useRef(false)
+  const prevHeaderHref =
+    prevQuizHref ?? (prevLesson ? `/courses/${courseId}/lessons/${prevLesson.id}` : null)
   const nextHeaderHref = nextQuizHref ?? (nextLesson ? `/courses/${courseId}/lessons/${nextLesson.id}` : null)
 
   useEffect(() => {
@@ -752,6 +763,7 @@ export default function LessonPlayerPage() {
         onMarkComplete={() => void handleMarkComplete()}
         onMarkIncomplete={() => void handleMarkIncomplete()}
         prevLesson={prevLesson}
+        prevQuizHref={prevQuizHref}
         nextLesson={nextLesson}
         nextQuizHref={nextQuizHref}
       />
@@ -805,7 +817,7 @@ export default function LessonPlayerPage() {
           </div>
 
           <div className="flex items-center gap-2 shrink-0">
-            {prevLesson ? (
+            {prevHeaderHref ? (
               playbackNavLocked ? (
                 <span className="inline-flex cursor-not-allowed items-center rounded-lg border border-slate-200 bg-slate-100 px-3 py-1.5 text-sm text-slate-400 opacity-90">
                   <svg className="mr-1.5 h-4 w-4" viewBox="0 0 24 24" fill="none" aria-hidden="true">
@@ -815,7 +827,7 @@ export default function LessonPlayerPage() {
                 </span>
               ) : (
                 <Link
-                  to={`/courses/${courseId}/lessons/${prevLesson.id}`}
+                  to={prevHeaderHref}
                   className="inline-flex items-center rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 shadow-sm transition-colors hover:border-blue-200 hover:bg-slate-50"
                 >
                   <svg className="mr-1.5 h-4 w-4" viewBox="0 0 24 24" fill="none" aria-hidden="true">
@@ -877,6 +889,7 @@ export default function LessonPlayerPage() {
               onMarkIncomplete={() => void handleMarkIncomplete()}
               courseId={courseId}
               prevLesson={prevLesson}
+              prevQuizHref={prevQuizHref}
               nextLesson={nextLesson}
               nextQuizHref={nextQuizHref}
               playbackNavLocked={playbackNavLocked}

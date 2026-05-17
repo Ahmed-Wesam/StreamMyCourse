@@ -536,6 +536,86 @@ describe('LessonPlayerPage', () => {
     expect(quizLink.getAttribute('href')).toBe('/courses/c1/modules/m2/quiz')
   })
 
+  it('sends Previous to a quiz-only module from the first lesson in a later module', async () => {
+    api.listLessons.mockResolvedValue([
+      {
+        id: 'l1',
+        title: 'Alpha',
+        order: 1,
+        moduleId: 'm1',
+        moduleOrder: 0,
+        videoStatus: 'ready',
+        duration: 400,
+      },
+      {
+        id: 'l3',
+        title: 'Gamma',
+        order: 1,
+        moduleId: 'm3',
+        moduleOrder: 2,
+        videoStatus: 'ready',
+        duration: 200,
+      },
+    ])
+    api.listCourseModules.mockResolvedValue([
+      { id: 'm1', title: 'Section 1', description: '', order: 0 },
+      {
+        id: 'm2',
+        title: 'Quiz Only Section',
+        description: '',
+        order: 1,
+        moduleQuiz: { available: true, servedCountN: 2 },
+      },
+      { id: 'm3', title: 'Section 3', description: '', order: 2 },
+    ])
+
+    renderLessonPlayer('/courses/c1/lessons/l3')
+
+    const prevLinks = await waitFor(() => screen.getAllByRole('link', { name: /Prev|Previous/i }))
+    expect(prevLinks.some((a) => a.getAttribute('href') === '/courses/c1/modules/m2/quiz')).toBe(true)
+    expect(prevLinks.some((a) => a.getAttribute('href') === '/courses/c1/lessons/l1')).toBe(false)
+  })
+
+  it('sends Next to a quiz-only module before lessons in a later module', async () => {
+    api.listLessons.mockResolvedValue([
+      {
+        id: 'l1',
+        title: 'Alpha',
+        order: 1,
+        moduleId: 'm1',
+        moduleOrder: 0,
+        videoStatus: 'ready',
+        duration: 400,
+      },
+      {
+        id: 'l3',
+        title: 'Gamma',
+        order: 1,
+        moduleId: 'm3',
+        moduleOrder: 2,
+        videoStatus: 'ready',
+        duration: 200,
+      },
+    ])
+    api.listCourseModules.mockResolvedValue([
+      { id: 'm1', title: 'Section 1', description: '', order: 0 },
+      {
+        id: 'm2',
+        title: 'Quiz Only Section',
+        description: '',
+        order: 1,
+        moduleQuiz: { available: true, servedCountN: 2 },
+      },
+      { id: 'm3', title: 'Section 3', description: '', order: 2 },
+    ])
+
+    renderLessonPlayer('/courses/c1/lessons/l1')
+
+    const nextLinks = await waitFor(() => screen.getAllByRole('link', { name: /Next/i }))
+    expect(nextLinks.some((a) => a.getAttribute('href') === '/courses/c1/modules/m2/quiz')).toBe(true)
+    expect(nextLinks.some((a) => a.getAttribute('href') === '/courses/c1/lessons/l3')).toBe(false)
+  })
+
   it('sends Next to the module quiz before the next module lesson', async () => {
     api.listCourseModules.mockResolvedValue([
       {
