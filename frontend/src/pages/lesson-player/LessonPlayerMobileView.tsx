@@ -9,7 +9,7 @@ import {
   VideoSkeleton,
 } from './lessonPlayerUi'
 
-export type LessonPlayerMobileViewProps = {
+type LessonPlayerMobileViewProps = {
   courseId: string
   lessons: Lesson[]
   modules: CourseModule[]
