@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 
 import { CourseManagementLoadingSkeleton } from '../components/course/CourseManagementPageStates'
@@ -21,30 +21,44 @@ export default function QuestionBanksListPage() {
   const [error, setError] = useState<string | null>(null)
   const [creating, setCreating] = useState(false)
   const [newBankName, setNewBankName] = useState('')
+  const mountedRef = useRef(true)
 
-  const load = useCallback(async () => {
+  useEffect(() => {
+    mountedRef.current = true
+    return () => {
+      mountedRef.current = false
+    }
+  }, [])
+
+  useEffect(() => {
     if (!courseId) {
       setBanks([])
       setError(incompleteQuestionBanksListLinkMessage)
       setLoading(false)
       return
     }
-    try {
-      setLoading(true)
-      setError(null)
-      const rows = await listCourseQuestionBanks(courseId)
-      setBanks(rows)
-    } catch (err) {
-      setBanks([])
-      setError(questionBankUserMessage(err, 'loadQuestionBanks'))
-    } finally {
-      setLoading(false)
+
+    let cancelled = false
+    ;(async () => {
+      try {
+        setLoading(true)
+        setError(null)
+        const rows = await listCourseQuestionBanks(courseId)
+        if (!cancelled) setBanks(rows)
+      } catch (err) {
+        if (!cancelled) {
+          setBanks([])
+          setError(questionBankUserMessage(err, 'loadQuestionBanks'))
+        }
+      } finally {
+        if (!cancelled) setLoading(false)
+      }
+    })()
+
+    return () => {
+      cancelled = true
     }
   }, [courseId])
-
-  useEffect(() => {
-    void load()
-  }, [load])
 
   const handleCreate = async () => {
     if (!courseId || creating) return
@@ -57,13 +71,14 @@ export default function QuestionBanksListPage() {
       setCreating(true)
       setError(null)
       const { questionBankId } = await createQuestionBank(courseId, { name })
+      if (!mountedRef.current) return
       const c = encodeURIComponent(courseId)
       const b = encodeURIComponent(questionBankId)
       navigate(`/courses/${c}/question-banks/${b}`)
     } catch (err) {
-      setError(questionBankUserMessage(err, 'createQuestionBank'))
+      if (mountedRef.current) setError(questionBankUserMessage(err, 'createQuestionBank'))
     } finally {
-      setCreating(false)
+      if (mountedRef.current) setCreating(false)
     }
   }
 

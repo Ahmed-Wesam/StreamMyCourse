@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 
 import { CourseManagementLoadingSkeleton } from '../components/course/CourseManagementPageStates'
@@ -114,6 +114,14 @@ export default function QuestionBankStudioPage() {
   const [renameValue, setRenameValue] = useState('')
   const [editingQuestionId, setEditingQuestionId] = useState<string | null>(null)
   const [busyQuestionId, setBusyQuestionId] = useState<string | null>(null)
+  const mountedRef = useRef(true)
+
+  useEffect(() => {
+    mountedRef.current = true
+    return () => {
+      mountedRef.current = false
+    }
+  }, [])
 
   const bank = useMemo(() => banks.find((b) => b.questionBankId === bankId), [banks, bankId])
   const bankDisplayName = bank ? questionBankDisplayName(bank) : UNTITLED_QUESTION_BANK_LABEL
@@ -135,6 +143,7 @@ export default function QuestionBankStudioPage() {
       listCourseModuleQuizzes(courseId),
       listCourseModules(courseId),
     ])
+    if (!mountedRef.current) return
     setBanks(b)
     setQuestions(q)
     setModuleQuizzes(m)
@@ -181,10 +190,10 @@ export default function QuestionBankStudioPage() {
       await createQuestionBankQuestion(courseId, bankId, body)
       await reload()
     } catch (err) {
-      setError(questionBankUserMessage(err, 'saveQuestionBankQuestion'))
+      if (mountedRef.current) setError(questionBankUserMessage(err, 'saveQuestionBankQuestion'))
       throw err
     } finally {
-      setCreating(false)
+      if (mountedRef.current) setCreating(false)
     }
   }
 
@@ -197,9 +206,9 @@ export default function QuestionBankStudioPage() {
       await reload()
       setEditingQuestionId(null)
     } catch (err) {
-      setError(questionBankUserMessage(err, 'publishQuestionBank'))
+      if (mountedRef.current) setError(questionBankUserMessage(err, 'publishQuestionBank'))
     } finally {
-      setPublishing(false)
+      if (mountedRef.current) setPublishing(false)
     }
   }
 
@@ -214,6 +223,7 @@ export default function QuestionBankStudioPage() {
       setRenaming(true)
       setError(null)
       const updated = await updateQuestionBankName(courseId, bankId, { name })
+      if (!mountedRef.current) return
       setBanks((prev) =>
         prev.map((row) =>
           row.questionBankId === updated.questionBankId ? { ...row, name: updated.name } : row,
@@ -221,9 +231,9 @@ export default function QuestionBankStudioPage() {
       )
       setRenameValue(updated.name)
     } catch (err) {
-      setError(questionBankUserMessage(err, 'saveQuestionBank'))
+      if (mountedRef.current) setError(questionBankUserMessage(err, 'saveQuestionBank'))
     } finally {
-      setRenaming(false)
+      if (mountedRef.current) setRenaming(false)
     }
   }
 
@@ -236,9 +246,9 @@ export default function QuestionBankStudioPage() {
       await reload()
       setEditingQuestionId(null)
     } catch (err) {
-      setError(questionBankUserMessage(err, 'saveQuestionBankQuestion'))
+      if (mountedRef.current) setError(questionBankUserMessage(err, 'saveQuestionBankQuestion'))
     } finally {
-      setBusyQuestionId(null)
+      if (mountedRef.current) setBusyQuestionId(null)
     }
   }
 
@@ -252,9 +262,9 @@ export default function QuestionBankStudioPage() {
       await reload()
       if (editingQuestionId === questionId) setEditingQuestionId(null)
     } catch (err) {
-      setError(questionBankUserMessage(err, 'saveQuestionBankQuestion'))
+      if (mountedRef.current) setError(questionBankUserMessage(err, 'saveQuestionBankQuestion'))
     } finally {
-      setBusyQuestionId(null)
+      if (mountedRef.current) setBusyQuestionId(null)
     }
   }
 

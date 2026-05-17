@@ -199,6 +199,22 @@ describe('QuestionBankStudioPage', () => {
     expect(screen.queryByText(moduleId)).toBeNull()
   })
 
+  it('linked module panel warns when more than one module quiz is linked', async () => {
+    api.listCourseModuleQuizzes.mockResolvedValue([
+      { quizId: 'mq1', moduleId: 'm1', questionBankId: 'qb1', servedCountN: null },
+      { quizId: 'mq2', moduleId: 'm2', questionBankId: 'qb1', servedCountN: null },
+    ])
+    api.listCourseModules.mockResolvedValue([
+      { id: 'm1', title: 'Module A', description: '', order: 0 },
+      { id: 'm2', title: 'Module B', description: '', order: 1 },
+    ])
+
+    renderStudio()
+    await screen.findByTestId('question-bank-studio-loaded')
+
+    expect(await screen.findByTestId('studio-linked-multiple-modules-warning')).toBeTruthy()
+  })
+
   it('publish panel warns when more than one module quiz is linked', async () => {
     api.listCourseModuleQuizzes.mockResolvedValue([
       { quizId: 'mq1', moduleId: 'm1', questionBankId: 'qb1', servedCountN: null },
@@ -213,7 +229,7 @@ describe('QuestionBankStudioPage', () => {
     await screen.findByTestId('question-bank-studio-loaded')
 
     expect(await screen.findByTestId('studio-publish-multiple-modules-warning')).toBeTruthy()
-    expect(screen.getByText(/more than one module quiz/i)).toBeTruthy()
+    expect(screen.getAllByText(/more than one module quiz/i).length).toBeGreaterThanOrEqual(1)
   })
 
   it('shows the bank name in the header and can rename it', async () => {

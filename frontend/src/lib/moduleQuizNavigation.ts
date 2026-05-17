@@ -81,6 +81,14 @@ export function moduleQuizLinkTo(
   }
 }
 
+/** Accessible label for the module quiz back link, matching {@link resolveModuleQuizBackTo} targets. */
+export function moduleQuizBackLabel(returnTo: ModuleQuizReturnTo): string {
+  const path = pathFromReturnTo(returnTo)
+  if (path === '/catalog') return 'Back to catalog'
+  if (path.includes('/lessons/')) return 'Back to lesson'
+  return 'Back to course'
+}
+
 function lessonIdFromReturnTo(returnTo: ModuleQuizReturnTo, courseId: string): string | null {
   const path = pathFromReturnTo(returnTo)
   const prefix = `/courses/${courseId}/lessons/`
