@@ -34,6 +34,7 @@ export type LessonPlayerMobileViewProps = {
   onMarkComplete: () => void
   onMarkIncomplete: () => void
   prevLesson: Lesson | null
+  prevQuizHref?: To | null
   nextLesson: Lesson | null
   nextQuizHref?: To | null
 }
@@ -63,6 +64,7 @@ export function LessonPlayerMobileView({
   onMarkComplete,
   onMarkIncomplete,
   prevLesson,
+  prevQuizHref,
   nextLesson,
   nextQuizHref,
 }: LessonPlayerMobileViewProps) {
@@ -83,6 +85,8 @@ export function LessonPlayerMobileView({
 
   const upNextTitle = nextQuizHref ? 'Module quiz' : nextLesson?.title
   const upNextDescription = nextQuizHref ? 'Continue to the module quiz' : 'Continue to the next lesson'
+  const prevHref =
+    prevQuizHref ?? (prevLesson ? `/courses/${courseId}/lessons/${prevLesson.id}` : null)
   const nextHref =
     nextQuizHref ?? (nextLesson ? `/courses/${courseId}/lessons/${nextLesson.id}` : null)
   const percent = courseProgress?.percentComplete ?? 0
@@ -217,14 +221,14 @@ export function LessonPlayerMobileView({
           aria-label="Lesson navigation"
         >
           <div className="flex items-center gap-3">
-            {prevLesson ? (
+            {prevHref ? (
               playbackNavLocked ? (
                 <span className="inline-flex min-h-11 flex-1 cursor-not-allowed items-center justify-center rounded-xl border border-slate-200 bg-slate-100 text-sm font-medium text-slate-400">
                   Previous
                 </span>
               ) : (
                 <Link
-                  to={`/courses/${courseId}/lessons/${prevLesson.id}`}
+                  to={prevHref}
                   className="inline-flex min-h-11 flex-1 items-center justify-center rounded-xl border border-slate-200 bg-white text-sm font-semibold text-slate-700 shadow-sm active:bg-slate-50"
                 >
                   Previous

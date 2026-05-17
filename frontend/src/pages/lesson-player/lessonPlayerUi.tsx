@@ -34,6 +34,100 @@ export function hasAvailableModuleQuiz(
   return module?.moduleQuiz?.available === true
 }
 
+/** Next target when finishing the last lesson in a module (current module quiz, then quiz-only modules). */
+export function resolveNextModuleQuizHref({
+  courseId,
+  lessonId,
+  lessons,
+  modules,
+  playbackNavLocked,
+}: {
+  courseId: string
+  lessonId: string
+  lessons: Lesson[]
+  modules: CourseModule[]
+  playbackNavLocked: boolean
+}): To | null {
+  if (playbackNavLocked) return null
+
+  const sortedModules = sortModulesByOrder(modules)
+  const sortedLessons = sortLessonsByOrdering(lessons)
+  const activeLesson = sortedLessons.find((lesson) => lesson.id === lessonId)
+  if (!activeLesson) return null
+
+  const moduleLessons = sortedLessons.filter((lesson) => lesson.moduleId === activeLesson.moduleId)
+  const lastLessonInModule = moduleLessons[moduleLessons.length - 1]
+  if (lastLessonInModule?.id !== lessonId) return null
+
+  const moduleIndex = sortedModules.findIndex((module) => module.id === activeLesson.moduleId)
+  if (moduleIndex < 0) return null
+
+  const returnTo = lessonPlayerPath(courseId, lessonId)
+  const currentModule = sortedModules[moduleIndex]
+  if (hasAvailableModuleQuiz(currentModule)) {
+    return moduleQuizLinkTo(courseId, currentModule.id, returnTo)
+  }
+
+  for (let i = moduleIndex + 1; i < sortedModules.length; i++) {
+    const mod = sortedModules[i]!
+    const modLessonCount = sortedLessons.filter((lesson) => lesson.moduleId === mod.id).length
+    if (modLessonCount > 0) break
+    if (hasAvailableModuleQuiz(mod)) {
+      return moduleQuizLinkTo(courseId, mod.id, returnTo)
+    }
+  }
+
+  return null
+}
+
+/** Previous target when starting a module (prior module quiz, including quiz-only modules). */
+export function resolvePrevModuleQuizHref({
+  courseId,
+  lessonId,
+  lessons,
+  modules,
+  playbackNavLocked,
+}: {
+  courseId: string
+  lessonId: string
+  lessons: Lesson[]
+  modules: CourseModule[]
+  playbackNavLocked: boolean
+}): To | null {
+  if (playbackNavLocked) return null
+
+  const sortedModules = sortModulesByOrder(modules)
+  const sortedLessons = sortLessonsByOrdering(lessons)
+  const activeLesson = sortedLessons.find((lesson) => lesson.id === lessonId)
+  if (!activeLesson) return null
+
+  const moduleLessons = sortedLessons.filter((lesson) => lesson.moduleId === activeLesson.moduleId)
+  const firstLessonInModule = moduleLessons[0]
+  if (firstLessonInModule?.id !== lessonId) return null
+
+  const moduleIndex = sortedModules.findIndex((module) => module.id === activeLesson.moduleId)
+  if (moduleIndex < 0) return null
+
+  const returnTo = lessonPlayerPath(courseId, lessonId)
+
+  for (let i = moduleIndex - 1; i >= 0; i--) {
+    const mod = sortedModules[i]!
+    const modLessonCount = sortedLessons.filter((lesson) => lesson.moduleId === mod.id).length
+    if (modLessonCount === 0) {
+      if (hasAvailableModuleQuiz(mod)) {
+        return moduleQuizLinkTo(courseId, mod.id, returnTo)
+      }
+      continue
+    }
+    if (hasAvailableModuleQuiz(mod)) {
+      return moduleQuizLinkTo(courseId, mod.id, returnTo)
+    }
+    return null
+  }
+
+  return null
+}
+
 export function LessonItem({
   lesson,
   courseId,
@@ -374,17 +468,21 @@ export function LessonPlaybackNavigation({
   courseId,
   playbackNavLocked,
   prevLesson,
+  prevQuizHref,
   nextLesson,
   nextQuizHref,
 }: {
   courseId: string
   playbackNavLocked: boolean
   prevLesson: Lesson | null
+  prevQuizHref?: To | null
   nextLesson: Lesson | null
   nextQuizHref?: To | null
 }) {
+  const prevHref = prevQuizHref ?? (prevLesson ? `/courses/${courseId}/lessons/${prevLesson.id}` : null)
+
   const prevLeft =
-    prevLesson == null ? (
+    prevHref == null ? (
       <div />
     ) : playbackNavLocked ? (
       <span className="inline-flex cursor-not-allowed items-center rounded-lg border border-slate-200 bg-slate-100 px-4 py-2 text-sm font-medium text-slate-400 opacity-90">
@@ -395,7 +493,7 @@ export function LessonPlaybackNavigation({
       </span>
     ) : (
       <Link
-        to={`/courses/${courseId}/lessons/${prevLesson.id}`}
+        to={prevHref}
         className="inline-flex items-center rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 shadow-sm transition-all hover:border-blue-200 hover:bg-slate-50"
       >
         <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
