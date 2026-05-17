@@ -4,6 +4,16 @@
 
 ---
 
+## 2026-05-17 — Question bank duplicate MCQ option key guard
+
+### Completed
+
+- [x] **Validation** — [`mcq_validation.py`](infrastructure/lambda/catalog/services/question_banks/mcq_validation.py): `validate_mcq_options_json` rejects duplicate non-empty option keys (`400` `optionsJson must not contain duplicate option keys`); applies on create/update/publish paths via existing callers.
+- [x] **Tests** — [`test_mcq_validation.py`](tests/unit/services/question_banks/test_mcq_validation.py), [`test_question_bank_service.py`](tests/unit/services/question_banks/test_question_bank_service.py).
+- [x] **Studio UX** — [`apiUserMessages.ts`](frontend/src/lib/apiUserMessages.ts): maps duplicate-key errors to friendly copy (no raw `optionsJson` in UI); rule ordered before generic options-json message.
+
+---
+
 ## 2026-05-17 — Student courses UI restyle and route consolidation
 
 ### Completed
