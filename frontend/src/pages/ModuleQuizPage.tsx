@@ -14,6 +14,7 @@ import {
   type ModuleQuizSubmitResponse,
 } from '../lib/api'
 import {
+  courseDetailPath,
   moduleQuizBackLabel,
   resolveModuleQuizBackTo,
   type ModuleQuizReturnTo,
@@ -45,7 +46,9 @@ function applyStartResponse(
 export default function ModuleQuizPage() {
   const { courseId, moduleId } = useParams<{ courseId: string; moduleId: string }>()
   const location = useLocation()
-  const [backTo, setBackTo] = useState<ModuleQuizReturnTo>('/catalog')
+  const [backTo, setBackTo] = useState<ModuleQuizReturnTo>(() =>
+    courseId ? courseDetailPath(courseId) : '/courses',
+  )
   const [pageLoading, setPageLoading] = useState(true)
   const [retakeBusy, setRetakeBusy] = useState(false)
   const [submitting, setSubmitting] = useState(false)
@@ -83,7 +86,7 @@ export default function ModuleQuizPage() {
           setBackTo(resolveModuleQuizBackTo(courseId, moduleId, location.state?.returnTo, lessons, progress))
         }
       } catch {
-        if (!cancelled) setBackTo('/catalog')
+        if (!cancelled) setBackTo(courseId ? courseDetailPath(courseId) : '/courses')
       }
     })()
 

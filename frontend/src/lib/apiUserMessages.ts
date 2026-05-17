@@ -37,7 +37,6 @@ type ApiUserMessageContext =
   | 'uploadThumbnail'
   | 'enroll'
   | 'loadLesson'
-  | 'loadCatalog'
   | 'loadProfile'
   | 'learnRedirect'
   | 'loadModuleQuiz'
@@ -66,7 +65,6 @@ const CONTEXT_FALLBACKS: Record<ApiUserMessageContext, string> = {
   uploadThumbnail: 'The thumbnail could not be uploaded. Try another image.',
   enroll: 'Enrollment in this course could not be completed. Please try again.',
   loadLesson: 'This lesson could not be loaded. Please try again.',
-  loadCatalog: 'The course catalog could not be loaded. Please try again.',
   loadProfile: 'Your profile could not be loaded. Please try again.',
   learnRedirect: 'Your course could not be opened. Please try again.',
   loadModuleQuiz: 'This quiz could not be loaded. Refresh the page and try again.',

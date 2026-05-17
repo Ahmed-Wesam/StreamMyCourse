@@ -2,6 +2,10 @@ import type { CourseProgress, Lesson } from './api'
 
 export type ModuleQuizReturnTo = string | { pathname: string; search?: string }
 
+export function courseDetailPath(courseId: string): string {
+  return `/courses/${courseId}`
+}
+
 export function lessonPlayerPath(
   courseId: string,
   lessonId: string,
@@ -84,7 +88,6 @@ export function moduleQuizLinkTo(
 /** Accessible label for the module quiz back link, matching {@link resolveModuleQuizBackTo} targets. */
 export function moduleQuizBackLabel(returnTo: ModuleQuizReturnTo): string {
   const path = pathFromReturnTo(returnTo)
-  if (path === '/catalog') return 'Back to catalog'
   if (path.includes('/lessons/')) return 'Back to lesson'
   return 'Back to course'
 }
@@ -123,5 +126,5 @@ export function resolveModuleQuizBackTo(
     )
   }
 
-  return '/catalog'
+  return courseDetailPath(courseId)
 }

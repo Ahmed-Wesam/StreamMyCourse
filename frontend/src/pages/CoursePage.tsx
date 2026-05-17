@@ -213,7 +213,7 @@ export default function CoursePage() {
               <div className="inline-flex items-center gap-2 bg-white/15 rounded-full px-4 py-1.5 mb-5">
                 <BarChart2 className="w-4 h-4" />
                 <span className="text-sm tracking-wide uppercase">
-                  Full Course Details
+                  Details
                 </span>
               </div>
               <h1

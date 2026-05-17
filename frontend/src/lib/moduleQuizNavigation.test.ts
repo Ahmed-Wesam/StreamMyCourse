@@ -48,7 +48,11 @@ describe('moduleQuizNavigation', () => {
     expect(moduleQuizBackLabel({ pathname: '/courses/c1/lessons/l2', search: '?t=42' })).toBe(
       'Back to lesson',
     )
-    expect(moduleQuizBackLabel('/catalog')).toBe('Back to catalog')
+    expect(moduleQuizBackLabel('/courses/c1')).toBe('Back to course')
+  })
+
+  it('resolveModuleQuizBackTo falls back to course detail when no lessons', () => {
+    expect(resolveModuleQuizBackTo('c1', 'm1', null, [], null)).toBe('/courses/c1')
   })
 
   it('moduleQuizLinkTo carries returnTo in router state', () => {

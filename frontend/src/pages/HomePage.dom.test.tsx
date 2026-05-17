@@ -27,7 +27,7 @@ describe('HomePage', () => {
     ).toBeTruthy()
 
     const ctas = screen.getAllByRole('link', { name: /View Course & Pricing/i })
-    expect(ctas.some((link) => link.getAttribute('href') === '/course#pricing')).toBe(true)
+    expect(ctas.some((link) => link.getAttribute('href') === '/details#pricing')).toBe(true)
   })
 
   it('renders the instructor section', () => {

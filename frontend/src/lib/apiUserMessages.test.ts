@@ -95,8 +95,8 @@ describe('catalogApiUserMessage', () => {
   })
 
   it('uses context-specific fallbacks for unknown errors', () => {
-    expect(catalogApiUserMessage(new Error('network down'), 'loadCatalog')).toBe(
-      'The course catalog could not be loaded. Please try again.',
+    expect(catalogApiUserMessage(new Error('network down'), 'loadCourses')).toBe(
+      'Your courses could not be loaded. Please try again.',
     )
     expect(catalogApiUserMessage(new Error('Boom'), 'learnRedirect')).toBe(
       'Your course could not be opened. Please try again.',
