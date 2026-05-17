@@ -30,6 +30,13 @@ def test_validate_mcq_options_json_rejects_empty() -> None:
         validate_mcq_options_json([])
 
 
+def test_validate_mcq_options_json_rejects_duplicate_keys() -> None:
+    with pytest.raises(BadRequest, match="duplicate option key"):
+        validate_mcq_options_json(
+            [{"key": "a", "text": "x"}, {"key": "a", "text": "y"}]
+        )
+
+
 def test_validate_correct_option_key_rejects_unknown_key() -> None:
     with pytest.raises(BadRequest, match="correctOptionKey"):
         validate_correct_option_key(
@@ -42,3 +49,14 @@ def test_validate_draft_question_for_publish_happy_path() -> None:
         correct_option_key="A",
         options_json=[{"key": "A", "text": "a"}],
     )
+
+
+def test_validate_draft_question_for_publish_rejects_duplicate_keys() -> None:
+    with pytest.raises(BadRequest, match="duplicate option key"):
+        validate_draft_question_for_publish(
+            correct_option_key="a",
+            options_json=[
+                {"key": "a", "text": "x"},
+                {"key": "a", "text": "y"},
+            ],
+        )

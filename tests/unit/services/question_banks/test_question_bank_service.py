@@ -621,6 +621,28 @@ def test_add_published_question_rejects_blank_prompt() -> None:
     repo.insert_published_question.assert_not_called()
 
 
+def test_add_published_question_rejects_duplicate_option_keys() -> None:
+    authorizer = MagicMock()
+    repo = MagicMock()
+    repo.get_bank_for_course.return_value = _published_bank()
+    svc = _make_service(authorizer, repo)
+    duplicate_options = [
+        {"key": "a", "text": "x"},
+        {"key": "a", "text": "y"},
+    ]
+    with pytest.raises(BadRequest, match="duplicate option key"):
+        svc.add_published_question(
+            _COURSE_ID,
+            _BANK_ID,
+            cognito_sub=_COGNITO_SUB,
+            role=_ROLE,
+            prompt_text="Q?",
+            options_json=duplicate_options,
+            correct_option_key="a",
+        )
+    repo.insert_published_question.assert_not_called()
+
+
 def test_add_published_question_rejects_empty_options() -> None:
     authorizer = MagicMock()
     repo = MagicMock()
@@ -841,6 +863,30 @@ def test_publish_bad_request_when_correct_key_not_in_options() -> None:
     repo.publish_bank_transaction.assert_not_called()
 
 
+def test_publish_bad_request_when_duplicate_option_keys() -> None:
+    authorizer = MagicMock()
+    repo = MagicMock()
+    repo.get_bank_for_course.return_value = _draft_bank()
+    duplicate_options = [
+        {"key": "a", "text": "x"},
+        {"key": "a", "text": "y"},
+    ]
+    repo.list_draft_questions.return_value = [
+        _draft_q(correct="a", options=duplicate_options),
+    ]
+    svc = _make_service(authorizer, repo)
+    with pytest.raises(BadRequest, match="duplicate option key"):
+        svc.publish_question_bank(
+            _COURSE_ID,
+            _BANK_ID,
+            _MODULE_ID,
+            1,
+            cognito_sub=_COGNITO_SUB,
+            role=_ROLE,
+        )
+    repo.publish_bank_transaction.assert_not_called()
+
+
 def test_create_draft_question_rejects_empty_options() -> None:
     authorizer = MagicMock()
     repo = MagicMock()
@@ -852,6 +898,28 @@ def test_create_draft_question_rejects_empty_options() -> None:
             _BANK_ID,
             prompt_text="Q?",
             options_json=[],
+            correct_option_key=None,
+            cognito_sub=_COGNITO_SUB,
+            role=_ROLE,
+        )
+    repo.insert_draft_question.assert_not_called()
+
+
+def test_create_draft_question_rejects_duplicate_option_keys() -> None:
+    authorizer = MagicMock()
+    repo = MagicMock()
+    repo.get_bank_for_course.return_value = _draft_bank()
+    svc = _make_service(authorizer, repo)
+    duplicate_options = [
+        {"key": "a", "text": "x"},
+        {"key": "a", "text": "y"},
+    ]
+    with pytest.raises(BadRequest, match="duplicate option key"):
+        svc.create_draft_question(
+            _COURSE_ID,
+            _BANK_ID,
+            prompt_text="Q?",
+            options_json=duplicate_options,
             correct_option_key=None,
             cognito_sub=_COGNITO_SUB,
             role=_ROLE,
@@ -875,6 +943,52 @@ def test_create_draft_question_rejects_correct_key_not_in_options() -> None:
             role=_ROLE,
         )
     repo.insert_draft_question.assert_not_called()
+
+
+def test_update_question_rejects_duplicate_option_keys_in_patch() -> None:
+    authorizer = MagicMock()
+    repo = MagicMock()
+    repo.get_question_by_id.return_value = _draft_q(
+        qid=_QUESTION_ID, correct="A", options=_MCQ_A
+    )
+    svc = _make_service(authorizer, repo)
+    duplicate_options = [
+        {"key": "a", "text": "x"},
+        {"key": "a", "text": "y"},
+    ]
+    with pytest.raises(BadRequest, match="duplicate option key"):
+        svc.update_question(
+            _COURSE_ID,
+            _BANK_ID,
+            _QUESTION_ID,
+            cognito_sub=_COGNITO_SUB,
+            role=_ROLE,
+            options_json=duplicate_options,
+        )
+    repo.update_question.assert_not_called()
+
+
+def test_update_question_rejects_duplicate_option_keys_when_only_correct_key_patched() -> None:
+    authorizer = MagicMock()
+    repo = MagicMock()
+    duplicate_options = [
+        {"key": "a", "text": "x"},
+        {"key": "a", "text": "y"},
+    ]
+    repo.get_question_by_id.return_value = _draft_q(
+        qid=_QUESTION_ID, correct="a", options=duplicate_options
+    )
+    svc = _make_service(authorizer, repo)
+    with pytest.raises(BadRequest, match="duplicate option key"):
+        svc.update_question(
+            _COURSE_ID,
+            _BANK_ID,
+            _QUESTION_ID,
+            cognito_sub=_COGNITO_SUB,
+            role=_ROLE,
+            correct_option_key="a",
+        )
+    repo.update_question.assert_not_called()
 
 
 def test_update_question_passes_fields_for_draft() -> None:
