@@ -1107,6 +1107,7 @@ describe('LessonPlayerPage', () => {
 
     await waitFor(() => {
       expect(screen.getByRole('dialog', { name: /Course lessons/i })).toBeTruthy()
+      expect(screen.getByRole('slider', { name: /Drag to resize or dismiss/i })).toBeTruthy()
       expect(screen.getByRole('button', { name: 'Section 1' })).toBeTruthy()
     })
   })
