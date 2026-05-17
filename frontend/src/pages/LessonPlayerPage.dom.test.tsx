@@ -66,9 +66,10 @@ function mockMatchMedia(matchesMdUp: boolean) {
 function mockMatchMediaReactive(getMatches: () => boolean) {
   const listeners = new Set<() => void>()
   vi.spyOn(window, 'matchMedia').mockImplementation((query: string) => {
-    const matches = query.includes('min-width: 768px') ? getMatches() : false
     return {
-      matches,
+      get matches() {
+        return query.includes('min-width: 768px') ? getMatches() : false
+      },
       media: query,
       onchange: null,
       addEventListener: (_: string, cb: () => void) => {

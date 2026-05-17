@@ -1,20 +1,21 @@
 /**
  * @vitest-environment jsdom
  */
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { renderHook, act } from '@testing-library/react'
 import { readMdUpMatch, useMediaQuery, useIsMdUp } from './useMediaQuery'
 
+afterEach(() => {
+  vi.restoreAllMocks()
+  vi.unstubAllGlobals()
+})
+
 describe('useMediaQuery', () => {
   it('returns fallback when matchMedia is unavailable', () => {
-    const original = window.matchMedia
-    // @ts-expect-error test shim
-    window.matchMedia = undefined
+    vi.stubGlobal('matchMedia', undefined)
 
     const { result } = renderHook(() => useMediaQuery('(min-width: 768px)', true))
     expect(result.current).toBe(true)
-
-    window.matchMedia = original
   })
 
   it('subscribes to media query changes', () => {
@@ -46,12 +47,9 @@ describe('useMediaQuery', () => {
 
 describe('readMdUpMatch', () => {
   it('returns fallback when matchMedia is unavailable', () => {
-    const original = window.matchMedia
-    // @ts-expect-error test shim
-    window.matchMedia = undefined
+    vi.stubGlobal('matchMedia', undefined)
     expect(readMdUpMatch(true)).toBe(true)
     expect(readMdUpMatch(false)).toBe(false)
-    window.matchMedia = original
   })
 
   it('reads the current md breakpoint match', () => {
@@ -64,11 +62,8 @@ describe('readMdUpMatch', () => {
 
 describe('useIsMdUp', () => {
   it('defaults to desktop layout in tests without matchMedia', () => {
-    const original = window.matchMedia
-    // @ts-expect-error test shim
-    window.matchMedia = undefined
+    vi.stubGlobal('matchMedia', undefined)
     const { result } = renderHook(() => useIsMdUp())
     expect(result.current).toBe(true)
-    window.matchMedia = original
   })
 })
