@@ -48,6 +48,7 @@ type ApiUserMessageContext =
   | 'loadQuestionBank'
   | 'saveQuestionBank'
   | 'saveQuestionBankQuestion'
+  | 'deleteQuestionBankQuestion'
   | 'publishQuestionBank'
   | 'attachModuleQuiz'
 
@@ -76,6 +77,7 @@ const CONTEXT_FALLBACKS: Record<ApiUserMessageContext, string> = {
   loadQuestionBank: 'This question bank could not be loaded. Please try again.',
   saveQuestionBank: 'The question bank could not be saved. Please try again.',
   saveQuestionBankQuestion: 'That question could not be saved. Please try again.',
+  deleteQuestionBankQuestion: 'That question could not be deleted. Please try again.',
   publishQuestionBank: 'This question bank could not be published. Please try again.',
   attachModuleQuiz: 'The module quiz could not be attached. Please try again.',
 }

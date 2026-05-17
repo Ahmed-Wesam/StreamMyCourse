@@ -110,5 +110,11 @@ describe('catalogApiUserMessage', () => {
     expect(catalogApiUserMessage(new ApiError('Unmapped attach failure', 502), 'attachModuleQuiz')).toBe(
       'The module quiz could not be attached. Please try again.',
     )
+    expect(catalogApiUserMessage(new Error('network down'), 'deleteQuestionBankQuestion')).toBe(
+      'That question could not be deleted. Please try again.',
+    )
+    expect(
+      catalogApiUserMessage(new ApiError('Unmapped delete failure', 502), 'deleteQuestionBankQuestion'),
+    ).toBe('That question could not be deleted. Please try again.')
   })
 })

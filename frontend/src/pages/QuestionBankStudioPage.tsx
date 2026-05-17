@@ -272,7 +272,7 @@ export default function QuestionBankStudioPage() {
       await reload(loadGenerationRef.current)
       if (mountedRef.current && editingQuestionId === questionId) setEditingQuestionId(null)
     } catch (err) {
-      if (mountedRef.current) setError(questionBankUserMessage(err, 'saveQuestionBankQuestion'))
+      if (mountedRef.current) setError(questionBankUserMessage(err, 'deleteQuestionBankQuestion'))
     } finally {
       if (mountedRef.current) setBusyQuestionId(null)
     }
