@@ -12,6 +12,7 @@
 - [x] **Header** — [`StudentHeader.tsx`](frontend/src/student-app/StudentHeader.tsx): Home / Details / Pricing / Courses nav aligned with new paths.
 - [x] **Course detail** — [`CourseDetailPage.tsx`](frontend/src/pages/CourseDetailPage.tsx): Home-style hero, stats strip, flowing curriculum layout; error-safe hero title and hidden stats on load failure; [`PricingSection`](frontend/src/components/course/PricingSection.tsx) `band` variant.
 - [x] **Lesson player** — [`quizScoreDisplay.ts`](frontend/src/lib/quizScoreDisplay.ts): colored score pill thresholds and singular/plural question count in module quiz sidebar row.
+- [x] **Lesson player (mobile)** — [`LessonPlayerMobileView.tsx`](frontend/src/pages/lesson-player/LessonPlayerMobileView.tsx) below `md`; shared chrome in [`lessonPlayerUi.tsx`](frontend/src/pages/lesson-player/lessonPlayerUi.tsx); [`useMediaQuery.ts`](frontend/src/lib/useMediaQuery.ts) + `readMdUpMatch`; sticky lesson header under site nav; no nested scroll in lesson details; desktop sidebar hamburger only when collapsed; dismissed sidebar preserved across breakpoint changes.
 - [x] **Docs** — [`design.md`](design.md) student route table and frontend tree updated.
 
 ### Verify
