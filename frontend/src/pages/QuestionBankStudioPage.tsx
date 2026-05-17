@@ -115,6 +115,7 @@ export default function QuestionBankStudioPage() {
   const [editingQuestionId, setEditingQuestionId] = useState<string | null>(null)
   const [busyQuestionId, setBusyQuestionId] = useState<string | null>(null)
   const mountedRef = useRef(true)
+  const loadGenerationRef = useRef(0)
 
   useEffect(() => {
     mountedRef.current = true
@@ -135,22 +136,29 @@ export default function QuestionBankStudioPage() {
     setRenameValue(bankDisplayName)
   }, [bankDisplayName])
 
-  const reload = useCallback(async () => {
-    if (!courseId || !bankId) return
-    const [b, q, m, mods] = await Promise.all([
-      listCourseQuestionBanks(courseId),
-      listQuestionBankQuestions(courseId, bankId),
-      listCourseModuleQuizzes(courseId),
-      listCourseModules(courseId),
-    ])
-    if (!mountedRef.current) return
-    setBanks(b)
-    setQuestions(q)
-    setModuleQuizzes(m)
-    setCourseModules(mods)
-    const found = b.some((row) => row.questionBankId === bankId)
-    setBankMissing(!found)
-  }, [courseId, bankId])
+  const reload = useCallback(
+    async (generation: number) => {
+      if (!courseId || !bankId) return
+      const requestCourseId = courseId
+      const requestBankId = bankId
+      const [b, q, m, mods] = await Promise.all([
+        listCourseQuestionBanks(requestCourseId),
+        listQuestionBankQuestions(requestCourseId, requestBankId),
+        listCourseModuleQuizzes(requestCourseId),
+        listCourseModules(requestCourseId),
+      ])
+      if (!mountedRef.current) return
+      if (generation !== loadGenerationRef.current) return
+      if (requestCourseId !== courseId || requestBankId !== bankId) return
+      setBanks(b)
+      setQuestions(q)
+      setModuleQuizzes(m)
+      setCourseModules(mods)
+      const found = b.some((row) => row.questionBankId === requestBankId)
+      setBankMissing(!found)
+    },
+    [courseId, bankId],
+  )
 
   useEffect(() => {
     if (!courseId || !bankId) {
@@ -158,13 +166,14 @@ export default function QuestionBankStudioPage() {
       setError(incompleteQuestionBankStudioLinkMessage)
       return
     }
+    const generation = ++loadGenerationRef.current
     let cancelled = false
     ;(async () => {
       try {
         setLoading(true)
         setError(null)
         setBankMissing(false)
-        await reload()
+        await reload(generation)
       } catch (err) {
         if (!cancelled) {
           setError(questionBankUserMessage(err, 'loadQuestionBank'))
@@ -179,6 +188,7 @@ export default function QuestionBankStudioPage() {
     })()
     return () => {
       cancelled = true
+      loadGenerationRef.current += 1
     }
   }, [courseId, bankId, reload])
 
@@ -188,7 +198,7 @@ export default function QuestionBankStudioPage() {
       setCreating(true)
       setError(null)
       await createQuestionBankQuestion(courseId, bankId, body)
-      await reload()
+      await reload(loadGenerationRef.current)
     } catch (err) {
       if (mountedRef.current) setError(questionBankUserMessage(err, 'saveQuestionBankQuestion'))
       throw err
@@ -203,8 +213,8 @@ export default function QuestionBankStudioPage() {
       setPublishing(true)
       setError(null)
       await publishQuestionBank(courseId, bankId, body)
-      await reload()
-      setEditingQuestionId(null)
+      await reload(loadGenerationRef.current)
+      if (mountedRef.current) setEditingQuestionId(null)
     } catch (err) {
       if (mountedRef.current) setError(questionBankUserMessage(err, 'publishQuestionBank'))
     } finally {
@@ -243,8 +253,8 @@ export default function QuestionBankStudioPage() {
       setBusyQuestionId(questionId)
       setError(null)
       await updateQuestionBankQuestion(courseId, bankId, questionId, body)
-      await reload()
-      setEditingQuestionId(null)
+      await reload(loadGenerationRef.current)
+      if (mountedRef.current) setEditingQuestionId(null)
     } catch (err) {
       if (mountedRef.current) setError(questionBankUserMessage(err, 'saveQuestionBankQuestion'))
     } finally {
@@ -259,8 +269,8 @@ export default function QuestionBankStudioPage() {
       setBusyQuestionId(questionId)
       setError(null)
       await deleteQuestionBankQuestion(courseId, bankId, questionId)
-      await reload()
-      if (editingQuestionId === questionId) setEditingQuestionId(null)
+      await reload(loadGenerationRef.current)
+      if (mountedRef.current && editingQuestionId === questionId) setEditingQuestionId(null)
     } catch (err) {
       if (mountedRef.current) setError(questionBankUserMessage(err, 'saveQuestionBankQuestion'))
     } finally {

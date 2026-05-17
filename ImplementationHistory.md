@@ -14,6 +14,7 @@
 - [x] **Quiz navigation** — [`moduleQuizNavigation.ts`](frontend/src/lib/moduleQuizNavigation.ts): “Back” from module quiz returns to lesson player when possible.
 - [x] **Review follow-up** — no verbatim pass-through of unmapped API text; operation-specific contexts (quiz, question banks, attach module quiz); `LearnRedirectPage` and module quiz retake/submit guard state updates after unmount; quiz `returnTo` validated against loaded lessons; publish warning when multiple module links exist.
 - [x] **Review follow-up (lifecycle + copy)** — `LearnRedirectPage` aborts after each await; `moduleQuizBackLabel` for back link text; studio/list `mountedRef` / `cancelled` guards; linked-module multi-link warning; DOM tests use matching error contexts.
+- [x] **Studio reload generation** — `QuestionBankStudioPage` `loadGenerationRef` invalidates in-flight `reload()` when `bankId` changes or the page unmounts.
 
 ### Verify
 
