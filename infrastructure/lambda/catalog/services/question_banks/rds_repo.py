@@ -799,6 +799,42 @@ class QuestionBankRdsRepository:
             result[str(module_id)] = {"servedCountN": int(served_n)}
         return result
 
+    def list_latest_submission_scores_for_course(
+        self, *, course_id: str, user_sub: str
+    ) -> dict[str, dict[str, int]]:
+        """Latest submitted attempt score per module for one student (visibility modules only)."""
+        cur = self._execute(
+            """
+            SELECT DISTINCT ON (mq.module_id)
+                mq.module_id,
+                s.correct_count,
+                s.total_count
+            FROM module_quizzes mq
+            INNER JOIN question_banks qb
+              ON qb.id = mq.question_bank_id AND qb.course_id = %s
+            INNER JOIN student_module_quiz_bindings b
+              ON b.module_quiz_id = mq.id
+             AND b.course_id = %s
+             AND b.user_sub = %s
+            INNER JOIN module_quiz_attempts a ON a.binding_id = b.id
+            INNER JOIN module_quiz_attempt_submissions s ON s.attempt_id = a.id
+            WHERE mq.course_id = %s
+              AND mq.question_bank_id IS NOT NULL
+              AND qb.status = 'PUBLISHED'
+              AND mq.served_count_n IS NOT NULL
+              AND mq.served_count_n >= 1
+            ORDER BY mq.module_id, s.submitted_at DESC, s.attempt_id DESC
+            """,
+            (course_id, course_id, user_sub, course_id),
+        )
+        result: dict[str, dict[str, int]] = {}
+        for module_id, correct_count, total_count in cur.fetchall():
+            result[str(module_id)] = {
+                "correctCount": int(correct_count),
+                "totalCount": int(total_count),
+            }
+        return result
+
     def list_published_question_ids(
         self, *, course_id: str, bank_id: str
     ) -> list[str]:

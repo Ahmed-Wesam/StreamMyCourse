@@ -157,12 +157,14 @@ class _RecordingModuleQuizVisibilityPort:
         *,
         course_status: str,
         has_lesson_access: bool,
+        cognito_sub: str,
     ) -> Dict[str, Dict[str, Any]]:
         self.calls.append(
             {
                 "course_id": course_id,
                 "course_status": course_status,
                 "has_lesson_access": has_lesson_access,
+                "cognito_sub": cognito_sub,
             }
         )
         if course_status != "PUBLISHED" or not has_lesson_access:
@@ -260,6 +262,7 @@ class TestListCourseModulesPublicModuleQuiz:
                 "course_id": _CID,
                 "course_status": "PUBLISHED",
                 "has_lesson_access": True,
+                "cognito_sub": _STUDENT_SUB,
             }
         ]
         dto_rows = as_course_module_list(rows)
@@ -298,6 +301,7 @@ class TestListCourseModulesPublicModuleQuiz:
                 "course_id": _CID,
                 "course_status": "DRAFT",
                 "has_lesson_access": True,
+                "cognito_sub": "teacher-sub",
             }
         ]
 
@@ -320,6 +324,7 @@ class TestListCourseModulesPublicModuleQuiz:
                 "course_id": _CID,
                 "course_status": "PUBLISHED",
                 "has_lesson_access": False,
+                "cognito_sub": "other-student",
             }
         ]
 

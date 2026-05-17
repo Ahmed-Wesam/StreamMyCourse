@@ -48,6 +48,7 @@ class ModuleQuizVisibilityPort(Protocol):
         *,
         course_status: str,
         has_lesson_access: bool,
+        cognito_sub: str,
     ) -> Dict[str, Dict[str, Any]]: ...
 
 

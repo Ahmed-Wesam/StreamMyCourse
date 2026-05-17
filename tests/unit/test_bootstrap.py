@@ -200,6 +200,7 @@ class TestModuleQuizVisibilityAdapter:
             "course-id",
             course_status="DRAFT",
             has_lesson_access=True,
+            cognito_sub="student-sub",
         )
         assert result == {}
         mock_repo.list_module_quiz_visibility_for_course.assert_not_called()
@@ -211,6 +212,7 @@ class TestModuleQuizVisibilityAdapter:
             "course-id",
             course_status="PUBLISHED",
             has_lesson_access=False,
+            cognito_sub="student-sub",
         )
         assert result == {}
         mock_repo.list_module_quiz_visibility_for_course.assert_not_called()
@@ -220,16 +222,41 @@ class TestModuleQuizVisibilityAdapter:
         mock_repo.list_module_quiz_visibility_for_course.return_value = {
             "m1": {"servedCountN": 2},
         }
+        mock_repo.list_latest_submission_scores_for_course.return_value = {}
         adapter = bootstrap_mod._ModuleQuizVisibilityAdapter(mock_repo)
         result = adapter.module_quiz_visibility_by_course(
             "course-id",
             course_status="PUBLISHED",
             has_lesson_access=True,
+            cognito_sub="student-sub",
         )
         mock_repo.list_module_quiz_visibility_for_course.assert_called_once_with(
             course_id="course-id"
         )
+        mock_repo.list_latest_submission_scores_for_course.assert_called_once_with(
+            course_id="course-id",
+            user_sub="student-sub",
+        )
         assert result == {"m1": {"available": True, "servedCountN": 2}}
+
+    def test_includes_latest_score_percent_when_submission_exists(self) -> None:
+        mock_repo = MagicMock()
+        mock_repo.list_module_quiz_visibility_for_course.return_value = {
+            "m1": {"servedCountN": 3},
+        }
+        mock_repo.list_latest_submission_scores_for_course.return_value = {
+            "m1": {"correctCount": 2, "totalCount": 3},
+        }
+        adapter = bootstrap_mod._ModuleQuizVisibilityAdapter(mock_repo)
+        result = adapter.module_quiz_visibility_by_course(
+            "course-id",
+            course_status="PUBLISHED",
+            has_lesson_access=True,
+            cognito_sub="student-sub",
+        )
+        assert result == {
+            "m1": {"available": True, "servedCountN": 3, "latestScorePercent": 67},
+        }
 
 
 class TestRdsConnectionFactory:
