@@ -197,8 +197,8 @@ frontend/                            # Vite project root
     │   └── lessonGrouping.ts        # Group lessons by module; orphan moduleIds → Unsorted (student UI)
     └── pages/
         ├── HomePage.tsx             # Student landing (`/`)
-        ├── CourseCatalogPage.tsx    # Published catalog (`/catalog`)
-        ├── MyCoursePage.tsx         # Signed-in hub (`/my-course`)
+        ├── CoursePage.tsx           # Course marketing / details (`/details`)
+        ├── MyCoursePage.tsx         # Enrolled courses hub (`/courses`)
         ├── CourseDetailPage.tsx
         ├── LessonPlayerPage.tsx
         ├── InstructorDashboard.tsx  # Teacher dashboard
@@ -210,14 +210,14 @@ The frontend is built as **two separate SPAs** deployed to different subdomains:
 
 | Site | Domain | Purpose | Routes |
 |------|--------|---------|--------|
-| **Student** | `streammycourse.com` | Browse and watch courses | `/`, `/catalog`, `/my-course`, `/login`, `/courses/:id`, `/courses/:id/lessons/:id`, `/courses/:id/modules/:moduleId/quiz` |
+| **Student** | `streammycourse.com` | Browse and watch courses | `/`, `/details`, `/courses`, `/login`, `/courses/:id`, `/courses/:id/lessons/:id`, `/courses/:id/modules/:moduleId/quiz` |
 | **Teacher** | `teach.streammycourse.com` | Create, edit, upload content | `/`, `/courses/:id` |
 
 ### Student Site Routes (View-Only)
 ```
 /                                    # Home (marketing / entry)
-/catalog                             # Course catalog (published grid)
-/my-course                           # My Course hub (signed-in entry to enrolled work)
+/details                             # Course marketing / pricing (Figma parity; `/course` redirects here)
+/courses                             # Enrolled courses hub (resume / progress; `/catalog` and `/my-course` redirect here)
 /login                               # Student sign-in (Hosted UI / auth shell)
 /courses/:courseId                   # Course detail
 /courses/:courseId/lessons/:lessonId # Video player
