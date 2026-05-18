@@ -4,6 +4,20 @@
 
 ---
 
+## 2026-05-18 — WS1 — Billing access policy + RDS schema (pre-release)
+
+### Completed
+
+- [x] **Migration** — [`011_billing_subscription.sql`](infrastructure/database/migrations/011_billing_subscription.sql): `subscription_plans`, `teacher_merchant_accounts`, `user_subscriptions`, `payment_webhook_events`.
+- [x] **Policy doc** — [`access-policy-v1.md`](plans/billing/access-policy-v1.md): subscription-only, monthly JOD, Jordan, no `BILLING_ENABLED`.
+- [x] **Deploy bundle** — migration `011` in [`.github/workflows/deploy-backend.yml`](.github/workflows/deploy-backend.yml), [`scripts/deploy-rds-stack.sh`](scripts/deploy-rds-stack.sh), and [`infrastructure/deploy.ps1`](infrastructure/deploy.ps1) dev+prod schema lists.
+- [x] **Schema integrity** — `user_subscriptions` composite FK `(plan_id, environment)` → `subscription_plans (id, environment)`; seed `plan_key` `monthly_all_access`.
+- [x] **Unit tests** — [`test_rds_schema_apply.py`](tests/unit/test_rds_schema_apply.py).
+- **Pre-release** — zero users; WS5 enforces access before launch.
+- **Out of scope this PR** — catalog gates (WS5), PayTabs (WS2+).
+
+---
+
 ## 2026-05-17 — Draggable mobile curriculum bottom sheet
 
 ### Completed
