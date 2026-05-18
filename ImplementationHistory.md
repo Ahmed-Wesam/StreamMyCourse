@@ -4,6 +4,25 @@
 
 ---
 
+## 2026-05-18 — WS3 IPN webhooks + async fulfillment
+
+### Completed
+
+- [x] **Webhook edge** — Verify PayTabs Signature → map IPN to neutral domain events → **SQS enqueue**; HTTP **200 only after durable `SendMessage`** (replaces WS2 `501` on `POST /webhooks/payments/paytabs`). Invalid signature → **401**; environment mismatch in `cart_id` → **400**; unsupported `tran_type` with subscription `cart_id` → **400**.
+- [x] **Domain contract** — `v1|{environment}|{user_sub}|{plan_id}` metadata; `provider_event_id` dedupe; SQS body schema v1 (no raw PayTabs JSON in queue).
+- [x] **Fulfillment** — VPC Lambda: idempotent `payment_webhook_events` insert + `user_subscriptions` updates per [`access-policy-v1.md`](plans/billing/access-policy-v1.md); `ReportBatchItemFailures`; `psycopg2` packaged in deploy zip.
+- [x] **IaC** — Fulfillment `DB_*` + `DEPLOYMENT_ENVIRONMENT` on [`payments-stack.yaml`](infrastructure/templates/payments-stack.yaml); **DLQ CloudWatch alarm** + optional `BILLING_FULFILLMENT_ALERT_EMAIL` via [`deploy-backend.sh`](scripts/deploy-backend.sh) / deploy workflow; `deploy-payments.sh` fails when `PAYTABS_SERVER_KEY` empty after hydration; placeholder SM upsert for `streammycourse/paytabs/{dev,prod}` in [`.github/workflows/deploy-backend.yml`](.github/workflows/deploy-backend.yml).
+- [x] **Tests** — [`tests/unit/billing/`](tests/unit/billing/) (109+ billing-related unit tests with deploy contract); skipped integration placeholder [`test_billing_ipn_fulfillment.py`](tests/integration/test_billing_ipn_fulfillment.py) for WS8. Fulfillment modules named `fulfillment_config` / `fulfillment_repo` to avoid pytest import clashes with catalog.
+- **Child plan** — [`plans/billing-workstream-3-ipn-webhooks-async-fulfillment.md`](plans/billing-workstream-3-ipn-webhooks-async-fulfillment.md).
+
+### Operator (manual)
+
+- Register dev + prod IPN URLs in PayTabs Dashboard (see child plan).
+- Redeploy payments stack after merge so fulfillment receives RDS env vars.
+- Set GitHub Environment var `BILLING_FULFILLMENT_ALERT_EMAIL` (optional) and confirm SNS email subscription for DLQ alarms.
+
+---
+
 ## 2026-05-18 — WS2 payments infrastructure (PayTabs port, mock mode)
 
 ### Completed
