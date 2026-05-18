@@ -29,3 +29,28 @@ def _load_module(name: str, filename: str) -> ModuleType:
 
 
 billing_handler = _load_module("billing_edge_handler", "handler.py")
+
+_BILLING_FULFILL_DIR = (
+    Path(__file__).resolve().parents[3] / "infrastructure" / "lambda" / "billing_fulfillment"
+)
+_FULFILL_PATH = str(_BILLING_FULFILL_DIR)
+if _FULFILL_PATH not in sys.path:
+    sys.path.append(_FULFILL_PATH)
+
+
+def _load_fulfillment_module(name: str, filename: str) -> ModuleType:
+    if name in sys.modules:
+        return sys.modules[name]
+    path = _BILLING_FULFILL_DIR / filename
+    spec = importlib.util.spec_from_file_location(name, path)
+    if spec is None or spec.loader is None:
+        raise ImportError(f"cannot load {name} from {path}")
+    mod = importlib.util.module_from_spec(spec)
+    sys.modules[name] = mod
+    spec.loader.exec_module(mod)
+    return mod
+
+
+billing_fulfillment_worker = _load_fulfillment_module(
+    "billing_fulfillment_worker", "worker.py"
+)

@@ -177,6 +177,13 @@ def test_deploy_backend_sh_invokes_deploy_payments_for_dev_and_prod() -> None:
     assert "BILLING_PARAM_OVERRIDES" in text
 
 
+def test_deploy_backend_sh_passes_billing_fulfillment_alert_email_to_payments() -> None:
+    text = _deploy_backend_sh_text()
+    assert "export BILLING_FULFILLMENT_ALERT_EMAIL" in text
+    payments_block = text[text.index("deploy-payments.sh") : text.index("PAYMENTS_STACK=")]
+    assert "BILLING_FULFILLMENT_ALERT_EMAIL" in payments_block
+
+
 def test_deploy_backend_sh_passes_billing_edge_arn_to_api_stack() -> None:
     text = _deploy_backend_sh_text()
     assert '"BillingEdgeLambdaArn=${BILLING_EDGE_ARN}"' in text
@@ -217,3 +224,16 @@ def test_deploy_workflow_prod_passes_paytabs_secret_arn_only() -> None:
     assert "PAYTABS_SERVER_KEY" not in deploy_prod
     assert "aws secretsmanager describe-secret" in deploy_prod
     assert "--secret-id streammycourse/paytabs/prod" in deploy_prod
+
+
+def test_deploy_workflow_upserts_paytabs_placeholder_secrets_dev_and_prod() -> None:
+    text = _workflow_text()
+    dev_block = _job_block(text, "deploy-backend-dev", "\n  deploy-web-dev:")
+    prod_block = _job_block(text, "deploy-backend-prod", "\n  # Prod-only")
+    assert "Ensure PayTabs placeholder secret (dev)" in dev_block
+    assert "streammycourse/paytabs/dev" in dev_block
+    assert "aws secretsmanager create-secret" in dev_block
+    assert "describe-secret" in dev_block
+    assert "Ensure PayTabs placeholder secret (prod)" in prod_block
+    assert "streammycourse/paytabs/prod" in prod_block
+    assert "aws secretsmanager create-secret" in prod_block

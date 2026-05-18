@@ -27,7 +27,7 @@ def test_mock_create_subscribe_session_returns_redirect_url() -> None:
 
 def test_mock_parse_webhook_returns_empty_list() -> None:
     adapter = MockPayTabsAdapter()
-    assert adapter.parse_webhook(b"{}") == []
+    assert adapter.parse_webhook(b"{}", deployment_environment="dev") == []
 
 
 def test_mock_cancel_agreement_raises_not_implemented() -> None:
