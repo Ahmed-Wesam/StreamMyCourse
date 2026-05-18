@@ -271,7 +271,8 @@ def test_split_real_migration_011_contains_expected_billing_ddl(schema_apply):
     assert "'JOD'" in joined
     assert "9990" in joined
     assert "amount_minor" in joined
-    assert "fils" in joined.lower()
+    # fils documented on full-line comment (stripped by applier splitter — no inline ';' in DDL)
+    assert "fils" in sql.lower()
     assert "REFERENCES users(user_sub)" in joined
     assert "ON CONFLICT (environment, plan_key) DO NOTHING" in joined
     assert len(parts) >= 8

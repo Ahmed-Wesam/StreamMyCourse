@@ -11,7 +11,8 @@ CREATE TABLE IF NOT EXISTS subscription_plans (
     environment        VARCHAR(32)  NOT NULL,
     plan_key           VARCHAR(64)  NOT NULL,
     currency           VARCHAR(3)   NOT NULL DEFAULT 'JOD',
-    amount_minor       INTEGER      NOT NULL,  -- fils (1 JOD = 1000 fils); placeholder 9990 = 9.990 JOD
+    -- amount_minor: fils (1 JOD = 1000 fils). Placeholder seed 9990 = 9.990 JOD.
+    amount_minor       INTEGER      NOT NULL,
     billing_interval   VARCHAR(16)  NOT NULL DEFAULT 'monthly',
     provider           VARCHAR(32)  NOT NULL DEFAULT 'paytabs',
     provider_plan_ref  VARCHAR(255),
