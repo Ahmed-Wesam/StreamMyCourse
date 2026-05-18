@@ -25,6 +25,7 @@ $CFN_LINT --config-file .cfnlintrc infrastructure/templates/github-deploy-role-s
 $CFN_LINT --config-file .cfnlintrc infrastructure/templates/billing-alarm.yaml
 $CFN_LINT --config-file .cfnlintrc infrastructure/templates/rds-stack.yaml
 $CFN_LINT --config-file .cfnlintrc infrastructure/templates/media-cleanup-stack.yaml
+$CFN_LINT --config-file .cfnlintrc infrastructure/templates/payments-stack.yaml
 
 echo "OK cfn-lint"
 
