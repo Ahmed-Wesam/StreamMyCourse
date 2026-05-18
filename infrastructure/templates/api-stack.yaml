@@ -1514,7 +1514,6 @@ Resources:
     Type: AWS::ApiGateway::Deployment
     DependsOn:
       - CatalogLambdaApiPermission
-      - BillingEdgeLambdaApiPermission
       - CatalogApiTokenAuthorizer
       - CatalogApiPublicReadAuthorizer
       - CoursesGetMethod
@@ -1576,9 +1575,6 @@ Resources:
       - CourseModuleQuizSubmitOptionsMethod
       - CourseModuleQuizStartPostMethod
       - CourseModuleQuizStartOptionsMethod
-      - BillingCheckoutSessionPostMethod
-      - BillingCheckoutSessionOptionsMethod
-      - WebhooksPaytabsPostMethod
     Properties:
       RestApiId: !Ref CatalogApi
       Description: !Sub 'catalog-${LambdaCodeS3Key}'
