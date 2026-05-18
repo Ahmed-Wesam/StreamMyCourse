@@ -234,6 +234,89 @@ def test_split_real_migration_008_contains_expected_bindings_ddl(schema_apply):
     assert len(parts) >= 4
 
 
+def test_split_real_migration_011_contains_expected_billing_ddl(schema_apply):
+    """011_billing_subscription.sql adds billing tables (idempotent DDL only)."""
+    path = (
+        _ROOT
+        / "infrastructure"
+        / "database"
+        / "migrations"
+        / "011_billing_subscription.sql"
+    )
+    sql = path.read_text(encoding="utf-8")
+    parts = schema_apply._split_sql_statements(sql)
+    joined = "\n".join(parts)
+    assert "CREATE TABLE IF NOT EXISTS subscription_plans" in joined
+    assert "CREATE TABLE IF NOT EXISTS teacher_merchant_accounts" in joined
+    assert "CREATE TABLE IF NOT EXISTS user_subscriptions" in joined
+    assert "CREATE TABLE IF NOT EXISTS payment_webhook_events" in joined
+    assert "UNIQUE (environment, plan_key)" in joined
+    assert "UNIQUE (id, environment)" in joined
+    assert (
+        "CHECK (status IN ('active', 'past_due', 'canceled', 'expired', 'incomplete'))"
+        in joined
+    )
+    assert "user_subscriptions_plan_environment_fkey" in joined
+    assert (
+        "FOREIGN KEY (plan_id, environment) REFERENCES subscription_plans (id, environment)"
+        in joined
+    )
+    assert "uq_user_subscriptions_one_granting_per_user_env" in joined
+    assert "WHERE status IN ('active', 'past_due', 'incomplete')" in joined
+    assert "uq_user_subscriptions_provider_subscription_id" in joined
+    assert "WHERE provider_subscription_id IS NOT NULL" in joined
+    assert "UNIQUE (provider, provider_event_id)" in joined
+    assert "INSERT INTO subscription_plans" in joined
+    assert "'monthly_all_access'" in joined
+    assert "'JOD'" in joined
+    assert "9990" in joined
+    assert "amount_minor" in joined
+    assert "fils" in joined.lower()
+    assert "REFERENCES users(user_sub)" in joined
+    assert "ON CONFLICT (environment, plan_key) DO NOTHING" in joined
+    assert len(parts) >= 8
+
+
+def test_deploy_backend_bundles_migration_011() -> None:
+    """deploy-backend.yml must cat 011 into both dev and prod schema-applier bundles."""
+    path = _ROOT / ".github" / "workflows" / "deploy-backend.yml"
+    text = path.read_text(encoding="utf-8")
+    needle = "011_billing_subscription.sql"
+    for marker in ("rds-schema-apply-dev-", "rds-schema-apply-prod-"):
+        start = text.index(marker)
+        end = text.index('> "$PKG/schema.sql"', start)
+        chunk = text[start:end]
+        assert needle in chunk
+        assert "010_module_quiz_attempt_submissions.sql" in chunk
+        assert chunk.index("010_module_quiz_attempt_submissions.sql") < chunk.index(needle)
+
+
+def test_deploy_rds_stack_sh_bundles_migration_011() -> None:
+    """scripts/deploy-rds-stack.sh must cat 011 after 010 in the local schema bundle."""
+    path = _ROOT / "scripts" / "deploy-rds-stack.sh"
+    text = path.read_text(encoding="utf-8")
+    needle = "011_billing_subscription.sql"
+    start = text.index("cat \\")
+    end = text.index('> "$PKG/schema.sql"', start)
+    chunk = text[start:end]
+    assert needle in chunk
+    assert "010_module_quiz_attempt_submissions.sql" in chunk
+    assert chunk.index("010_module_quiz_attempt_submissions.sql") < chunk.index(needle)
+
+
+def test_deploy_ps1_lists_migration_011() -> None:
+    """infrastructure/deploy.ps1 schema bundle must include 011 after 010."""
+    path = _ROOT / "infrastructure" / "deploy.ps1"
+    text = path.read_text(encoding="utf-8")
+    needle = "011_billing_subscription.sql"
+    start = text.index("$schemaSqlFiles = @(")
+    end = text.index(")", start)
+    chunk = text[start:end]
+    assert needle in chunk
+    assert "010_module_quiz_attempt_submissions.sql" in chunk
+    assert chunk.index("010_module_quiz_attempt_submissions.sql") < chunk.index(needle)
+
+
 def test_concatenated_001_003_004_006_007_008_bundle_is_splittable_and_complete(schema_apply):
     """Deploy script and CI concatenate 001, 003, 004, 006, 007, and 008 into schema.sql."""
     migrations_dir = _ROOT / "infrastructure" / "database" / "migrations"
@@ -277,6 +360,29 @@ def test_concatenated_001_003_004_006_007_008_bundle_is_splittable_and_complete(
     assert "CREATE TABLE IF NOT EXISTS student_module_quiz_binding_questions" in joined
     # Sanity: 001 >=11; 003 adds 4; 004 adds 2; 006 + 007 + 008 add CREATE/INDEX statements.
     assert len(parts) >= 32
+
+
+def test_concatenated_deploy_schema_bundle_through_011_is_splittable(schema_apply):
+    """CI deploy-backend.yml concatenates 001–011 (skipping 002/005) into schema.sql."""
+    migrations_dir = _ROOT / "infrastructure" / "database" / "migrations"
+    names = (
+        "001_initial_schema.sql",
+        "003_progress_course_lesson_fk.sql",
+        "004_enforce_course_created_by.sql",
+        "006_question_banks_module_quizzes.sql",
+        "007_question_bank_questions.sql",
+        "008_student_module_quiz_bindings.sql",
+        "009_module_quiz_attempts.sql",
+        "010_module_quiz_attempt_submissions.sql",
+        "011_billing_subscription.sql",
+    )
+    bundle = "".join((migrations_dir / n).read_text(encoding="utf-8") for n in names)
+    parts = schema_apply._split_sql_statements(bundle)
+    joined = "\n".join(parts)
+    assert "CREATE TABLE IF NOT EXISTS module_quiz_attempt_submissions" in joined
+    assert "CREATE TABLE IF NOT EXISTS subscription_plans" in joined
+    assert "CREATE TABLE IF NOT EXISTS user_subscriptions" in joined
+    assert len(parts) >= 40
 
 
 def test_handler_returns_error_when_secret_arn_missing(schema_apply, monkeypatch) -> None:
