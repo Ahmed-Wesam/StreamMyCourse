@@ -4,6 +4,20 @@
 
 ---
 
+## 2026-05-18 — WS2 payments infrastructure (PayTabs port, mock mode)
+
+### Completed
+
+- [x] **Stack** — [`payments-stack.yaml`](infrastructure/templates/payments-stack.yaml) / **`StreamMyCourse-Payments-{dev|prod}`** (billing edge Lambda + SQS fulfillment queue/worker); distinct from [`billing-alarm.yaml`](infrastructure/templates/billing-alarm.yaml) (monthly **cost** alarm only) and `deploy.ps1 -Template billing`.
+- [x] **Mock posture** — `MockPayTabsAdapter` + `PAYTABS_USE_MOCK` until PayTabs merchant registration unblocks live HPP; prod never mock; missing credentials → `503 billing_unconfigured`.
+- [x] **API routes** — [`api-stack.yaml`](infrastructure/templates/api-stack.yaml): `POST /billing/checkout-session` (Cognito), `POST /webhooks/payments/paytabs` (public IPN).
+- [x] **Secrets** — PayTabs keys path **`streammycourse/paytabs/{env}`** (dev/prod); edge role `secretsmanager:GetSecretValue` on `streammycourse/paytabs/*`.
+- [x] **Boundaries** — [`scripts/check_lambda_boundaries.py`](scripts/check_lambda_boundaries.py) scans `billing_edge/**` and `billing_fulfillment/**` (no `boto3` on edge WS2; `boto3` only in fulfillment `worker.py` when added; HTTP client only in `paytabs_adapter.py`).
+- [x] **Unit tests** — [`tests/unit/billing/`](tests/unit/billing/), deploy workflow + cfn-lint contract tests.
+- **Child plan** — [`plans/billing-workstream-2-payments-infrastructure-paytabs-port.md`](plans/billing-workstream-2-payments-infrastructure-paytabs-port.md); mega-plan [`plans/billing-subscription-mega-plan.md`](plans/billing-subscription-mega-plan.md).
+
+---
+
 ## 2026-05-18 — WS1 — Billing access policy + RDS schema (pre-release)
 
 ### Completed
