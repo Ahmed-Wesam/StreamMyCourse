@@ -26,9 +26,10 @@ RDS_STACK="${RDS_STACK_NAME:-StreamMyCourse-Rds-${ENV}}"
 EDGE_ZIP="/tmp/billing-edge-${ENV}-$$.zip"
 FULFILL_ZIP="/tmp/billing-fulfillment-${ENV}-$$.zip"
 EDGE_BUILD="/tmp/billing-edge-build-${ENV}-$$"
+FULFILL_BUILD="/tmp/billing-fulfillment-build-${ENV}-$$"
 EDGE_KEY="billing-edge-${ENV}-${SUFFIX}.zip"
 FULFILL_KEY="billing-fulfillment-${ENV}-${SUFFIX}.zip"
-trap 'rm -f "$EDGE_ZIP" "$FULFILL_ZIP"; rm -rf "$EDGE_BUILD"' EXIT
+trap 'rm -f "$EDGE_ZIP" "$FULFILL_ZIP"; rm -rf "$EDGE_BUILD" "$FULFILL_BUILD"' EXIT
 
 [[ -d "$EDGE_DIR" ]] || {
   echo "Missing billing edge Lambda: $EDGE_DIR" >&2
@@ -113,7 +114,27 @@ if [[ -f "$REQ_FILE" ]] && grep -qvE '^\s*($|#)' "$REQ_FILE" 2>/dev/null; then
 fi
 
 _zip_dir_recursive "$EDGE_BUILD" "$EDGE_ZIP"
-_zip_one_file "$FULFILL_DIR" "worker.py" "$FULFILL_ZIP"
+
+rm -rf "$FULFILL_BUILD"
+mkdir -p "$FULFILL_BUILD"
+( cd "$FULFILL_DIR" && \
+  find . -type f ! -path './_vendor/*' ! -path '*/__pycache__/*' ! -name '*.pyc' -print0 \
+    | xargs -0 -I{} cp --parents '{}' "$FULFILL_BUILD" )
+
+FULFILL_REQ="$FULFILL_DIR/requirements.txt"
+if [[ -f "$FULFILL_REQ" ]] && grep -qvE '^\s*($|#)' "$FULFILL_REQ" 2>/dev/null; then
+  echo "Installing billing fulfillment runtime deps into $FULFILL_BUILD/_vendor"
+  pip install \
+    --quiet \
+    --platform manylinux2014_x86_64 \
+    --only-binary=:all: \
+    --python-version 3.11 \
+    --implementation cp \
+    -r "$FULFILL_REQ" \
+    -t "$FULFILL_BUILD/_vendor"
+fi
+
+_zip_dir_recursive "$FULFILL_BUILD" "$FULFILL_ZIP"
 
 echo "Uploading billing edge s3://${ARTIFACT_BUCKET}/${EDGE_KEY}"
 aws s3 cp "$EDGE_ZIP" "s3://${ARTIFACT_BUCKET}/${EDGE_KEY}" --region "$REGION"
@@ -126,6 +147,7 @@ PAYTABS_PROFILE_ID="${PAYTABS_PROFILE_ID:-}"
 PAYTABS_SERVER_KEY="${PAYTABS_SERVER_KEY:-}"
 PAYTABS_SECRET_ARN="${PAYTABS_SECRET_ARN:-}"
 PAYTABS_USE_MOCK="${PAYTABS_USE_MOCK:-false}"
+BILLING_FULFILLMENT_ALERT_EMAIL="${BILLING_FULFILLMENT_ALERT_EMAIL:-}"
 
 # Hydrate inline CFN params from streammycourse/paytabs/{env} when GitHub/SM-only (prod) omits inline keys.
 if [[ -z "${PAYTABS_SERVER_KEY}" || -z "${PAYTABS_PROFILE_ID}" ]]; then
@@ -174,6 +196,14 @@ if [[ "$PAYTABS_USE_MOCK" != "true" && "$PAYTABS_USE_MOCK" != "false" ]]; then
   exit 1
 fi
 
+# WS3: fail deploy when server_key is empty after GitHub env + SM hydration (dev and prod).
+# Non-empty placeholder values in streammycourse/paytabs/{env} (or GitHub dev PAYTABS_SERVER_KEY)
+# satisfy this guard until live PayTabs keys are configured.
+if [[ -z "${PAYTABS_SERVER_KEY}" ]]; then
+  echo "PAYTABS_SERVER_KEY is empty after hydration; set GitHub secret or SM streammycourse/paytabs/${ENV} with non-empty server_key" >&2
+  exit 1
+fi
+
 PAYMENTS_TEMPLATE="${TEMPLATE_DIR}/payments-stack.yaml"
 if command -v cygpath >/dev/null 2>&1; then
   VALIDATE_BODY_URI="file://$(cygpath -m "$PAYMENTS_TEMPLATE")"
@@ -202,4 +232,5 @@ aws cloudformation deploy \
   "PaytabsProfileId=${PAYTABS_PROFILE_ID}" \
   "PaytabsServerKey=${PAYTABS_SERVER_KEY}" \
   "PaytabsSecretArn=${PAYTABS_SECRET_ARN}" \
-  "PaytabsUseMock=${PAYTABS_USE_MOCK}"
+  "PaytabsUseMock=${PAYTABS_USE_MOCK}" \
+  "BillingFulfillmentAlertEmail=${BILLING_FULFILLMENT_ALERT_EMAIL}"

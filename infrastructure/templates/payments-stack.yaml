@@ -73,7 +73,35 @@ Parameters:
       - 'false'
     Description: PAYTABS_USE_MOCK — explicit mock on non-prod only
 
+  BillingFulfillmentAlertEmail:
+    Type: String
+    Default: ''
+    Description: >-
+      Optional email for DLQ CloudWatch alarm notifications (SNS email subscription).
+      Leave empty to create the topic without a subscription (configure in console).
+
+Conditions:
+  HasBillingFulfillmentAlertEmail: !Not [!Equals [!Ref BillingFulfillmentAlertEmail, '']]
+
 Resources:
+  BillingFulfillmentAlertTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      TopicName: !Sub 'StreamMyCourse-BillingFulfillment-Alerts-${Environment}'
+      Tags:
+        - Key: Project
+          Value: StreamMyCourse
+        - Key: Environment
+          Value: !Ref Environment
+
+  BillingFulfillmentAlertEmailSubscription:
+    Type: AWS::SNS::Subscription
+    Condition: HasBillingFulfillmentAlertEmail
+    Properties:
+      TopicArn: !Ref BillingFulfillmentAlertTopic
+      Protocol: email
+      Endpoint: !Ref BillingFulfillmentAlertEmail
+
   BillingFulfillmentDlq:
     Type: AWS::SQS::Queue
     DeletionPolicy: Retain
@@ -210,6 +238,15 @@ Resources:
                   - sqs:GetQueueAttributes
                   - sqs:ChangeMessageVisibility
                 Resource: !GetAtt BillingFulfillmentQueue.Arn
+        - PolicyName: SecretsManagerRdsCreds
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - secretsmanager:GetSecretValue
+                Resource: !ImportValue
+                  'Fn::Sub': '${RdsStackName}-DbSecretArn'
         - PolicyName: LambdaVpcEni
           PolicyDocument:
             Version: '2012-10-17'
@@ -249,7 +286,40 @@ Resources:
             'Fn::Sub': '${RdsStackName}-LambdaSecurityGroupId'
       Environment:
         Variables:
+          DEPLOYMENT_ENVIRONMENT: !Ref Environment
+          DB_HOST: !ImportValue
+            'Fn::Sub': '${RdsStackName}-DbHost'
+          DB_PORT: !ImportValue
+            'Fn::Sub': '${RdsStackName}-DbPort'
+          DB_NAME: !ImportValue
+            'Fn::Sub': '${RdsStackName}-DbName'
+          DB_SECRET_ARN: !ImportValue
+            'Fn::Sub': '${RdsStackName}-DbSecretArn'
           LOG_LEVEL: INFO
+      Tags:
+        - Key: Project
+          Value: StreamMyCourse
+        - Key: Environment
+          Value: !Ref Environment
+
+  BillingFulfillmentDlqAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub 'StreamMyCourse-BillingFulfillment-DLQ-${Environment}-Visible'
+      AlarmDescription: Billing fulfillment DLQ has one or more visible messages
+      Namespace: AWS/SQS
+      MetricName: ApproximateNumberOfMessagesVisible
+      Dimensions:
+        - Name: QueueName
+          Value: !GetAtt BillingFulfillmentDlq.QueueName
+      Statistic: Maximum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 0
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: notBreaching
+      AlarmActions:
+        - !Ref BillingFulfillmentAlertTopic
       Tags:
         - Key: Project
           Value: StreamMyCourse

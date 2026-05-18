@@ -51,12 +51,19 @@ _CATALOG_PSYCOPG2_ALLOWED = frozenset(
 _BILLING_EDGE_BOTO3_ALLOWED = frozenset(
     {
         _p("infrastructure/lambda/billing_edge/paytabs_secrets.py"),
+        _p("infrastructure/lambda/billing_edge/queue/enqueue.py"),
     }
 )
 
 _BILLING_FULFILLMENT_BOTO3_ALLOWED = frozenset(
     {
-        _p("infrastructure/lambda/billing_fulfillment/worker.py"),
+        _p("infrastructure/lambda/billing_fulfillment/fulfillment_repo.py"),
+    }
+)
+
+_BILLING_FULFILLMENT_PSYCOPG2_ALLOWED = frozenset(
+    {
+        _p("infrastructure/lambda/billing_fulfillment/fulfillment_repo.py"),
     }
 )
 
@@ -189,7 +196,9 @@ def check_file(path: str) -> List[Violation]:
             _check_boto3(rel, norm, roots, _BILLING_FULFILLMENT_BOTO3_ALLOWED, "billing_fulfillment")
         )
         violations.extend(
-            _check_psycopg2(rel, norm, roots, frozenset(), "billing_fulfillment")
+            _check_psycopg2(
+                rel, norm, roots, _BILLING_FULFILLMENT_PSYCOPG2_ALLOWED, "billing_fulfillment"
+            )
         )
 
     if package != "catalog":
