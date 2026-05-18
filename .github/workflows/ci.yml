@@ -82,6 +82,7 @@ jobs:
           cfn-lint --config-file .cfnlintrc infrastructure/templates/billing-alarm.yaml
           cfn-lint --config-file .cfnlintrc infrastructure/templates/rds-stack.yaml
           cfn-lint --config-file .cfnlintrc infrastructure/templates/media-cleanup-stack.yaml
+          cfn-lint --config-file .cfnlintrc infrastructure/templates/payments-stack.yaml
 
   security:
     name: Security scans
