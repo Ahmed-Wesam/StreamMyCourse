@@ -267,6 +267,35 @@
           "aws:RequestedRegion": "eu-west-1"
         }
       }
+    },
+    {
+      "Sid": "SnsStreamMyCourseTopics",
+      "Effect": "Allow",
+      "Action": [
+        "sns:CreateTopic",
+        "sns:DeleteTopic",
+        "sns:GetTopicAttributes",
+        "sns:SetTopicAttributes",
+        "sns:Subscribe",
+        "sns:Unsubscribe",
+        "sns:ListSubscriptionsByTopic",
+        "sns:Publish",
+        "sns:TagResource",
+        "sns:UntagResource"
+      ],
+      "Resource": "arn:aws:sns:eu-west-1:YOUR_AWS_ACCOUNT_ID:StreamMyCourse-*"
+    },
+    {
+      "Sid": "CloudWatchAlarmsStreamMyCourse",
+      "Effect": "Allow",
+      "Action": [
+        "cloudwatch:PutMetricAlarm",
+        "cloudwatch:DeleteAlarms",
+        "cloudwatch:DescribeAlarms",
+        "cloudwatch:TagResource",
+        "cloudwatch:UntagResource"
+      ],
+      "Resource": "arn:aws:cloudwatch:eu-west-1:YOUR_AWS_ACCOUNT_ID:alarm:StreamMyCourse-*"
     }
   ]
 }
