@@ -70,6 +70,7 @@ else
     "${ROOT}/infrastructure/database/migrations/008_student_module_quiz_bindings.sql" \
     "${ROOT}/infrastructure/database/migrations/009_module_quiz_attempts.sql" \
     "${ROOT}/infrastructure/database/migrations/010_module_quiz_attempt_submissions.sql" \
+    "${ROOT}/infrastructure/database/migrations/011_billing_subscription.sql" \
     > "$PKG/schema.sql"
   pip install psycopg2-binary==2.9.9 \
     --quiet \
