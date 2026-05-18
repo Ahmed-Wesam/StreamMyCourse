@@ -1,0 +1,2 @@
+# Lambda runtime dependencies (packaged under _vendor/ by scripts/deploy-payments.sh).
+psycopg2-binary==2.9.9
