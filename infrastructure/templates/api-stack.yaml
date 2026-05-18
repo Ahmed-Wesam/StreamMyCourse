@@ -95,6 +95,13 @@ Parameters:
       SQS queue ARN for sqs:SendMessage on the catalog Lambda role. Must be set
       when MediaCleanupQueueUrl is set.
 
+  BillingEdgeLambdaArn:
+    Type: String
+    Default: ''
+    Description: >-
+      ARN of the billing edge Lambda from StreamMyCourse-Payments-{env}. When
+      empty, billing routes are not attached to this API.
+
   ProgressCompleteRatio:
     Type: Number
     Default: 0.92
@@ -112,6 +119,7 @@ Conditions:
   HasVideoBucket: !Not [!Equals [!Ref VideoBucketName, '']]
   IsProd: !Equals [!Ref Environment, prod]
   HasMediaCleanupQueueArn: !Not [!Equals [!Ref MediaCleanupQueueArn, '']]
+  HasBillingEdgeLambdaArn: !Not [!Equals [!Ref BillingEdgeLambdaArn, '']]
 
 Resources:
   # Lambda Execution Role
@@ -573,11 +581,65 @@ Resources:
       ParentId: !Ref UsersResource
       PathPart: me
 
+  # API Gateway Resource: /billing
+  BillingResource:
+    Type: AWS::ApiGateway::Resource
+    Condition: HasBillingEdgeLambdaArn
+    Properties:
+      RestApiId: !Ref CatalogApi
+      ParentId: !GetAtt CatalogApi.RootResourceId
+      PathPart: billing
+
+  # API Gateway Resource: /billing/checkout-session
+  BillingCheckoutSessionResource:
+    Type: AWS::ApiGateway::Resource
+    Condition: HasBillingEdgeLambdaArn
+    Properties:
+      RestApiId: !Ref CatalogApi
+      ParentId: !Ref BillingResource
+      PathPart: checkout-session
+
+  # API Gateway Resource: /webhooks
+  WebhooksResource:
+    Type: AWS::ApiGateway::Resource
+    Condition: HasBillingEdgeLambdaArn
+    Properties:
+      RestApiId: !Ref CatalogApi
+      ParentId: !GetAtt CatalogApi.RootResourceId
+      PathPart: webhooks
+
+  # API Gateway Resource: /webhooks/payments
+  WebhooksPaymentsResource:
+    Type: AWS::ApiGateway::Resource
+    Condition: HasBillingEdgeLambdaArn
+    Properties:
+      RestApiId: !Ref CatalogApi
+      ParentId: !Ref WebhooksResource
+      PathPart: payments
+
+  # API Gateway Resource: /webhooks/payments/paytabs
+  WebhooksPaytabsResource:
+    Type: AWS::ApiGateway::Resource
+    Condition: HasBillingEdgeLambdaArn
+    Properties:
+      RestApiId: !Ref CatalogApi
+      ParentId: !Ref WebhooksPaymentsResource
+      PathPart: paytabs
+
   # Lambda Permission for API Gateway
   CatalogLambdaApiPermission:
     Type: AWS::Lambda::Permission
     Properties:
       FunctionName: !Ref CatalogLambda
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${CatalogApi}/*'
+
+  BillingEdgeLambdaApiPermission:
+    Type: AWS::Lambda::Permission
+    Condition: HasBillingEdgeLambdaArn
+    Properties:
+      FunctionName: !Ref BillingEdgeLambdaArn
       Action: lambda:InvokeFunction
       Principal: apigateway.amazonaws.com
       SourceArn: !Sub 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${CatalogApi}/*'
@@ -1397,6 +1459,49 @@ Resources:
         Type: AWS_PROXY
         Uri: !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${CatalogLambda.Arn}/invocations'
 
+  # API Gateway Method: POST /billing/checkout-session
+  BillingCheckoutSessionPostMethod:
+    Type: AWS::ApiGateway::Method
+    Condition: HasBillingEdgeLambdaArn
+    Properties:
+      RestApiId: !Ref CatalogApi
+      ResourceId: !Ref BillingCheckoutSessionResource
+      HttpMethod: POST
+      AuthorizationType: COGNITO_USER_POOLS
+      AuthorizerId: !Ref CatalogApiTokenAuthorizer
+      Integration:
+        IntegrationHttpMethod: POST
+        Type: AWS_PROXY
+        Uri: !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${BillingEdgeLambdaArn}/invocations'
+
+  # API Gateway Method: OPTIONS /billing/checkout-session (CORS preflight)
+  BillingCheckoutSessionOptionsMethod:
+    Type: AWS::ApiGateway::Method
+    Condition: HasBillingEdgeLambdaArn
+    Properties:
+      RestApiId: !Ref CatalogApi
+      ResourceId: !Ref BillingCheckoutSessionResource
+      HttpMethod: OPTIONS
+      AuthorizationType: NONE
+      Integration:
+        IntegrationHttpMethod: POST
+        Type: AWS_PROXY
+        Uri: !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${BillingEdgeLambdaArn}/invocations'
+
+  # API Gateway Method: POST /webhooks/payments/paytabs (public IPN — no authorizer)
+  WebhooksPaytabsPostMethod:
+    Type: AWS::ApiGateway::Method
+    Condition: HasBillingEdgeLambdaArn
+    Properties:
+      RestApiId: !Ref CatalogApi
+      ResourceId: !Ref WebhooksPaytabsResource
+      HttpMethod: POST
+      AuthorizationType: NONE
+      Integration:
+        IntegrationHttpMethod: POST
+        Type: AWS_PROXY
+        Uri: !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${BillingEdgeLambdaArn}/invocations'
+
   # API Gateway Deployment
   # Include Lambda artifact key in Description so this resource updates whenever the
   # catalog zip changes, forcing a new deployment. Otherwise CloudFormation can leave
@@ -1405,10 +1510,11 @@ Resources:
   # Bump logical id when API methods/resources change so CloudFormation always
   # creates a new deployment; otherwise the stage can keep serving an old snapshot
   # (symptom: GET /courses/{id}/lessons returns API GW 403 Missing Authentication Token).
-  CatalogApiDeploymentV27:
+  CatalogApiDeploymentV28:
     Type: AWS::ApiGateway::Deployment
     DependsOn:
       - CatalogLambdaApiPermission
+      - BillingEdgeLambdaApiPermission
       - CatalogApiTokenAuthorizer
       - CatalogApiPublicReadAuthorizer
       - CoursesGetMethod
@@ -1470,6 +1576,9 @@ Resources:
       - CourseModuleQuizSubmitOptionsMethod
       - CourseModuleQuizStartPostMethod
       - CourseModuleQuizStartOptionsMethod
+      - BillingCheckoutSessionPostMethod
+      - BillingCheckoutSessionOptionsMethod
+      - WebhooksPaytabsPostMethod
     Properties:
       RestApiId: !Ref CatalogApi
       Description: !Sub 'catalog-${LambdaCodeS3Key}'
@@ -1479,7 +1588,7 @@ Resources:
     Type: AWS::ApiGateway::Stage
     Properties:
       RestApiId: !Ref CatalogApi
-      DeploymentId: !Ref CatalogApiDeploymentV27
+      DeploymentId: !Ref CatalogApiDeploymentV28
       StageName: !Ref Environment
       Description: !Sub '${Environment} stage for Catalog API'
       MethodSettings:
