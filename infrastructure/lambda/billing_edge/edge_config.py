@@ -38,6 +38,7 @@ class BillingEdgeConfig:
     paytabs_server_key: str | None
     paytabs_profile_id: str | None
     paytabs_api_domain: str | None
+    fulfillment_queue_url: str | None
 
     def is_prod(self) -> bool:
         return self.deployment_environment.lower() == "prod"
@@ -69,6 +70,7 @@ def load_billing_edge_config() -> BillingEdgeConfig:
         paytabs_server_key=_env("PAYTABS_SERVER_KEY"),
         paytabs_profile_id=_env("PAYTABS_PROFILE_ID"),
         paytabs_api_domain=_env("PAYTABS_API_DOMAIN") or _DEFAULT_API_DOMAIN,
+        fulfillment_queue_url=_env("FULFILLMENT_QUEUE_URL"),
     )
 
 

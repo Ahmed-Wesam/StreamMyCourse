@@ -1,21 +1,29 @@
-"""Billing edge Lambda — checkout session + PayTabs IPN webhook (WS2)."""
+"""Billing edge Lambda — checkout session + PayTabs IPN webhook (WS2/WS3)."""
 
 from __future__ import annotations
 
 import base64
+import hashlib
 import json
 import logging
-from typing import Any, Dict, Optional
+from typing import Any, Dict
 
+from domain.metadata import (
+    EnvironmentMismatchError,
+    InvalidCartMetadataError,
+    MissingSubscriptionPeriodError,
+)
 from edge_config import BillingEdgeConfig, get_payment_provider, load_billing_edge_config
 from providers.mock_adapter import MockPayTabsAdapter
 from providers.paytabs_adapter import BillingUnconfiguredError, PayTabsAdapter
 from providers.port import PaymentProviderPort
+from queue_shim import EnqueueError, enqueue_domain_events
 
 logger = logging.getLogger(__name__)
 
 _load_config = load_billing_edge_config
 _get_payment_provider = get_payment_provider
+_enqueue_domain_events = enqueue_domain_events
 
 _CSP_API = "default-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'"
 
@@ -112,6 +120,15 @@ def _claims_sub(event: Dict[str, Any]) -> str:
     return str(authorizer.get("sub") or "").strip()
 
 
+def _request_id(event: Dict[str, Any]) -> str:
+    rc = event.get("requestContext") or {}
+    if isinstance(rc, dict):
+        rid = rc.get("requestId")
+        if rid:
+            return str(rid)
+    return ""
+
+
 def _handle_checkout(
     event: Dict[str, Any],
     provider: PaymentProviderPort,
@@ -168,11 +185,50 @@ def _handle_webhook(
     if not provider.verify_webhook(raw, signature, server_key):
         return _error_response(401, "invalid_signature", "Invalid webhook signature")
 
-    return _error_response(
-        501,
-        "not_implemented",
-        "Webhook processing is not implemented yet",
-    )
+    payload_digest = hashlib.sha256(raw).hexdigest()
+    request_id = _request_id(event)
+
+    try:
+        events = provider.parse_webhook(
+            raw,
+            deployment_environment=cfg.deployment_environment,
+            payload_digest=payload_digest,
+        )
+    except EnvironmentMismatchError:
+        return _error_response(400, "environment_mismatch", "IPN environment does not match deployment")
+    except InvalidCartMetadataError as exc:
+        return _error_response(400, "invalid_cart_metadata", str(exc))
+    except MissingSubscriptionPeriodError as exc:
+        return _error_response(400, "missing_subscription_period", str(exc))
+
+    if not events:
+        logger.info(
+            "webhook_no_domain_events requestId=%s digest_prefix=%s",
+            request_id,
+            payload_digest[:12],
+        )
+        return _json_response(200, {"status": "ok"})
+
+    queue_url = cfg.fulfillment_queue_url or ""
+    try:
+        _enqueue_domain_events(events, queue_url=queue_url)
+    except EnqueueError:
+        logger.exception(
+            "webhook_enqueue_failed requestId=%s event_count=%s",
+            request_id,
+            len(events),
+        )
+        return _error_response(500, "enqueue_failed", "Failed to enqueue billing events")
+
+    for domain_event in events:
+        logger.info(
+            "webhook_enqueued requestId=%s provider_event_id=%s event_type=%s",
+            request_id,
+            domain_event.provider_event_id,
+            domain_event.event_type,
+        )
+
+    return _json_response(200, {"status": "ok"})
 
 
 def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:

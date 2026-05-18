@@ -30,7 +30,13 @@ class PaymentProviderPort(Protocol):
     ) -> bool:
         """Validate IPN / callback signature."""
 
-    def parse_webhook(self, raw_body: bytes) -> list[Any]:
+    def parse_webhook(
+        self,
+        raw_body: bytes,
+        *,
+        deployment_environment: str,
+        payload_digest: str = "",
+    ) -> list[Any]:
         """Map provider payload to neutral domain events (WS3)."""
 
     def cancel_agreement(self, agreement_id: str) -> None:
