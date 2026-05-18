@@ -243,6 +243,47 @@ if [[ -n "${MEDIA_QUEUE_URL:-}" && -n "${MEDIA_QUEUE_ARN:-}" ]]; then
   MEDIA_PARAM_OVERRIDES=("MediaCleanupQueueUrl=${MEDIA_QUEUE_URL}" "MediaCleanupQueueArn=${MEDIA_QUEUE_ARN}")
 fi
 
+# Billing edge + fulfillment queue (WS2). Override all three to skip payments stack redeploy.
+BILLING_EDGE_ARN="${BILLING_EDGE_LAMBDA_ARN:-}"
+BILLING_QUEUE_URL="${BILLING_FULFILLMENT_QUEUE_URL:-}"
+BILLING_QUEUE_ARN="${BILLING_FULFILLMENT_QUEUE_ARN:-}"
+case "$ENV" in
+dev | prod)
+  if [[ -z "$BILLING_EDGE_ARN" || -z "$BILLING_QUEUE_URL" || -z "$BILLING_QUEUE_ARN" ]]; then
+    PAY_SCRIPT="${ROOT}/scripts/deploy-payments.sh"
+    chmod +x "$PAY_SCRIPT"
+    "$PAY_SCRIPT" "$ENV" "$REGION" "$ARTIFACT_BUCKET" "$SUFFIX"
+    PAYMENTS_STACK="StreamMyCourse-Payments-${ENV}"
+    BILLING_EDGE_ARN="$(aws cloudformation describe-stacks \
+      --stack-name "$PAYMENTS_STACK" \
+      --region "$REGION" \
+      --query 'Stacks[0].Outputs[?OutputKey==`BillingEdgeLambdaArn`].OutputValue' \
+      --output text)"
+    BILLING_QUEUE_URL="$(aws cloudformation describe-stacks \
+      --stack-name "$PAYMENTS_STACK" \
+      --region "$REGION" \
+      --query 'Stacks[0].Outputs[?OutputKey==`BillingFulfillmentQueueUrl`].OutputValue' \
+      --output text)"
+    BILLING_QUEUE_ARN="$(aws cloudformation describe-stacks \
+      --stack-name "$PAYMENTS_STACK" \
+      --region "$REGION" \
+      --query 'Stacks[0].Outputs[?OutputKey==`BillingFulfillmentQueueArn`].OutputValue' \
+      --output text)"
+    if [[ -z "$BILLING_EDGE_ARN" || "$BILLING_EDGE_ARN" == "None" \
+      || -z "$BILLING_QUEUE_URL" || "$BILLING_QUEUE_URL" == "None" \
+      || -z "$BILLING_QUEUE_ARN" || "$BILLING_QUEUE_ARN" == "None" ]]; then
+      echo "Failed to read payments stack outputs (edge ARN / fulfillment queue URL / ARN)" >&2
+      exit 1
+    fi
+  fi
+  ;;
+esac
+
+BILLING_PARAM_OVERRIDES=()
+if [[ -n "${BILLING_EDGE_ARN:-}" ]]; then
+  BILLING_PARAM_OVERRIDES=("BillingEdgeLambdaArn=${BILLING_EDGE_ARN}")
+fi
+
 case "$ENV" in
 prod)
   API_STACK="StreamMyCourse-Api-prod"
@@ -332,7 +373,8 @@ aws cloudformation deploy \
   "GatewayResponseAllowOrigin=${GW_ALLOW}" \
   "${COGNITO_OVERRIDE[@]}" \
   "${RDS_STACK_OVERRIDE[@]}" \
-  "${MEDIA_PARAM_OVERRIDES[@]}"
+  "${MEDIA_PARAM_OVERRIDES[@]}" \
+  "${BILLING_PARAM_OVERRIDES[@]}"
 
 API_ENDPOINT="$(aws cloudformation describe-stacks \
   --stack-name "$API_STACK" \
