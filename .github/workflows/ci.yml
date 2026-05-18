@@ -124,6 +124,7 @@ jobs:
             -r infrastructure/lambda/catalog/requirements.txt \
             -r infrastructure/lambda/cognito_user_profile_sync/requirements.txt \
             -r infrastructure/lambda/catalog_token_authorizer/requirements.txt \
+            -r infrastructure/lambda/billing_fulfillment/requirements.txt \
             -r tests/unit/requirements.txt \
             -r tests/integration/requirements.txt
 

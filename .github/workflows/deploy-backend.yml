@@ -732,6 +732,21 @@ jobs:
           GOOGLE_OAUTH_CLIENT_ID: ${{ secrets.GOOGLE_OAUTH_CLIENT_ID }}
           GOOGLE_OAUTH_CLIENT_SECRET: ${{ secrets.GOOGLE_OAUTH_CLIENT_SECRET }}
 
+      - name: Ensure PayTabs placeholder secret (dev)
+        run: |
+          set -euo pipefail
+          SECRET_ID="streammycourse/paytabs/dev"
+          REGION="${AWS_REGION:-eu-west-1}"
+          if aws secretsmanager describe-secret --secret-id "$SECRET_ID" --region "$REGION" >/dev/null 2>&1; then
+            echo "PayTabs secret already exists: $SECRET_ID"
+            exit 0
+          fi
+          aws secretsmanager create-secret \
+            --name "$SECRET_ID" \
+            --region "$REGION" \
+            --description "PayTabs credentials placeholder (WS3); replace with live keys before go-live" \
+            --secret-string '{"server_key":"placeholder-dev-paytabs-server-key","profile_id":"placeholder-dev-paytabs-profile-id","api_domain":"secure-jordan.paytabs.com"}'
+
       - name: Deploy dev
         env:
           PAYTABS_SERVER_KEY: ${{ secrets.PAYTABS_SERVER_KEY }}
@@ -739,6 +754,7 @@ jobs:
           PAYTABS_API_DOMAIN: ${{ vars.PAYTABS_API_DOMAIN }}
           PAYMENT_PROVIDER: ${{ vars.PAYMENT_PROVIDER }}
           PAYTABS_USE_MOCK: ${{ vars.PAYTABS_USE_MOCK }}
+          BILLING_FULFILLMENT_ALERT_EMAIL: ${{ vars.BILLING_FULFILLMENT_ALERT_EMAIL }}
         run: |
           chmod +x scripts/deploy-backend.sh
           ./scripts/deploy-backend.sh dev
@@ -1172,9 +1188,25 @@ jobs:
           GOOGLE_OAUTH_CLIENT_ID: ${{ secrets.GOOGLE_OAUTH_CLIENT_ID }}
           GOOGLE_OAUTH_CLIENT_SECRET: ${{ secrets.GOOGLE_OAUTH_CLIENT_SECRET }}
 
+      - name: Ensure PayTabs placeholder secret (prod)
+        run: |
+          set -euo pipefail
+          SECRET_ID="streammycourse/paytabs/prod"
+          REGION="${AWS_REGION:-eu-west-1}"
+          if aws secretsmanager describe-secret --secret-id "$SECRET_ID" --region "$REGION" >/dev/null 2>&1; then
+            echo "PayTabs secret already exists: $SECRET_ID"
+            exit 0
+          fi
+          aws secretsmanager create-secret \
+            --name "$SECRET_ID" \
+            --region "$REGION" \
+            --description "PayTabs credentials placeholder (WS3); replace with live keys before go-live" \
+            --secret-string '{"server_key":"placeholder-prod-paytabs-server-key","profile_id":"placeholder-prod-paytabs-profile-id","api_domain":"secure-jordan.paytabs.com"}'
+
       - name: Deploy prod
         env:
           PAYTABS_SECRET_ARN: ${{ secrets.PAYTABS_SECRET_ARN }}
+          BILLING_FULFILLMENT_ALERT_EMAIL: ${{ vars.BILLING_FULFILLMENT_ALERT_EMAIL }}
         run: |
           set -euo pipefail
           if [[ -z "${PAYTABS_SECRET_ARN:-}" ]]; then
