@@ -252,6 +252,7 @@ dev | prod)
   if [[ -z "$BILLING_EDGE_ARN" || -z "$BILLING_QUEUE_URL" || -z "$BILLING_QUEUE_ARN" ]]; then
     PAY_SCRIPT="${ROOT}/scripts/deploy-payments.sh"
     chmod +x "$PAY_SCRIPT"
+    export BILLING_FULFILLMENT_ALERT_EMAIL="${BILLING_FULFILLMENT_ALERT_EMAIL:-}"
     "$PAY_SCRIPT" "$ENV" "$REGION" "$ARTIFACT_BUCKET" "$SUFFIX"
     PAYMENTS_STACK="StreamMyCourse-Payments-${ENV}"
     BILLING_EDGE_ARN="$(aws cloudformation describe-stacks \
