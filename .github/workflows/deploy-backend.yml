@@ -10,7 +10,8 @@
 # Lambda zip is uploaded to catalog-{env}-{gitSha}.zip so LambdaCodeS3Key changes every commit
 # (CFN updates the function).
 # For dev and prod, scripts/deploy-backend.sh deploys StreamMyCourse-MediaCleanup-{env} (SQS + worker)
-# before the API stack and passes queue URL/ARN into api-stack.yaml for async course media deletes.
+# and StreamMyCourse-Payments-{env} (billing edge + fulfillment queue) before the API stack, then
+# passes media cleanup queue URL/ARN and billing edge ARN + fulfillment queue URL/ARN into api-stack.yaml.
 name: Deploy
 
 on:
@@ -732,6 +733,12 @@ jobs:
           GOOGLE_OAUTH_CLIENT_SECRET: ${{ secrets.GOOGLE_OAUTH_CLIENT_SECRET }}
 
       - name: Deploy dev
+        env:
+          PAYTABS_SERVER_KEY: ${{ secrets.PAYTABS_SERVER_KEY }}
+          PAYTABS_PROFILE_ID: ${{ vars.PAYTABS_PROFILE_ID }}
+          PAYTABS_API_DOMAIN: ${{ vars.PAYTABS_API_DOMAIN }}
+          PAYMENT_PROVIDER: ${{ vars.PAYMENT_PROVIDER }}
+          PAYTABS_USE_MOCK: ${{ vars.PAYTABS_USE_MOCK }}
         run: |
           chmod +x scripts/deploy-backend.sh
           ./scripts/deploy-backend.sh dev
@@ -1166,7 +1173,20 @@ jobs:
           GOOGLE_OAUTH_CLIENT_SECRET: ${{ secrets.GOOGLE_OAUTH_CLIENT_SECRET }}
 
       - name: Deploy prod
+        env:
+          PAYTABS_SECRET_ARN: ${{ secrets.PAYTABS_SECRET_ARN }}
         run: |
+          set -euo pipefail
+          if [[ -z "${PAYTABS_SECRET_ARN:-}" ]]; then
+            PAYTABS_SECRET_ARN="$(aws secretsmanager describe-secret \
+              --secret-id streammycourse/paytabs/prod \
+              --region "${AWS_REGION:-eu-west-1}" \
+              --query ARN \
+              --output text 2>/dev/null || true)"
+            if [[ -n "${PAYTABS_SECRET_ARN}" && "${PAYTABS_SECRET_ARN}" != "None" ]]; then
+              export PAYTABS_SECRET_ARN
+            fi
+          fi
           chmod +x scripts/deploy-backend.sh
           ./scripts/deploy-backend.sh prod
 
