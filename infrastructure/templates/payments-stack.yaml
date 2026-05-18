@@ -1,0 +1,286 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'StreamMyCourse - Billing edge (no VPC) + fulfillment queue/worker (VPC stub, WS2)'
+
+Parameters:
+  Environment:
+    Type: String
+    Default: dev
+    AllowedValues:
+      - dev
+      - prod
+    Description: Deployment environment
+
+  LambdaCodeS3Bucket:
+    Type: String
+    Description: Artifacts bucket containing billing Lambda deployment zips
+
+  BillingEdgeCodeS3Key:
+    Type: String
+    Description: S3 key for the billing edge Lambda deployment package
+
+  BillingFulfillmentCodeS3Key:
+    Type: String
+    Description: S3 key for the billing fulfillment Lambda deployment package
+
+  RdsStackName:
+    Type: String
+    MinLength: 1
+    Description: >-
+      RDS stack (e.g. StreamMyCourse-Rds-dev) whose exports provide VPC subnet
+      and Lambda security group for the fulfillment worker.
+
+  MessageRetentionPeriod:
+    Type: Number
+    Default: 1209600
+    Description: SQS message retention in seconds (default 14 days)
+
+  MaxReceiveCount:
+    Type: Number
+    Default: 3
+    Description: Receives before message goes to DLQ
+
+  PaymentProvider:
+    Type: String
+    Default: ''
+    Description: PAYMENT_PROVIDER env (e.g. mock, paytabs); empty when unset
+
+  PaytabsApiDomain:
+    Type: String
+    Default: secure-jordan.paytabs.com
+    Description: PAYTABS_API_DOMAIN for PayTabs HPP (placeholder until dashboard confirms)
+
+  PaytabsProfileId:
+    Type: String
+    Default: ''
+    Description: PAYTABS_PROFILE_ID (dev inline keys; prod uses SM in later slices)
+
+  PaytabsServerKey:
+    Type: String
+    Default: ''
+    NoEcho: true
+    Description: PAYTABS_SERVER_KEY from deploy overrides (dev); omit on prod SM-only
+
+  PaytabsSecretArn:
+    Type: String
+    Default: ''
+    Description: Optional PAYTABS_SECRET_ARN (Secrets Manager)
+
+  PaytabsUseMock:
+    Type: String
+    Default: 'false'
+    AllowedValues:
+      - 'true'
+      - 'false'
+    Description: PAYTABS_USE_MOCK — explicit mock on non-prod only
+
+Resources:
+  BillingFulfillmentDlq:
+    Type: AWS::SQS::Queue
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      QueueName: !Sub 'StreamMyCourse-BillingFulfillment-DLQ-${Environment}'
+      MessageRetentionPeriod: !Ref MessageRetentionPeriod
+      Tags:
+        - Key: Project
+          Value: StreamMyCourse
+        - Key: Environment
+          Value: !Ref Environment
+
+  BillingFulfillmentQueue:
+    Type: AWS::SQS::Queue
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      QueueName: !Sub 'StreamMyCourse-BillingFulfillment-${Environment}'
+      VisibilityTimeout: 300
+      MessageRetentionPeriod: !Ref MessageRetentionPeriod
+      RedrivePolicy:
+        deadLetterTargetArn: !GetAtt BillingFulfillmentDlq.Arn
+        maxReceiveCount: !Ref MaxReceiveCount
+      Tags:
+        - Key: Project
+          Value: StreamMyCourse
+        - Key: Environment
+          Value: !Ref Environment
+
+  BillingEdgeRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub 'StreamMyCourse-BillingEdgeRole-${Environment}'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: CloudWatchLogs
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource: !Sub 'arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/StreamMyCourse-BillingEdge-${Environment}:*'
+        - PolicyName: SqsBillingFulfillmentSend
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - sqs:SendMessage
+                Resource: !GetAtt BillingFulfillmentQueue.Arn
+        - PolicyName: SecretsManagerPaytabs
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - secretsmanager:GetSecretValue
+                Resource: !Sub 'arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:streammycourse/paytabs/*'
+      Tags:
+        - Key: Project
+          Value: StreamMyCourse
+        - Key: Environment
+          Value: !Ref Environment
+
+  BillingEdge:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub 'StreamMyCourse-BillingEdge-${Environment}'
+      Runtime: python3.11
+      Handler: handler.lambda_handler
+      Timeout: 30
+      MemorySize: 256
+      Role: !GetAtt BillingEdgeRole.Arn
+      Code:
+        S3Bucket: !Ref LambdaCodeS3Bucket
+        S3Key: !Ref BillingEdgeCodeS3Key
+      Environment:
+        Variables:
+          DEPLOYMENT_ENVIRONMENT: !Ref Environment
+          FULFILLMENT_QUEUE_URL: !Ref BillingFulfillmentQueue
+          PAYMENT_PROVIDER: !Ref PaymentProvider
+          PAYTABS_API_DOMAIN: !Ref PaytabsApiDomain
+          PAYTABS_PROFILE_ID: !Ref PaytabsProfileId
+          PAYTABS_SERVER_KEY: !Ref PaytabsServerKey
+          PAYTABS_SECRET_ARN: !Ref PaytabsSecretArn
+          PAYTABS_USE_MOCK: !Ref PaytabsUseMock
+          LOG_LEVEL: INFO
+      Tags:
+        - Key: Project
+          Value: StreamMyCourse
+        - Key: Environment
+          Value: !Ref Environment
+
+  BillingFulfillmentRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub 'StreamMyCourse-BillingFulfillmentRole-${Environment}'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: CloudWatchLogs
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource: !Sub 'arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/StreamMyCourse-BillingFulfillment-${Environment}:*'
+        - PolicyName: SqsConsumeFulfillmentQueue
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - sqs:ReceiveMessage
+                  - sqs:DeleteMessage
+                  - sqs:GetQueueAttributes
+                  - sqs:ChangeMessageVisibility
+                Resource: !GetAtt BillingFulfillmentQueue.Arn
+        - PolicyName: LambdaVpcEni
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - ec2:CreateNetworkInterface
+                  - ec2:DescribeNetworkInterfaces
+                  - ec2:DeleteNetworkInterface
+                  - ec2:AssignPrivateIpAddresses
+                  - ec2:UnassignPrivateIpAddresses
+                Resource: '*'
+      Tags:
+        - Key: Project
+          Value: StreamMyCourse
+        - Key: Environment
+          Value: !Ref Environment
+
+  BillingFulfillment:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub 'StreamMyCourse-BillingFulfillment-${Environment}'
+      Runtime: python3.11
+      Handler: worker.lambda_handler
+      Timeout: 300
+      MemorySize: 256
+      Role: !GetAtt BillingFulfillmentRole.Arn
+      Code:
+        S3Bucket: !Ref LambdaCodeS3Bucket
+        S3Key: !Ref BillingFulfillmentCodeS3Key
+      VpcConfig:
+        SubnetIds:
+          - !ImportValue
+            'Fn::Sub': '${RdsStackName}-PrivateSubnetId'
+        SecurityGroupIds:
+          - !ImportValue
+            'Fn::Sub': '${RdsStackName}-LambdaSecurityGroupId'
+      Environment:
+        Variables:
+          LOG_LEVEL: INFO
+      Tags:
+        - Key: Project
+          Value: StreamMyCourse
+        - Key: Environment
+          Value: !Ref Environment
+
+  BillingFulfillmentEventSourceMapping:
+    Type: AWS::Lambda::EventSourceMapping
+    Properties:
+      BatchSize: 10
+      Enabled: true
+      EventSourceArn: !GetAtt BillingFulfillmentQueue.Arn
+      FunctionName: !Ref BillingFulfillment
+      FunctionResponseTypes:
+        - ReportBatchItemFailures
+
+Outputs:
+  BillingEdgeLambdaArn:
+    Description: ARN of the billing edge Lambda (api-stack integration target)
+    Value: !GetAtt BillingEdge.Arn
+    Export:
+      Name: !Sub '${AWS::StackName}-BillingEdgeLambdaArn'
+
+  BillingFulfillmentQueueUrl:
+    Description: URL of the billing fulfillment SQS queue
+    Value: !Ref BillingFulfillmentQueue
+    Export:
+      Name: !Sub '${AWS::StackName}-BillingFulfillmentQueueUrl'
+
+  BillingFulfillmentQueueArn:
+    Description: ARN of the billing fulfillment SQS queue
+    Value: !GetAtt BillingFulfillmentQueue.Arn
+    Export:
+      Name: !Sub '${AWS::StackName}-BillingFulfillmentQueueArn'
