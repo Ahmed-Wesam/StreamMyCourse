@@ -238,5 +238,5 @@ aws cloudformation deploy \
 # W4-P4: sync teacher_merchant_accounts when teacher sub is configured (skip if RDS unreachable).
 if [[ -n "${BILLING_TEACHER_SUB:-}" ]]; then
   export DEPLOYMENT_ENVIRONMENT="${ENV}"
-  "${ROOT}/scripts/billing-sync-merchant-account.sh" "${ENV}"
+  bash "${ROOT}/scripts/billing-sync-merchant-account.sh" "${ENV}"
 fi
