@@ -1,4 +1,4 @@
-"""W6-P1a: has_checkout_blocking_subscription SQL (active / past_due only)."""
+"""W8-P6: has_checkout_blocking_subscription matches granting access (in-period paid)."""
 
 from __future__ import annotations
 
@@ -48,7 +48,7 @@ def _repo(*, environment: str = "dev") -> tuple[SubscriptionRdsRepository, FakeC
 
 
 class TestCheckoutBlockingSubscriptionSql:
-    def test_sql_targets_blocking_statuses_only(self) -> None:
+    def test_sql_matches_granting_predicate_including_canceled_in_period(self) -> None:
         repo, conn = _repo()
         conn.cursor_obj.rows_to_return = [(1,)]
 
@@ -58,9 +58,9 @@ class TestCheckoutBlockingSubscriptionSql:
         assert "user_subscriptions" in sql
         assert "active" in sql
         assert "past_due" in sql
+        assert "canceled" in sql
+        assert "cancel_at_period_end" in sql
         assert "current_period_end" in sql
-        assert "incomplete" not in sql
-        assert "expired" not in sql.lower() or "status in" in sql.lower()
         assert params == ("student-sub", "dev")
 
     @pytest.mark.parametrize(

@@ -111,5 +111,5 @@ def test_handler_checkout_errors_match_subscribe_contract_gates() -> None:
     source = _read_billing_edge_source("handler.py")
     assert '"billing_unconfigured"' in source or "'billing_unconfigured'" in source
     assert re.search(r'_error_response\s*\(\s*503\s*,\s*["\']billing_unconfigured["\']', source)
-    assert "reactivation_required" in source
+    assert "reactivation_required" not in source
 

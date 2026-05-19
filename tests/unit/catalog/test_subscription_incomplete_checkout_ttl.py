@@ -56,8 +56,7 @@ class TestIncompleteCheckoutTtl:
     def test_stale_incomplete_cleared_before_retry(self) -> None:
         svc, conn = _service()
         conn.cursor_obj.fetchone_results = [
-            None,  # reactivation
-            None,  # active/past_due block
+            None,  # in-period access block
             (50000, "JOD", "monthly_all_access"),  # plan
             None,  # fresh incomplete inside reserve txn
         ]
@@ -73,7 +72,6 @@ class TestIncompleteCheckoutTtl:
     def test_fresh_incomplete_blocks_second_precheck(self) -> None:
         svc, conn = _service()
         conn.cursor_obj.fetchone_results = [
-            None,
             None,
             (50000, "JOD", "monthly_all_access"),
             (1,),  # fresh incomplete inside reserve txn

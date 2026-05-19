@@ -122,7 +122,7 @@ def test_cancel_subscription_returns_503_on_catalog_invoke_error(
 
 @pytest.mark.parametrize(
     "error_code",
-    ["already_canceled", "not_subscribed", "cannot_cancel"],
+    ["not_subscribed", "cannot_cancel"],
 )
 def test_cancel_subscription_maps_catalog_error_to_409(
     monkeypatch: pytest.MonkeyPatch,
@@ -140,6 +140,26 @@ def test_cancel_subscription_maps_catalog_error_to_409(
     assert _parse_body(resp)["code"] == error_code
 
 
+def test_cancel_subscription_returns_provider_agreement_missing_when_already_canceled_without_id(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _patch_provider(monkeypatch)
+    monkeypatch.setattr(
+        billing_handler,
+        "_invoke_billing_cancel_at_period_end",
+        lambda **_kw: {
+            "errorCode": "already_canceled",
+            "status": "canceled",
+            "cancelAtPeriodEnd": True,
+            "currentPeriodEnd": "2026-06-18T00:00:00.000Z",
+        },
+    )
+
+    resp = billing_handler.lambda_handler(_cancel_event(), None)
+    assert resp["statusCode"] == 502
+    assert _parse_body(resp)["code"] == "provider_agreement_missing"
+
+
 def test_cancel_subscription_returns_200_on_success(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -148,6 +168,7 @@ def test_cancel_subscription_returns_200_on_success(
         "status": "canceled",
         "cancelAtPeriodEnd": True,
         "currentPeriodEnd": "2026-06-18T00:00:00.000Z",
+        "providerSubscriptionId": "AGR-100",
     }
     captured: Dict[str, str] = {}
     monkeypatch.setattr(
@@ -161,5 +182,9 @@ def test_cancel_subscription_returns_200_on_success(
 
     resp = billing_handler.lambda_handler(_cancel_event(), None)
     assert resp["statusCode"] == 200
-    assert _parse_body(resp) == catalog_payload
+    assert _parse_body(resp) == {
+        "status": "canceled",
+        "cancelAtPeriodEnd": True,
+        "currentPeriodEnd": "2026-06-18T00:00:00.000Z",
+    }
     assert captured == {"user_sub": "student-sub-1", "arn": _CATALOG_ARN}

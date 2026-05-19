@@ -2,6 +2,11 @@
 
 Uses the dev mock PayTabs adapter (``X-Mock-Signature: test``). Never log full JWTs
 or ``PAYTABS_SERVER_KEY`` values.
+
+**WS8 manage cancel:** ``POST /billing/cancel-subscription`` triggers billing-edge
+``cancel_agreement`` after catalog cancel-at-period-end. The mock adapter is a no-op
+(see ``tests/unit/billing/test_mock_adapter_cancel_resume.py``); HTTPS tests cannot
+spy provider calls—assert cancel **200** (not **502** ``provider_cancel_failed``).
 """
 
 from __future__ import annotations
@@ -270,9 +275,9 @@ def skip_if_billing_webhook_unavailable() -> None:
 
 
 def skip_if_checkout_unavailable(resp: httpx.Response) -> None:
-    """Skip when checkout route is missing or billing is not configured."""
+    """Skip when checkout/manage route is missing or billing is not configured."""
     if resp.status_code == 404:
-        pytest.skip("billing checkout route not deployed (404)")
+        pytest.skip("billing route not deployed (404)")
     if resp.status_code == 503:
         try:
             code = resp.json().get("code")
@@ -303,62 +308,6 @@ def skip_if_mock_ipn_unavailable(resp: httpx.Response) -> None:
         )
 
 
-def build_mock_ipn_renewed(
-    user_sub: str,
-    *,
-    environment: str | None = None,
-    plan_id: str | None = None,
-    period_start: str | None = None,
-    period_end: str | None = None,
-    transaction_time: str | None = None,
-    agreement_id: str | None = None,
-) -> dict[str, Any]:
-    """Build a mock PayTabs recurring Sale IPN (``subscription.renewed``)."""
-    body = build_mock_ipn_activated(
-        user_sub,
-        environment=environment,
-        plan_id=plan_id,
-        period_start=period_start,
-        period_end=period_end,
-        transaction_time=transaction_time,
-    )
-    body["is_recurring"] = True
-    body["recurring_count"] = 2
-    body["tran_ref"] = f"MOCK-REN-{uuid.uuid4().hex[:12]}"
-    if agreement_id:
-        body["agreement_id"] = agreement_id
-    return body
-
-
-def post_mock_subscription_renewed(
-    api_base_url: str,
-    user_sub: str,
-    *,
-    environment: str | None = None,
-    plan_id: str | None = None,
-    agreement_id: str | None = None,
-    timeout_sec: float = 30.0,
-) -> httpx.Response:
-    """POST mock recurring renewal IPN (W7-P3c integration)."""
-    env = environment or billing_environment()
-    body = build_mock_ipn_renewed(
-        user_sub,
-        environment=env,
-        plan_id=plan_id,
-        agreement_id=agreement_id,
-    )
-    url = f"{api_base_url.rstrip('/')}{_WEBHOOK_PATH}"
-    with httpx.Client(timeout=timeout_sec) as client:
-        return client.post(
-            url,
-            json=body,
-            headers={
-                "Content-Type": "application/json",
-                "X-Mock-Signature": _MOCK_SIGNATURE,
-            },
-        )
-
-
 def skip_if_manage_read_unavailable(resp: httpx.Response) -> None:
     """Skip when GET /billing/subscription route is missing (not ``not_subscribed``)."""
     if resp.status_code == 404:
@@ -384,22 +333,14 @@ def post_cancel_subscription(
     *,
     timeout_sec: float = 30.0,
 ) -> httpx.Response:
-    """POST ``/billing/cancel-subscription`` (empty JSON body)."""
+    """POST ``/billing/cancel-subscription`` (empty JSON body).
+
+    On deployed stacks with WS8 billing edge, a successful catalog cancel is followed by
+    provider ``cancel_agreement`` (mock no-op). A **502** ``provider_cancel_failed`` means
+    the provider step failed after RDS was updated.
+    """
     return student_api.raw.post(
         "/billing/cancel-subscription",
-        json={},
-        timeout=timeout_sec,
-    )
-
-
-def post_reactivate_subscription(
-    student_api: ApiClient,
-    *,
-    timeout_sec: float = 30.0,
-) -> httpx.Response:
-    """POST ``/billing/reactivate-subscription`` (empty JSON body)."""
-    return student_api.raw.post(
-        "/billing/reactivate-subscription",
         json={},
         timeout=timeout_sec,
     )

@@ -10,11 +10,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from billing._imports import billing_handler
-from catalog_invoke import (
-    _INTERNAL_CANCEL_AT_PERIOD_END,
-    _INTERNAL_REACTIVATE,
-    _INTERNAL_REACTIVATE_PREPARE,
-)
+from catalog_invoke import _INTERNAL_CANCEL_AT_PERIOD_END
 from edge_config import BillingEdgeConfig
 from providers.mock_adapter import MockPayTabsAdapter
 
@@ -86,34 +82,11 @@ def _mock_lambda_invoke_success(*, catalog_response: Dict[str, Any]) -> MagicMoc
     return mock_client
 
 
-def _mock_lambda_invoke_sequence(*responses: Dict[str, Any]) -> MagicMock:
-    """Fresh Payload stream per invoke (reactivate calls catalog twice)."""
-    pending: List[Dict[str, Any]] = list(responses)
-    mock_client = MagicMock()
-
-    def _invoke(**_kwargs: Any) -> Dict[str, Any]:
-        if not pending:
-            raise AssertionError("no more catalog responses configured")
-        body = pending.pop(0)
-        return {
-            "StatusCode": 200,
-            "Payload": BytesIO(json.dumps(body).encode("utf-8")),
-        }
-
-    mock_client.invoke.side_effect = _invoke
-    return mock_client
-
-
-@pytest.mark.parametrize(
-    "path",
-    ["/billing/cancel-subscription", "/billing/reactivate-subscription"],
-)
-def test_manage_route_returns_401_without_authorizer_claims(
+def test_cancel_subscription_returns_401_without_authorizer_claims(
     monkeypatch: pytest.MonkeyPatch,
-    path: str,
 ) -> None:
     _patch_provider(monkeypatch)
-    evt = _manage_event(path, with_claims=False)
+    evt = _manage_event("/billing/cancel-subscription", with_claims=False)
 
     resp = billing_handler.lambda_handler(evt, None)
 
@@ -131,6 +104,7 @@ def test_cancel_subscription_catalog_invoke_uses_jwt_sub_not_body(
             "status": "canceled",
             "cancelAtPeriodEnd": True,
             "currentPeriodEnd": "2026-06-18T00:00:00.000Z",
+            "providerSubscriptionId": "AGR-100",
         },
     )
 
@@ -158,48 +132,3 @@ def test_cancel_subscription_catalog_invoke_uses_jwt_sub_not_body(
     assert payload["internal"] == _INTERNAL_CANCEL_AT_PERIOD_END
     mock_client.invoke.assert_called_once()
     assert mock_client.invoke.call_args.kwargs["FunctionName"] == _CATALOG_ARN
-
-
-def test_reactivate_subscription_catalog_invoke_uses_jwt_sub_not_body(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    _patch_provider(monkeypatch)
-    captured_payloads: List[Dict[str, Any]] = []
-    base_client = _mock_lambda_invoke_sequence(
-        {"providerSubscriptionId": "AGR-100"},
-        {
-            "status": "active",
-            "cancelAtPeriodEnd": False,
-            "currentPeriodEnd": "2026-06-18T00:00:00.000Z",
-        },
-    )
-
-    def _capture_invoke(**kwargs: Any) -> Dict[str, Any]:
-        raw = kwargs.get("Payload")
-        assert raw is not None
-        captured_payloads.append(json.loads(raw.decode("utf-8")))
-        return base_client.invoke(**kwargs)
-
-    mock_client = MagicMock()
-    mock_client.invoke.side_effect = _capture_invoke
-
-    evt = _manage_event(
-        "/billing/reactivate-subscription",
-        body={"userSub": _BODY_SUB, "user_sub": _BODY_SUB},
-    )
-
-    with patch("catalog_invoke.boto3.client", return_value=mock_client):
-        resp = billing_handler.lambda_handler(evt, None)
-
-    assert resp["statusCode"] == 200
-    assert len(captured_payloads) == 2
-    prepare_payload, reactivate_payload = captured_payloads
-    assert prepare_payload["userSub"] == _JWT_SUB
-    assert prepare_payload["userSub"] != _BODY_SUB
-    assert prepare_payload["internal"] == _INTERNAL_REACTIVATE_PREPARE
-    assert reactivate_payload["userSub"] == _JWT_SUB
-    assert reactivate_payload["userSub"] != _BODY_SUB
-    assert reactivate_payload["internal"] == _INTERNAL_REACTIVATE
-    assert mock_client.invoke.call_count == 2
-    for call in mock_client.invoke.call_args_list:
-        assert call.kwargs["FunctionName"] == _CATALOG_ARN

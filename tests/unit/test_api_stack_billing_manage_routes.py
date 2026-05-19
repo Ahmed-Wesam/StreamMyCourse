@@ -33,55 +33,41 @@ def test_api_stack_billing_subscription_get_on_catalog() -> None:
     assert "${BillingEdgeLambdaArn}/invocations" not in get_block
 
 
-def test_api_stack_billing_cancel_and_reactivate_on_edge() -> None:
+def test_api_stack_billing_cancel_on_edge_no_reactivate() -> None:
     text = _api_stack_text()
     assert "BillingCancelSubscriptionResource:" in text
     assert "PathPart: cancel-subscription" in text
-    assert "BillingReactivateSubscriptionResource:" in text
-    assert "PathPart: reactivate-subscription" in text
+    assert "BillingReactivateSubscriptionResource:" not in text
+    assert "PathPart: reactivate-subscription" not in text
 
-    for post_name, options_name in (
-        ("BillingCancelSubscriptionPostMethod", "BillingCancelSubscriptionOptionsMethod"),
-        (
-            "BillingReactivateSubscriptionPostMethod",
-            "BillingReactivateSubscriptionOptionsMethod",
-        ),
-    ):
-        assert f"{post_name}:" in text
-        assert f"{options_name}:" in text
-        post_block = text[text.index(f"{post_name}:") : text.index(f"{options_name}:")]
-        assert "HttpMethod: POST" in post_block
-        assert "AuthorizationType: COGNITO_USER_POOLS" in post_block
-        assert "AuthorizerId: !Ref CatalogApiTokenAuthorizer" in post_block
-        assert "${BillingEdgeLambdaArn}/invocations" in post_block
-
-    options_blocks = [
-        text.split("BillingCancelSubscriptionOptionsMethod:")[1].split(
-            "BillingReactivateSubscriptionPostMethod:"
-        )[0],
-        text.split("BillingReactivateSubscriptionOptionsMethod:")[1].split(
-            "WebhooksPaytabsPostMethod:"
-        )[0],
+    post_block = text[
+        text.index("BillingCancelSubscriptionPostMethod:")
+        : text.index("BillingCancelSubscriptionOptionsMethod:")
     ]
-    for block in options_blocks:
-        assert "HttpMethod: OPTIONS" in block
-        assert "AuthorizationType: NONE" in block
-        assert "${BillingEdgeLambdaArn}/invocations" in block
+    assert "HttpMethod: POST" in post_block
+    assert "AuthorizationType: COGNITO_USER_POOLS" in post_block
+    assert "AuthorizerId: !Ref CatalogApiTokenAuthorizer" in post_block
+    assert "${BillingEdgeLambdaArn}/invocations" in post_block
+
+    options_block = text.split("BillingCancelSubscriptionOptionsMethod:")[1].split(
+        "WebhooksPaytabsPostMethod:"
+    )[0]
+    assert "HttpMethod: OPTIONS" in options_block
+    assert "AuthorizationType: NONE" in options_block
+    assert "${BillingEdgeLambdaArn}/invocations" in options_block
 
 
-def test_api_stack_billing_manage_deployment_v30() -> None:
+def test_api_stack_billing_manage_deployment_v31() -> None:
     text = _api_stack_text()
-    assert "CatalogApiDeploymentV30:" in text
-    assert "CatalogApiDeploymentV29:" not in text
-    deployment_block = text.split("CatalogApiDeploymentV30:")[1].split("CatalogApiStage:")[0]
+    assert "CatalogApiDeploymentV31:" in text
+    assert "CatalogApiDeploymentV30:" not in text
+    deployment_block = text.split("CatalogApiDeploymentV31:")[1].split("CatalogApiStage:")[0]
     # Conditional billing methods must not be in DependsOn (cfn-lint E3005).
     for name in (
         "BillingSubscriptionGetMethod",
         "BillingSubscriptionOptionsMethod",
         "BillingCancelSubscriptionPostMethod",
         "BillingCancelSubscriptionOptionsMethod",
-        "BillingReactivateSubscriptionPostMethod",
-        "BillingReactivateSubscriptionOptionsMethod",
     ):
         assert name not in deployment_block
-    assert "DeploymentId: !Ref CatalogApiDeploymentV30" in text
+    assert "DeploymentId: !Ref CatalogApiDeploymentV31" in text

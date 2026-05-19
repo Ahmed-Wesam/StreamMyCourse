@@ -1,7 +1,7 @@
 """W7-P7: payments-stack IAM for WS7 manage catalog invokes (verify-only).
 
-WS7 billing edge invokes catalog internal events ``billing.cancel_at_period_end`` and
-``billing.reactivate`` via the same ``CATALOG_LAMBDA_ARN`` / ``lambda:InvokeFunction``
+WS7 billing edge invokes catalog internal events such as ``billing.cancel_at_period_end``
+via the same ``CATALOG_LAMBDA_ARN`` / ``lambda:InvokeFunction``
 path as ``billing.checkout`` (see ``billing_edge/catalog_invoke.py``). IAM is granted
 on the catalog Lambda **ARN**, not per internal event name — no separate stack policy
 is required for manage vs checkout.
@@ -56,7 +56,6 @@ def test_single_catalog_invoke_policy_for_all_internal_billing_events() -> None:
     iam_tail = text.split("BillingEdgeCatalogInvokePolicy:")[1]
     assert "billing.checkout" not in iam_tail
     assert "billing.cancel_at_period_end" not in iam_tail
-    assert "billing.reactivate" not in iam_tail
 
     # No second catalog invoke policy on BillingEdgeRole.
     role_attach_pattern = re.compile(
