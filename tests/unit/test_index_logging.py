@@ -61,6 +61,7 @@ class TestConfigureLoggingCalled:
             MagicMock(),
             MagicMock(),
             MagicMock(),
+            MagicMock(),
         )
 
         # Need to reimport after patching
@@ -89,6 +90,7 @@ class TestContextBinding:
     ):
         """Context is bound before controller is called."""
         mock_bootstrap.return_value = (
+            MagicMock(),
             MagicMock(),
             MagicMock(),
             MagicMock(),
@@ -123,6 +125,7 @@ class TestRequestCompletionLog:
     def test_request_completion_log_format(self, mock_bootstrap, api_gateway_event, caplog):
         """Request completion log has required fields."""
         mock_bootstrap.return_value = (
+            MagicMock(),
             MagicMock(),
             MagicMock(),
             MagicMock(),
@@ -168,6 +171,7 @@ class TestCleanupInFinally:
             MagicMock(),
             MagicMock(),
             MagicMock(),
+            MagicMock(),
         )
 
         import importlib
@@ -189,7 +193,7 @@ class TestCleanupInFinally:
         # Return unconfigured state (service=None) which triggers 503 response
         mock_cfg = MagicMock()
         mock_cfg.allowed_origins = ["*"]
-        mock_bootstrap.return_value = (mock_cfg, None, None, None, None)
+        mock_bootstrap.return_value = (mock_cfg, None, None, None, None, None)
 
         import importlib
         import index
@@ -222,6 +226,7 @@ class TestLambdaRequestIdCapture:
             MagicMock(),
             MagicMock(),
             MagicMock(),
+            MagicMock(),
         )
 
         import importlib
@@ -244,6 +249,7 @@ class TestDurationTracking:
     def test_duration_ms_positive(self, mock_bootstrap, api_gateway_event, caplog):
         """Duration is positive and reasonable."""
         mock_bootstrap.return_value = (
+            MagicMock(),
             MagicMock(),
             MagicMock(),
             MagicMock(),
@@ -295,6 +301,7 @@ class TestStatusCodeInLog:
     def test_status_code_logged(self, mock_bootstrap, api_gateway_event, caplog):
         """HTTP status code from response is in logs."""
         mock_bootstrap.return_value = (
+            MagicMock(),
             MagicMock(),
             MagicMock(),
             MagicMock(),
