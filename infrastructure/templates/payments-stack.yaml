@@ -371,6 +371,30 @@ Resources:
         - Key: Environment
           Value: !Ref Environment
 
+  BillingEdgeErrorAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub 'StreamMyCourse-BillingEdge-${Environment}-Errors'
+      AlarmDescription: Alerts when billing edge Lambda fails
+      MetricName: Errors
+      Namespace: AWS/Lambda
+      Statistic: Sum
+      Period: 86400
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      Dimensions:
+        - Name: FunctionName
+          Value: !Ref BillingEdge
+      TreatMissingData: notBreaching
+      AlarmActions:
+        - !Ref BillingFulfillmentAlertTopic
+      Tags:
+        - Key: Project
+          Value: StreamMyCourse
+        - Key: Environment
+          Value: !Ref Environment
+
   BillingFulfillmentEventSourceMapping:
     Type: AWS::Lambda::EventSourceMapping
     Properties:
