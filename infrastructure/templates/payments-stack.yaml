@@ -80,8 +80,34 @@ Parameters:
       Optional email for DLQ CloudWatch alarm notifications (SNS email subscription).
       Leave empty to create the topic without a subscription (configure in console).
 
+  CatalogLambdaArn:
+    Type: String
+    Default: ''
+    Description: >-
+      ARN of the catalog Lambda (checkout precheck invoke). Empty skips invoke IAM
+      and leaves CATALOG_LAMBDA_ARN unset until a follow-up deploy.
+
+  SubscriptionPlanId:
+    Type: String
+    Default: ''
+    Description: >-
+      Default subscription_plans.id for checkout (dev/prod seed UUIDs from 011).
+
+  BillingReturnSuccessUrl:
+    Type: String
+    Default: ''
+    Description: >-
+      PayTabs return URL after successful HPP (student edge host /billing/success).
+
+  BillingReturnCancelUrl:
+    Type: String
+    Default: ''
+    Description: >-
+      PayTabs return URL when checkout is canceled (student edge /billing/cancel).
+
 Conditions:
   HasBillingFulfillmentAlertEmail: !Not [!Equals [!Ref BillingFulfillmentAlertEmail, '']]
+  HasCatalogLambdaArn: !Not [!Equals [!Ref CatalogLambdaArn, '']]
 
 Resources:
   BillingFulfillmentAlertTopic:
@@ -176,6 +202,21 @@ Resources:
         - Key: Environment
           Value: !Ref Environment
 
+  BillingEdgeCatalogInvokePolicy:
+    Type: AWS::IAM::Policy
+    Condition: HasCatalogLambdaArn
+    Properties:
+      PolicyName: InvokeCatalogCheckoutPrecheck
+      Roles:
+        - !Ref BillingEdgeRole
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Action:
+              - lambda:InvokeFunction
+            Resource: !Ref CatalogLambdaArn
+
   BillingEdge:
     Type: AWS::Lambda::Function
     Properties:
@@ -198,6 +239,10 @@ Resources:
           PAYTABS_SERVER_KEY: !Ref PaytabsServerKey
           PAYTABS_SECRET_ARN: !Ref PaytabsSecretArn
           PAYTABS_USE_MOCK: !Ref PaytabsUseMock
+          CATALOG_LAMBDA_ARN: !Ref CatalogLambdaArn
+          SUBSCRIPTION_PLAN_ID: !Ref SubscriptionPlanId
+          BILLING_RETURN_SUCCESS_URL: !Ref BillingReturnSuccessUrl
+          BILLING_RETURN_CANCEL_URL: !Ref BillingReturnCancelUrl
           LOG_LEVEL: INFO
       Tags:
         - Key: Project

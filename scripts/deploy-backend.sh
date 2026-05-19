@@ -385,3 +385,42 @@ API_ENDPOINT="$(aws cloudformation describe-stacks \
   --query 'Stacks[0].Outputs[?OutputKey==`ApiEndpoint`].OutputValue' \
   --output text)"
 echo "ApiEndpoint: $API_ENDPOINT"
+
+# WS6: wire catalog checkout precheck invoke + return URLs on billing edge (after catalog exists).
+CATALOG_FN_NAME="$(aws cloudformation describe-stacks \
+  --stack-name "$API_STACK" \
+  --region "$REGION" \
+  --query 'Stacks[0].Outputs[?OutputKey==`LambdaFunctionName`].OutputValue' \
+  --output text)"
+if [[ -n "${CATALOG_FN_NAME}" && "${CATALOG_FN_NAME}" != "None" ]]; then
+  CATALOG_LAMBDA_ARN="$(aws lambda get-function \
+    --function-name "$CATALOG_FN_NAME" \
+    --region "$REGION" \
+    --query 'Configuration.FunctionArn' \
+    --output text)"
+fi
+
+EDGE_STACK="StreamMyCourse-EdgeHosting-${ENV}"
+EDGE_REGION="${EDGE_REGION:-us-east-1}"
+STUDENT_SITE_URL=""
+if aws cloudformation describe-stacks --stack-name "$EDGE_STACK" --region "$EDGE_REGION" &>/dev/null; then
+  STUDENT_SITE_URL="$(aws cloudformation describe-stacks \
+    --stack-name "$EDGE_STACK" \
+    --region "$EDGE_REGION" \
+    --query 'Stacks[0].Outputs[?OutputKey==`StudentSiteUrl`].OutputValue' \
+    --output text)"
+fi
+if [[ -n "${STUDENT_SITE_URL}" && "${STUDENT_SITE_URL}" != "None" ]]; then
+  BILLING_RETURN_SUCCESS_URL="${STUDENT_SITE_URL%/}/billing/success"
+  BILLING_RETURN_CANCEL_URL="${STUDENT_SITE_URL%/}/billing/cancel"
+fi
+
+if [[ -n "${CATALOG_LAMBDA_ARN:-}" && "${CATALOG_LAMBDA_ARN}" != "None" ]]; then
+  export CATALOG_LAMBDA_ARN
+  export BILLING_RETURN_SUCCESS_URL="${BILLING_RETURN_SUCCESS_URL:-}"
+  export BILLING_RETURN_CANCEL_URL="${BILLING_RETURN_CANCEL_URL:-}"
+  PAY_SCRIPT="${ROOT}/scripts/deploy-payments.sh"
+  chmod +x "$PAY_SCRIPT"
+  echo "Updating payments stack with catalog invoke + billing return URLs"
+  "$PAY_SCRIPT" "$ENV" "$REGION" "$ARTIFACT_BUCKET" "$SUFFIX"
+fi
