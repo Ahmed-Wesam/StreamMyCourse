@@ -53,8 +53,7 @@ class TestCheckoutUpsertIncomplete:
     def test_precheck_upserts_incomplete_when_not_blocked(self) -> None:
         svc, _repo, conn = _service()
         conn.cursor_obj.fetchone_results = [
-            None,  # reactivation check
-            None,  # active/past_due block
+            None,  # in-period access block
             (50000, "JOD", "monthly_all_access"),  # plan row
             None,  # fresh incomplete (reserve txn)
         ]
@@ -78,7 +77,6 @@ class TestCheckoutUpsertIncomplete:
         svc, _repo, conn = _service()
         conn.cursor_obj.fetchone_results = [
             None,
-            None,
             (50000, "JOD", "monthly_all_access"),
             None,
         ]
@@ -87,8 +85,7 @@ class TestCheckoutUpsertIncomplete:
 
         conn.cursor_obj.executions.clear()
         conn.cursor_obj.fetchone_results = [
-            None,  # reactivation check
-            None,  # active/past_due block
+            None,  # in-period access block
             (50000, "JOD", "monthly_all_access"),
             (1,),  # fresh incomplete row (reserve txn)
         ]

@@ -27,18 +27,17 @@ def test_handler_checkout_gate_order_billing_unconfigured_before_catalog() -> No
     assert unconfigured < catalog_invoke
 
 
-def test_handler_checkout_gate_order_reactivation_before_already_subscribed() -> None:
+def test_handler_checkout_gate_order_already_subscribed_before_in_progress() -> None:
     source = _handler_source()
     checkout_fn = source[source.find("def _handle_checkout") : source.find("def _webhook_signature_header")]
-    reactivation = checkout_fn.find("reactivation_required")
     already = checkout_fn.find("already_subscribed")
     in_progress = checkout_fn.find("checkout_in_progress")
     create_session = checkout_fn.find("create_subscribe_session")
-    assert reactivation != -1
     assert already != -1
     assert in_progress != -1
     assert create_session != -1
-    assert reactivation < already < in_progress < create_session
+    assert already < in_progress < create_session
+    assert "reactivation_required" not in checkout_fn
 
 
 def test_handler_checkout_gate_order_catalog_before_paytabs() -> None:
@@ -53,17 +52,13 @@ def test_handler_emits_subscribe_contract_error_codes() -> None:
     source = _handler_source()
     for code in (
         "billing_unconfigured",
-        "reactivation_required",
         "already_subscribed",
         "checkout_in_progress",
     ):
         assert code in source
+    assert "reactivation_required" not in source
     assert re.search(
         r'_error_response\s*\(\s*503\s*,\s*["\']billing_unconfigured["\']',
-        source,
-    )
-    assert re.search(
-        r'_error_response\s*\(\s*409\s*,\s*["\']reactivation_required["\']',
         source,
     )
     assert re.search(

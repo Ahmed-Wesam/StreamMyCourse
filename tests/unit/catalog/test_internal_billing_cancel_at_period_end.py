@@ -57,15 +57,18 @@ class TestCancelSubscriptionAtPeriodEndRepo:
     def test_active_row_updates_canceled_flags_and_sets_canceled_at(self) -> None:
         repo, conn = _repo()
         period_end = _future_period_end()
+        provider_sub_id = "AGR-100"
         conn.cursor_obj.rows_to_return = [
-            ("active", period_end, False),
-            (period_end,),
+            ("active", period_end, False, None),
+            (period_end, provider_sub_id),
         ]
 
         result = repo.cancel_subscription_at_period_end("student-sub")
 
         assert result == CancelAtPeriodEndResult(
-            outcome="ok", current_period_end=period_end
+            outcome="ok",
+            current_period_end=period_end,
+            provider_subscription_id=provider_sub_id,
         )
         assert len(conn.cursor_obj.executions) == 2
         update_sql, update_params = conn.cursor_obj.executions[1]
@@ -73,26 +76,39 @@ class TestCancelSubscriptionAtPeriodEndRepo:
         assert "status = 'canceled'" in update_sql
         assert "cancel_at_period_end = TRUE" in update_sql
         assert "canceled_at = NOW() AT TIME ZONE 'UTC'" in update_sql
-        assert "RETURNING current_period_end" in update_sql
+        assert "RETURNING current_period_end, provider_subscription_id" in update_sql
         assert update_params == ("student-sub", "dev")
 
     def test_already_canceled_in_period_returns_already_canceled_without_update(self) -> None:
-        """Contract: edge maps to 409 already_canceled (not idempotent 200)."""
+        """Repo: already_canceled without provider id; billing edge returns 502 provider_agreement_missing."""
         repo, conn = _repo()
         period_end = _future_period_end()
         conn.cursor_obj.rows_to_return = [
-            ("canceled", period_end, True),
+            ("canceled", period_end, True, None),
         ]
 
         result = repo.cancel_subscription_at_period_end("student-sub")
 
         assert result.outcome == "already_canceled"
+        assert result.provider_subscription_id is None
         assert len(conn.cursor_obj.executions) == 1
+
+    def test_already_canceled_in_period_includes_provider_subscription_id(self) -> None:
+        repo, conn = _repo()
+        period_end = _future_period_end()
+        conn.cursor_obj.rows_to_return = [
+            ("canceled", period_end, True, "AGR-100"),
+        ]
+
+        result = repo.cancel_subscription_at_period_end("student-sub")
+
+        assert result.outcome == "already_canceled"
+        assert result.provider_subscription_id == "AGR-100"
 
     def test_incomplete_returns_cannot_cancel(self) -> None:
         repo, conn = _repo()
         conn.cursor_obj.rows_to_return = [
-            ("incomplete", _future_period_end(), False),
+            ("incomplete", _future_period_end(), False, None),
         ]
 
         result = repo.cancel_subscription_at_period_end("student-sub")

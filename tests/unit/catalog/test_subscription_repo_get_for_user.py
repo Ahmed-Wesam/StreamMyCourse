@@ -59,7 +59,7 @@ def _subscription_row(
 
 
 class TestGetSubscriptionSummary:
-    def test_active_future_period_can_cancel_not_reactivate(self) -> None:
+    def test_active_future_period_can_cancel(self) -> None:
         repo, conn = _repo()
         conn.cursor_obj.rows_to_return = [_subscription_row("active")]
 
@@ -69,14 +69,13 @@ class TestGetSubscriptionSummary:
         assert summary.status == "active"
         assert summary.cancel_at_period_end is False
         assert summary.can_cancel is True
-        assert summary.can_reactivate is False
         assert summary.past_due is False
         assert summary.amount_minor == 50000
         assert summary.currency == "JOD"
         assert summary.plan_label == "50 JOD / month"
         assert summary.next_billing_date == summary.current_period_end
 
-    def test_canceled_at_period_end_can_reactivate_not_cancel(self) -> None:
+    def test_canceled_at_period_end_not_cancel(self) -> None:
         repo, conn = _repo()
         conn.cursor_obj.rows_to_return = [
             _subscription_row("canceled", cancel_at_period_end=True),
@@ -88,7 +87,6 @@ class TestGetSubscriptionSummary:
         assert summary.status == "canceled"
         assert summary.cancel_at_period_end is True
         assert summary.can_cancel is False
-        assert summary.can_reactivate is True
         assert summary.next_billing_date is None
 
     @pytest.mark.parametrize("status", ["expired", "incomplete"])

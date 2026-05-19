@@ -34,17 +34,6 @@ class TestInternalBillingCheckoutInvoke:
             mock.assert_called_once_with(event)
             assert out == expected
 
-    def test_reactivation_required_block_reason(self) -> None:
-        with patch(
-            "index._handle_internal_billing_event",
-            return_value={"blockReason": "reactivation_required"},
-        ):
-            out = lambda_handler(
-                {"internal": "billing.checkout", "userSub": "u", "planId": DEV_PLAN_ID},
-                None,
-            )
-            assert out == {"blockReason": "reactivation_required"}
-
     def test_already_subscribed_block_reason(self) -> None:
         with patch(
             "index._handle_internal_billing_event",

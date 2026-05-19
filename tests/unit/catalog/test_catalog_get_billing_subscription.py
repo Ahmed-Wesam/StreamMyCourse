@@ -20,7 +20,6 @@ _MANAGE_RESPONSE_KEYS = frozenset(
         "currentPeriodEnd",
         "cancelAtPeriodEnd",
         "canCancel",
-        "canReactivate",
         "nextBillingDate",
         "amountMinor",
         "currency",
@@ -42,7 +41,6 @@ def _active_summary() -> SubscriptionSummary:
         current_period_end=_PERIOD_END,
         cancel_at_period_end=False,
         can_cancel=True,
-        can_reactivate=False,
         next_billing_date=_PERIOD_END,
         amount_minor=50000,
         currency="JOD",
@@ -101,7 +99,6 @@ class TestGetBillingSubscriptionController:
         assert body["currentPeriodEnd"] == "2026-06-18T00:00:00.000Z"
         assert body["cancelAtPeriodEnd"] is False
         assert body["canCancel"] is True
-        assert body["canReactivate"] is False
         assert body["nextBillingDate"] == "2026-06-18T00:00:00.000Z"
         assert body["amountMinor"] == 50000
         assert body["currency"] == "JOD"
