@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import hmac
 import json
+import logging
 from typing import Any, List
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
@@ -20,6 +21,7 @@ from domain.period_bounds import ensure_grant_period_bounds
 from providers.port import CheckoutPlan, SubscribeSessionResult
 
 _PROVIDER = "paytabs"
+logger = logging.getLogger(__name__)
 
 # IPN types we acknowledge with 200 but do not enqueue (WS3 ignore-list).
 IGNORED_TRAN_TYPES = frozenset(
@@ -351,4 +353,10 @@ class PayTabsAdapter:
 
     def cancel_agreement(self, agreement_id: str) -> None:
         _ = agreement_id
-        raise NotImplementedError("cancel_agreement is WS7")
+        raise NotImplementedError("cancel_agreement deferred to WS8")
+
+    def resume_agreement(self, agreement_id: str) -> None:
+        _ = agreement_id
+        logger.info(
+            "resume_agreement deferred (no PayTabs public API); WS7 uses RDS reactivate only"
+        )

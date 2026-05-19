@@ -10,6 +10,7 @@ from bootstrap import get_cached_aws_deps, lambda_bootstrap, warm_aws_deps_if_ne
 from config import load_config, AppConfig
 from services.auth.controller import handle_users_me
 from services.billing_merchant.controller import handle_merchant_status
+from services.subscription.controller import handle_get_subscription
 from services.common.http import apigw_routing_path, json_response, options_response, pick_origin
 from services.progress.controller import handle_progress_request
 from services.common.logging_setup import configure_logging
@@ -24,6 +25,9 @@ configure_logging()
 
 _INTERNAL_BILLING_CHECKOUT = "billing.checkout"
 _INTERNAL_BILLING_ROLLBACK = "billing.rollback_checkout"
+_INTERNAL_BILLING_CANCEL_AT_PERIOD_END = "billing.cancel_at_period_end"
+_INTERNAL_BILLING_REACTIVATE_PREPARE = "billing.reactivate_prepare"
+_INTERNAL_BILLING_REACTIVATE = "billing.reactivate"
 
 
 def _rds_config_complete(cfg: AppConfig) -> bool:
@@ -35,6 +39,11 @@ def _handle_internal_billing_event(event: Dict[str, Any]) -> Dict[str, Any]:
     from services.subscription.internal_checkout import (
         handle_internal_billing_checkout,
         handle_internal_billing_rollback,
+    )
+    from services.subscription.internal_manage import (
+        handle_internal_billing_cancel_at_period_end,
+        handle_internal_billing_reactivate,
+        handle_internal_billing_reactivate_prepare,
     )
 
     cfg = load_config()
@@ -55,6 +64,18 @@ def _handle_internal_billing_event(event: Dict[str, Any]) -> Dict[str, Any]:
         return handle_internal_billing_rollback(
             event, checkout_service=deps.checkout_service
         )
+    if internal == _INTERNAL_BILLING_CANCEL_AT_PERIOD_END:
+        return handle_internal_billing_cancel_at_period_end(
+            event, manage_service=deps.subscription_manage_service
+        )
+    if internal == _INTERNAL_BILLING_REACTIVATE_PREPARE:
+        return handle_internal_billing_reactivate_prepare(
+            event, manage_service=deps.subscription_manage_service
+        )
+    if internal == _INTERNAL_BILLING_REACTIVATE:
+        return handle_internal_billing_reactivate(
+            event, manage_service=deps.subscription_manage_service
+        )
     raise ValueError(f"unknown internal billing event: {internal!r}")
 
 
@@ -72,7 +93,13 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         # Bind request context for correlation IDs
         bind_from_lambda_event(event=event, lambda_context=context)
 
-        if event.get("internal") in (_INTERNAL_BILLING_CHECKOUT, _INTERNAL_BILLING_ROLLBACK):
+        if event.get("internal") in (
+            _INTERNAL_BILLING_CHECKOUT,
+            _INTERNAL_BILLING_ROLLBACK,
+            _INTERNAL_BILLING_CANCEL_AT_PERIOD_END,
+            _INTERNAL_BILLING_REACTIVATE_PREPARE,
+            _INTERNAL_BILLING_REACTIVATE,
+        ):
             return _handle_internal_billing_event(event)
 
         method = (
@@ -108,6 +135,7 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 progress_service,
                 question_bank_service,
                 merchant_service,
+                subscription_manage_service,
             ) = lambda_bootstrap()
 
             headers = event.get("headers") or {}
@@ -182,6 +210,16 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                         origin=origin,
                         merchant_svc=merchant_service,
                         billing_teacher_sub=cfg.billing_teacher_sub,
+                    )
+                elif (
+                    method == "GET"
+                    and parts == ["billing", "subscription"]
+                    and subscription_manage_service is not None
+                ):
+                    response = handle_get_subscription(
+                        event,
+                        origin=origin,
+                        manage_svc=subscription_manage_service,
                     )
                 else:
                     response = course_management_handle(

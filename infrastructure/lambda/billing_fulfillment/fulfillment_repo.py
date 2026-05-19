@@ -24,6 +24,14 @@ ConnectionFactory = Callable[[], Any]
 
 _GRANTING_STATUSES = ("active", "past_due", "incomplete")
 
+_CLOBBERING_SUBSCRIPTION_EVENTS = frozenset(
+    {
+        "subscription.activated",
+        "subscription.renewed",
+        "subscription.payment_failed",
+    }
+)
+
 
 def _secretsmanager_client() -> Any:
     import boto3
@@ -100,6 +108,70 @@ def _insert_webhook_event(cur: Any, event: BillingDomainEvent) -> Optional[str]:
     if row is None:
         return None
     return str(row[0])
+
+
+def _get_latest_subscription_flags(
+    cur: Any, *, user_sub: str, environment: str
+) -> Optional[tuple[str, bool]]:
+    cur.execute(
+        """
+        SELECT status, cancel_at_period_end
+        FROM user_subscriptions
+        WHERE user_sub = %s
+          AND environment = %s
+        ORDER BY updated_at DESC
+        LIMIT 1
+        """,
+        (user_sub, environment),
+    )
+    row = cur.fetchone()
+    if row is None:
+        return None
+    return str(row[0]), bool(row[1])
+
+
+def _should_skip_subscription_clobber(cur: Any, *, event: BillingDomainEvent) -> bool:
+    """Skip IPNs that would set active/past_due while student cancel-at-period-end holds."""
+    if event.event_type not in _CLOBBERING_SUBSCRIPTION_EVENTS:
+        return False
+    flags = _get_latest_subscription_flags(
+        cur, user_sub=event.user_sub, environment=event.environment
+    )
+    if flags is None:
+        return False
+    status, cancel_at_period_end = flags
+    return status == "canceled" and cancel_at_period_end
+
+
+def _should_skip_subscription_canceled_clobber(
+    cur: Any,
+    *,
+    event: BillingDomainEvent,
+    update: SubscriptionUpdate,
+) -> bool:
+    """Skip PayTabs immediate-cancel IPN while RDS still has student cancel-at-period-end."""
+    if event.event_type != "subscription.canceled":
+        return False
+    if update.cancel_at_period_end:
+        return False
+    flags = _get_latest_subscription_flags(
+        cur, user_sub=event.user_sub, environment=event.environment
+    )
+    if flags is None:
+        return False
+    status, cancel_at_period_end = flags
+    return status == "canceled" and cancel_at_period_end
+
+
+def _should_skip_subscription_update(
+    cur: Any,
+    *,
+    event: BillingDomainEvent,
+    update: SubscriptionUpdate,
+) -> bool:
+    if _should_skip_subscription_clobber(cur, event=event):
+        return True
+    return _should_skip_subscription_canceled_clobber(cur, event=event, update=update)
 
 
 def _find_subscription_row_id(cur: Any, *, user_sub: str, environment: str) -> Optional[str]:
@@ -230,8 +302,17 @@ def process_event_in_transaction(conn: Any, event: BillingDomainEvent) -> Fulfil
         subscription_updated = False
         if event.is_subscription_event():
             update = subscription_update_for_event(event)
-            _apply_subscription_update(cur, event=event, update=update)
-            subscription_updated = True
+            if _should_skip_subscription_update(cur, event=event, update=update):
+                logger.info(
+                    "billing_fulfillment skip subscription update "
+                    "event_type=%s user_sub=%s provider_event_id=%s",
+                    event.event_type,
+                    event.user_sub,
+                    event.provider_event_id,
+                )
+            else:
+                _apply_subscription_update(cur, event=event, update=update)
+                subscription_updated = True
         else:
             logger.info(
                 "billing_fulfillment skip subscription for event_type=%s provider_event_id=%s",

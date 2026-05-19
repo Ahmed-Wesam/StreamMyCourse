@@ -13,24 +13,28 @@ logger = logging.getLogger(__name__)
 
 _INTERNAL_CHECKOUT = "billing.checkout"
 _INTERNAL_ROLLBACK = "billing.rollback_checkout"
+_INTERNAL_CANCEL_AT_PERIOD_END = "billing.cancel_at_period_end"
+_INTERNAL_REACTIVATE_PREPARE = "billing.reactivate_prepare"
+_INTERNAL_REACTIVATE = "billing.reactivate"
 
 
 class CatalogInvokeError(Exception):
     """Catalog invoke failed or is not configured."""
 
 
-def invoke_billing_checkout(
+def _invoke_catalog_internal(
     *,
+    internal: str,
     user_sub: str,
-    plan_id: str,
     catalog_lambda_arn: str,
+    extra: Dict[str, Any] | None = None,
 ) -> Dict[str, Any]:
-    """Invoke catalog internal billing.checkout; returns blockReason + plan payload."""
-    payload = {
-        "internal": _INTERNAL_CHECKOUT,
+    payload: Dict[str, Any] = {
+        "internal": internal,
         "userSub": user_sub,
-        "planId": plan_id,
     }
+    if extra:
+        payload.update(extra)
     client = boto3.client("lambda")
     try:
         response = client.invoke(
@@ -39,7 +43,11 @@ def invoke_billing_checkout(
             Payload=json.dumps(payload).encode("utf-8"),
         )
     except (BotoCoreError, ClientError) as exc:
-        logger.exception("catalog_invoke_failed user_sub=%s plan_id=%s", user_sub, plan_id)
+        logger.exception(
+            "catalog_invoke_failed user_sub=%s internal=%s",
+            user_sub,
+            internal,
+        )
         raise CatalogInvokeError("catalog invoke failed") from exc
 
     status = response.get("StatusCode")
@@ -49,9 +57,9 @@ def invoke_billing_checkout(
     function_error = response.get("FunctionError")
     if function_error:
         logger.error(
-            "catalog_invoke_function_error user_sub=%s plan_id=%s error=%s",
+            "catalog_invoke_function_error user_sub=%s internal=%s error=%s",
             user_sub,
-            plan_id,
+            internal,
             function_error,
         )
         raise CatalogInvokeError(f"catalog function error: {function_error}")
@@ -70,6 +78,60 @@ def invoke_billing_checkout(
         raise CatalogInvokeError("catalog invoke returned non-object payload")
 
     return parsed
+
+
+def invoke_billing_checkout(
+    *,
+    user_sub: str,
+    plan_id: str,
+    catalog_lambda_arn: str,
+) -> Dict[str, Any]:
+    """Invoke catalog internal billing.checkout; returns blockReason + plan payload."""
+    return _invoke_catalog_internal(
+        internal=_INTERNAL_CHECKOUT,
+        user_sub=user_sub,
+        catalog_lambda_arn=catalog_lambda_arn,
+        extra={"planId": plan_id},
+    )
+
+
+def invoke_billing_cancel_at_period_end(
+    *,
+    user_sub: str,
+    catalog_lambda_arn: str,
+) -> Dict[str, Any]:
+    """Invoke catalog internal billing.cancel_at_period_end."""
+    return _invoke_catalog_internal(
+        internal=_INTERNAL_CANCEL_AT_PERIOD_END,
+        user_sub=user_sub,
+        catalog_lambda_arn=catalog_lambda_arn,
+    )
+
+
+def invoke_billing_reactivate_prepare(
+    *,
+    user_sub: str,
+    catalog_lambda_arn: str,
+) -> Dict[str, Any]:
+    """Invoke catalog internal billing.reactivate_prepare (read-only; for resume_agreement)."""
+    return _invoke_catalog_internal(
+        internal=_INTERNAL_REACTIVATE_PREPARE,
+        user_sub=user_sub,
+        catalog_lambda_arn=catalog_lambda_arn,
+    )
+
+
+def invoke_billing_reactivate(
+    *,
+    user_sub: str,
+    catalog_lambda_arn: str,
+) -> Dict[str, Any]:
+    """Invoke catalog internal billing.reactivate."""
+    return _invoke_catalog_internal(
+        internal=_INTERNAL_REACTIVATE,
+        user_sub=user_sub,
+        catalog_lambda_arn=catalog_lambda_arn,
+    )
 
 
 def invoke_billing_checkout_rollback(
