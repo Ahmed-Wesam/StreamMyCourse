@@ -197,7 +197,7 @@ describe('LessonPlayerPage', () => {
 
   it('shows Sign in to watch after enroll when playback still returns 401', async () => {
     api.getPlaybackUrl
-      .mockRejectedValueOnce(new ApiError('Enrollment required', 403, 'enrollment_required'))
+      .mockRejectedValueOnce(new ApiError('Subscription required', 403, 'subscription_required'))
       .mockRejectedValueOnce(new ApiError('Authentication required', 401, 'unauthorized'))
     api.enrollInCourse.mockResolvedValue({ courseId: 'c1', enrolled: true })
 
@@ -649,29 +649,35 @@ describe('LessonPlayerPage', () => {
     expect(nextLinks.some((a) => a.getAttribute('href') === '/courses/c1/lessons/l3')).toBe(true)
   })
 
-  it('hides module quiz navigation when enrollment is required', async () => {
-    api.listCourseModules.mockResolvedValue([
-      {
-        id: 'm1',
-        title: 'Section 1',
-        description: '',
-        order: 0,
-        moduleQuiz: { available: true, servedCountN: 2 },
-      },
-      { id: 'm2', title: 'Section 2', description: '', order: 1 },
-    ])
-    api.getPlaybackUrl.mockRejectedValue(new ApiError('Enrollment required', 403, 'enrollment_required'))
+  it.each([
+    ['subscription_required', 'Subscription required'],
+    ['enrollment_required', 'Enrollment required'],
+  ])(
+    'hides module quiz navigation when access denied (%s)',
+    async (code, message) => {
+      api.listCourseModules.mockResolvedValue([
+        {
+          id: 'm1',
+          title: 'Section 1',
+          description: '',
+          order: 0,
+          moduleQuiz: { available: true, servedCountN: 2 },
+        },
+        { id: 'm2', title: 'Section 2', description: '', order: 1 },
+      ])
+      api.getPlaybackUrl.mockRejectedValue(new ApiError(message, 403, code))
 
-    renderLessonPlayer('/courses/c1/lessons/l2')
+      renderLessonPlayer('/courses/c1/lessons/l2')
 
-    expect((await screen.findByRole('heading', { name: /Enroll to watch/i })).isConnected).toBe(true)
-    expect(screen.queryByRole('link', { name: /Module quiz/i })).toBeNull()
-    expect(
-      screen
-        .queryAllByRole('link')
-        .some((a) => a.getAttribute('href') === '/courses/c1/modules/m1/quiz'),
-    ).toBe(false)
-  })
+      expect((await screen.findByRole('heading', { name: /Enroll to watch/i })).isConnected).toBe(true)
+      expect(screen.queryByRole('link', { name: /Module quiz/i })).toBeNull()
+      expect(
+        screen
+          .queryAllByRole('link')
+          .some((a) => a.getAttribute('href') === '/courses/c1/modules/m1/quiz'),
+      ).toBe(false)
+    },
+  )
 
   it('does not render Lesson N subtitle in sidebar items', async () => {
     renderLessonPlayer('/courses/c1/lessons/l1')

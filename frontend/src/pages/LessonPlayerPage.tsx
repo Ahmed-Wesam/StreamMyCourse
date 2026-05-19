@@ -13,7 +13,7 @@ import {
   getCourse,
   getCourseProgress,
   getPlaybackUrl,
-  isEnrollmentRequiredError,
+  isCourseAccessDeniedError,
   isPlaybackAuthRequiredError,
   listLessons,
   listCourseModules,
@@ -249,7 +249,7 @@ export default function LessonPlayerPage() {
           }
         } catch (inner) {
           if (cancelled) return
-          if (isEnrollmentRequiredError(inner)) {
+          if (isCourseAccessDeniedError(inner)) {
             setNeedsEnrollment(true)
             setSrc(null)
             setError(null)
@@ -699,7 +699,7 @@ export default function LessonPlayerPage() {
         setNeedsEnrollment(false)
         setSrc(null)
         setError(null)
-      } else if (isEnrollmentRequiredError(err)) {
+      } else if (isCourseAccessDeniedError(err)) {
         setNeedsEnrollment(true)
         setNeedsSignIn(false)
         setSrc(null)

@@ -640,7 +640,7 @@ export default function CourseDetailPage() {
       setModules([...m].sort((a, b) => a.order - b.order))
       setLessons([...l].sort((a, b) => a.moduleOrder - b.moduleOrder || a.order - b.order))
       if (signedIn) {
-        setNeedsEnrollment(c.enrolled === false)
+        setNeedsEnrollment((c.hasAccess ?? c.enrolled) === false)
       }
       if (signedIn) {
         try {

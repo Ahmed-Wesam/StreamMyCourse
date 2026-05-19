@@ -30,6 +30,15 @@ async function failedResponseError(res: Response): Promise<ApiError> {
 }
 
 /**
+ * True when the catalog API refused lesson/playback access because the user lacks a subscription.
+ */
+export function isSubscriptionRequiredError(e: unknown): boolean {
+  if (!(e instanceof ApiError)) return false
+  if (e.code === 'subscription_required') return true
+  return false
+}
+
+/**
  * True when the catalog API refused lesson/playback access because the user is not enrolled.
  * Prefer `code: enrollment_required`; fall back to 403 + message for proxies or older payloads.
  */
@@ -38,6 +47,11 @@ export function isEnrollmentRequiredError(e: unknown): boolean {
   if (e.code === 'enrollment_required') return true
   if (e.status === 403 && /enrollment/i.test(e.message)) return true
   return false
+}
+
+/** Subscription or legacy enrollment gate — show enroll / subscribe affordance. */
+export function isCourseAccessDeniedError(e: unknown): boolean {
+  return isSubscriptionRequiredError(e) || isEnrollmentRequiredError(e)
 }
 
 /**
@@ -149,7 +163,9 @@ export type Course = {
   updatedAt?: string
   /** Presigned GET URL when the course has a thumbnail; omit if none. */
   thumbnailUrl?: string
-  /** True when the viewer is enrolled; false for anonymous or not-yet-enrolled on a published course. */
+  /** True when the viewer may access lessons (subscription or owner/admin). */
+  hasAccess?: boolean
+  /** Deprecated alias of `hasAccess` for older clients. */
   enrolled?: boolean
 }
 

@@ -27,7 +27,9 @@ import {
   getCourseProgress,
   getPlaybackUrl,
   getUploadUrl,
+  isCourseAccessDeniedError,
   isEnrollmentRequiredError,
+  isSubscriptionRequiredError,
   isLastModuleDeleteError,
   isMediaCleanupUnavailableError,
   isPlaybackAuthRequiredError,
@@ -177,6 +179,24 @@ describe('isEnrollmentRequiredError', () => {
 
   it('is false for non-ApiError', () => {
     expect(isEnrollmentRequiredError(new Error('enrollment'))).toBe(false)
+  })
+})
+
+describe('isSubscriptionRequiredError', () => {
+  it('matches subscription_required code', () => {
+    expect(isSubscriptionRequiredError(new ApiError('x', 403, 'subscription_required'))).toBe(true)
+  })
+
+  it('is false for enrollment_required', () => {
+    expect(isSubscriptionRequiredError(new ApiError('x', 403, 'enrollment_required'))).toBe(false)
+  })
+})
+
+describe('isCourseAccessDeniedError', () => {
+  it('matches subscription or enrollment codes', () => {
+    expect(isCourseAccessDeniedError(new ApiError('x', 403, 'subscription_required'))).toBe(true)
+    expect(isCourseAccessDeniedError(new ApiError('x', 403, 'enrollment_required'))).toBe(true)
+    expect(isCourseAccessDeniedError(new ApiError('Forbidden', 403))).toBe(false)
   })
 })
 
