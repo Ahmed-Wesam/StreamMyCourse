@@ -109,12 +109,6 @@ export function isCheckoutInProgressError(e: unknown): boolean {
   return e.status === 409 && e.code === 'checkout_in_progress'
 }
 
-/** True when checkout must use reactivation (canceled-in-period) instead of a new HPP session. */
-export function isReactivationRequiredError(e: unknown): boolean {
-  if (!(e instanceof ApiError)) return false
-  return e.status === 409 && e.code === 'reactivation_required'
-}
-
 /** True when GET /billing/subscription has no manageable subscription (WS7 manage contract). */
 export function isNotSubscribedError(e: unknown): boolean {
   if (!(e instanceof ApiError)) return false
@@ -133,10 +127,16 @@ export function isCannotCancelError(e: unknown): boolean {
   return e.status === 409 && e.code === 'cannot_cancel'
 }
 
-/** True when POST reactivate-subscription cannot apply in the current RDS state. */
-export function isCannotReactivateError(e: unknown): boolean {
+/** True when catalog cancel succeeded but PayTabs cancel_agreement failed (WS8 manage contract). */
+export function isProviderCancelFailedError(e: unknown): boolean {
   if (!(e instanceof ApiError)) return false
-  return e.status === 409 && e.code === 'cannot_reactivate'
+  return e.status === 502 && e.code === 'provider_cancel_failed'
+}
+
+/** True when cancel succeeded in RDS but no provider agreement id exists to call PayTabs. */
+export function isProviderAgreementMissingError(e: unknown): boolean {
+  if (!(e instanceof ApiError)) return false
+  return e.status === 502 && e.code === 'provider_agreement_missing'
 }
 
 function requireApiBaseUrl(): string {
@@ -528,7 +528,6 @@ export type SubscriptionSummary = {
   currentPeriodEnd: string
   cancelAtPeriodEnd: boolean
   canCancel: boolean
-  canReactivate: boolean
   nextBillingDate: string | null
   amountMinor: number
   currency: string
@@ -542,12 +541,6 @@ export type CancelSubscriptionResponse = {
   currentPeriodEnd: string
 }
 
-export type ReactivateSubscriptionResponse = {
-  status: string
-  cancelAtPeriodEnd: boolean
-  currentPeriodEnd: string
-}
-
 /** Load the signed-in student's manageable subscription summary. */
 export async function getSubscription(): Promise<SubscriptionSummary> {
   return httpGet<SubscriptionSummary>('/billing/subscription')
@@ -556,11 +549,6 @@ export async function getSubscription(): Promise<SubscriptionSummary> {
 /** Cancel subscription at period end (billing edge). */
 export async function cancelSubscription(): Promise<CancelSubscriptionResponse> {
   return httpPost<CancelSubscriptionResponse>('/billing/cancel-subscription', {})
-}
-
-/** Reactivate a subscription that was canceled at period end (billing edge). */
-export async function reactivateSubscription(): Promise<ReactivateSubscriptionResponse> {
-  return httpPost<ReactivateSubscriptionResponse>('/billing/reactivate-subscription', {})
 }
 
 /** Start PayTabs hosted checkout for platform subscription (amount from server plan row). */

@@ -3,18 +3,14 @@ import {
   isAlreadyCanceledError,
   isAlreadySubscribedError,
   isCannotCancelError,
-  isCannotReactivateError,
   isCheckoutInProgressError,
   isBillingUnconfiguredError,
   isLastModuleDeleteError,
   isMediaCleanupUnavailableError,
   isNotSubscribedError,
-  isReactivationRequiredError,
+  isProviderAgreementMissingError,
+  isProviderCancelFailedError,
 } from './api'
-
-/** Subscribe/checkout copy when checkout returns 409 reactivation_required. */
-export const reactivationRequiredSubscribeMessage =
-  'You still have access until your billing period ends. Open Manage subscription (/account/subscription) in your account to reactivate—no new charge today.'
 
 /** Broken or incomplete URL — question banks list route. */
 export const incompleteQuestionBanksListLinkMessage =
@@ -51,7 +47,6 @@ type ApiUserMessageContext =
   | 'subscribe'
   | 'loadSubscription'
   | 'cancelSubscription'
-  | 'reactivateSubscription'
   | 'loadLesson'
   | 'loadProfile'
   | 'learnRedirect'
@@ -83,7 +78,6 @@ const CONTEXT_FALLBACKS: Record<ApiUserMessageContext, string> = {
   subscribe: 'Checkout could not be started. Please try again.',
   loadSubscription: 'Your subscription could not be loaded. Please try again.',
   cancelSubscription: 'Your subscription could not be canceled. Please try again.',
-  reactivateSubscription: 'Your subscription could not be reactivated. Please try again.',
   loadLesson: 'This lesson could not be loaded. Please try again.',
   loadProfile: 'Your profile could not be loaded. Please try again.',
   learnRedirect: 'Your course could not be opened. Please try again.',
@@ -322,9 +316,6 @@ function mapByApiErrorCode(err: ApiError): string | null {
   if (isCheckoutInProgressError(err)) {
     return 'A checkout is already in progress. Wait a moment or try again shortly.'
   }
-  if (isReactivationRequiredError(err)) {
-    return reactivationRequiredSubscribeMessage
-  }
   if (isNotSubscribedError(err)) {
     return 'You do not have a subscription to manage yet.'
   }
@@ -334,8 +325,11 @@ function mapByApiErrorCode(err: ApiError): string | null {
   if (isCannotCancelError(err)) {
     return 'Your subscription cannot be canceled in its current state.'
   }
-  if (isCannotReactivateError(err)) {
-    return 'Your subscription cannot be reactivated in its current state.'
+  if (isProviderCancelFailedError(err)) {
+    return 'Your cancellation was saved, but we could not stop renewal with the payment provider. Try again using the button below.'
+  }
+  if (isProviderAgreementMissingError(err)) {
+    return 'Your cancellation was saved, but we could not find a payment agreement to stop renewal. Please contact support.'
   }
   if (isLastModuleDeleteError(err)) {
     return "You can't delete the last module — every course needs at least one section."
