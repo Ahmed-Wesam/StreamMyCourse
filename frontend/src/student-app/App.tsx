@@ -10,7 +10,11 @@ import BillingSuccessPage from '../pages/BillingSuccessPage'
 import StudentLoginPage from '../pages/StudentLoginPage'
 import { PostLoginRedirect } from '../components/auth/PostLoginRedirect'
 import { StudentProfileBootstrap } from '../components/auth/StudentProfileBootstrap'
+import { StudentAccountAuth } from '../components/auth/StudentAccountAuth'
 import { StudentLessonAuth } from '../components/auth/StudentLessonAuth'
+import AccountProfilePage from '../pages/account/AccountProfilePage'
+import AccountSubscriptionPage from '../pages/account/AccountSubscriptionPage'
+import { AccountLayout } from '../pages/account/AccountLayout'
 import { StudentHeader } from './StudentHeader'
 import { Layout } from '../components/layout/Layout'
 import { ScrollToTop } from './ScrollToTop'
@@ -37,6 +41,13 @@ function StudentApp() {
         <Route path="/courses/:courseId" element={<CourseDetailPage />} />
         <Route path="/courses/:courseId/modules/:moduleId/quiz" element={<StudentModuleQuizAuth />} />
         <Route path="/login" element={<StudentLoginPage />} />
+        <Route path="/account" element={<StudentAccountAuth />}>
+          <Route element={<AccountLayout />}>
+            <Route index element={<Navigate to="profile" replace />} />
+            <Route path="profile" element={<AccountProfilePage />} />
+            <Route path="subscription" element={<AccountSubscriptionPage />} />
+          </Route>
+        </Route>
         <Route path="/billing/success" element={<BillingSuccessPage />} />
         <Route path="/billing/cancel" element={<BillingCancelPage />} />
         <Route path="/courses/:courseId/lessons/:lessonId" element={<StudentLessonAuth />} />
