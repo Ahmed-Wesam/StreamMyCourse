@@ -117,15 +117,12 @@ def test_checkout_session_then_ipn_grants_playback(
 ) -> None:
     """POST checkout (mock redirect) → mock IPN → GET playback returns 200."""
     skip_if_billing_webhook_unavailable()
+    skip_if_mock_ipn_unavailable(_probe_mock_webhook(api_base_url))
     jwt = _student_jwt_or_skip()
     user_sub = decode_jwt_sub(jwt)
     plan_id = seed_plan_id()
-
-    # Prior run may have left a fresh incomplete row on the shared dev student.
-    stale = post_checkout_session(student_api, jwt, plan_id=plan_id)
-    if stale.status_code == 409 and stale.json().get("code") == "checkout_in_progress":
-        ipn = post_mock_subscription_activated(api_base_url, user_sub, plan_id=plan_id)
-        skip_if_mock_ipn_unavailable(ipn)
+    # Clear stale incomplete rows from prior runs without reserving a new checkout (POST 200 would).
+    post_mock_subscription_activated(api_base_url, user_sub, plan_id=plan_id)
 
     course_id, lesson_id = _publish_course_with_lesson(
         api, course_factory, lesson_factory, label="billing-checkout-e2e"
