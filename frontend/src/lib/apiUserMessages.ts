@@ -12,9 +12,6 @@ import {
   isReactivationRequiredError,
 } from './api'
 
-/** Account route for manage / reactivate (WS7). */
-export const reactivationRequiredAccountPath = '/account/subscription'
-
 /** Subscribe/checkout copy when checkout returns 409 reactivation_required. */
 export const reactivationRequiredSubscribeMessage =
   'You still have access until your billing period ends. Open Manage subscription (/account/subscription) in your account to reactivate—no new charge today.'

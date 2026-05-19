@@ -381,6 +381,7 @@ export function LessonPlayerAlerts({
   needsSignIn,
   needsSubscription,
   subscribing,
+  subscribeError,
   error,
   courseId,
   onSubscribe,
@@ -389,6 +390,7 @@ export function LessonPlayerAlerts({
   needsSignIn: boolean
   needsSubscription: boolean
   subscribing: boolean
+  subscribeError?: React.ReactNode | null
   error: string | null
   courseId: string
   onSubscribe: () => void
@@ -451,6 +453,11 @@ export function LessonPlayerAlerts({
               Course page
             </Link>
           </div>
+          {subscribeError ? (
+            <p className="mt-3 text-sm text-red-700" role="alert">
+              {subscribeError}
+            </p>
+          ) : null}
         </div>
       )}
 
