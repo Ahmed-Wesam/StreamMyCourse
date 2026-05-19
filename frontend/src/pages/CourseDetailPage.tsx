@@ -16,7 +16,6 @@ import {
   type LessonProgressItem,
 } from '../lib/api'
 import { catalogApiUserMessage, courseNotFoundMessage } from '../lib/apiUserMessages'
-import { formatSubscribeError } from '../lib/ReactivationRequiredSubscribeHint'
 import {
   subscribeCtaLabel,
   subscribeCtaLoadingLabel,
@@ -728,7 +727,7 @@ export default function CourseDetailPage() {
       const { redirect_url } = await createCheckoutSession()
       window.location.href = redirect_url
     } catch (e) {
-      setSubscribeError(formatSubscribeError(e))
+      setSubscribeError(catalogApiUserMessage(e, 'subscribe'))
     } finally {
       setSubscribing(false)
     }

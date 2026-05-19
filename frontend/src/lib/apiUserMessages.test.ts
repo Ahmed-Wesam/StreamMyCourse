@@ -3,7 +3,6 @@ import { describe, expect, it } from 'vitest'
 import { ApiError } from './api'
 import {
   catalogApiUserMessage,
-  reactivationRequiredSubscribeMessage,
   incompleteLessonPlayerLinkMessage,
   incompleteModuleQuizLinkMessage,
   incompleteQuestionBankStudioLinkMessage,
@@ -123,10 +122,6 @@ describe('catalogApiUserMessage', () => {
     expect(catalogApiUserMessage(new ApiError('x', 409, 'checkout_in_progress'), 'subscribe')).toBe(
       'A checkout is already in progress. Wait a moment or try again shortly.',
     )
-    expect(catalogApiUserMessage(new ApiError('x', 409, 'reactivation_required'), 'subscribe')).toBe(
-      reactivationRequiredSubscribeMessage,
-    )
-    expect(reactivationRequiredSubscribeMessage).toContain('/account/subscription')
   })
 
   it('maps subscription manage billing codes', () => {
@@ -139,9 +134,12 @@ describe('catalogApiUserMessage', () => {
     expect(catalogApiUserMessage(new ApiError('x', 409, 'cannot_cancel'), 'cancelSubscription')).toBe(
       'Your subscription cannot be canceled in its current state.',
     )
-    expect(catalogApiUserMessage(new ApiError('x', 409, 'cannot_reactivate'), 'reactivateSubscription')).toBe(
-      'Your subscription cannot be reactivated in its current state.',
-    )
+    expect(
+      catalogApiUserMessage(new ApiError('x', 502, 'provider_cancel_failed'), 'cancelSubscription'),
+    ).toContain('Try again')
+    expect(
+      catalogApiUserMessage(new ApiError('x', 502, 'provider_agreement_missing'), 'cancelSubscription'),
+    ).toMatch(/contact support/i)
   })
 
   it('uses context-specific fallbacks for unknown errors', () => {

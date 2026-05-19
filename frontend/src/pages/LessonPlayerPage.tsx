@@ -24,7 +24,6 @@ import {
   type CourseProgress,
   type Lesson,
 } from '../lib/api'
-import { formatSubscribeError } from '../lib/ReactivationRequiredSubscribeHint'
 import {
   catalogApiUserMessage,
   courseNotFoundMessage,
@@ -685,7 +684,7 @@ export default function LessonPlayerPage() {
       const { redirect_url } = await createCheckoutSession()
       window.location.href = redirect_url
     } catch (err) {
-      setSubscribeError(formatSubscribeError(err))
+      setSubscribeError(catalogApiUserMessage(err, 'subscribe'))
     } finally {
       setSubscribing(false)
     }
