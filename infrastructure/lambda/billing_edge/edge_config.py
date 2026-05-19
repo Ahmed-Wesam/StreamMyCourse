@@ -39,6 +39,10 @@ class BillingEdgeConfig:
     paytabs_profile_id: str | None
     paytabs_api_domain: str | None
     fulfillment_queue_url: str | None
+    catalog_lambda_arn: str | None
+    subscription_plan_id: str | None
+    billing_return_success_url: str | None
+    billing_return_cancel_url: str | None
 
     def is_prod(self) -> bool:
         return self.deployment_environment.lower() == "prod"
@@ -71,6 +75,10 @@ def load_billing_edge_config() -> BillingEdgeConfig:
         paytabs_profile_id=_env("PAYTABS_PROFILE_ID"),
         paytabs_api_domain=_env("PAYTABS_API_DOMAIN") or _DEFAULT_API_DOMAIN,
         fulfillment_queue_url=_env("FULFILLMENT_QUEUE_URL"),
+        catalog_lambda_arn=_env("CATALOG_LAMBDA_ARN"),
+        subscription_plan_id=_env("SUBSCRIPTION_PLAN_ID"),
+        billing_return_success_url=_env("BILLING_RETURN_SUCCESS_URL"),
+        billing_return_cancel_url=_env("BILLING_RETURN_CANCEL_URL"),
     )
 
 
@@ -113,6 +121,9 @@ def get_payment_provider(cfg: BillingEdgeConfig) -> Optional[PaymentProviderPort
             server_key=server_key,
             profile_id=profile_id,
             api_domain=api_domain,
+            deployment_environment=cfg.deployment_environment,
+            return_success_url=cfg.billing_return_success_url,
+            return_cancel_url=cfg.billing_return_cancel_url,
         )
 
     if (cfg.payment_provider or "").lower() == "paytabs":
@@ -124,6 +135,9 @@ def get_payment_provider(cfg: BillingEdgeConfig) -> Optional[PaymentProviderPort
             server_key=server_key,
             profile_id=profile_id,
             api_domain=api_domain,
+            deployment_environment=cfg.deployment_environment,
+            return_success_url=cfg.billing_return_success_url,
+            return_cancel_url=cfg.billing_return_cancel_url,
         )
 
     return None

@@ -11,6 +11,13 @@ class SubscribeSessionResult:
     redirect_url: str
 
 
+@dataclass(frozen=True)
+class CheckoutPlan:
+    amount_minor: int
+    currency: str
+    plan_key: str
+
+
 @runtime_checkable
 class PaymentProviderPort(Protocol):
     def create_subscribe_session(
@@ -18,6 +25,7 @@ class PaymentProviderPort(Protocol):
         *,
         user_sub: str,
         plan_id: str,
+        plan: CheckoutPlan | None = None,
         return_url: str | None = None,
     ) -> SubscribeSessionResult:
         """Start HPP subscribe flow; returns redirect URL for the student SPA."""

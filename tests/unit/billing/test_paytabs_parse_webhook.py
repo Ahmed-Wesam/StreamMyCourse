@@ -268,6 +268,7 @@ def test_paytabs_adapter_delegates_to_parser() -> None:
         server_key="k",
         profile_id="p",
         api_domain="secure-jordan.paytabs.com",
+        deployment_environment="dev",
     )
     events = adapter.parse_webhook(
         _body(

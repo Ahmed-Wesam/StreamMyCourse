@@ -96,15 +96,20 @@ def test_already_subscribed_contract_shape(
     assert message  # human-readable message required by _error_response pattern
 
 
-def test_handler_does_not_emit_already_subscribed_yet() -> None:
-    """WS6 adds the gate; until then handler must not reference already_subscribed."""
+def test_handler_emits_already_subscribed_gate() -> None:
+    """WS6: handler returns 409 already_subscribed when catalog blocks."""
     source = _read_billing_edge_source("handler.py")
-    assert "already_subscribed" not in source
+    assert "already_subscribed" in source
+    assert re.search(
+        r'_error_response\s*\(\s*409\s*,\s*["\']already_subscribed["\']',
+        source,
+    )
 
 
 def test_handler_checkout_errors_match_subscribe_contract_gates() -> None:
-    """Handler today only exposes billing_unconfigured (503) before redirect (200)."""
+    """Handler exposes billing_unconfigured (503) and duplicate-sub gates before redirect."""
     source = _read_billing_edge_source("handler.py")
     assert '"billing_unconfigured"' in source or "'billing_unconfigured'" in source
     assert re.search(r'_error_response\s*\(\s*503\s*,\s*["\']billing_unconfigured["\']', source)
+    assert "reactivation_required" in source
 

@@ -13,10 +13,15 @@ from domain.metadata import (
     InvalidCartMetadataError,
     MissingSubscriptionPeriodError,
 )
+from catalog_invoke import (
+    CatalogInvokeError,
+    invoke_billing_checkout,
+    invoke_billing_checkout_rollback,
+)
 from edge_config import BillingEdgeConfig, get_payment_provider, load_billing_edge_config
 from providers.mock_adapter import MockPayTabsAdapter
 from providers.paytabs_adapter import BillingUnconfiguredError, PayTabsAdapter
-from providers.port import PaymentProviderPort
+from providers.port import CheckoutPlan, PaymentProviderPort
 from queue_shim import EnqueueError, enqueue_domain_events
 
 logger = logging.getLogger(__name__)
@@ -24,6 +29,8 @@ logger = logging.getLogger(__name__)
 _load_config = load_billing_edge_config
 _get_payment_provider = get_payment_provider
 _enqueue_domain_events = enqueue_domain_events
+_invoke_billing_checkout = invoke_billing_checkout
+_invoke_billing_checkout_rollback = invoke_billing_checkout_rollback
 
 _CSP_API = "default-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'"
 
@@ -129,9 +136,31 @@ def _request_id(event: Dict[str, Any]) -> str:
     return ""
 
 
+def _parse_checkout_plan(plan_payload: Any) -> CheckoutPlan | None:
+    if not isinstance(plan_payload, dict):
+        return None
+    amount_raw = plan_payload.get("amount_minor")
+    currency = str(plan_payload.get("currency") or "").strip()
+    plan_key = str(plan_payload.get("plan_key") or "").strip()
+    if amount_raw is None or not currency or not plan_key:
+        return None
+    try:
+        amount_minor = int(amount_raw)
+    except (TypeError, ValueError):
+        return None
+    if amount_minor <= 0:
+        return None
+    return CheckoutPlan(
+        amount_minor=amount_minor,
+        currency=currency,
+        plan_key=plan_key,
+    )
+
+
 def _handle_checkout(
     event: Dict[str, Any],
     provider: PaymentProviderPort,
+    cfg: BillingEdgeConfig,
 ) -> Dict[str, Any]:
     user_sub = _claims_sub(event)
     if not user_sub:
@@ -148,13 +177,81 @@ def _handle_checkout(
             return _error_response(400, "invalid_request", "Invalid JSON body")
 
     if not plan_id:
+        plan_id = str(cfg.subscription_plan_id or "").strip()
+
+    if not plan_id:
         return _error_response(400, "invalid_request", "planId is required")
 
+    catalog_arn = str(cfg.catalog_lambda_arn or "").strip()
+    if not catalog_arn:
+        return _error_response(503, "billing_unconfigured", "Billing is not configured")
+
+    if isinstance(provider, PayTabsAdapter):
+        if not (cfg.billing_return_success_url or "").strip() or not (
+            cfg.billing_return_cancel_url or ""
+        ).strip():
+            return _error_response(503, "billing_unconfigured", "Billing is not configured")
+
     try:
-        session = provider.create_subscribe_session(user_sub=user_sub, plan_id=plan_id)
+        precheck = _invoke_billing_checkout(
+            user_sub=user_sub,
+            plan_id=plan_id,
+            catalog_lambda_arn=catalog_arn,
+        )
+    except CatalogInvokeError:
+        return _error_response(503, "billing_unconfigured", "Billing is not configured")
+
+    block_reason = precheck.get("blockReason")
+    if block_reason == "reactivation_required":
+        return _error_response(
+            409,
+            "reactivation_required",
+            (
+                "You still have access until your billing period ends. "
+                "Reactivate your subscription from account settings—no new charge today."
+            ),
+        )
+    if block_reason == "already_subscribed":
+        return _error_response(
+            409,
+            "already_subscribed",
+            "Active subscription exists",
+        )
+    if block_reason == "checkout_in_progress":
+        return _error_response(
+            409,
+            "checkout_in_progress",
+            (
+                "A checkout is already in progress. "
+                "Wait a moment or try again shortly."
+            ),
+        )
+
+    checkout_plan = _parse_checkout_plan(precheck.get("plan"))
+    if checkout_plan is None:
+        _invoke_billing_checkout_rollback(
+            user_sub=user_sub,
+            catalog_lambda_arn=catalog_arn,
+        )
+        return _error_response(503, "billing_unconfigured", "Billing is not configured")
+
+    try:
+        session = provider.create_subscribe_session(
+            user_sub=user_sub,
+            plan_id=plan_id,
+            plan=checkout_plan,
+        )
     except BillingUnconfiguredError:
+        _invoke_billing_checkout_rollback(
+            user_sub=user_sub,
+            catalog_lambda_arn=catalog_arn,
+        )
         return _error_response(503, "billing_unconfigured", "Billing is not configured")
     except NotImplementedError:
+        _invoke_billing_checkout_rollback(
+            user_sub=user_sub,
+            catalog_lambda_arn=catalog_arn,
+        )
         return _error_response(501, "not_implemented", "Checkout is not implemented yet")
 
     return _json_response(200, {"redirect_url": session.redirect_url})
@@ -251,7 +348,7 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         return _options_response(event)
 
     if method == "POST" and path == "/billing/checkout-session":
-        return _handle_checkout(event, provider)
+        return _handle_checkout(event, provider, cfg)
     if method == "POST" and path == "/webhooks/payments/paytabs":
         return _handle_webhook(event, provider, cfg)
 

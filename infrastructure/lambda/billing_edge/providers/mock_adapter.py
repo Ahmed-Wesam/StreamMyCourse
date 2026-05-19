@@ -6,7 +6,7 @@ import json
 
 from domain.events import BillingDomainEvent
 from providers.paytabs_adapter import PayTabsAdapter, parse_paytabs_webhook
-from providers.port import SubscribeSessionResult
+from providers.port import CheckoutPlan, SubscribeSessionResult
 
 _MOCK_CHECKOUT_URL = "https://mock.paytabs.example/checkout/session"
 _MOCK_SIGNATURE = "test"
@@ -68,9 +68,10 @@ class MockPayTabsAdapter:
         *,
         user_sub: str,
         plan_id: str,
+        plan: CheckoutPlan | None = None,
         return_url: str | None = None,
     ) -> SubscribeSessionResult:
-        _ = user_sub, plan_id, return_url
+        _ = user_sub, plan_id, plan, return_url
         return SubscribeSessionResult(redirect_url=_MOCK_CHECKOUT_URL)
 
     def verify_webhook(
