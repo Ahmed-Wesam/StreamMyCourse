@@ -26,8 +26,6 @@ configure_logging()
 _INTERNAL_BILLING_CHECKOUT = "billing.checkout"
 _INTERNAL_BILLING_ROLLBACK = "billing.rollback_checkout"
 _INTERNAL_BILLING_CANCEL_AT_PERIOD_END = "billing.cancel_at_period_end"
-_INTERNAL_BILLING_REACTIVATE_PREPARE = "billing.reactivate_prepare"
-_INTERNAL_BILLING_REACTIVATE = "billing.reactivate"
 
 
 def _rds_config_complete(cfg: AppConfig) -> bool:
@@ -42,8 +40,6 @@ def _handle_internal_billing_event(event: Dict[str, Any]) -> Dict[str, Any]:
     )
     from services.subscription.internal_manage import (
         handle_internal_billing_cancel_at_period_end,
-        handle_internal_billing_reactivate,
-        handle_internal_billing_reactivate_prepare,
     )
 
     cfg = load_config()
@@ -68,14 +64,6 @@ def _handle_internal_billing_event(event: Dict[str, Any]) -> Dict[str, Any]:
         return handle_internal_billing_cancel_at_period_end(
             event, manage_service=deps.subscription_manage_service
         )
-    if internal == _INTERNAL_BILLING_REACTIVATE_PREPARE:
-        return handle_internal_billing_reactivate_prepare(
-            event, manage_service=deps.subscription_manage_service
-        )
-    if internal == _INTERNAL_BILLING_REACTIVATE:
-        return handle_internal_billing_reactivate(
-            event, manage_service=deps.subscription_manage_service
-        )
     raise ValueError(f"unknown internal billing event: {internal!r}")
 
 
@@ -97,8 +85,6 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             _INTERNAL_BILLING_CHECKOUT,
             _INTERNAL_BILLING_ROLLBACK,
             _INTERNAL_BILLING_CANCEL_AT_PERIOD_END,
-            _INTERNAL_BILLING_REACTIVATE_PREPARE,
-            _INTERNAL_BILLING_REACTIVATE,
         ):
             return _handle_internal_billing_event(event)
 

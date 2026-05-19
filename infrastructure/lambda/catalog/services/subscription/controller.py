@@ -24,7 +24,6 @@ def subscription_summary_to_json(summary: SubscriptionSummary) -> Dict[str, Any]
         "currentPeriodEnd": _format_utc_iso_z(summary.current_period_end),
         "cancelAtPeriodEnd": summary.cancel_at_period_end,
         "canCancel": summary.can_cancel,
-        "canReactivate": summary.can_reactivate,
         "nextBillingDate": (
             _format_utc_iso_z(summary.next_billing_date)
             if summary.next_billing_date is not None

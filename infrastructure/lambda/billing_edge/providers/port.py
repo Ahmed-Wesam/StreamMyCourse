@@ -49,6 +49,3 @@ class PaymentProviderPort(Protocol):
 
     def cancel_agreement(self, agreement_id: str) -> None:
         """Cancel Repeat Billing agreement (WS7 mock no-op; live deferred to WS8)."""
-
-    def resume_agreement(self, agreement_id: str) -> None:
-        """Undo cancel-at-period-end at provider (WS7 mock no-op; live deferred to WS8)."""
