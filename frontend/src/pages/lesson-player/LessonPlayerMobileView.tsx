@@ -25,10 +25,10 @@ type LessonPlayerMobileViewProps = {
   onEnded: () => void
   onPause: () => void
   needsSignIn: boolean
-  needsEnrollment: boolean
-  enrolling: boolean
+  needsSubscription: boolean
+  subscribing: boolean
   error: string | null
-  onEnroll: () => void
+  onSubscribe: () => void
   playbackNavLocked: boolean
   courseProgress: CourseProgress | null
   isLessonCompleted: boolean
@@ -55,10 +55,10 @@ export function LessonPlayerMobileView({
   onEnded,
   onPause,
   needsSignIn,
-  needsEnrollment,
-  enrolling,
+  needsSubscription,
+  subscribing,
   error,
-  onEnroll,
+  onSubscribe,
   playbackNavLocked,
   courseProgress,
   isLessonCompleted,
@@ -154,11 +154,11 @@ export function LessonPlayerMobileView({
         <div className="px-4 pb-4 pt-4">
             <LessonPlayerAlerts
               needsSignIn={needsSignIn}
-              needsEnrollment={needsEnrollment}
-              enrolling={enrolling}
+              needsSubscription={needsSubscription}
+              subscribing={subscribing}
               error={error}
               courseId={courseId}
-              onEnroll={onEnroll}
+              onSubscribe={onSubscribe}
               compact
             />
 

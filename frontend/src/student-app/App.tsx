@@ -5,6 +5,8 @@ import CoursePage from '../pages/CoursePage'
 import HomePage from '../pages/HomePage'
 import LearnRedirectPage from '../pages/LearnRedirectPage'
 import MyCoursePage from '../pages/MyCoursePage'
+import BillingCancelPage from '../pages/BillingCancelPage'
+import BillingSuccessPage from '../pages/BillingSuccessPage'
 import StudentLoginPage from '../pages/StudentLoginPage'
 import { PostLoginRedirect } from '../components/auth/PostLoginRedirect'
 import { StudentProfileBootstrap } from '../components/auth/StudentProfileBootstrap'
@@ -35,6 +37,8 @@ function StudentApp() {
         <Route path="/courses/:courseId" element={<CourseDetailPage />} />
         <Route path="/courses/:courseId/modules/:moduleId/quiz" element={<StudentModuleQuizAuth />} />
         <Route path="/login" element={<StudentLoginPage />} />
+        <Route path="/billing/success" element={<BillingSuccessPage />} />
+        <Route path="/billing/cancel" element={<BillingCancelPage />} />
         <Route path="/courses/:courseId/lessons/:lessonId" element={<StudentLessonAuth />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>

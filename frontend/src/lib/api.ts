@@ -91,6 +91,30 @@ export function isMediaCleanupUnavailableError(e: unknown): boolean {
   return false
 }
 
+/** True when billing checkout is unavailable (payments stack not configured). */
+export function isBillingUnconfiguredError(e: unknown): boolean {
+  if (!(e instanceof ApiError)) return false
+  return e.status === 503 && e.code === 'billing_unconfigured'
+}
+
+/** True when checkout is blocked because the student already has a blocking subscription row. */
+export function isAlreadySubscribedError(e: unknown): boolean {
+  if (!(e instanceof ApiError)) return false
+  return e.status === 409 && e.code === 'already_subscribed'
+}
+
+/** True when a recent incomplete checkout reservation is still open (double-click / in-flight HPP). */
+export function isCheckoutInProgressError(e: unknown): boolean {
+  if (!(e instanceof ApiError)) return false
+  return e.status === 409 && e.code === 'checkout_in_progress'
+}
+
+/** True when checkout must use reactivation (canceled-in-period) instead of a new HPP session. */
+export function isReactivationRequiredError(e: unknown): boolean {
+  if (!(e instanceof ApiError)) return false
+  return e.status === 409 && e.code === 'reactivation_required'
+}
+
 function requireApiBaseUrl(): string {
   const base = API_BASE_URL_RAW?.trim()
   if (!base) {
@@ -462,9 +486,22 @@ export async function getCourse(courseId: string): Promise<Course> {
   return httpGet<Course>(`/courses/${courseId}`)
 }
 
-/** Self-service enrollment on a published course (requires Cognito when API enforces auth). */
+/**
+ * Self-service enrollment on a published course (requires Cognito when API enforces auth).
+ * @deprecated Subscription access replaces per-course enroll for students; kept for API client tests.
+ */
 export async function enrollInCourse(courseId: string): Promise<{ courseId: string; enrolled: boolean }> {
   return httpPost<{ courseId: string; enrolled: boolean }>(`/courses/${courseId}/enroll`, {})
+}
+
+export type CheckoutSessionResponse = {
+  redirect_url: string
+}
+
+/** Start PayTabs hosted checkout for platform subscription (amount from server plan row). */
+export async function createCheckoutSession(planId?: string): Promise<CheckoutSessionResponse> {
+  const body = planId ? { planId } : {}
+  return httpPost<CheckoutSessionResponse>('/billing/checkout-session', body)
 }
 
 export async function listLessons(courseId: string): Promise<Lesson[]> {

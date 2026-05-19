@@ -1,7 +1,11 @@
 import {
   ApiError,
+  isAlreadySubscribedError,
+  isCheckoutInProgressError,
+  isBillingUnconfiguredError,
   isLastModuleDeleteError,
   isMediaCleanupUnavailableError,
+  isReactivationRequiredError,
 } from './api'
 
 /** Broken or incomplete URL — question banks list route. */
@@ -36,6 +40,7 @@ type ApiUserMessageContext =
   | 'deleteModule'
   | 'uploadThumbnail'
   | 'enroll'
+  | 'subscribe'
   | 'loadLesson'
   | 'loadProfile'
   | 'learnRedirect'
@@ -64,6 +69,7 @@ const CONTEXT_FALLBACKS: Record<ApiUserMessageContext, string> = {
   deleteModule: 'This module could not be deleted. Please try again.',
   uploadThumbnail: 'The thumbnail could not be uploaded. Try another image.',
   enroll: 'Enrollment in this course could not be completed. Please try again.',
+  subscribe: 'Checkout could not be started. Please try again.',
   loadLesson: 'This lesson could not be loaded. Please try again.',
   loadProfile: 'Your profile could not be loaded. Please try again.',
   learnRedirect: 'Your course could not be opened. Please try again.',
@@ -293,6 +299,18 @@ function readApiError(err: unknown): ApiError | null {
 }
 
 function mapByApiErrorCode(err: ApiError): string | null {
+  if (isBillingUnconfiguredError(err)) {
+    return 'Subscriptions are not available right now. Please try again later.'
+  }
+  if (isAlreadySubscribedError(err)) {
+    return 'You already have an active subscription.'
+  }
+  if (isCheckoutInProgressError(err)) {
+    return 'A checkout is already in progress. Wait a moment or try again shortly.'
+  }
+  if (isReactivationRequiredError(err)) {
+    return 'You still have access until your billing period ends. Reactivate your subscription from account settings—no new charge today.'
+  }
   if (isLastModuleDeleteError(err)) {
     return "You can't delete the last module — every course needs at least one section."
   }

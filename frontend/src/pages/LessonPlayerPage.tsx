@@ -9,7 +9,7 @@ import {
 } from 'react'
 import { Link, useParams, useSearchParams, type To } from 'react-router-dom'
 import {
-  enrollInCourse,
+  createCheckoutSession,
   getCourse,
   getCourseProgress,
   getPlaybackUrl,
@@ -188,9 +188,9 @@ export default function LessonPlayerPage() {
   const [src, setSrc] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
-  const [needsEnrollment, setNeedsEnrollment] = useState(false)
+  const [needsSubscription, setNeedsSubscription] = useState(false)
   const [needsSignIn, setNeedsSignIn] = useState(false)
-  const [enrolling, setEnrolling] = useState(false)
+  const [subscribing, setSubscribing] = useState(false)
   const [courseProgress, setCourseProgress] = useState<CourseProgress | null>(null)
   const lastAttemptRef = useRef<number>(0) // Track last attempt time (initialized to 0 to allow first update)
   const consecutiveFailuresRef = useRef<number>(0)
@@ -206,7 +206,7 @@ export default function LessonPlayerPage() {
   // Track if we've sent duration update to prevent duplicate calls
   const durationSentRef = useRef<boolean>(false)
 
-  const playbackNavLocked = needsEnrollment || needsSignIn
+  const playbackNavLocked = needsSubscription || needsSignIn
 
   useEffect(() => {
     return () => {
@@ -218,7 +218,7 @@ export default function LessonPlayerPage() {
     let cancelled = false
 
     async function run() {
-      setNeedsEnrollment(false)
+      setNeedsSubscription(false)
       setNeedsSignIn(false)
       setSrc(null)
       setCourseProgress(null)
@@ -250,7 +250,7 @@ export default function LessonPlayerPage() {
         } catch (inner) {
           if (cancelled) return
           if (isCourseAccessDeniedError(inner)) {
-            setNeedsEnrollment(true)
+            setNeedsSubscription(true)
             setSrc(null)
             setError(null)
             setCourseProgress(null)
@@ -675,43 +675,18 @@ export default function LessonPlayerPage() {
     }
   }, [handleVisibilityChange, handlePageHide])
 
-  const handleEnroll = useCallback(async () => {
-    setEnrolling(true)
+  const handleSubscribe = useCallback(async () => {
+    setSubscribing(true)
+    setError(null)
     try {
-      await enrollInCourse(courseId)
-      setNeedsEnrollment(false)
-      setNeedsSignIn(false)
-      setLoading(true)
-      setError(null)
-      const c = await getCourse(courseId)
-      setCourse(c)
-      const [l, m, pb] = await Promise.all([
-        listLessons(courseId),
-        listCourseModules(courseId),
-        getPlaybackUrl(courseId, lessonId),
-      ])
-      setModules(sortModulesByOrder(m))
-      setLessons(sortLessonsByOrdering(l))
-      setSrc(pb.url)
+      const { redirect_url } = await createCheckoutSession()
+      window.location.href = redirect_url
     } catch (err) {
-      if (isPlaybackAuthRequiredError(err)) {
-        setNeedsSignIn(true)
-        setNeedsEnrollment(false)
-        setSrc(null)
-        setError(null)
-      } else if (isCourseAccessDeniedError(err)) {
-        setNeedsEnrollment(true)
-        setNeedsSignIn(false)
-        setSrc(null)
-        setError(null)
-      } else {
-        setError(catalogApiUserMessage(err, 'enroll'))
-      }
+      setError(catalogApiUserMessage(err, 'subscribe'))
     } finally {
-      setEnrolling(false)
-      setLoading(false)
+      setSubscribing(false)
     }
-  }, [courseId, lessonId])
+  }, [])
 
   const isMdUp = useIsMdUp()
   const [sidebarOpen, setSidebarOpen] = useState(readMdUpMatch)
@@ -753,10 +728,10 @@ export default function LessonPlayerPage() {
         onEnded={handleVideoEnded}
         onPause={handlePause}
         needsSignIn={needsSignIn}
-        needsEnrollment={needsEnrollment}
-        enrolling={enrolling}
+        needsSubscription={needsSubscription}
+        subscribing={subscribing}
         error={error}
-        onEnroll={() => void handleEnroll()}
+        onSubscribe={() => void handleSubscribe()}
         playbackNavLocked={playbackNavLocked}
         courseProgress={courseProgress}
         isLessonCompleted={isLessonCompleted}
@@ -866,11 +841,11 @@ export default function LessonPlayerPage() {
           <main className="mx-auto max-w-4xl px-6 py-8">
             <LessonPlayerAlerts
               needsSignIn={needsSignIn}
-              needsEnrollment={needsEnrollment}
-              enrolling={enrolling}
+              needsSubscription={needsSubscription}
+              subscribing={subscribing}
               error={error}
               courseId={courseId}
-              onEnroll={handleEnroll}
+              onSubscribe={handleSubscribe}
             />
 
             <LessonPrimaryColumn
