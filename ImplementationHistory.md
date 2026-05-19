@@ -4,6 +4,32 @@
 
 ---
 
+## 2026-05-18 — WS4 teacher merchant setup (payout signal, subscribe contract)
+
+### Completed
+
+- [x] **Merchant status API** — `GET /billing/merchant/status` on **catalog** Lambda (`services/billing_merchant/`); Cognito + teacher-only via `BILLING_TEACHER_SUB`; reads `teacher_merchant_accounts` (`payout_ready`, `provider_profile_id`, checklist fields).
+- [x] **Teacher SPA** — [`TeacherPaymentSetup.tsx`](frontend/src/pages/TeacherPaymentSetup.tsx) at **`/settings/payments`** (teacher-app route + header nav); `getMerchantStatus()` in [`frontend/src/lib/billing.ts`](frontend/src/lib/billing.ts); Vitest checklist states.
+- [x] **Pre-rollout mock parity** — **`PAYTABS_USE_MOCK=true`** on **dev and prod** when flag set: [`edge_config.py`](infrastructure/lambda/billing_edge/edge_config.py) uses mock on prod with explicit flag; [`deploy-backend.yml`](.github/workflows/deploy-backend.yml) passes var to both deploy jobs.
+- [x] **Subscribe contract (Q4)** — No **`payout_not_ready`** / `PAYOUT_READY` on checkout; normative gates in [`subscribe-contract-v1.md`](plans/billing/subscribe-contract-v1.md) (`billing_unconfigured` → `already_subscribed` → 200); [`test_subscribe_contract_ws4.py`](tests/unit/billing/test_subscribe_contract_ws4.py).
+- [x] **Merchant RDS sync** — [`billing-sync-merchant-account.sh`](scripts/billing-sync-merchant-account.sh) + [`billing_sync_merchant_account.py`](scripts/billing_sync_merchant_account.py): UPSERT `teacher_sub` / `provider_profile_id`; **`payout_ready` unchanged on conflict**; invoked from [`deploy-payments.sh`](scripts/deploy-payments.sh).
+- [x] **IaC + tests** — [`api-stack.yaml`](infrastructure/templates/api-stack.yaml) merchant route → catalog; catalog env `BILLING_TEACHER_SUB`; unit tests under [`tests/unit/catalog/`](tests/unit/catalog/) and [`tests/unit/billing/`](tests/unit/billing/).
+- [x] **Operator script (optional)** — [`billing-mark-payout-ready.sh`](scripts/billing-mark-payout-ready.sh) sets RDS `payout_ready=true` for **teacher checklist UI only** (not a student gate).
+- **Child plan** — [`plans/billing-workstream-4-teacher-merchant-setup-payout-ready.md`](plans/billing-workstream-4-teacher-merchant-setup-payout-ready.md).
+
+### Operator (manual)
+
+- Set GitHub Environment variables on **dev** and **prod**: **`BILLING_TEACHER_SUB`** (teacher Cognito `sub`), **`PAYTABS_USE_MOCK=true`** (pre-rollout; both envs).
+- PayTabs registration / live test charge deferred to **Workstream 8**; mock + placeholders until §0.9 go-live.
+- Optional: after test IPN, run `billing-mark-payout-ready.sh` for teacher checklist; confirm status API does **not** gate student subscribe.
+
+### Deferred (not WS4 blockers)
+
+- Live test charge visible in PayTabs Dashboard (**WS8** / when keys exist).
+- Optional fulfillment `payout.ready` → RDS (**W4-P6**).
+
+---
+
 ## 2026-05-18 — WS3 IPN webhooks + async fulfillment
 
 ### Completed
