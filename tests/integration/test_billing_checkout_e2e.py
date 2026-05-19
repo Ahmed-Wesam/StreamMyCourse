@@ -118,6 +118,14 @@ def test_checkout_session_then_ipn_grants_playback(
     """POST checkout (mock redirect) → mock IPN → GET playback returns 200."""
     skip_if_billing_webhook_unavailable()
     jwt = _student_jwt_or_skip()
+    user_sub = decode_jwt_sub(jwt)
+    plan_id = seed_plan_id()
+
+    # Prior run may have left a fresh incomplete row on the shared dev student.
+    stale = post_checkout_session(student_api, jwt, plan_id=plan_id)
+    if stale.status_code == 409 and stale.json().get("code") == "checkout_in_progress":
+        ipn = post_mock_subscription_activated(api_base_url, user_sub, plan_id=plan_id)
+        skip_if_mock_ipn_unavailable(ipn)
 
     course_id, lesson_id = _publish_course_with_lesson(
         api, course_factory, lesson_factory, label="billing-checkout-e2e"
@@ -130,7 +138,7 @@ def test_checkout_session_then_ipn_grants_playback(
         jwt,
         course_id,
         lesson_id,
-        plan_id=seed_plan_id(),
+        plan_id=plan_id,
     )
 
     playback_resp = student_api.get_playback(course_id, lesson_id)
@@ -165,7 +173,7 @@ def test_checkout_session_already_subscribed_returns_409(
     assert checkout_resp.json().get("code") == "already_subscribed"
 
 
-def test_a_second_checkout_while_incomplete_returns_checkout_in_progress(
+def test_zz_second_checkout_while_incomplete_returns_checkout_in_progress(
     api_base_url: str,
     api: ApiClient,
     student_api: ApiClient,
@@ -220,7 +228,7 @@ def test_z_checkout_after_lapsed_active_subscription_returns_200(
     user_sub = decode_jwt_sub(jwt)
     plan_id = seed_plan_id()
 
-    # Skip before creating an incomplete row when mock IPN is unavailable (breaks test_a_second_*).
+    # Skip before creating an incomplete row when mock IPN is unavailable (breaks test_zz_second_*).
     skip_if_mock_ipn_unavailable(_probe_mock_webhook(api_base_url))
 
     course_id, lesson_id = _publish_course_with_lesson(
