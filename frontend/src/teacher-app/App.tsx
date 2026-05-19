@@ -5,6 +5,7 @@ import InstructorDashboard from '../pages/InstructorDashboard'
 import CourseManagement from '../pages/CourseManagement'
 import QuestionBanksListPage from '../pages/QuestionBanksListPage'
 import QuestionBankStudioPage from '../pages/QuestionBankStudioPage'
+import TeacherPaymentSetup from '../pages/TeacherPaymentSetup'
 import { ProtectedRoute } from '../components/auth/ProtectedRoute'
 import { TeacherHeader } from './TeacherHeader'
 import { Layout } from '../components/layout/Layout'
@@ -25,6 +26,10 @@ function QuestionBankStudioWrapper() {
   return <QuestionBankStudioPage />
 }
 
+function TeacherPaymentSetupWrapper() {
+  return <TeacherPaymentSetup />
+}
+
 function TeacherShell() {
   return (
     <ProtectedRoute>
@@ -37,6 +42,7 @@ function TeacherShell() {
           />
           <Route path="/courses/:courseId/question-banks" element={<QuestionBanksListWrapper />} />
           <Route path="/courses/:courseId" element={<CourseManagementWrapper />} />
+          <Route path="/settings/payments" element={<TeacherPaymentSetupWrapper />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </Layout>
