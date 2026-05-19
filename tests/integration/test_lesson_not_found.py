@@ -87,20 +87,24 @@ def test_lesson_thumbnail_upload_url_unknown_lesson_returns_404(api: ApiClient, 
 
 
 def test_get_progress_unknown_lesson_is_handled(
+    api_base_url: str,
     api: ApiClient,
     student_api: ApiClient,
     course_factory,
     lesson_factory,
 ) -> None:
     """GET /courses/{id}/progress aggregates only existing lessons."""
+    from helpers.billing_access import ensure_student_subscription
+
     course = course_factory(label="get-progress-lesson-check")
     real_lesson = lesson_factory(course.course_id, label="real-lesson")
 
-    # Publish and enroll
     api.get_upload_url(course_id=course.course_id, lesson_id=real_lesson.lesson_id)
     api.mark_video_ready(course.course_id, real_lesson.lesson_id)
     api.publish_course(course.course_id)
-    student_api.enroll_course(course.course_id)
+    ensure_student_subscription(
+        api_base_url, student_api, course.course_id, real_lesson.lesson_id
+    )
 
     # Get progress - should only aggregate existing lesson
     resp = student_api.get_course_progress(course.course_id)

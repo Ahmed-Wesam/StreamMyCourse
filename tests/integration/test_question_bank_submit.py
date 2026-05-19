@@ -70,6 +70,7 @@ def _assert_correct_option_key_only_under_latest_submission_questions(body: dict
 
 
 def test_submit_happy_path_returns_scored_breakdown(
+    api_base_url: str,
     api: ApiClient,
     student_api: ApiClient,
     course_factory,
@@ -77,6 +78,7 @@ def test_submit_happy_path_returns_scored_breakdown(
 ) -> None:
     served_n = 2
     course_id, module_id, _ = _publish_bank_and_course(
+        api_base_url,
         api,
         student_api,
         course_factory,
@@ -112,6 +114,7 @@ def test_submit_happy_path_returns_scored_breakdown(
 
 
 def test_submit_partial_answers_returns_400(
+    api_base_url: str,
     api: ApiClient,
     student_api: ApiClient,
     course_factory,
@@ -119,6 +122,7 @@ def test_submit_partial_answers_returns_400(
 ) -> None:
     served_n = 2
     course_id, module_id, _ = _publish_bank_and_course(
+        api_base_url,
         api,
         student_api,
         course_factory,
@@ -147,6 +151,7 @@ def test_submit_partial_answers_returns_400(
 
 
 def test_double_submit_returns_409(
+    api_base_url: str,
     api: ApiClient,
     student_api: ApiClient,
     course_factory,
@@ -154,6 +159,7 @@ def test_double_submit_returns_409(
 ) -> None:
     served_n = 2
     course_id, module_id, _ = _publish_bank_and_course(
+        api_base_url,
         api,
         student_api,
         course_factory,
@@ -178,6 +184,7 @@ def test_double_submit_returns_409(
 
 
 def test_submit_wrong_course_id_returns_404(
+    api_base_url: str,
     api: ApiClient,
     student_api: ApiClient,
     course_factory,
@@ -212,6 +219,7 @@ def test_submit_wrong_course_id_returns_404(
 
 
 def test_after_submit_start_default_shows_latest_results_retake_starts_new_attempt(
+    api_base_url: str,
     api: ApiClient,
     student_api: ApiClient,
     course_factory,
@@ -219,6 +227,7 @@ def test_after_submit_start_default_shows_latest_results_retake_starts_new_attem
 ) -> None:
     served_n = 2
     course_id, module_id, _ = _publish_bank_and_course(
+        api_base_url,
         api,
         student_api,
         course_factory,
@@ -266,6 +275,7 @@ def test_after_submit_start_default_shows_latest_results_retake_starts_new_attem
 
 
 def test_in_progress_start_never_exposes_correct_option_key_latest_results_allows_it(
+    api_base_url: str,
     api: ApiClient,
     student_api: ApiClient,
     course_factory,
@@ -273,6 +283,7 @@ def test_in_progress_start_never_exposes_correct_option_key_latest_results_allow
 ) -> None:
     served_n = 2
     course_id, module_id, _ = _publish_bank_and_course(
+        api_base_url,
         api,
         student_api,
         course_factory,
@@ -308,6 +319,7 @@ def test_in_progress_start_never_exposes_correct_option_key_latest_results_allow
 
 
 def test_retake_redraws_valid_subset_from_published_pool_attempt_two(
+    api_base_url: str,
     api: ApiClient,
     student_api: ApiClient,
     course_factory,
@@ -366,6 +378,7 @@ def test_retake_redraws_valid_subset_from_published_pool_attempt_two(
 
 
 def test_after_second_submit_default_start_shows_latest_results_attempt_two(
+    api_base_url: str,
     api: ApiClient,
     student_api: ApiClient,
     course_factory,
@@ -373,6 +386,7 @@ def test_after_second_submit_default_start_shows_latest_results_attempt_two(
 ) -> None:
     served_n = 2
     course_id, module_id, _ = _publish_bank_and_course(
+        api_base_url,
         api,
         student_api,
         course_factory,

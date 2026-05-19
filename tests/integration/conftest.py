@@ -249,57 +249,50 @@ def alt_lesson_factory(alt_api: ApiClient):
     return build_lesson_factory(alt_api)
 
 
-# --- Enrolled course factory (creates published course and enrolls student) -----
+# --- Subscribed course factory (publish + mock IPN, no enroll) -----------------
 
 
 @pytest.fixture
-def enrolled_course(
+def subscribed_course(
+    api_base_url: str,
     api: ApiClient,
     student_api: ApiClient,
     course_factory,
     lesson_factory,
-    request: pytest.FixtureRequest,
 ):
-    """Factory that creates a published course with a lesson, then enrolls the student.
+    """Factory that creates a published course with a lesson and grants subscription access.
 
-    Returns a tuple (course_id, lesson_id).
-
-    Uses the existing course_factory and lesson_factory patterns, plus calls
-    api.enroll_course() using the student_api client.
+    Returns a tuple (course_id, lesson_id). Uses mock PayTabs IPN instead of enroll.
+    Skips when billing webhook prerequisites are unavailable.
     """
+    from helpers.billing_access import ensure_student_subscription
 
-    created_enrollments: List[tuple[str, str]] = []
-
-    def _make_enrolled_course() -> tuple[str, str]:
-        # 1. Create a course
-        course_resp = course_factory(label="Enrolled Course Test")
+    def _make_subscribed_course() -> tuple[str, str]:
+        course_resp = course_factory(label="Subscribed Course Test")
         course_id = course_resp.course_id
 
-        # 2. Create a lesson
-        lesson_resp = lesson_factory(course_id, label="Enrolled Course Lesson")
+        lesson_resp = lesson_factory(course_id, label="Subscribed Course Lesson")
         lesson_id = lesson_resp.lesson_id
 
-        # 3. Get upload URL to set videoKey (required before marking video ready)
         upload_resp = api.get_upload_url(course_id=course_id, lesson_id=lesson_id)
         assert upload_resp.status_code == 200, f"Failed to get upload URL: {upload_resp.text}"
 
-        # 4. Mark video ready (required for publish)
         api.mark_video_ready(course_id, lesson_id)
-
-        # 4. Publish the course
         api.publish_course(course_id)
 
-        # 5. Enroll the student
-        enroll_resp = student_api.enroll_course(course_id)
-        if enroll_resp.status_code not in (200, 201):
-            # Best-effort: if enrollment fails, note it but don't crash the factory
-            pass
-
-        created_enrollments.append((course_id, lesson_id))
+        ensure_student_subscription(api_base_url, student_api, course_id, lesson_id)
         return (course_id, lesson_id)
 
-    # The factory function itself doesn't need cleanup - course_factory handles it
-    return _make_enrolled_course
+    return _make_subscribed_course
+
+
+# --- Enrolled course factory (deprecated alias for subscribed_course) ------------
+
+
+@pytest.fixture
+def enrolled_course(subscribed_course):
+    """Deprecated alias — access is subscription-based; delegates to ``subscribed_course``."""
+    return subscribed_course
 
 
 # --- Session-end safety net -----------------------------------------------------
