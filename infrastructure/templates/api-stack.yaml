@@ -1631,8 +1631,6 @@ Resources:
       - CourseModuleQuizSubmitOptionsMethod
       - CourseModuleQuizStartPostMethod
       - CourseModuleQuizStartOptionsMethod
-      - BillingMerchantStatusGetMethod
-      - BillingMerchantStatusOptionsMethod
     Properties:
       RestApiId: !Ref CatalogApi
       Description: !Sub 'catalog-${LambdaCodeS3Key}'
