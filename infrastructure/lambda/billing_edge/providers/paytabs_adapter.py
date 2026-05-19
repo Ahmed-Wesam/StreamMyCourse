@@ -6,6 +6,8 @@ import hashlib
 import hmac
 import json
 from typing import Any, List
+from urllib.error import HTTPError, URLError
+from urllib.request import Request, urlopen
 
 from domain.events import BillingDomainEvent
 from domain.metadata import (
@@ -15,7 +17,7 @@ from domain.metadata import (
     parse_cart_metadata,
 )
 from domain.period_bounds import ensure_grant_period_bounds
-from providers.port import SubscribeSessionResult
+from providers.port import CheckoutPlan, SubscribeSessionResult
 
 _PROVIDER = "paytabs"
 
@@ -214,8 +216,19 @@ def parse_paytabs_webhook(
     )
 
 
+_FILS_PER_JOD = 1000
+
+
+def _amount_minor_to_cart_amount(amount_minor: int) -> float:
+    return round(amount_minor / _FILS_PER_JOD, 3)
+
+
+def _build_cart_id(*, deployment_environment: str, user_sub: str, plan_id: str) -> str:
+    return f"v1|{deployment_environment.strip().lower()}|{user_sub}|{plan_id}"
+
+
 class PayTabsAdapter:
-    """Live PayTabs integration — no outbound HTTP in WS2 unit tests."""
+    """Live PayTabs integration — outbound HTTP only in create_subscribe_session."""
 
     def __init__(
         self,
@@ -223,10 +236,16 @@ class PayTabsAdapter:
         server_key: str,
         profile_id: str,
         api_domain: str,
+        deployment_environment: str,
+        return_success_url: str | None = None,
+        return_cancel_url: str | None = None,
     ) -> None:
         self._server_key = server_key.strip()
         self._profile_id = profile_id.strip()
-        self._api_domain = api_domain.strip()
+        self._api_domain = api_domain.strip().rstrip("/")
+        self._deployment_environment = deployment_environment.strip().lower()
+        self._return_success_url = (return_success_url or "").strip()
+        self._return_cancel_url = (return_cancel_url or "").strip()
 
     @property
     def server_key(self) -> str:
@@ -240,12 +259,65 @@ class PayTabsAdapter:
         *,
         user_sub: str,
         plan_id: str,
+        plan: CheckoutPlan | None = None,
         return_url: str | None = None,
     ) -> SubscribeSessionResult:
-        _ = user_sub, plan_id, return_url
+        _ = return_url
         if not self._has_keys():
             raise BillingUnconfiguredError()
-        raise NotImplementedError("PayTabs HPP payment/request is WS6")
+        if plan is None:
+            raise BillingUnconfiguredError()
+        if not self._return_success_url or not self._return_cancel_url:
+            raise BillingUnconfiguredError()
+
+        cart_id = _build_cart_id(
+            deployment_environment=self._deployment_environment,
+            user_sub=user_sub,
+            plan_id=plan_id,
+        )
+        request_body = {
+            "profile_id": int(self._profile_id)
+            if self._profile_id.isdigit()
+            else self._profile_id,
+            "tran_type": "sale",
+            "tran_class": "ecom",
+            "cart_id": cart_id,
+            "cart_description": plan.plan_key,
+            "cart_currency": plan.currency,
+            "cart_amount": _amount_minor_to_cart_amount(plan.amount_minor),
+            "return": self._return_success_url,
+            "callback": self._return_cancel_url,
+        }
+        encoded = json.dumps(request_body, separators=(",", ":")).encode("utf-8")
+        url = f"https://{self._api_domain}/payment/request"
+        req = Request(
+            url,
+            data=encoded,
+            method="POST",
+            headers={
+                "Content-Type": "application/json",
+                "authorization": self._server_key,
+            },
+        )
+        try:
+            with urlopen(req, timeout=30) as response:
+                raw = response.read()
+        except (HTTPError, URLError, TimeoutError) as exc:
+            raise BillingUnconfiguredError() from exc
+
+        try:
+            payload = json.loads(raw.decode("utf-8"))
+        except (json.JSONDecodeError, UnicodeDecodeError) as exc:
+            raise BillingUnconfiguredError() from exc
+
+        if not isinstance(payload, dict):
+            raise BillingUnconfiguredError()
+
+        redirect = str(payload.get("redirect_url") or "").strip()
+        if not redirect:
+            raise BillingUnconfiguredError()
+
+        return SubscribeSessionResult(redirect_url=redirect)
 
     @staticmethod
     def verify_webhook(

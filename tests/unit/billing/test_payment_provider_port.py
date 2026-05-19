@@ -18,6 +18,7 @@ def test_mock_create_subscribe_session_returns_redirect_url() -> None:
     result = adapter.create_subscribe_session(
         user_sub="user-abc",
         plan_id="plan-monthly",
+        plan=None,
         return_url="https://student.example.com/billing/return",
     )
     assert isinstance(result, SubscribeSessionResult)
