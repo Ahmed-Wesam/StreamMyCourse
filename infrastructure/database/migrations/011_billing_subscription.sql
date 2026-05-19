@@ -11,7 +11,7 @@ CREATE TABLE IF NOT EXISTS subscription_plans (
     environment        VARCHAR(32)  NOT NULL,
     plan_key           VARCHAR(64)  NOT NULL,
     currency           VARCHAR(3)   NOT NULL DEFAULT 'JOD',
-    -- amount_minor: fils (1 JOD = 1000 fils). Placeholder seed 9990 = 9.990 JOD.
+    -- amount_minor: fils (1 JOD = 1000 fils). Seed 50000 = 50.000 JOD / month.
     amount_minor       INTEGER      NOT NULL,
     billing_interval   VARCHAR(16)  NOT NULL DEFAULT 'monthly',
     provider           VARCHAR(32)  NOT NULL DEFAULT 'paytabs',
@@ -109,7 +109,7 @@ INSERT INTO subscription_plans (
         'dev',
         'monthly_all_access',
         'JOD',
-        9990,
+        50000,
         'monthly',
         'paytabs',
         TRUE
@@ -119,7 +119,7 @@ INSERT INTO subscription_plans (
         'prod',
         'monthly_all_access',
         'JOD',
-        9990,
+        50000,
         'monthly',
         'paytabs',
         TRUE
