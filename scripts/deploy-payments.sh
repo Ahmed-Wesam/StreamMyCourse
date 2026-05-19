@@ -234,3 +234,9 @@ aws cloudformation deploy \
   "PaytabsSecretArn=${PAYTABS_SECRET_ARN}" \
   "PaytabsUseMock=${PAYTABS_USE_MOCK}" \
   "BillingFulfillmentAlertEmail=${BILLING_FULFILLMENT_ALERT_EMAIL}"
+
+# W4-P4: sync teacher_merchant_accounts when teacher sub is configured (skip if RDS unreachable).
+if [[ -n "${BILLING_TEACHER_SUB:-}" ]]; then
+  export DEPLOYMENT_ENVIRONMENT="${ENV}"
+  "${ROOT}/scripts/billing-sync-merchant-account.sh" "${ENV}"
+fi

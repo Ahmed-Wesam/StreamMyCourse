@@ -13,6 +13,7 @@ dev | prod) ;;
 esac
 
 REGION="${AWS_REGION:-eu-west-1}"
+export BILLING_TEACHER_SUB="${BILLING_TEACHER_SUB:-}"
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 TEMPLATE_DIR="$ROOT/infrastructure/templates"
 LAMBDA_DIR="$ROOT/infrastructure/lambda/catalog"
@@ -372,6 +373,7 @@ aws cloudformation deploy \
   "VideoUrl=${BUCKET_URL}" \
   "CorsAllowOrigin=${CORS}" \
   "GatewayResponseAllowOrigin=${GW_ALLOW}" \
+  "BillingTeacherSub=${BILLING_TEACHER_SUB:-}" \
   "${COGNITO_OVERRIDE[@]}" \
   "${RDS_STACK_OVERRIDE[@]}" \
   "${MEDIA_PARAM_OVERRIDES[@]}" \

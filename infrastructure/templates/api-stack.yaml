@@ -102,6 +102,13 @@ Parameters:
       ARN of the billing edge Lambda from StreamMyCourse-Payments-{env}. When
       empty, billing routes are not attached to this API.
 
+  BillingTeacherSub:
+    Type: String
+    Default: ''
+    Description: >-
+      Cognito sub of the platform billing teacher; catalog uses this for
+      GET /billing/merchant/status authorization.
+
   ProgressCompleteRatio:
     Type: Number
     Default: 0.92
@@ -239,6 +246,8 @@ Resources:
           DB_SECRET_ARN: !ImportValue
             'Fn::Sub': '${RdsStackName}-DbSecretArn'
           MEDIA_CLEANUP_QUEUE_URL: !Ref MediaCleanupQueueUrl
+          BILLING_TEACHER_SUB: !Ref BillingTeacherSub
+          DEPLOYMENT_ENVIRONMENT: !Ref Environment
           PROGRESS_COMPLETE_RATIO: !Ref ProgressCompleteRatio
           PROGRESS_POSITION_SLACK_SEC: !Ref ProgressPositionSlackSec
       Tags:
@@ -598,6 +607,24 @@ Resources:
       RestApiId: !Ref CatalogApi
       ParentId: !Ref BillingResource
       PathPart: checkout-session
+
+  # API Gateway Resource: /billing/merchant
+  BillingMerchantResource:
+    Type: AWS::ApiGateway::Resource
+    Condition: HasBillingEdgeLambdaArn
+    Properties:
+      RestApiId: !Ref CatalogApi
+      ParentId: !Ref BillingResource
+      PathPart: merchant
+
+  # API Gateway Resource: /billing/merchant/status
+  BillingMerchantStatusResource:
+    Type: AWS::ApiGateway::Resource
+    Condition: HasBillingEdgeLambdaArn
+    Properties:
+      RestApiId: !Ref CatalogApi
+      ParentId: !Ref BillingMerchantResource
+      PathPart: status
 
   # API Gateway Resource: /webhooks
   WebhooksResource:
@@ -1459,6 +1486,35 @@ Resources:
         Type: AWS_PROXY
         Uri: !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${CatalogLambda.Arn}/invocations'
 
+  # API Gateway Method: GET /billing/merchant/status
+  BillingMerchantStatusGetMethod:
+    Type: AWS::ApiGateway::Method
+    Condition: HasBillingEdgeLambdaArn
+    Properties:
+      RestApiId: !Ref CatalogApi
+      ResourceId: !Ref BillingMerchantStatusResource
+      HttpMethod: GET
+      AuthorizationType: COGNITO_USER_POOLS
+      AuthorizerId: !Ref CatalogApiTokenAuthorizer
+      Integration:
+        IntegrationHttpMethod: POST
+        Type: AWS_PROXY
+        Uri: !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${CatalogLambda.Arn}/invocations'
+
+  # API Gateway Method: OPTIONS /billing/merchant/status (CORS preflight)
+  BillingMerchantStatusOptionsMethod:
+    Type: AWS::ApiGateway::Method
+    Condition: HasBillingEdgeLambdaArn
+    Properties:
+      RestApiId: !Ref CatalogApi
+      ResourceId: !Ref BillingMerchantStatusResource
+      HttpMethod: OPTIONS
+      AuthorizationType: NONE
+      Integration:
+        IntegrationHttpMethod: POST
+        Type: AWS_PROXY
+        Uri: !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${CatalogLambda.Arn}/invocations'
+
   # API Gateway Method: POST /billing/checkout-session
   BillingCheckoutSessionPostMethod:
     Type: AWS::ApiGateway::Method
@@ -1510,7 +1566,7 @@ Resources:
   # Bump logical id when API methods/resources change so CloudFormation always
   # creates a new deployment; otherwise the stage can keep serving an old snapshot
   # (symptom: GET /courses/{id}/lessons returns API GW 403 Missing Authentication Token).
-  CatalogApiDeploymentV28:
+  CatalogApiDeploymentV29:
     Type: AWS::ApiGateway::Deployment
     DependsOn:
       - CatalogLambdaApiPermission
@@ -1575,6 +1631,8 @@ Resources:
       - CourseModuleQuizSubmitOptionsMethod
       - CourseModuleQuizStartPostMethod
       - CourseModuleQuizStartOptionsMethod
+      - BillingMerchantStatusGetMethod
+      - BillingMerchantStatusOptionsMethod
     Properties:
       RestApiId: !Ref CatalogApi
       Description: !Sub 'catalog-${LambdaCodeS3Key}'
@@ -1584,7 +1642,7 @@ Resources:
     Type: AWS::ApiGateway::Stage
     Properties:
       RestApiId: !Ref CatalogApi
-      DeploymentId: !Ref CatalogApiDeploymentV28
+      DeploymentId: !Ref CatalogApiDeploymentV29
       StageName: !Ref Environment
       Description: !Sub '${Environment} stage for Catalog API'
       MethodSettings:
