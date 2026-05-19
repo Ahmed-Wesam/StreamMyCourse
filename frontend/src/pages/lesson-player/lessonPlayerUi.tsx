@@ -4,6 +4,12 @@ import type { CourseModule, CourseProgress, Lesson } from '../../lib/api'
 import { formatModuleQuizQuestionCount, quizScorePercentPillClass } from '../../lib/quizScoreDisplay'
 import { groupLessonsByModule } from '../../lib/lessonGrouping'
 import { lessonPlayerPath, moduleQuizLinkTo } from '../../lib/moduleQuizNavigation'
+import {
+  subscribeCtaLabel,
+  subscribeCtaLoadingLabel,
+  subscribePaywallBody,
+  subscribePaywallTitle,
+} from '../../lib/subscribeCopy'
 
 /** Progress fills — layered blues (professional). */
 export const PRO_BLUE_STRIP =
@@ -373,19 +379,19 @@ export function LessonUpNextCard({
 
 export function LessonPlayerAlerts({
   needsSignIn,
-  needsEnrollment,
-  enrolling,
+  needsSubscription,
+  subscribing,
   error,
   courseId,
-  onEnroll,
+  onSubscribe,
   compact = false,
 }: {
   needsSignIn: boolean
-  needsEnrollment: boolean
-  enrolling: boolean
+  needsSubscription: boolean
+  subscribing: boolean
   error: string | null
   courseId: string
-  onEnroll: () => void
+  onSubscribe: () => void
   compact?: boolean
 }) {
   const cardClass = compact
@@ -417,7 +423,7 @@ export function LessonPlayerAlerts({
         </div>
       )}
 
-      {needsEnrollment && (
+      {needsSubscription && (
         <div
           className={
             compact
@@ -425,18 +431,18 @@ export function LessonPlayerAlerts({
               : 'mb-6 rounded-2xl border border-slate-200/90 bg-gradient-to-br from-white via-blue-50/30 to-slate-50/80 p-5 shadow-sm shadow-slate-200/60 ring-1 ring-slate-100'
           }
         >
-          <h3 className="text-sm font-semibold text-slate-900">Enroll to watch</h3>
+          <h3 className="text-sm font-semibold text-slate-900">{subscribePaywallTitle}</h3>
           <p className="mt-1 text-sm text-slate-600">
-            You need to enroll in this course before playback is available.
+            {subscribePaywallBody}
           </p>
           <div className="mt-4 flex flex-wrap gap-3">
             <button
               type="button"
-              disabled={enrolling}
-              onClick={onEnroll}
+              disabled={subscribing}
+              onClick={onSubscribe}
               className="min-h-11 rounded-lg bg-gradient-to-r from-blue-600 to-blue-700 px-4 py-2 text-sm font-semibold text-white shadow-md shadow-blue-900/15 transition-all hover:from-blue-700 hover:to-blue-800 disabled:opacity-60"
             >
-              {enrolling ? 'Enrolling…' : 'Enroll for free'}
+              {subscribing ? subscribeCtaLoadingLabel : subscribeCtaLabel}
             </button>
             <Link
               to={`/courses/${courseId}`}

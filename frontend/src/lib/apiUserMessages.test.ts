@@ -112,6 +112,21 @@ describe('catalogApiUserMessage', () => {
     )
   })
 
+  it('maps checkout session billing codes', () => {
+    expect(catalogApiUserMessage(new ApiError('x', 503, 'billing_unconfigured'), 'subscribe')).toBe(
+      'Subscriptions are not available right now. Please try again later.',
+    )
+    expect(catalogApiUserMessage(new ApiError('x', 409, 'already_subscribed'), 'subscribe')).toBe(
+      'You already have an active subscription.',
+    )
+    expect(catalogApiUserMessage(new ApiError('x', 409, 'checkout_in_progress'), 'subscribe')).toBe(
+      'A checkout is already in progress. Wait a moment or try again shortly.',
+    )
+    expect(catalogApiUserMessage(new ApiError('x', 409, 'reactivation_required'), 'subscribe')).toBe(
+      'You still have access until your billing period ends. Reactivate your subscription from account settings—no new charge today.',
+    )
+  })
+
   it('uses context-specific fallbacks for unknown errors', () => {
     expect(catalogApiUserMessage(new Error('network down'), 'loadCourses')).toBe(
       'Your courses could not be loaded. Please try again.',

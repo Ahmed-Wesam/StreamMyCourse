@@ -13,7 +13,7 @@ const api = vi.hoisted(() => ({
   listLessons: vi.fn(),
   listCourseModules: vi.fn(),
   getPlaybackUrl: vi.fn(),
-  enrollInCourse: vi.fn(),
+  createCheckoutSession: vi.fn(),
   getCourseProgress: vi.fn(),
   updateLessonProgress: vi.fn(),
 }))
@@ -28,8 +28,8 @@ vi.mock('../lib/api', async (importOriginal) => {
       api.listCourseModules(...args) as ReturnType<typeof mod.listCourseModules>,
     getPlaybackUrl: (...args: unknown[]) =>
       api.getPlaybackUrl(...args) as ReturnType<typeof mod.getPlaybackUrl>,
-    enrollInCourse: (...args: unknown[]) =>
-      api.enrollInCourse(...args) as ReturnType<typeof mod.enrollInCourse>,
+    createCheckoutSession: (...args: unknown[]) =>
+      api.createCheckoutSession(...args) as ReturnType<typeof mod.createCheckoutSession>,
     getCourseProgress: (...args: unknown[]) =>
       api.getCourseProgress(...args) as ReturnType<typeof mod.getCourseProgress>,
     updateLessonProgress: (...args: unknown[]) =>
@@ -97,7 +97,7 @@ describe('LessonPlayerPage', () => {
     api.listLessons.mockReset()
     api.listCourseModules.mockReset()
     api.getPlaybackUrl.mockReset()
-    api.enrollInCourse.mockReset()
+    api.createCheckoutSession.mockReset()
     api.getCourseProgress.mockReset()
     api.updateLessonProgress.mockReset()
 
@@ -195,19 +195,28 @@ describe('LessonPlayerPage', () => {
     expect(screen.getAllByText('Locked').length).toBeGreaterThan(0)
   })
 
-  it('shows Sign in to watch after enroll when playback still returns 401', async () => {
-    api.getPlaybackUrl
-      .mockRejectedValueOnce(new ApiError('Subscription required', 403, 'subscription_required'))
-      .mockRejectedValueOnce(new ApiError('Authentication required', 401, 'unauthorized'))
-    api.enrollInCourse.mockResolvedValue({ courseId: 'c1', enrolled: true })
+  it('redirects to checkout when subscribe is clicked on subscription paywall', async () => {
+    api.getPlaybackUrl.mockRejectedValueOnce(
+      new ApiError('Subscription required', 403, 'subscription_required'),
+    )
+    api.createCheckoutSession.mockResolvedValue({ redirect_url: 'https://pay.example/checkout' })
+    const hrefSetter = vi.fn()
+    Object.defineProperty(window, 'location', {
+      configurable: true,
+      value: { ...window.location, set href(v: string) { hrefSetter(v) }, get href() { return '' } },
+    })
 
     renderLessonPlayer()
 
-    expect((await screen.findByRole('heading', { name: /Enroll to watch/i })).isConnected).toBe(true)
-    fireEvent.click(screen.getByRole('button', { name: /Enroll for free/i }))
+    expect((await screen.findByRole('heading', { name: /Subscribe to unlock all courses/i })).isConnected).toBe(
+      true,
+    )
+    fireEvent.click(screen.getByRole('button', { name: /Subscribe — 50 JOD \/ month/i }))
 
-    expect((await screen.findByRole('heading', { name: /Sign in to watch/i })).isConnected).toBe(true)
-    expect(screen.queryByRole('heading', { name: /Enroll to watch/i })).toBeNull()
+    await waitFor(() => {
+      expect(api.createCheckoutSession).toHaveBeenCalledWith()
+      expect(hrefSetter).toHaveBeenCalledWith('https://pay.example/checkout')
+    })
   })
 
   it('loads progress after playback URL succeeds', async () => {
@@ -669,7 +678,9 @@ describe('LessonPlayerPage', () => {
 
       renderLessonPlayer('/courses/c1/lessons/l2')
 
-      expect((await screen.findByRole('heading', { name: /Enroll to watch/i })).isConnected).toBe(true)
+      expect((await screen.findByRole('heading', { name: /Subscribe to unlock all courses/i })).isConnected).toBe(
+        true,
+      )
       expect(screen.queryByRole('link', { name: /Module quiz/i })).toBeNull()
       expect(
         screen

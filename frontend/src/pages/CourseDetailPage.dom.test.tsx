@@ -14,7 +14,7 @@ const api = vi.hoisted(() => ({
   listCourseModules: vi.fn(),
   getCourseProgress: vi.fn(),
   hasSignedInIdToken: vi.fn(),
-  enrollInCourse: vi.fn(),
+  createCheckoutSession: vi.fn(),
   updateLessonProgress: vi.fn(),
 }))
 
@@ -30,8 +30,8 @@ vi.mock('../lib/api', async (importOriginal) => {
       api.getCourseProgress(...args) as ReturnType<typeof mod.getCourseProgress>,
     hasSignedInIdToken: (...args: unknown[]) =>
       api.hasSignedInIdToken(...args) as ReturnType<typeof mod.hasSignedInIdToken>,
-    enrollInCourse: (...args: unknown[]) =>
-      api.enrollInCourse(...args) as ReturnType<typeof mod.enrollInCourse>,
+    createCheckoutSession: (...args: unknown[]) =>
+      api.createCheckoutSession(...args) as ReturnType<typeof mod.createCheckoutSession>,
     updateLessonProgress: (...args: unknown[]) =>
       api.updateLessonProgress(...args) as ReturnType<typeof mod.updateLessonProgress>,
   }
@@ -54,7 +54,7 @@ describe('CourseDetailPage', () => {
     api.listCourseModules.mockReset()
     api.getCourseProgress.mockReset()
     api.hasSignedInIdToken.mockReset()
-    api.enrollInCourse.mockReset()
+    api.createCheckoutSession.mockReset()
     api.updateLessonProgress.mockReset()
 
     api.getCourse.mockResolvedValue({
@@ -99,7 +99,7 @@ describe('CourseDetailPage', () => {
       ],
     })
     api.hasSignedInIdToken.mockResolvedValue(true)
-    api.enrollInCourse.mockResolvedValue({ ok: true })
+    api.createCheckoutSession.mockResolvedValue({ redirect_url: 'https://pay.example/checkout' })
     api.updateLessonProgress.mockResolvedValue({
       ok: true,
       lessonProgress: { lessonId: 'l1', completed: true, lastPositionSec: 0 },
@@ -232,19 +232,20 @@ describe('CourseDetailPage', () => {
     })
   })
 
-  it('shows Enroll button when not enrolled', async () => {
+  it('shows Subscribe paywall when user has no access', async () => {
     api.getCourse.mockResolvedValue({
       id: 'c1',
       title: 'Test Course',
       description: 'Test Description',
       status: 'PUBLISHED',
-      enrolled: false,
+      hasAccess: false,
     })
 
     renderCourseDetail()
 
     await waitFor(() => {
-      expect(screen.getByText('Enroll for free')).toBeTruthy()
+      expect(screen.getByText('Subscribe — 50 JOD / month')).toBeTruthy()
+      expect(screen.getByText('Subscribe to unlock all courses')).toBeTruthy()
     })
   })
 
@@ -319,22 +320,28 @@ describe('CourseDetailPage', () => {
     })
   })
 
-  it('calls enrollInCourse when Enroll button clicked', async () => {
+  it('redirects to checkout when Subscribe is clicked', async () => {
     api.getCourse.mockResolvedValue({
       id: 'c1',
       title: 'Test Course',
       description: 'Test Description',
       status: 'PUBLISHED',
-      enrolled: false,
+      hasAccess: false,
+    })
+    const hrefSetter = vi.fn()
+    Object.defineProperty(window, 'location', {
+      configurable: true,
+      value: { ...window.location, set href(v: string) { hrefSetter(v) }, get href() { return '' } },
     })
 
     renderCourseDetail()
 
-    const enrollButton = await waitFor(() => screen.getByText('Enroll for free'))
-    fireEvent.click(enrollButton)
+    const subscribeButton = await waitFor(() => screen.getByText('Subscribe — 50 JOD / month'))
+    fireEvent.click(subscribeButton)
 
     await waitFor(() => {
-      expect(api.enrollInCourse).toHaveBeenCalledWith('c1')
+      expect(api.createCheckoutSession).toHaveBeenCalledWith()
+      expect(hrefSetter).toHaveBeenCalledWith('https://pay.example/checkout')
     })
   })
 

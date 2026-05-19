@@ -15,6 +15,7 @@ vi.mock('./auth', () => ({
 
 import {
   ApiError,
+  createCheckoutSession,
   createCourse,
   createCourseModule,
   createLesson,
@@ -27,8 +28,12 @@ import {
   getCourseProgress,
   getPlaybackUrl,
   getUploadUrl,
+  isAlreadySubscribedError,
+  isCheckoutInProgressError,
+  isBillingUnconfiguredError,
   isCourseAccessDeniedError,
   isEnrollmentRequiredError,
+  isReactivationRequiredError,
   isSubscriptionRequiredError,
   isLastModuleDeleteError,
   isMediaCleanupUnavailableError,
@@ -332,6 +337,88 @@ describe('isProgressRdsUnavailableError', () => {
 
   it('returns false for non-ApiError', () => {
     expect(isProgressRdsUnavailableError(new Error('fail'))).toBe(false)
+  })
+})
+
+describe('checkout session error helpers', () => {
+  it('isBillingUnconfiguredError matches 503 billing_unconfigured', () => {
+    expect(isBillingUnconfiguredError(new ApiError('x', 503, 'billing_unconfigured'))).toBe(true)
+    expect(isBillingUnconfiguredError(new ApiError('x', 503, 'other'))).toBe(false)
+    expect(isBillingUnconfiguredError(new ApiError('x', 500, 'billing_unconfigured'))).toBe(false)
+  })
+
+  it('isAlreadySubscribedError matches 409 already_subscribed', () => {
+    expect(isAlreadySubscribedError(new ApiError('x', 409, 'already_subscribed'))).toBe(true)
+    expect(isAlreadySubscribedError(new ApiError('x', 409, 'reactivation_required'))).toBe(false)
+    expect(isAlreadySubscribedError(new ApiError('x', 409, 'checkout_in_progress'))).toBe(false)
+  })
+
+  it('isCheckoutInProgressError matches 409 checkout_in_progress', () => {
+    expect(isCheckoutInProgressError(new ApiError('x', 409, 'checkout_in_progress'))).toBe(true)
+    expect(isCheckoutInProgressError(new ApiError('x', 409, 'already_subscribed'))).toBe(false)
+  })
+
+  it('isReactivationRequiredError matches 409 reactivation_required', () => {
+    expect(isReactivationRequiredError(new ApiError('x', 409, 'reactivation_required'))).toBe(true)
+    expect(isReactivationRequiredError(new ApiError('x', 409, 'already_subscribed'))).toBe(false)
+  })
+})
+
+describe('createCheckoutSession', () => {
+  const originalEnv = import.meta.env.VITE_API_BASE_URL
+
+  beforeEach(() => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => {
+        return new Response(JSON.stringify({ redirect_url: 'https://pay.example/checkout' }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        })
+      }),
+    )
+    fetchAuthSessionMock.mockResolvedValue({ tokens: { idToken: 't' } })
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    ;(import.meta as any).env.VITE_API_BASE_URL = 'https://api.example/v1'
+  })
+
+  afterEach(() => {
+    vi.unstubAllGlobals()
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    ;(import.meta as any).env.VITE_API_BASE_URL = originalEnv
+    vi.clearAllMocks()
+  })
+
+  it('POSTs to /billing/checkout-session with empty body when planId omitted', async () => {
+    const result = await createCheckoutSession()
+    expect(result).toEqual({ redirect_url: 'https://pay.example/checkout' })
+    expect(fetch).toHaveBeenCalledTimes(1)
+    const [url, init] = vi.mocked(fetch).mock.calls[0]
+    expect(String(url)).toContain('/billing/checkout-session')
+    expect(init?.method).toBe('POST')
+    expect(JSON.parse((init?.body as string) ?? '{}')).toEqual({})
+  })
+
+  it('POSTs with planId when provided', async () => {
+    await createCheckoutSession('plan-monthly')
+    const [, init] = vi.mocked(fetch).mock.calls[0]
+    expect(JSON.parse((init?.body as string) ?? '{}')).toEqual({ planId: 'plan-monthly' })
+  })
+
+  it('throws ApiError with billing codes from failed responses', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => {
+        return new Response(JSON.stringify({ message: 'Already subscribed', code: 'already_subscribed' }), {
+          status: 409,
+          headers: { 'Content-Type': 'application/json' },
+        })
+      }),
+    )
+    await expect(createCheckoutSession()).rejects.toMatchObject({
+      status: 409,
+      code: 'already_subscribed',
+    })
   })
 })
 

@@ -2,7 +2,7 @@ import { BookOpen, ChevronLeft, Clock, Play } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import {
-  enrollInCourse,
+  createCheckoutSession,
   getCourse,
   getCourseProgress,
   hasSignedInIdToken,
@@ -16,6 +16,12 @@ import {
   type LessonProgressItem,
 } from '../lib/api'
 import { catalogApiUserMessage, courseNotFoundMessage } from '../lib/apiUserMessages'
+import {
+  subscribeCtaLabel,
+  subscribeCtaLoadingLabel,
+  subscribePaywallBody,
+  subscribePaywallTitle,
+} from '../lib/subscribeCopy'
 import { groupLessonsByModule } from '../lib/lessonGrouping'
 import { lessonPlayerPath, moduleQuizLinkTo } from '../lib/moduleQuizNavigation'
 import { PricingSection } from '../components/course/PricingSection'
@@ -264,9 +270,9 @@ function CourseDetailBody({
   course,
   courseProgress,
   previewOnly,
-  needsEnrollment,
-  enrolling,
-  onEnroll,
+  needsSubscription,
+  subscribing,
+  onSubscribe,
   onToggleLessonComplete,
   markingLessonId,
 }: {
@@ -278,16 +284,16 @@ function CourseDetailBody({
   course: Course | null
   courseProgress: CourseProgress | null
   previewOnly: boolean
-  needsEnrollment: boolean
-  enrolling: boolean
-  onEnroll: () => void
+  needsSubscription: boolean
+  subscribing: boolean
+  onSubscribe: () => void
   onToggleLessonComplete: (lesson: Lesson, nextCompleted: boolean) => void
   markingLessonId: string | null
 }) {
   const lessonSections = useMemo(() => groupLessonsByModule(lessons, modules), [lessons, modules])
   const lessonIndexById = useMemo(() => new Map(lessons.map((l, i) => [l.id, i])), [lessons])
   const moduleById = useMemo(() => new Map(modules.map((m) => [m.id, m])), [modules])
-  const showModuleQuizBadge = !previewOnly && !needsEnrollment
+  const showModuleQuizBadge = !previewOnly && !needsSubscription
 
   return (
     <section className="border-b border-border bg-secondary/40 py-12 sm:py-16">
@@ -368,8 +374,8 @@ function CourseDetailBody({
                         lesson={lesson}
                         courseId={courseId}
                         index={lessonIndexById.get(lesson.id) ?? 0}
-                        linkDisabled={previewOnly || needsEnrollment}
-                        showActions={!previewOnly && !needsEnrollment}
+                        linkDisabled={previewOnly || needsSubscription}
+                        showActions={!previewOnly && !needsSubscription}
                         completed={courseProgress?.lessons.find((p) => p.lessonId === lesson.id)?.completed ?? false}
                         markingComplete={markingLessonId === lesson.id}
                         onToggleComplete={onToggleLessonComplete}
@@ -414,29 +420,33 @@ function CourseDetailBody({
                 <div className="mt-1 text-sm font-semibold text-foreground">{FIGMA_MOCK_COURSE_INSTRUCTOR_NAME}</div>
               </div>
               <div className="space-y-3 border-t border-border pt-6">
-                {needsEnrollment && (
-                  <button
-                    type="button"
-                    onClick={() => void onEnroll()}
-                    disabled={enrolling}
-                    className="inline-flex w-full items-center justify-center rounded-lg bg-primary px-4 py-3 font-medium text-primary-foreground transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
-                  >
-                    {enrolling ? 'Enrolling…' : 'Enroll for free'}
-                  </button>
+                {needsSubscription && (
+                  <div className="space-y-3 rounded-lg border border-border bg-card p-4">
+                    <h4 className="text-sm font-semibold text-foreground">{subscribePaywallTitle}</h4>
+                    <p className="text-sm text-muted-foreground">{subscribePaywallBody}</p>
+                    <button
+                      type="button"
+                      onClick={() => void onSubscribe()}
+                      disabled={subscribing}
+                      className="inline-flex w-full items-center justify-center rounded-lg bg-primary px-4 py-3 font-medium text-primary-foreground transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      {subscribing ? subscribeCtaLoadingLabel : subscribeCtaLabel}
+                    </button>
+                  </div>
                 )}
                 {previewOnly && (
                   <p className="text-center text-sm text-muted-foreground">
                     <Link to="/login" className="font-medium text-primary hover:opacity-90">
                       Sign in
                     </Link>{' '}
-                    to enroll and watch lessons.
+                    to subscribe and watch lessons.
                   </p>
                 )}
                 <ResumeLearningButton
                   courseId={courseId}
                   lessons={lessons}
                   courseProgress={courseProgress}
-                  disabled={lessons.length === 0 || previewOnly || needsEnrollment}
+                  disabled={lessons.length === 0 || previewOnly || needsSubscription}
                 />
               </div>
             </div>
@@ -615,8 +625,8 @@ export default function CourseDetailPage() {
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [previewOnly, setPreviewOnly] = useState(false)
-  const [needsEnrollment, setNeedsEnrollment] = useState(false)
-  const [enrolling, setEnrolling] = useState(false)
+  const [needsSubscription, setNeedsSubscription] = useState(false)
+  const [subscribing, setSubscribing] = useState(false)
   const [courseProgress, setCourseProgress] = useState<CourseProgress | null>(null)
   const [markingLessonId, setMarkingLessonId] = useState<string | null>(null)
 
@@ -626,7 +636,7 @@ export default function CourseDetailPage() {
     setCourseProgress(null)
     const signedIn = await hasSignedInIdToken()
     setPreviewOnly(!signedIn)
-    setNeedsEnrollment(false)
+    setNeedsSubscription(false)
     try {
       const [c, l, m] = await Promise.all([getCourse(courseId), listLessons(courseId), listCourseModules(courseId)])
       if (!c) {
@@ -640,7 +650,7 @@ export default function CourseDetailPage() {
       setModules([...m].sort((a, b) => a.order - b.order))
       setLessons([...l].sort((a, b) => a.moduleOrder - b.moduleOrder || a.order - b.order))
       if (signedIn) {
-        setNeedsEnrollment((c.hasAccess ?? c.enrolled) === false)
+        setNeedsSubscription((c.hasAccess ?? c.enrolled) === false)
       }
       if (signedIn) {
         try {
@@ -701,19 +711,19 @@ export default function CourseDetailPage() {
     if (courseId) void loadCourseData()
   }, [courseId, loadCourseData])
 
-  const onEnroll = useCallback(async () => {
+  const onSubscribe = useCallback(async () => {
     if (!courseId) return
-    setEnrolling(true)
+    setSubscribing(true)
     setError(null)
     try {
-      await enrollInCourse(courseId)
-      await loadCourseData()
+      const { redirect_url } = await createCheckoutSession()
+      window.location.href = redirect_url
     } catch (e) {
-      setError(catalogApiUserMessage(e, 'enroll'))
+      setError(catalogApiUserMessage(e, 'subscribe'))
     } finally {
-      setEnrolling(false)
+      setSubscribing(false)
     }
-  }, [courseId, loadCourseData])
+  }, [courseId])
 
   return (
     <div className="min-h-screen bg-background">
@@ -741,9 +751,9 @@ export default function CourseDetailPage() {
         course={course}
         courseProgress={courseProgress}
         previewOnly={previewOnly}
-        needsEnrollment={needsEnrollment}
-        enrolling={enrolling}
-        onEnroll={onEnroll}
+        needsSubscription={needsSubscription}
+        subscribing={subscribing}
+        onSubscribe={onSubscribe}
         onToggleLessonComplete={onToggleLessonComplete}
         markingLessonId={markingLessonId}
       />
