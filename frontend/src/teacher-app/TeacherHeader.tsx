@@ -18,6 +18,7 @@ export function TeacherHeader() {
   const [mobileOpen, setMobileOpen] = useState(false)
   const location = useLocation()
   const isDashboard = location.pathname === '/'
+  const isPayments = location.pathname === '/settings/payments'
   const menuId = useId()
 
   useEffect(() => {
@@ -65,6 +66,14 @@ export function TeacherHeader() {
             }`}
           >
             Dashboard
+          </Link>
+          <Link
+            to="/settings/payments"
+            className={`text-sm font-medium transition-colors ${
+              isPayments ? 'text-emerald-600' : 'text-gray-700 hover:text-gray-900'
+            }`}
+          >
+            Payments
           </Link>
           <span className="text-sm text-gray-400">|</span>
           <a
@@ -135,6 +144,13 @@ export function TeacherHeader() {
                 onClick={() => setMobileOpen(false)}
               >
                 Dashboard
+              </Link>
+              <Link
+                to="/settings/payments"
+                className={linkClass}
+                onClick={() => setMobileOpen(false)}
+              >
+                Payments
               </Link>
               <a
                 href={studentSiteUrl}
