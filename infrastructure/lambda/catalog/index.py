@@ -9,6 +9,7 @@ from typing import Any, Dict, Optional
 from bootstrap import lambda_bootstrap
 from config import load_config
 from services.auth.controller import handle_users_me
+from services.billing_merchant.controller import handle_merchant_status
 from services.common.http import apigw_routing_path, json_response, options_response, pick_origin
 from services.progress.controller import handle_progress_request
 from services.common.logging_setup import configure_logging
@@ -58,9 +59,14 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 None,
             )
         else:
-            cfg, service, auth_service, progress_service, question_bank_service = (
-                lambda_bootstrap()
-            )
+            (
+                cfg,
+                service,
+                auth_service,
+                progress_service,
+                question_bank_service,
+                merchant_service,
+            ) = lambda_bootstrap()
 
             headers = event.get("headers") or {}
             req_origin = headers.get("origin") or headers.get("Origin")
@@ -123,6 +129,17 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                         event,
                         origin=origin,
                         auth_svc=auth_service,
+                    )
+                elif (
+                    method == "GET"
+                    and parts == ["billing", "merchant", "status"]
+                    and merchant_service is not None
+                ):
+                    response = handle_merchant_status(
+                        event,
+                        origin=origin,
+                        merchant_svc=merchant_service,
+                        billing_teacher_sub=cfg.billing_teacher_sub,
                     )
                 else:
                     response = course_management_handle(
