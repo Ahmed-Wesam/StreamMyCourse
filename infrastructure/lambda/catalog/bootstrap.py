@@ -32,6 +32,7 @@ from services.course_management.storage import CourseMediaStorage
 from services.progress.rds_repo import LessonProgressRdsRepository
 from services.progress.service import LessonProgressService
 from services.subscription.checkout_service import BillingCheckoutService
+from services.subscription.manage_service import SubscriptionManageService
 from services.subscription.repo import SubscriptionRdsRepository
 from services.subscription.service import CourseAccessService
 from services.question_banks.rds_repo import QuestionBankRdsRepository
@@ -144,6 +145,7 @@ class AwsDeps:
     progress_service: LessonProgressService
     question_bank_service: QuestionBankService
     merchant_service: MerchantStatusService
+    subscription_manage_service: SubscriptionManageService
     checkout_service: BillingCheckoutService
 
 
@@ -278,6 +280,7 @@ def build_aws_deps(cfg: AppConfig) -> AwsDeps:
         deployment_environment=cfg.deployment_environment,
     )
     checkout_service = BillingCheckoutService(subscription_repo)
+    subscription_manage_service = SubscriptionManageService(subscription_repo)
 
     return AwsDeps(
         cfg=cfg,
@@ -286,6 +289,7 @@ def build_aws_deps(cfg: AppConfig) -> AwsDeps:
         progress_service=progress_service,
         question_bank_service=question_bank_service,
         merchant_service=merchant_service,
+        subscription_manage_service=subscription_manage_service,
         checkout_service=checkout_service,
     )
 
@@ -304,16 +308,17 @@ def lambda_bootstrap() -> Tuple[
     Optional[LessonProgressService],
     Optional[QuestionBankService],
     Optional[MerchantStatusService],
+    Optional[SubscriptionManageService],
 ]:
     """
     Composition root: load config and construct dependencies once.
     When RDS settings are incomplete the catalog cannot be wired, so
-    ``(cfg, None, None, None, None, None)`` is returned and the handler responds
+    ``(cfg, None, None, None, None, None, None)`` is returned and the handler responds
     with a configuration error.
     """
     cfg = load_config()
     if not _rds_config_complete(cfg):
-        return cfg, None, None, None, None, None
+        return cfg, None, None, None, None, None, None
 
     existing = get_cached_aws_deps()
     if existing is not None:
@@ -324,6 +329,7 @@ def lambda_bootstrap() -> Tuple[
             existing.progress_service,
             existing.question_bank_service,
             existing.merchant_service,
+            existing.subscription_manage_service,
         )
 
     deps = build_aws_deps(cfg)
@@ -335,4 +341,5 @@ def lambda_bootstrap() -> Tuple[
         deps.progress_service,
         deps.question_bank_service,
         deps.merchant_service,
+        deps.subscription_manage_service,
     )

@@ -15,8 +15,11 @@ from domain.metadata import (
 )
 from catalog_invoke import (
     CatalogInvokeError,
+    invoke_billing_cancel_at_period_end,
     invoke_billing_checkout,
     invoke_billing_checkout_rollback,
+    invoke_billing_reactivate,
+    invoke_billing_reactivate_prepare,
 )
 from edge_config import BillingEdgeConfig, get_payment_provider, load_billing_edge_config
 from providers.mock_adapter import MockPayTabsAdapter
@@ -31,6 +34,32 @@ _get_payment_provider = get_payment_provider
 _enqueue_domain_events = enqueue_domain_events
 _invoke_billing_checkout = invoke_billing_checkout
 _invoke_billing_checkout_rollback = invoke_billing_checkout_rollback
+_invoke_billing_cancel_at_period_end = invoke_billing_cancel_at_period_end
+_invoke_billing_reactivate_prepare = invoke_billing_reactivate_prepare
+_invoke_billing_reactivate = invoke_billing_reactivate
+
+_MANAGE_CONFLICT_MESSAGES: Dict[str, str] = {
+    "already_canceled": "Subscription is already set to cancel at period end",
+    "not_subscribed": "No active subscription to manage",
+    "cannot_cancel": "Subscription cannot be canceled in its current state",
+    "cannot_reactivate": "Subscription cannot be reactivated in its current state",
+}
+
+_BILLING_MANAGE_POST_PATHS = frozenset(
+    {
+        "/billing/checkout-session",
+        "/billing/cancel-subscription",
+        "/billing/reactivate-subscription",
+    }
+)
+
+_BILLING_MANAGE_OPTIONS_PATHS = frozenset(
+    {
+        "/billing/checkout-session",
+        "/billing/cancel-subscription",
+        "/billing/reactivate-subscription",
+    }
+)
 
 _CSP_API = "default-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'"
 
@@ -51,6 +80,14 @@ def _json_response(status_code: int, body: Dict[str, Any]) -> Dict[str, Any]:
 
 def _error_response(status_code: int, code: str, message: str) -> Dict[str, Any]:
     return _json_response(status_code, {"code": code, "message": message})
+
+
+def _manage_conflict_response(error_code: str) -> Dict[str, Any]:
+    message = _MANAGE_CONFLICT_MESSAGES.get(
+        error_code,
+        "Subscription cannot be updated in its current state",
+    )
+    return _error_response(409, error_code, message)
 
 
 def _options_response(event: Dict[str, Any]) -> Dict[str, Any]:
@@ -257,6 +294,79 @@ def _handle_checkout(
     return _json_response(200, {"redirect_url": session.redirect_url})
 
 
+def _handle_cancel_subscription(
+    event: Dict[str, Any],
+    cfg: BillingEdgeConfig,
+) -> Dict[str, Any]:
+    user_sub = _claims_sub(event)
+    if not user_sub:
+        return _error_response(401, "unauthorized", "Missing authenticated user")
+
+    catalog_arn = str(cfg.catalog_lambda_arn or "").strip()
+    if not catalog_arn:
+        return _error_response(503, "billing_unconfigured", "Billing is not configured")
+
+    try:
+        result = _invoke_billing_cancel_at_period_end(
+            user_sub=user_sub,
+            catalog_lambda_arn=catalog_arn,
+        )
+    except CatalogInvokeError:
+        return _error_response(503, "billing_unconfigured", "Billing is not configured")
+
+    error_code = result.get("errorCode")
+    if isinstance(error_code, str) and error_code:
+        return _manage_conflict_response(error_code)
+
+    return _json_response(200, result)
+
+
+def _handle_reactivate_subscription(
+    event: Dict[str, Any],
+    provider: PaymentProviderPort,
+    cfg: BillingEdgeConfig,
+) -> Dict[str, Any]:
+    user_sub = _claims_sub(event)
+    if not user_sub:
+        return _error_response(401, "unauthorized", "Missing authenticated user")
+
+    catalog_arn = str(cfg.catalog_lambda_arn or "").strip()
+    if not catalog_arn:
+        return _error_response(503, "billing_unconfigured", "Billing is not configured")
+
+    try:
+        prepare = _invoke_billing_reactivate_prepare(
+            user_sub=user_sub,
+            catalog_lambda_arn=catalog_arn,
+        )
+    except CatalogInvokeError:
+        return _error_response(503, "billing_unconfigured", "Billing is not configured")
+
+    error_code = prepare.get("errorCode")
+    if isinstance(error_code, str) and error_code:
+        return _manage_conflict_response(error_code)
+
+    provider_subscription_id = str(
+        prepare.get("providerSubscriptionId") or ""
+    ).strip()
+    if provider_subscription_id:
+        provider.resume_agreement(provider_subscription_id)
+
+    try:
+        result = _invoke_billing_reactivate(
+            user_sub=user_sub,
+            catalog_lambda_arn=catalog_arn,
+        )
+    except CatalogInvokeError:
+        return _error_response(503, "billing_unconfigured", "Billing is not configured")
+
+    error_code = result.get("errorCode")
+    if isinstance(error_code, str) and error_code:
+        return _manage_conflict_response(error_code)
+
+    return _json_response(200, result)
+
+
 def _webhook_signature_header(event: Dict[str, Any], provider: PaymentProviderPort) -> str:
     headers = event.get("headers") or {}
     if isinstance(provider, MockPayTabsAdapter):
@@ -335,20 +445,23 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
 
     cfg = _load_config()
     provider = _get_payment_provider(cfg)
-    if provider is None:
-        path = _apigw_routing_path(event)
-        if path in ("/billing/checkout-session", "/webhooks/payments/paytabs"):
-            return _error_response(503, "billing_unconfigured", "Billing is not configured")
-        return _error_response(404, "not_found", "Not found")
-
     method = (event.get("httpMethod") or "").upper()
     path = _apigw_routing_path(event)
 
-    if method == "OPTIONS" and path == "/billing/checkout-session":
+    if provider is None:
+        if path in _BILLING_MANAGE_POST_PATHS or path == "/webhooks/payments/paytabs":
+            return _error_response(503, "billing_unconfigured", "Billing is not configured")
+        return _error_response(404, "not_found", "Not found")
+
+    if method == "OPTIONS" and path in _BILLING_MANAGE_OPTIONS_PATHS:
         return _options_response(event)
 
     if method == "POST" and path == "/billing/checkout-session":
         return _handle_checkout(event, provider, cfg)
+    if method == "POST" and path == "/billing/cancel-subscription":
+        return _handle_cancel_subscription(event, cfg)
+    if method == "POST" and path == "/billing/reactivate-subscription":
+        return _handle_reactivate_subscription(event, provider, cfg)
     if method == "POST" and path == "/webhooks/payments/paytabs":
         return _handle_webhook(event, provider, cfg)
 

@@ -101,7 +101,9 @@ class MockPayTabsAdapter:
 
     def cancel_agreement(self, agreement_id: str) -> None:
         _ = agreement_id
-        raise NotImplementedError("cancel_agreement is WS7")
+
+    def resume_agreement(self, agreement_id: str) -> None:
+        _ = agreement_id
 
     @staticmethod
     def sample_ipn_bytes(sample: dict) -> bytes:
