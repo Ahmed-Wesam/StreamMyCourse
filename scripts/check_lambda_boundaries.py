@@ -52,6 +52,7 @@ _CATALOG_PSYCOPG2_ALLOWED = frozenset(
 # WS2 billing_edge: boto3 only for Secrets Manager credential load.
 _BILLING_EDGE_BOTO3_ALLOWED = frozenset(
     {
+        _p("infrastructure/lambda/billing_edge/catalog_invoke.py"),
         _p("infrastructure/lambda/billing_edge/paytabs_secrets.py"),
         _p("infrastructure/lambda/billing_edge/queue/enqueue.py"),
     }

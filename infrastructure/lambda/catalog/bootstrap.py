@@ -31,6 +31,7 @@ from services.course_management.service import CourseManagementService
 from services.course_management.storage import CourseMediaStorage
 from services.progress.rds_repo import LessonProgressRdsRepository
 from services.progress.service import LessonProgressService
+from services.subscription.checkout_service import BillingCheckoutService
 from services.subscription.repo import SubscriptionRdsRepository
 from services.subscription.service import CourseAccessService
 from services.question_banks.rds_repo import QuestionBankRdsRepository
@@ -143,6 +144,7 @@ class AwsDeps:
     progress_service: LessonProgressService
     question_bank_service: QuestionBankService
     merchant_service: MerchantStatusService
+    checkout_service: BillingCheckoutService
 
 
 _cached: Dict[str, Any] = {}
@@ -275,6 +277,7 @@ def build_aws_deps(cfg: AppConfig) -> AwsDeps:
         merchant_repo,
         deployment_environment=cfg.deployment_environment,
     )
+    checkout_service = BillingCheckoutService(subscription_repo)
 
     return AwsDeps(
         cfg=cfg,
@@ -283,6 +286,7 @@ def build_aws_deps(cfg: AppConfig) -> AwsDeps:
         progress_service=progress_service,
         question_bank_service=question_bank_service,
         merchant_service=merchant_service,
+        checkout_service=checkout_service,
     )
 
 
