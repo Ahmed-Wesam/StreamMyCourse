@@ -48,9 +48,9 @@ def progress_repo() -> MagicMock:
 
 
 @pytest.fixture
-def enrollment_repo() -> MagicMock:
+def course_access() -> MagicMock:
     m = MagicMock()
-    m.has_enrollment.return_value = False
+    m.has_course_access.return_value = False
     return m
 
 
@@ -63,14 +63,14 @@ def course_repo() -> MagicMock:
 @pytest.fixture
 def service(
     progress_repo: MagicMock,
-    enrollment_repo: MagicMock,
+    course_access: MagicMock,
     course_repo: MagicMock,
 ) -> "LessonProgressService":
     from services.progress.service import LessonProgressService
 
     return LessonProgressService(
         progress_repo=progress_repo,
-        enrollment_repo=enrollment_repo,
+        course_access=course_access,
         course_repo=course_repo,
         progress_complete_ratio=0.92,
         position_slack_sec=30,
@@ -83,15 +83,14 @@ def service(
 class TestAuthorization:
     # Authentication (non-empty sub) is enforced in the controller layer.
 
-    def test_rejects_unenrolled_user(
+    def test_rejects_user_without_subscription_access(
         self,
         service: "LessonProgressService",
-        enrollment_repo: MagicMock,
+        course_access: MagicMock,
         course_repo: MagicMock,
     ) -> None:
-        """User not enrolled AND not course owner → Forbidden with enrollment_required code."""
-        enrollment_repo.has_enrollment.return_value = False
-        # Mock course with different owner
+        """No subscription access → Forbidden with subscription_required code."""
+        course_access.has_course_access.return_value = False
         course_repo.get_course.return_value = MagicMock(createdBy="other-teacher")
 
         with pytest.raises(Forbidden) as exc_info:
@@ -101,20 +100,20 @@ class TestAuthorization:
                 lesson_id=_LESSON_ID,
                 position=10,
                 duration=100,
+                role="student",
             )
 
-        assert exc_info.value.code == "enrollment_required"
+        assert exc_info.value.code == "subscription_required"
 
-    def test_allows_course_owner_without_enrollment(
+    def test_allows_course_owner_without_subscription_row(
         self,
         service: "LessonProgressService",
-        enrollment_repo: MagicMock,
+        course_access: MagicMock,
         progress_repo: MagicMock,
         course_repo: MagicMock,
     ) -> None:
-        """Teacher can see/update progress for their own course without enrollment."""
-        enrollment_repo.has_enrollment.return_value = False
-        # Teacher is the course owner
+        """Teacher owner bypass is delegated to CourseAccessPort."""
+        course_access.has_course_access.return_value = True
         course_repo.get_course.return_value = MagicMock(createdBy="teacher-1")
         course_repo.get_lesson_by_id.return_value = MagicMock(
             id=_LESSON_ID, course_id=_COURSE_ID
@@ -133,21 +132,22 @@ class TestAuthorization:
             lesson_id=_LESSON_ID,
             position=50,
             duration=100,
+            role="teacher",
         )
 
         assert result["ok"] is True
         assert result["lessonProgress"]["lessonId"] == _LESSON_ID
         assert result["lessonProgress"]["lastPositionSec"] == 50
 
-    def test_allows_enrolled_student(
+    def test_allows_subscribed_student(
         self,
         service: "LessonProgressService",
-        enrollment_repo: MagicMock,
+        course_access: MagicMock,
         progress_repo: MagicMock,
         course_repo: MagicMock,
     ) -> None:
-        """Enrolled student can update progress."""
-        enrollment_repo.has_enrollment.return_value = True
+        """Student with subscription access can update progress."""
+        course_access.has_course_access.return_value = True
         course_repo.get_course.return_value = MagicMock(createdBy="teacher-1")
         course_repo.get_lesson_by_id.return_value = MagicMock(
             id=_LESSON_ID, course_id=_COURSE_ID
@@ -166,6 +166,7 @@ class TestAuthorization:
             lesson_id=_LESSON_ID,
             position=25,
             duration=100,
+            role="student",
         )
 
         assert result["ok"] is True
@@ -178,11 +179,11 @@ class TestCrossCourseLessonRejection:
     def test_returns_404_when_lesson_not_in_course(
         self,
         service: "LessonProgressService",
-        enrollment_repo: MagicMock,
+        course_access: MagicMock,
         course_repo: MagicMock,
         progress_repo: MagicMock,
     ) -> None:
-        enrollment_repo.has_enrollment.return_value = True
+        course_access.has_course_access.return_value = True
         course_repo.get_lesson_by_id.return_value = None
 
         with pytest.raises(NotFound):
@@ -199,10 +200,10 @@ class TestCrossCourseLessonRejection:
     def test_returns_404_when_lesson_id_invalid_uuid(
         self,
         service: "LessonProgressService",
-        enrollment_repo: MagicMock,
+        course_access: MagicMock,
         course_repo: MagicMock,
     ) -> None:
-        enrollment_repo.has_enrollment.return_value = True
+        course_access.has_course_access.return_value = True
 
         with pytest.raises(NotFound):
             service.update_lesson_progress(
@@ -218,7 +219,7 @@ class TestCrossCourseLessonRejection:
     def test_returns_404_when_course_id_invalid_uuid(
         self,
         service: "LessonProgressService",
-        enrollment_repo: MagicMock,
+        course_access: MagicMock,
         course_repo: MagicMock,
     ) -> None:
         with pytest.raises(NotFound):
@@ -232,18 +233,18 @@ class TestCrossCourseLessonRejection:
 
         # UUID validation must short-circuit before any repo I/O so malformed
         # input cannot reach psycopg as a UUID-typed query parameter.
-        enrollment_repo.has_enrollment.assert_not_called()
+        course_access.has_course_access.assert_not_called()
         course_repo.get_course.assert_not_called()
         course_repo.get_lesson_by_id.assert_not_called()
 
     def test_upsert_called_only_when_lesson_belongs_to_course(
         self,
         service: "LessonProgressService",
-        enrollment_repo: MagicMock,
+        course_access: MagicMock,
         course_repo: MagicMock,
         progress_repo: MagicMock,
     ) -> None:
-        enrollment_repo.has_enrollment.return_value = True
+        course_access.has_course_access.return_value = True
         course_repo.get_lesson_by_id.return_value = MagicMock(
             id=_LESSON_ID, course_id=_COURSE_ID
         )
@@ -279,12 +280,12 @@ class TestAutoCompleteLogic:
     def test_auto_completes_at_ratio_threshold(
         self,
         service: "LessonProgressService",
-        enrollment_repo: MagicMock,
+        course_access: MagicMock,
         progress_repo: MagicMock,
         course_repo: MagicMock,
     ) -> None:
         """Position/duration >= 0.92 → completed=True."""
-        enrollment_repo.has_enrollment.return_value = True
+        course_access.has_course_access.return_value = True
         course_repo.get_course.return_value = MagicMock(createdBy="teacher-1")
         course_repo.get_lesson_by_id.return_value = MagicMock(
             id=_LESSON_ID, course_id=_COURSE_ID
@@ -316,12 +317,12 @@ class TestAutoCompleteLogic:
     def test_does_not_auto_complete_below_threshold(
         self,
         service: "LessonProgressService",
-        enrollment_repo: MagicMock,
+        course_access: MagicMock,
         progress_repo: MagicMock,
         course_repo: MagicMock,
     ) -> None:
         """Position/duration < 0.92 → completed=False."""
-        enrollment_repo.has_enrollment.return_value = True
+        course_access.has_course_access.return_value = True
         course_repo.get_course.return_value = MagicMock(createdBy="teacher-1")
         course_repo.get_lesson_by_id.return_value = MagicMock(
             id=_LESSON_ID, course_id=_COURSE_ID
@@ -349,12 +350,12 @@ class TestAutoCompleteLogic:
     def test_auto_completes_above_threshold(
         self,
         service: "LessonProgressService",
-        enrollment_repo: MagicMock,
+        course_access: MagicMock,
         progress_repo: MagicMock,
         course_repo: MagicMock,
     ) -> None:
         """Position/duration > 0.92 → completed=True."""
-        enrollment_repo.has_enrollment.return_value = True
+        course_access.has_course_access.return_value = True
         course_repo.get_course.return_value = MagicMock(createdBy="teacher-1")
         course_repo.get_lesson_by_id.return_value = MagicMock(
             id=_LESSON_ID, course_id=_COURSE_ID
@@ -389,12 +390,12 @@ class TestPositionValidation:
     def test_position_slack_allows_within_threshold(
         self,
         service: "LessonProgressService",
-        enrollment_repo: MagicMock,
+        course_access: MagicMock,
         progress_repo: MagicMock,
         course_repo: MagicMock,
     ) -> None:
         """position <= duration + 30 is allowed."""
-        enrollment_repo.has_enrollment.return_value = True
+        course_access.has_course_access.return_value = True
         course_repo.get_course.return_value = MagicMock(createdBy="teacher-1")
         course_repo.get_lesson_by_id.return_value = MagicMock(
             id=_LESSON_ID, course_id=_COURSE_ID
@@ -421,11 +422,11 @@ class TestPositionValidation:
     def test_position_slack_rejects_excessive(
         self,
         service: "LessonProgressService",
-        enrollment_repo: MagicMock,
+        course_access: MagicMock,
         course_repo: MagicMock,
     ) -> None:
         """position > duration + 30 → BadRequest."""
-        enrollment_repo.has_enrollment.return_value = True
+        course_access.has_course_access.return_value = True
         course_repo.get_course.return_value = MagicMock(createdBy="teacher-1")
         course_repo.get_lesson_by_id.return_value = MagicMock(
             id=_LESSON_ID, course_id=_COURSE_ID
@@ -446,12 +447,12 @@ class TestPositionValidation:
     def test_unknown_duration_allows_position_beyond_slack(
         self,
         service: "LessonProgressService",
-        enrollment_repo: MagicMock,
+        course_access: MagicMock,
         progress_repo: MagicMock,
         course_repo: MagicMock,
     ) -> None:
         """duration=0 means unknown length; do not cap position at 0 + slack."""
-        enrollment_repo.has_enrollment.return_value = True
+        course_access.has_course_access.return_value = True
         course_repo.get_course.return_value = MagicMock(createdBy="teacher-1")
         course_repo.get_lesson_by_id.return_value = MagicMock(
             id=_LESSON_ID, course_id=_COURSE_ID
@@ -482,12 +483,12 @@ class TestExplicitMarkComplete:
     def test_mark_complete_sets_completed_true(
         self,
         service: "LessonProgressService",
-        enrollment_repo: MagicMock,
+        course_access: MagicMock,
         progress_repo: MagicMock,
         course_repo: MagicMock,
     ) -> None:
         """Explicit markComplete=True action sets completed=True regardless of position."""
-        enrollment_repo.has_enrollment.return_value = True
+        course_access.has_course_access.return_value = True
         course_repo.get_course.return_value = MagicMock(createdBy="teacher-1")
         course_repo.get_lesson_by_id.return_value = MagicMock(
             id=_LESSON_ID, course_id=_COURSE_ID
@@ -518,12 +519,12 @@ class TestExplicitMarkComplete:
     def test_mark_incomplete_clears_completion(
         self,
         service: "LessonProgressService",
-        enrollment_repo: MagicMock,
+        course_access: MagicMock,
         progress_repo: MagicMock,
         course_repo: MagicMock,
     ) -> None:
         """Explicit markIncomplete=True action sets completed=False."""
-        enrollment_repo.has_enrollment.return_value = True
+        course_access.has_course_access.return_value = True
         course_repo.get_course.return_value = MagicMock(createdBy="teacher-1")
         course_repo.get_lesson_by_id.return_value = MagicMock(
             id=_LESSON_ID, course_id=_COURSE_ID
@@ -552,11 +553,11 @@ class TestExplicitMarkComplete:
     def test_mutually_exclusive_mark_complete_and_incomplete(
         self,
         service: "LessonProgressService",
-        enrollment_repo: MagicMock,
+        course_access: MagicMock,
         course_repo: MagicMock,
     ) -> None:
         """Both markComplete=True and markIncomplete=True → BadRequest."""
-        enrollment_repo.has_enrollment.return_value = True
+        course_access.has_course_access.return_value = True
         course_repo.get_course.return_value = MagicMock(createdBy="teacher-1")
         course_repo.get_lesson_by_id.return_value = MagicMock(
             id=_LESSON_ID, course_id=_COURSE_ID
@@ -583,12 +584,12 @@ class TestGetCourseProgress:
     def test_get_course_progress_returns_aggregate(
         self,
         service: "LessonProgressService",
-        enrollment_repo: MagicMock,
+        course_access: MagicMock,
         progress_repo: MagicMock,
         course_repo: MagicMock,
     ) -> None:
         """Returns correct totals and percent for course progress."""
-        enrollment_repo.has_enrollment.return_value = True
+        course_access.has_course_access.return_value = True
         course_repo.get_course.return_value = MagicMock(createdBy="teacher-1")
         # Mock 3 lessons in the course
         course_repo.list_lessons.return_value = [
@@ -617,12 +618,12 @@ class TestGetCourseProgress:
     def test_get_course_progress_empty_course(
         self,
         service: "LessonProgressService",
-        enrollment_repo: MagicMock,
+        course_access: MagicMock,
         progress_repo: MagicMock,
         course_repo: MagicMock,
     ) -> None:
         """Empty course returns 0 counts and 0%."""
-        enrollment_repo.has_enrollment.return_value = True
+        course_access.has_course_access.return_value = True
         course_repo.get_course.return_value = MagicMock(createdBy="teacher-1")
         # No lessons in the course
         course_repo.list_lessons.return_value = []
@@ -642,12 +643,12 @@ class TestGetCourseProgress:
     def test_get_course_progress_all_completed(
         self,
         service: "LessonProgressService",
-        enrollment_repo: MagicMock,
+        course_access: MagicMock,
         progress_repo: MagicMock,
         course_repo: MagicMock,
     ) -> None:
         """All lessons completed returns 100%."""
-        enrollment_repo.has_enrollment.return_value = True
+        course_access.has_course_access.return_value = True
         course_repo.get_course.return_value = MagicMock(createdBy="teacher-1")
         course_repo.list_lessons.return_value = [
             MagicMock(id="lesson-1"),
@@ -669,12 +670,12 @@ class TestGetCourseProgress:
     def test_get_course_progress_teacher_owner(
         self,
         service: "LessonProgressService",
-        enrollment_repo: MagicMock,
+        course_access: MagicMock,
         progress_repo: MagicMock,
         course_repo: MagicMock,
     ) -> None:
         """Teacher can get progress for their own course."""
-        enrollment_repo.has_enrollment.return_value = False
+        course_access.has_course_access.return_value = True
         course_repo.get_course.return_value = MagicMock(createdBy="teacher-1")
         course_repo.list_lessons.return_value = [
             MagicMock(id="lesson-1"),
@@ -686,6 +687,7 @@ class TestGetCourseProgress:
         result = service.get_course_progress(
             user_sub="teacher-1",
             course_id=_COURSE_ID,
+            role="teacher",
         )
 
         assert result["courseId"] == _COURSE_ID
@@ -694,7 +696,7 @@ class TestGetCourseProgress:
     def test_get_course_progress_returns_404_when_course_id_invalid_uuid(
         self,
         service: "LessonProgressService",
-        enrollment_repo: MagicMock,
+        course_access: MagicMock,
         course_repo: MagicMock,
         progress_repo: MagicMock,
     ) -> None:
@@ -706,7 +708,7 @@ class TestGetCourseProgress:
 
         # UUID validation must short-circuit before any repo I/O so malformed
         # input cannot reach psycopg as a UUID-typed query parameter.
-        enrollment_repo.has_enrollment.assert_not_called()
+        course_access.has_course_access.assert_not_called()
         course_repo.get_course.assert_not_called()
         course_repo.list_lessons.assert_not_called()
         progress_repo.get_progress_for_course.assert_not_called()
@@ -714,7 +716,7 @@ class TestGetCourseProgress:
     def test_get_course_progress_merges_with_all_lessons(
         self,
         service: "LessonProgressService",
-        enrollment_repo: MagicMock,
+        course_access: MagicMock,
         progress_repo: MagicMock,
         course_repo: MagicMock,
     ) -> None:
@@ -724,7 +726,7 @@ class TestGetCourseProgress:
         The bug was that only lessons with progress records were returned, causing
         the frontend to not find progress for other lessons.
         """
-        enrollment_repo.has_enrollment.return_value = True
+        course_access.has_course_access.return_value = True
         course_repo.get_course.return_value = MagicMock(createdBy="teacher-1")
         # 3 lessons in course, but user only has progress for 1 (completed)
         course_repo.list_lessons.return_value = [
@@ -764,12 +766,12 @@ class TestDurationUpdateOnProgress:
     def test_update_progress_with_duration_calls_set_lesson_duration(
         self,
         service: "LessonProgressService",
-        enrollment_repo: MagicMock,
+        course_access: MagicMock,
         progress_repo: MagicMock,
         course_repo: MagicMock,
     ) -> None:
         """When progress update includes valid duration, lesson duration should be updated."""
-        enrollment_repo.has_enrollment.return_value = True
+        course_access.has_course_access.return_value = True
         course_repo.get_lesson_by_id.return_value = MagicMock(
             id=_LESSON_ID, course_id=_COURSE_ID
         )
@@ -794,12 +796,12 @@ class TestDurationUpdateOnProgress:
     def test_update_progress_with_zero_duration_skips_set_lesson_duration(
         self,
         service: "LessonProgressService",
-        enrollment_repo: MagicMock,
+        course_access: MagicMock,
         progress_repo: MagicMock,
         course_repo: MagicMock,
     ) -> None:
         """Duration of 0 should not trigger lesson duration update."""
-        enrollment_repo.has_enrollment.return_value = True
+        course_access.has_course_access.return_value = True
         course_repo.get_lesson_by_id.return_value = MagicMock(
             id=_LESSON_ID, course_id=_COURSE_ID
         )
@@ -824,12 +826,12 @@ class TestDurationUpdateOnProgress:
     def test_update_progress_duration_error_silently_ignored(
         self,
         service: "LessonProgressService",
-        enrollment_repo: MagicMock,
+        course_access: MagicMock,
         progress_repo: MagicMock,
         course_repo: MagicMock,
     ) -> None:
         """Errors in duration update should not break progress tracking."""
-        enrollment_repo.has_enrollment.return_value = True
+        course_access.has_course_access.return_value = True
         progress_repo.upsert_progress.return_value = _progress_row(
             lesson_id=_LESSON_ID,
             course_id=_COURSE_ID,

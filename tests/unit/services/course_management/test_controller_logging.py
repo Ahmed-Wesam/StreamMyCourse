@@ -185,9 +185,10 @@ class TestAuditLogging:
     @patch("services.course_management.controller.apigw_cognito_claims")
     @patch("services.course_management.controller._actor_sub")
     @patch("services.course_management.controller._actor_role")
-    def test_enroll_success_emits_audit_log(
+    def test_enroll_subscription_required_does_not_emit_audit_log(
         self, mock_role, mock_sub, mock_claims, caplog
     ) -> None:
+        from services.common.errors import Forbidden
         from services.course_management.controller import handle
 
         mock_claims.return_value = {"sub": "cognito-subject-uuid-12345"}
@@ -195,7 +196,10 @@ class TestAuditLogging:
         mock_role.return_value = "student"
 
         mock_svc = MagicMock()
-        mock_svc.enroll_in_published_course.return_value = {"courseId": "c1", "enrolled": True}
+        mock_svc.enroll_in_published_course_with_profile.side_effect = Forbidden(
+            "Subscription required to access this course",
+            code="subscription_required",
+        )
         mock_auth = MagicMock()
 
         caplog.set_level(logging.INFO, logger="services.course_management.controller")
@@ -206,7 +210,7 @@ class TestAuditLogging:
             "headers": {},
         }
 
-        handle(
+        resp = handle(
             evt,
             origin="*",
             svc=mock_svc,
@@ -214,16 +218,13 @@ class TestAuditLogging:
             auth_svc=mock_auth,
         )
 
+        assert resp["statusCode"] == 403
         audit_records = [
             r
             for r in caplog.records
             if r.levelno == logging.INFO and getattr(r, "audit_action", None) == "enrollment.create"
         ]
-        assert len(audit_records) == 1
-        rec = audit_records[0]
-        assert rec.course_id == "c1"
-        assert rec.user_sub_prefix == "cognito-"
-        assert "uuid-12345" not in rec.user_sub_prefix
+        assert audit_records == []
 
     @patch("services.course_management.controller.apigw_cognito_claims")
     @patch("services.course_management.controller._actor_sub")

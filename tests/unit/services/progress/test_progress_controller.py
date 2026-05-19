@@ -110,7 +110,7 @@ class TestHandleProgressRequest:
         assert body["totalReadyLessons"] == 3
         assert body["completedCount"] == 2
         progress_svc.get_course_progress.assert_called_once_with(
-            user_sub="user-1", course_id="course-123"
+            user_sub="user-1", course_id="course-123", role="student"
         )
 
     def test_update_lesson_progress_success(
@@ -156,6 +156,7 @@ class TestHandleProgressRequest:
             duration=100,
             mark_complete=False,
             mark_incomplete=False,
+            role="student",
         )
 
     def test_update_with_mark_complete(
@@ -221,7 +222,7 @@ class TestHandleProgressRequest:
         handle_progress_request = controller_module.handle_progress_request
 
         progress_svc.get_course_progress.side_effect = Forbidden(
-            "Enrollment required", code="enrollment_required"
+            "Subscription required", code="subscription_required"
         )
 
         evt = make_lambda_event(method="GET", path="/courses/course-123/progress")
@@ -235,8 +236,8 @@ class TestHandleProgressRequest:
 
         assert resp["statusCode"] == 403
         body = json.loads(resp["body"])
-        assert body["code"] == "enrollment_required"
-        assert "enrollment" in body["message"].lower()
+        assert body["code"] == "subscription_required"
+        assert "subscription" in body["message"].lower()
 
     def test_bad_request_maps_to_400(
         self, controller_module, progress_svc: MagicMock, make_lambda_event
