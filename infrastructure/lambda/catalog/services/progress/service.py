@@ -1,7 +1,7 @@
 """Lesson Progress Service — domain logic for tracking lesson completion.
 
 This module implements the LessonProgressService which handles:
-- Authorization (enrollment or course ownership)
+- Authorization (subscription-based access via ``CourseAccessPort``, including admin bypass)
 - Auto-completion based on position/duration ratio
 - Position validation with configurable slack
 - Explicit mark complete/incomplete actions
@@ -24,7 +24,7 @@ from services.progress.ports import LessonProgressRepositoryPort, LessonProgress
 
 if TYPE_CHECKING:
     from services.course_management.ports import CourseCatalogRepositoryPort
-    from services.enrollment.ports import EnrollmentRepositoryPort
+    from services.subscription.ports import CourseAccessPort
 
 
 logger = logging.getLogger(__name__)
@@ -43,8 +43,8 @@ class LessonProgressService:
 
     Args:
         progress_repo: Repository for lesson progress persistence
-        enrollment_repo: Repository for enrollment checks
-        course_repo: Repository for course data (to check ownership)
+        course_access: Subscription-based course access port
+        course_repo: Repository for course data (lessons, duration)
         progress_complete_ratio: Ratio of position/duration to auto-complete (e.g., 0.92)
         position_slack_sec: Allowed slack for position beyond duration (e.g., 30 seconds)
     """
@@ -52,37 +52,20 @@ class LessonProgressService:
     def __init__(
         self,
         progress_repo: LessonProgressRepositoryPort,
-        enrollment_repo: "EnrollmentRepositoryPort",
+        course_access: "CourseAccessPort",
         course_repo: "CourseCatalogRepositoryPort",
         progress_complete_ratio: float = 0.92,
         position_slack_sec: int = 30,
     ):
         self._progress_repo = progress_repo
-        self._enrollment_repo = enrollment_repo
+        self._course_access = course_access
         self._course_repo = course_repo
         self._progress_complete_ratio = progress_complete_ratio
         self._position_slack_sec = position_slack_sec
 
-    def _check_authorization(self, user_sub: str, course_id: str) -> bool:
-        """Check if user is authorized to access course progress.
-
-        Authorization is granted if:
-        - User is enrolled in the course, OR
-        - User is the course owner (teacher)
-
-        Returns:
-            True if authorized, False otherwise
-        """
-        # Check enrollment first
-        if self._enrollment_repo.has_enrollment(user_sub=user_sub, course_id=course_id):
-            return True
-
-        # Check if user is the course owner
-        course = self._course_repo.get_course(course_id)
-        if course and course.createdBy == user_sub:
-            return True
-
-        return False
+    def _check_authorization(self, user_sub: str, course_id: str, role: str) -> bool:
+        """True when the viewer has subscription-based course access (or owner/admin bypass)."""
+        return self._course_access.has_course_access(user_sub, course_id, role)
 
     def _compute_auto_complete(self, position: int, duration: int) -> bool:
         """Compute whether lesson should be auto-completed based on position/duration ratio.
@@ -123,6 +106,8 @@ class LessonProgressService:
         self,
         user_sub: str,
         course_id: str,
+        *,
+        role: str = "student",
     ) -> CourseProgressResponse:
         """Get aggregated progress for a course.
 
@@ -134,16 +119,16 @@ class LessonProgressService:
             CourseProgressResponse with totals and per-lesson progress
 
         Raises:
-            Forbidden: If user is not enrolled and not course owner
+            Forbidden: If user lacks subscription-based course access
         """
         # Authentication (non-empty sub) is enforced at the controller boundary.
         if not _is_valid_uuid(course_id):
             raise NotFound("Course not found")
 
-        if not self._check_authorization(user_sub, course_id):
+        if not self._check_authorization(user_sub, course_id, role):
             raise Forbidden(
-                "Enrollment required to view course progress",
-                code="enrollment_required",
+                "Subscription required to view course progress",
+                code="subscription_required",
             )
 
         # Get all lessons in the course
@@ -215,6 +200,8 @@ class LessonProgressService:
         duration: int,
         mark_complete: bool = False,
         mark_incomplete: bool = False,
+        *,
+        role: str = "student",
     ) -> UpdateProgressResponse:
         """Update progress for a specific lesson.
 
@@ -231,7 +218,7 @@ class LessonProgressService:
             UpdateProgressResponse with the updated progress state
 
         Raises:
-            Forbidden: If user is not enrolled and not course owner
+            Forbidden: If user lacks subscription-based course access
             BadRequest: If position is invalid or both mark_complete and mark_incomplete are True
         """
         # Authentication (non-empty sub) is enforced at the controller boundary.
@@ -249,11 +236,10 @@ class LessonProgressService:
         if not _is_valid_uuid(lesson_id):
             raise NotFound("Lesson not found")
 
-        # Check authorization
-        if not self._check_authorization(user_sub, course_id):
+        if not self._check_authorization(user_sub, course_id, role):
             raise Forbidden(
-                "Enrollment required to update lesson progress",
-                code="enrollment_required",
+                "Subscription required to update lesson progress",
+                code="subscription_required",
             )
 
         # Validate position

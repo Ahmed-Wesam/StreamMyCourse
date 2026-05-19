@@ -11,6 +11,7 @@ class CourseDto(TypedDict):
     createdAt: NotRequired[str]
     updatedAt: NotRequired[str]
     thumbnailUrl: NotRequired[str]
+    hasAccess: NotRequired[bool]
     enrolled: NotRequired[bool]
 
 
@@ -123,6 +124,8 @@ def as_course_dto(obj: Dict[str, Any]) -> CourseDto:
         dto["updatedAt"] = str(obj.get("updatedAt", ""))
     if obj.get("thumbnailUrl"):
         dto["thumbnailUrl"] = str(obj.get("thumbnailUrl", ""))
+    if "hasAccess" in obj and obj.get("hasAccess") is not None:
+        dto["hasAccess"] = bool(obj.get("hasAccess"))
     if "enrolled" in obj and obj.get("enrolled") is not None:
         dto["enrolled"] = bool(obj.get("enrolled"))
     return dto

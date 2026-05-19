@@ -21,7 +21,7 @@ from services.course_management.ports import (
     ModuleQuizVisibilityPort,
     UserProfileProvisioner,
 )
-from services.enrollment.ports import EnrollmentRepositoryPort
+from services.subscription.ports import CourseAccessPort
 
 logger = logging.getLogger(__name__)
 
@@ -40,14 +40,14 @@ class CourseManagementService:
         self,
         repo: CourseCatalogRepositoryPort,
         storage: CourseMediaStoragePort | None,
-        enrollments: EnrollmentRepositoryPort,
         *,
+        course_access: CourseAccessPort,
         media_cleanup_queue_url: str = "",
         module_quiz_visibility: ModuleQuizVisibilityPort | None = None,
     ):
         self._repo = repo
         self._storage = storage
-        self._enrollments = enrollments
+        self._course_access = course_access
         self._media_cleanup_queue_url = (media_cleanup_queue_url or "").strip()
         self._module_quiz_visibility = module_quiz_visibility
 
@@ -198,13 +198,9 @@ class CourseManagementService:
         cognito_sub: str,
         role: str,
     ) -> bool:
-        if not cognito_sub.strip():
-            return False
-        if self._can_manage_course_unenrolled(course, cognito_sub=cognito_sub, role=role):
-            return True
-        if course.status != "PUBLISHED":
-            return False
-        return self._enrollments.has_enrollment(user_sub=cognito_sub, course_id=course_id)
+        return self._course_access.has_course_access(
+            cognito_sub, course_id, role, course=course
+        )
 
     def ensure_can_view_lessons_and_playback(
         self,
@@ -218,7 +214,10 @@ class CourseManagementService:
             raise NotFound("Course not found")
         if self.viewer_has_lesson_access(course, course_id=course_id, cognito_sub=cognito_sub, role=role):
             return course
-        raise Forbidden("Enrollment required to view this course", code="enrollment_required")
+        raise Forbidden(
+            "Subscription required to view this course",
+            code="subscription_required",
+        )
 
     def get_course_detail_with_enrollment(
         self,
@@ -233,15 +232,13 @@ class CourseManagementService:
         if course.status == "DRAFT":
             if not self._can_manage_course_unenrolled(course, cognito_sub=cognito_sub, role=role):
                 raise NotFound("Course not found")
-        # `enrolled` means "has lesson access" — True for enrolled students, owner-teachers,
-        # and admins. Admins and owner-teachers get True without an enrollment record because
-        # they can manage the course. The frontend uses this flag to show Watch vs Enroll.
-        has_lessons = self.viewer_has_lesson_access(
+        has_access = self.viewer_has_lesson_access(
             course, course_id=course_id, cognito_sub=cognito_sub, role=role
         )
         data = self._public_course_dict(course)
         self._apply_course_cover_fallback(course_id, data)
-        data["enrolled"] = bool(has_lessons)
+        data["hasAccess"] = bool(has_access)
+        data["enrolled"] = bool(has_access)
         return data
 
     def enroll_in_published_course(self, course_id: str, *, cognito_sub: str) -> Dict[str, Any]:
@@ -253,8 +250,10 @@ class CourseManagementService:
         course = self._repo.get_course(course_id)
         if not course or course.status != "PUBLISHED":
             raise NotFound("Course not found")
-        self._enrollments.put_enrollment(user_sub=sub, course_id=course_id)
-        return {"courseId": course_id, "enrolled": True}
+        raise Forbidden(
+            "Subscription required to access this course",
+            code="subscription_required",
+        )
 
     def enroll_in_published_course_with_profile(
         self,
@@ -265,10 +264,8 @@ class CourseManagementService:
         role: str,
         profile_provisioner: UserProfileProvisioner,
     ) -> Dict[str, Any]:
-        sub = (cognito_sub or "").strip()
-        # Authentication is enforced at the controller boundary.
-        profile_provisioner.get_or_create_profile(user_sub=sub, email=(email or "").strip(), role=(role or "student"))
-        return self.enroll_in_published_course(course_id, cognito_sub=sub)
+        del email, role, profile_provisioner  # enroll deprecated; auth at controller
+        return self.enroll_in_published_course(course_id, cognito_sub=cognito_sub)
 
     def create_course(
         self,
