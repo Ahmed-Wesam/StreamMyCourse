@@ -23,36 +23,26 @@ class SubscriptionManageService:
     def cancel_at_period_end(self, *, user_sub: str) -> Dict[str, Any]:
         result = self._subscription_repo.cancel_subscription_at_period_end(user_sub)
         if result.outcome == "ok" and result.current_period_end is not None:
-            return {
+            payload: Dict[str, Any] = {
                 "status": "canceled",
                 "cancelAtPeriodEnd": True,
                 "currentPeriodEnd": _format_utc_iso_z(result.current_period_end),
             }
+            if result.provider_subscription_id:
+                payload["providerSubscriptionId"] = result.provider_subscription_id
+            return payload
         if result.outcome == "already_canceled":
-            return {"errorCode": "already_canceled"}
-        if result.outcome == "not_subscribed":
-            return {"errorCode": "not_subscribed"}
-        return {"errorCode": "cannot_cancel"}
-
-    def reactivate_prepare(self, *, user_sub: str) -> Dict[str, Any]:
-        result = self._subscription_repo.reactivate_prepare(user_sub)
-        if result.outcome == "ok":
-            payload: Dict[str, Any] = {}
+            if result.current_period_end is None:
+                return {"errorCode": "already_canceled"}
+            payload: Dict[str, Any] = {
+                "errorCode": "already_canceled",
+                "status": "canceled",
+                "cancelAtPeriodEnd": True,
+                "currentPeriodEnd": _format_utc_iso_z(result.current_period_end),
+            }
             if result.provider_subscription_id:
                 payload["providerSubscriptionId"] = result.provider_subscription_id
             return payload
         if result.outcome == "not_subscribed":
             return {"errorCode": "not_subscribed"}
-        return {"errorCode": "cannot_reactivate"}
-
-    def reactivate(self, *, user_sub: str) -> Dict[str, Any]:
-        result = self._subscription_repo.reactivate_subscription(user_sub)
-        if result.outcome == "ok" and result.current_period_end is not None:
-            return {
-                "status": "active",
-                "cancelAtPeriodEnd": False,
-                "currentPeriodEnd": _format_utc_iso_z(result.current_period_end),
-            }
-        if result.outcome == "not_subscribed":
-            return {"errorCode": "not_subscribed"}
-        return {"errorCode": "cannot_reactivate"}
+        return {"errorCode": "cannot_cancel"}

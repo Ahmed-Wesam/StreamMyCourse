@@ -27,14 +27,6 @@ class CancelAtPeriodEndResult:
 
     outcome: str  # ok | already_canceled | not_subscribed | cannot_cancel
     current_period_end: Optional[datetime] = None
-
-
-@dataclass(frozen=True)
-class ReactivateSubscriptionResult:
-    """Outcome of reactivate RDS update (internal manage invoke)."""
-
-    outcome: str  # ok | not_subscribed | cannot_reactivate
-    current_period_end: Optional[datetime] = None
     provider_subscription_id: Optional[str] = None
 
 
@@ -46,7 +38,6 @@ class SubscriptionSummary:
     current_period_end: datetime
     cancel_at_period_end: bool
     can_cancel: bool
-    can_reactivate: bool
     next_billing_date: Optional[datetime]
     amount_minor: int
     currency: str
@@ -68,14 +59,7 @@ WHERE user_sub = %s AND environment = %s
 LIMIT 1
 """
 
-_CHECKOUT_BLOCKING_SUBSCRIPTION_SQL = """
-SELECT 1 FROM user_subscriptions
-WHERE user_sub = %s AND environment = %s
-  AND status IN ('active', 'past_due')
-  AND current_period_end IS NOT NULL
-  AND current_period_end > (NOW() AT TIME ZONE 'UTC')
-LIMIT 1
-"""
+_CHECKOUT_BLOCKING_SUBSCRIPTION_SQL = _GRANTING_SUBSCRIPTION_SQL
 
 _HAS_FRESH_INCOMPLETE_CHECKOUT_SQL = """
 SELECT 1 FROM user_subscriptions
@@ -96,16 +80,6 @@ _DELETE_INCOMPLETE_CHECKOUT_SQL = """
 DELETE FROM user_subscriptions
 WHERE user_sub = %s AND environment = %s
   AND status = 'incomplete'
-"""
-
-_REACTIVATION_REQUIRED_CHECKOUT_SQL = """
-SELECT 1 FROM user_subscriptions
-WHERE user_sub = %s AND environment = %s
-  AND status = 'canceled'
-  AND cancel_at_period_end = TRUE
-  AND current_period_end IS NOT NULL
-  AND current_period_end > (NOW() AT TIME ZONE 'UTC')
-LIMIT 1
 """
 
 _SUBSCRIPTION_PLAN_FOR_CHECKOUT_SQL = """
@@ -161,15 +135,6 @@ LIMIT 1
 """
 
 _SELECT_SUBSCRIPTION_CANCEL_STATE_SQL = """
-SELECT status, current_period_end, cancel_at_period_end
-FROM user_subscriptions
-WHERE user_sub = %s
-  AND environment = %s
-ORDER BY updated_at DESC
-LIMIT 1
-"""
-
-_SELECT_SUBSCRIPTION_REACTIVATE_STATE_SQL = """
 SELECT status, current_period_end, cancel_at_period_end, provider_subscription_id
 FROM user_subscriptions
 WHERE user_sub = %s
@@ -188,21 +153,6 @@ WHERE user_sub = %s
   AND environment = %s
   AND status IN ('active', 'past_due')
   AND cancel_at_period_end = FALSE
-  AND current_period_end IS NOT NULL
-  AND current_period_end > (NOW() AT TIME ZONE 'UTC')
-RETURNING current_period_end
-"""
-
-_REACTIVATE_SUBSCRIPTION_SQL = """
-UPDATE user_subscriptions
-SET status = 'active',
-    cancel_at_period_end = FALSE,
-    canceled_at = NULL,
-    updated_at = NOW()
-WHERE user_sub = %s
-  AND environment = %s
-  AND status = 'canceled'
-  AND cancel_at_period_end = TRUE
   AND current_period_end IS NOT NULL
   AND current_period_end > (NOW() AT TIME ZONE 'UTC')
 RETURNING current_period_end, provider_subscription_id
@@ -274,9 +224,6 @@ def _build_subscription_summary(
         and not cancel_at_period_end
         and period_in_future
     )
-    can_reactivate = (
-        normalized == "canceled" and cancel_at_period_end and period_in_future
-    )
     next_billing: Optional[datetime]
     if normalized in ("active", "past_due"):
         next_billing = end_utc
@@ -287,7 +234,6 @@ def _build_subscription_summary(
         current_period_end=end_utc,
         cancel_at_period_end=bool(cancel_at_period_end),
         can_cancel=can_cancel,
-        can_reactivate=can_reactivate,
         next_billing_date=next_billing,
         amount_minor=int(amount_minor),
         currency=str(currency),
@@ -369,7 +315,7 @@ class SubscriptionRdsRepository:
         return cur.fetchone() is not None
 
     def has_checkout_blocking_subscription(self, user_sub: str) -> bool:
-        """True when a granting paid row blocks new checkout (active/past_due in period)."""
+        """True when in-period granting access blocks new checkout (same predicate as access)."""
         normalized = (user_sub or "").strip()
         if not normalized:
             return False
@@ -428,9 +374,12 @@ class SubscriptionRdsRepository:
         if row is None:
             return CancelAtPeriodEndResult(outcome="not_subscribed")
 
-        status, period_end, cancel_at_period_end = row
+        status, period_end, cancel_at_period_end, provider_id = row
         now_utc = _utc_now()
         normalized_status = (str(status) or "").strip().lower()
+        provider_subscription_id = (
+            str(provider_id).strip() if provider_id is not None else None
+        ) or None
 
         if normalized_status == "incomplete":
             return CancelAtPeriodEndResult(outcome="cannot_cancel")
@@ -444,6 +393,7 @@ class SubscriptionRdsRepository:
             return CancelAtPeriodEndResult(
                 outcome="already_canceled",
                 current_period_end=_as_utc_aware(period_end),
+                provider_subscription_id=provider_subscription_id,
             )
 
         if normalized_status in ("active", "past_due") and not bool(cancel_at_period_end):
@@ -456,9 +406,15 @@ class SubscriptionRdsRepository:
             updated = cur.fetchone()
             if updated is None:
                 return CancelAtPeriodEndResult(outcome="cannot_cancel")
+            period_end_utc = _as_utc_aware(updated[0])
+            provider_id = updated[1] if len(updated) > 1 else None
+            provider_subscription_id = (
+                str(provider_id).strip() if provider_id is not None else None
+            ) or None
             return CancelAtPeriodEndResult(
                 outcome="ok",
-                current_period_end=_as_utc_aware(updated[0]),
+                current_period_end=period_end_utc,
+                provider_subscription_id=provider_subscription_id,
             )
 
         if not _is_manageable_subscription(
@@ -470,75 +426,6 @@ class SubscriptionRdsRepository:
             return CancelAtPeriodEndResult(outcome="not_subscribed")
 
         return CancelAtPeriodEndResult(outcome="cannot_cancel")
-
-    def _reactivate_eligibility(self, user_sub: str) -> ReactivateSubscriptionResult:
-        """Read-only check for reactivate; includes provider_subscription_id when eligible."""
-        normalized = (user_sub or "").strip()
-        if not normalized:
-            return ReactivateSubscriptionResult(outcome="not_subscribed")
-
-        cur = self._execute(
-            _SELECT_SUBSCRIPTION_REACTIVATE_STATE_SQL,
-            (normalized, self._deployment_environment),
-        )
-        row = cur.fetchone()
-        if row is None:
-            return ReactivateSubscriptionResult(outcome="not_subscribed")
-
-        status, period_end, cancel_at_period_end, provider_subscription_id = row
-        now_utc = _utc_now()
-        normalized_status = (str(status) or "").strip().lower()
-
-        if normalized_status == "incomplete":
-            return ReactivateSubscriptionResult(outcome="cannot_reactivate")
-
-        if normalized_status in ("active", "past_due"):
-            return ReactivateSubscriptionResult(outcome="cannot_reactivate")
-
-        if (
-            normalized_status == "canceled"
-            and bool(cancel_at_period_end)
-            and period_end is not None
-            and _as_utc_aware(period_end) > now_utc
-        ):
-            return ReactivateSubscriptionResult(
-                outcome="ok",
-                current_period_end=_as_utc_aware(period_end),
-                provider_subscription_id=(
-                    str(provider_subscription_id)
-                    if provider_subscription_id is not None
-                    else None
-                ),
-            )
-
-        return ReactivateSubscriptionResult(outcome="cannot_reactivate")
-
-    def reactivate_prepare(self, user_sub: str) -> ReactivateSubscriptionResult:
-        """Precheck for edge resume_agreement before RDS reactivate (no mutation)."""
-        return self._reactivate_eligibility(user_sub)
-
-    def reactivate_subscription(self, user_sub: str) -> ReactivateSubscriptionResult:
-        """Restore active for canceled-at-period-end in-period rows (internal manage only)."""
-        eligibility = self._reactivate_eligibility(user_sub)
-        if eligibility.outcome != "ok":
-            return eligibility
-
-        normalized = (user_sub or "").strip()
-        cur = self._execute(
-            _REACTIVATE_SUBSCRIPTION_SQL,
-            (normalized, self._deployment_environment),
-        )
-        updated = cur.fetchone()
-        if updated is None:
-            return ReactivateSubscriptionResult(outcome="cannot_reactivate")
-        updated_period_end, updated_provider_id = updated
-        return ReactivateSubscriptionResult(
-            outcome="ok",
-            current_period_end=_as_utc_aware(updated_period_end),
-            provider_subscription_id=(
-                str(updated_provider_id) if updated_provider_id is not None else None
-            ),
-        )
 
     def get_subscription_summary(self, user_sub: str) -> Optional[SubscriptionSummary]:
         """Return manageable subscription summary or None (GET 404 not_subscribed path)."""
@@ -579,17 +466,6 @@ class SubscriptionRdsRepository:
             str(billing_interval),
             now_utc=now_utc,
         )
-
-    def requires_reactivation_for_checkout(self, user_sub: str) -> bool:
-        """True when canceled at period end with future current_period_end (WS6 guard only)."""
-        normalized = (user_sub or "").strip()
-        if not normalized:
-            return False
-        cur = self._execute(
-            _REACTIVATION_REQUIRED_CHECKOUT_SQL,
-            (normalized, self._deployment_environment),
-        )
-        return cur.fetchone() is not None
 
     def get_subscription_plan_for_checkout(
         self, plan_id: str

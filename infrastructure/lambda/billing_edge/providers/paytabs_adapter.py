@@ -230,7 +230,7 @@ def _build_cart_id(*, deployment_environment: str, user_sub: str, plan_id: str) 
 
 
 class PayTabsAdapter:
-    """Live PayTabs integration — outbound HTTP only in create_subscribe_session."""
+    """Live PayTabs integration — outbound HTTP in create_subscribe_session and cancel_agreement."""
 
     def __init__(
         self,
@@ -352,11 +352,28 @@ class PayTabsAdapter:
         )
 
     def cancel_agreement(self, agreement_id: str) -> None:
-        _ = agreement_id
-        raise NotImplementedError("cancel_agreement deferred to WS8")
+        if not self._has_keys():
+            raise BillingUnconfiguredError()
 
-    def resume_agreement(self, agreement_id: str) -> None:
-        _ = agreement_id
-        logger.info(
-            "resume_agreement deferred (no PayTabs public API); WS7 uses RDS reactivate only"
+        request_body = {
+            "profile_id": int(self._profile_id)
+            if self._profile_id.isdigit()
+            else self._profile_id,
+            "agreement_id": agreement_id.strip(),
+        }
+        encoded = json.dumps(request_body, separators=(",", ":")).encode("utf-8")
+        url = f"https://{self._api_domain}/payment/agreement/cancel"
+        req = Request(
+            url,
+            data=encoded,
+            method="POST",
+            headers={
+                "Content-Type": "application/json",
+                "authorization": self._server_key,
+            },
         )
+        try:
+            with urlopen(req, timeout=30) as response:
+                response.read()
+        except (HTTPError, URLError, TimeoutError) as exc:
+            raise BillingUnconfiguredError() from exc

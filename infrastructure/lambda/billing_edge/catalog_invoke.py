@@ -14,8 +14,6 @@ logger = logging.getLogger(__name__)
 _INTERNAL_CHECKOUT = "billing.checkout"
 _INTERNAL_ROLLBACK = "billing.rollback_checkout"
 _INTERNAL_CANCEL_AT_PERIOD_END = "billing.cancel_at_period_end"
-_INTERNAL_REACTIVATE_PREPARE = "billing.reactivate_prepare"
-_INTERNAL_REACTIVATE = "billing.reactivate"
 
 
 class CatalogInvokeError(Exception):
@@ -103,32 +101,6 @@ def invoke_billing_cancel_at_period_end(
     """Invoke catalog internal billing.cancel_at_period_end."""
     return _invoke_catalog_internal(
         internal=_INTERNAL_CANCEL_AT_PERIOD_END,
-        user_sub=user_sub,
-        catalog_lambda_arn=catalog_lambda_arn,
-    )
-
-
-def invoke_billing_reactivate_prepare(
-    *,
-    user_sub: str,
-    catalog_lambda_arn: str,
-) -> Dict[str, Any]:
-    """Invoke catalog internal billing.reactivate_prepare (read-only; for resume_agreement)."""
-    return _invoke_catalog_internal(
-        internal=_INTERNAL_REACTIVATE_PREPARE,
-        user_sub=user_sub,
-        catalog_lambda_arn=catalog_lambda_arn,
-    )
-
-
-def invoke_billing_reactivate(
-    *,
-    user_sub: str,
-    catalog_lambda_arn: str,
-) -> Dict[str, Any]:
-    """Invoke catalog internal billing.reactivate."""
-    return _invoke_catalog_internal(
-        internal=_INTERNAL_REACTIVATE,
         user_sub=user_sub,
         catalog_lambda_arn=catalog_lambda_arn,
     )

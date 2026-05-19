@@ -6,14 +6,14 @@ from typing import Any, Dict, Optional
 
 from services.subscription.repo import SubscriptionRdsRepository
 
-BlockReason = Optional[str]  # None | already_subscribed | reactivation_required | checkout_in_progress
+BlockReason = Optional[str]  # None | already_subscribed | checkout_in_progress
 
 # Abandoned incomplete rows older than this may start a new checkout (review fix).
 INCOMPLETE_CHECKOUT_TTL_MINUTES = 30
 
 
 class BillingCheckoutService:
-    """Gate order: reactivation → paid block → stale incomplete clear → fresh incomplete block → reserve."""
+    """Gate order: in-period access block → stale incomplete clear → fresh incomplete block → reserve."""
 
     def __init__(self, subscription_repo: SubscriptionRdsRepository) -> None:
         self._repo = subscription_repo
@@ -21,8 +21,6 @@ class BillingCheckoutService:
     def run_billing_checkout_precheck(
         self, user_sub: str, plan_id: str
     ) -> Dict[str, Any]:
-        if self._repo.requires_reactivation_for_checkout(user_sub):
-            return {"blockReason": "reactivation_required"}
         if self._repo.has_checkout_blocking_subscription(user_sub):
             return {"blockReason": "already_subscribed"}
         plan = self._repo.get_subscription_plan_for_checkout(plan_id)

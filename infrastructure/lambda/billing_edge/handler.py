@@ -18,8 +18,6 @@ from catalog_invoke import (
     invoke_billing_cancel_at_period_end,
     invoke_billing_checkout,
     invoke_billing_checkout_rollback,
-    invoke_billing_reactivate,
-    invoke_billing_reactivate_prepare,
 )
 from edge_config import BillingEdgeConfig, get_payment_provider, load_billing_edge_config
 from providers.mock_adapter import MockPayTabsAdapter
@@ -35,21 +33,17 @@ _enqueue_domain_events = enqueue_domain_events
 _invoke_billing_checkout = invoke_billing_checkout
 _invoke_billing_checkout_rollback = invoke_billing_checkout_rollback
 _invoke_billing_cancel_at_period_end = invoke_billing_cancel_at_period_end
-_invoke_billing_reactivate_prepare = invoke_billing_reactivate_prepare
-_invoke_billing_reactivate = invoke_billing_reactivate
 
 _MANAGE_CONFLICT_MESSAGES: Dict[str, str] = {
     "already_canceled": "Subscription is already set to cancel at period end",
     "not_subscribed": "No active subscription to manage",
     "cannot_cancel": "Subscription cannot be canceled in its current state",
-    "cannot_reactivate": "Subscription cannot be reactivated in its current state",
 }
 
 _BILLING_MANAGE_POST_PATHS = frozenset(
     {
         "/billing/checkout-session",
         "/billing/cancel-subscription",
-        "/billing/reactivate-subscription",
     }
 )
 
@@ -57,7 +51,6 @@ _BILLING_MANAGE_OPTIONS_PATHS = frozenset(
     {
         "/billing/checkout-session",
         "/billing/cancel-subscription",
-        "/billing/reactivate-subscription",
     }
 )
 
@@ -88,6 +81,47 @@ def _manage_conflict_response(error_code: str) -> Dict[str, Any]:
         "Subscription cannot be updated in its current state",
     )
     return _error_response(409, error_code, message)
+
+
+def _cancel_success_body(catalog_result: Dict[str, Any]) -> Dict[str, Any]:
+    return {
+        key: value
+        for key, value in catalog_result.items()
+        if key not in ("providerSubscriptionId", "errorCode")
+    }
+
+
+def _provider_cancel_agreement_or_error(
+    *,
+    user_sub: str,
+    provider: PaymentProviderPort | None,
+    provider_subscription_id: str,
+) -> Dict[str, Any] | None:
+    """Return an API Gateway error response on failure, or None when cancel succeeded."""
+    if provider is None:
+        return _error_response(503, "billing_unconfigured", "Billing is not configured")
+    try:
+        provider.cancel_agreement(provider_subscription_id)
+    except Exception:
+        logger.exception(
+            "provider_cancel_agreement_failed user_sub=%s provider_subscription_id=%s",
+            user_sub,
+            provider_subscription_id,
+        )
+        return _error_response(
+            502,
+            "provider_cancel_failed",
+            "Unable to cancel subscription with payment provider",
+        )
+    return None
+
+
+def _provider_agreement_missing_response() -> Dict[str, Any]:
+    return _error_response(
+        502,
+        "provider_agreement_missing",
+        "Subscription is canceled but no payment agreement is on file",
+    )
 
 
 def _options_response(event: Dict[str, Any]) -> Dict[str, Any]:
@@ -239,15 +273,6 @@ def _handle_checkout(
         return _error_response(503, "billing_unconfigured", "Billing is not configured")
 
     block_reason = precheck.get("blockReason")
-    if block_reason == "reactivation_required":
-        return _error_response(
-            409,
-            "reactivation_required",
-            (
-                "You still have access until your billing period ends. "
-                "Reactivate your subscription from account settings—no new charge today."
-            ),
-        )
     if block_reason == "already_subscribed":
         return _error_response(
             409,
@@ -296,6 +321,7 @@ def _handle_checkout(
 
 def _handle_cancel_subscription(
     event: Dict[str, Any],
+    provider: PaymentProviderPort,
     cfg: BillingEdgeConfig,
 ) -> Dict[str, Any]:
     user_sub = _claims_sub(event)
@@ -315,56 +341,41 @@ def _handle_cancel_subscription(
         return _error_response(503, "billing_unconfigured", "Billing is not configured")
 
     error_code = result.get("errorCode")
-    if isinstance(error_code, str) and error_code:
-        return _manage_conflict_response(error_code)
-
-    return _json_response(200, result)
-
-
-def _handle_reactivate_subscription(
-    event: Dict[str, Any],
-    provider: PaymentProviderPort,
-    cfg: BillingEdgeConfig,
-) -> Dict[str, Any]:
-    user_sub = _claims_sub(event)
-    if not user_sub:
-        return _error_response(401, "unauthorized", "Missing authenticated user")
-
-    catalog_arn = str(cfg.catalog_lambda_arn or "").strip()
-    if not catalog_arn:
-        return _error_response(503, "billing_unconfigured", "Billing is not configured")
-
-    try:
-        prepare = _invoke_billing_reactivate_prepare(
-            user_sub=user_sub,
-            catalog_lambda_arn=catalog_arn,
-        )
-    except CatalogInvokeError:
-        return _error_response(503, "billing_unconfigured", "Billing is not configured")
-
-    error_code = prepare.get("errorCode")
-    if isinstance(error_code, str) and error_code:
-        return _manage_conflict_response(error_code)
-
     provider_subscription_id = str(
-        prepare.get("providerSubscriptionId") or ""
+        result.get("providerSubscriptionId") or ""
     ).strip()
-    if provider_subscription_id:
-        provider.resume_agreement(provider_subscription_id)
 
-    try:
-        result = _invoke_billing_reactivate(
-            user_sub=user_sub,
-            catalog_lambda_arn=catalog_arn,
-        )
-    except CatalogInvokeError:
-        return _error_response(503, "billing_unconfigured", "Billing is not configured")
+    if error_code == "already_canceled":
+        if provider_subscription_id:
+            provider_error = _provider_cancel_agreement_or_error(
+                user_sub=user_sub,
+                provider=provider,
+                provider_subscription_id=provider_subscription_id,
+            )
+            if provider_error is not None:
+                return provider_error
+            return _json_response(200, _cancel_success_body(result))
+        return _provider_agreement_missing_response()
 
-    error_code = result.get("errorCode")
     if isinstance(error_code, str) and error_code:
         return _manage_conflict_response(error_code)
 
-    return _json_response(200, result)
+    if provider_subscription_id:
+        provider_error = _provider_cancel_agreement_or_error(
+            user_sub=user_sub,
+            provider=provider,
+            provider_subscription_id=provider_subscription_id,
+        )
+        if provider_error is not None:
+            return provider_error
+    else:
+        logger.error(
+            "cancel_missing_provider_subscription_id user_sub=%s",
+            user_sub,
+        )
+        return _provider_agreement_missing_response()
+
+    return _json_response(200, _cancel_success_body(result))
 
 
 def _webhook_signature_header(event: Dict[str, Any], provider: PaymentProviderPort) -> str:
@@ -459,9 +470,7 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     if method == "POST" and path == "/billing/checkout-session":
         return _handle_checkout(event, provider, cfg)
     if method == "POST" and path == "/billing/cancel-subscription":
-        return _handle_cancel_subscription(event, cfg)
-    if method == "POST" and path == "/billing/reactivate-subscription":
-        return _handle_reactivate_subscription(event, provider, cfg)
+        return _handle_cancel_subscription(event, provider, cfg)
     if method == "POST" and path == "/webhooks/payments/paytabs":
         return _handle_webhook(event, provider, cfg)
 

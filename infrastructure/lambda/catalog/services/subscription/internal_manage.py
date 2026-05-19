@@ -20,25 +20,3 @@ def handle_internal_billing_cancel_at_period_end(
     if not user_sub:
         raise ValueError("userSub is required for billing.cancel_at_period_end")
     return manage_service.cancel_at_period_end(user_sub=user_sub)
-
-
-def handle_internal_billing_reactivate_prepare(
-    event: Dict[str, Any],
-    *,
-    manage_service: SubscriptionManageService,
-) -> Dict[str, Any]:
-    user_sub = _user_sub_from_event(event)
-    if not user_sub:
-        raise ValueError("userSub is required for billing.reactivate_prepare")
-    return manage_service.reactivate_prepare(user_sub=user_sub)
-
-
-def handle_internal_billing_reactivate(
-    event: Dict[str, Any],
-    *,
-    manage_service: SubscriptionManageService,
-) -> Dict[str, Any]:
-    user_sub = _user_sub_from_event(event)
-    if not user_sub:
-        raise ValueError("userSub is required for billing.reactivate")
-    return manage_service.reactivate(user_sub=user_sub)

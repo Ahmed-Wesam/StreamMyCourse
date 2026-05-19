@@ -102,9 +102,6 @@ class MockPayTabsAdapter:
     def cancel_agreement(self, agreement_id: str) -> None:
         _ = agreement_id
 
-    def resume_agreement(self, agreement_id: str) -> None:
-        _ = agreement_id
-
     @staticmethod
     def sample_ipn_bytes(sample: dict) -> bytes:
         return json.dumps(sample, separators=(",", ":")).encode("utf-8")
