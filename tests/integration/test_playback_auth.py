@@ -1,34 +1,34 @@
-"""Playback authorization tests — enrollment-based content access.
+"""Playback authorization tests — subscription-based content access.
 
 These tests verify that playback URLs are only accessible to:
-- Enrolled students
+- Subscribed students (platform subscription)
 - Course owners (teachers who created the course)
 - Admins
 
-Non-enrolled users should receive 403 Forbidden.
+Non-subscribed users should receive 403 Forbidden with subscription_required.
 DRAFT course lessons should return 404 even with valid JWT.
 """
 
 from __future__ import annotations
 
 from helpers.api import ApiClient
+from helpers.billing_access import ensure_student_subscription, skip_if_student_has_subscription
 
 
-def test_enrolled_student_gets_playback_url(
+def test_subscribed_student_gets_playback_url(
+    api_base_url: str,
     api: ApiClient,
     student_api: ApiClient,
     course_factory,
     lesson_factory,
 ) -> None:
-    """Enrolled student should get 200 + presigned URL for playback."""
-    # Teacher creates a course with a lesson using factory
-    course = course_factory(label="enrolled-playback-course")
+    """Subscribed student should get 200 + presigned URL for playback."""
+    course = course_factory(label="subscribed-playback-course")
     course_id = course.course_id
 
-    lesson = lesson_factory(course_id, label="enrolled-playback-lesson")
+    lesson = lesson_factory(course_id, label="subscribed-playback-lesson")
     lesson_id = lesson.lesson_id
 
-    # Teacher marks video ready and publishes the course
     upload_resp = api.get_upload_url(course_id=course_id, lesson_id=lesson_id)
     assert upload_resp.status_code == 200, f"get_upload_url failed: {upload_resp.text}"
 
@@ -38,37 +38,33 @@ def test_enrolled_student_gets_playback_url(
     publish_resp = api.publish_course(course_id)
     assert publish_resp.status_code == 200, f"publish_course failed: {publish_resp.text}"
 
-    # Student enrolls in the course
-    enroll_resp = student_api.enroll_course(course_id)
-    assert enroll_resp.status_code == 200, f"enroll_course failed: {enroll_resp.text}"
+    ensure_student_subscription(api_base_url, student_api, course_id, lesson_id)
 
-    # Student requests playback URL
     playback_resp = student_api.get_playback(course_id, lesson_id)
-    assert playback_resp.status_code == 200, f"Expected 200, got {playback_resp.status_code}: {playback_resp.text}"
+    assert playback_resp.status_code == 200, (
+        f"Expected 200, got {playback_resp.status_code}: {playback_resp.text}"
+    )
     body = playback_resp.json()
     assert "url" in body, f"Expected 'url' in response body: {body}"
     assert isinstance(body["url"], str), f"Expected url to be a string: {body}"
     assert len(body["url"]) > 0, "Expected non-empty presigned URL"
 
-    # Cleanup: Teacher deletes the course
     api.delete_course(course_id)
 
 
-def test_non_enrolled_user_gets_403(
+def test_non_subscribed_user_gets_403(
     api: ApiClient,
     alt_api: ApiClient,
     course_factory,
     lesson_factory,
 ) -> None:
-    """Non-enrolled user (alt teacher) should get 403 when trying to access playback."""
-    # Teacher A creates a course with a lesson using factory
-    course = course_factory(label="non-enrolled-playback-course")
+    """Non-subscribed user (alt teacher) should get 403 when trying to access playback."""
+    course = course_factory(label="non-subscribed-playback-course")
     course_id = course.course_id
 
-    lesson = lesson_factory(course_id, label="non-enrolled-playback-lesson")
+    lesson = lesson_factory(course_id, label="non-subscribed-playback-lesson")
     lesson_id = lesson.lesson_id
 
-    # Teacher A marks video ready and publishes the course
     upload_resp = api.get_upload_url(course_id=course_id, lesson_id=lesson_id)
     assert upload_resp.status_code == 200, f"get_upload_url failed: {upload_resp.text}"
 
@@ -78,16 +74,15 @@ def test_non_enrolled_user_gets_403(
     publish_resp = api.publish_course(course_id)
     assert publish_resp.status_code == 200, f"publish_course failed: {publish_resp.text}"
 
-    # Teacher B (alt_api) attempts to access playback without enrollment
-    # Teacher B is not the owner and not enrolled
     playback_resp = alt_api.get_playback(course_id, lesson_id)
-    assert playback_resp.status_code == 403, f"Expected 403, got {playback_resp.status_code}: {playback_resp.text}"
+    assert playback_resp.status_code == 403, (
+        f"Expected 403, got {playback_resp.status_code}: {playback_resp.text}"
+    )
     body = playback_resp.json()
-    assert body.get("code") in ["forbidden", "enrollment_required"], (
-        f"Expected code 'forbidden' or 'enrollment_required', got {body.get('code')}"
+    assert body.get("code") in ["forbidden", "subscription_required"], (
+        f"Expected code 'forbidden' or 'subscription_required', got {body.get('code')}"
     )
 
-    # Cleanup: Teacher A deletes the course
     api.delete_course(course_id)
 
 
@@ -96,15 +91,13 @@ def test_course_owner_gets_playback_url(
     course_factory,
     lesson_factory,
 ) -> None:
-    """Course owner should get 200 + presigned URL even without formal enrollment."""
-    # Teacher creates a course with a lesson using factory
+    """Course owner should get 200 + presigned URL even without formal subscription."""
     course = course_factory(label="owner-playback-course")
     course_id = course.course_id
 
     lesson = lesson_factory(course_id, label="owner-playback-lesson")
     lesson_id = lesson.lesson_id
 
-    # Teacher marks video ready and publishes the course
     upload_resp = api.get_upload_url(course_id=course_id, lesson_id=lesson_id)
     assert upload_resp.status_code == 200, f"get_upload_url failed: {upload_resp.text}"
 
@@ -114,15 +107,15 @@ def test_course_owner_gets_playback_url(
     publish_resp = api.publish_course(course_id)
     assert publish_resp.status_code == 200, f"publish_course failed: {publish_resp.text}"
 
-    # Owner (same teacher) requests playback URL without enrolling
     playback_resp = api.get_playback(course_id, lesson_id)
-    assert playback_resp.status_code == 200, f"Expected 200, got {playback_resp.status_code}: {playback_resp.text}"
+    assert playback_resp.status_code == 200, (
+        f"Expected 200, got {playback_resp.status_code}: {playback_resp.text}"
+    )
     body = playback_resp.json()
     assert "url" in body, f"Expected 'url' in response body: {body}"
     assert isinstance(body["url"], str), f"Expected url to be a string: {body}"
     assert len(body["url"]) > 0, "Expected non-empty presigned URL"
 
-    # Cleanup: Teacher deletes the course
     api.delete_course(course_id)
 
 
@@ -132,44 +125,38 @@ def test_draft_lesson_playback_returns_404(
     course_factory,
     lesson_factory,
 ) -> None:
-    """Non-enrolled user should get 403/404 for DRAFT course lesson playback.
+    """Non-subscribed user should get 403/404 for DRAFT course lesson playback.
 
-    Owner CAN access DRAFT lesson playback (enrollment not required for owner).
-    Non-owner/non-enrolled user should get 403 (enrollment required) or 404.
+    Owner CAN access DRAFT lesson playback (subscription not required for owner).
+    Non-owner/non-subscribed user should get 403 (subscription_required) or 404.
     """
-    # Teacher creates a course with a lesson (stays in DRAFT) using factory
     course = course_factory(label="draft-playback-course")
     course_id = course.course_id
 
     lesson = lesson_factory(course_id, label="draft-playback-lesson")
     lesson_id = lesson.lesson_id
 
-    # Teacher marks video ready but does NOT publish
     upload_resp = api.get_upload_url(course_id=course_id, lesson_id=lesson_id)
     assert upload_resp.status_code == 200, f"get_upload_url failed: {upload_resp.text}"
 
     ready_resp = api.mark_video_ready(course_id, lesson_id)
     assert ready_resp.status_code == 200, f"mark_video_ready failed: {ready_resp.text}"
 
-    # Course remains in DRAFT status
-
-    # Owner CAN access playback for their own DRAFT course
     owner_playback = api.get_playback(course_id, lesson_id)
-    assert owner_playback.status_code == 200, f"Owner should get 200 for DRAFT course, got {owner_playback.status_code}: {owner_playback.text}"
+    assert owner_playback.status_code == 200, (
+        f"Owner should get 200 for DRAFT course, got {owner_playback.status_code}: {owner_playback.text}"
+    )
     owner_body = owner_playback.json()
     assert "url" in owner_body, f"Expected presigned URL in response: {owner_body}"
 
-    # Non-owner/non-enrolled user (alt teacher) should be denied
-    # Expected behavior: 403 enrollment_required or 404 not_found
     alt_playback = alt_api.get_playback(course_id, lesson_id)
     assert alt_playback.status_code in (403, 404), (
-        f"Expected 403 or 404 for non-enrolled user on DRAFT course, got {alt_playback.status_code}: {alt_playback.text}"
+        f"Expected 403 or 404 for non-owner on DRAFT course, got {alt_playback.status_code}: {alt_playback.text}"
     )
     if alt_playback.status_code == 403:
         alt_body = alt_playback.json()
-        assert alt_body.get("code") in ["forbidden", "enrollment_required"], (
-            f"Expected 'forbidden' or 'enrollment_required', got {alt_body.get('code')}"
+        assert alt_body.get("code") in ["forbidden", "subscription_required"], (
+            f"Expected 'forbidden' or 'subscription_required', got {alt_body.get('code')}"
         )
 
-    # Cleanup: Teacher deletes the course
     api.delete_course(course_id)

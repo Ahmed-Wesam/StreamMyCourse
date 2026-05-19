@@ -181,6 +181,7 @@ def test_draft_modules_parity_with_lessons_for_student(
 
 
 def test_student_can_list_modules_on_published_course(
+    api_base_url: str,
     api: ApiClient,
     student_api: ApiClient,
     course_factory,
@@ -195,8 +196,11 @@ def test_student_can_list_modules_on_published_course(
     assert api.mark_video_ready(course.course_id, lesson.lesson_id).status_code == 200
     assert api.publish_course(course.course_id).status_code == 200
 
-    enroll_resp = student_api.enroll_course(course.course_id)
-    assert enroll_resp.status_code in (200, 201), enroll_resp.text
+    from helpers.billing_access import ensure_student_subscription
+
+    ensure_student_subscription(
+        api_base_url, student_api, course.course_id, lesson.lesson_id
+    )
 
     owner_mods_list = require_course_modules_list(api.list_course_modules(course.course_id))
     assert len(owner_mods_list) >= 2

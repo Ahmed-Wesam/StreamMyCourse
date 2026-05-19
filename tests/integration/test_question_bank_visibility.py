@@ -1,7 +1,7 @@
 """HTTPS integration tests for question-bank module quiz visibility (QB-D slice 4).
 
 ``GET /courses/{courseId}/modules`` may include optional ``moduleQuiz`` when the course
-is published, the viewer has lesson access (enrolled student or owner), and the linked
+is published, the viewer has lesson access (subscribed student or owner), and the linked
 bank is published with ``served_count_n`` set.
 
 See ``plans/question-banks-qb-d-plan.md`` and ``tests/integration/README.md``.
@@ -15,6 +15,7 @@ import httpx
 import pytest
 
 from helpers.api import ApiClient
+from helpers.billing_access import ensure_student_subscription
 from helpers.factories import make_test_title
 from helpers.module_contract import (
     EXPECTED_ROLE_DENIAL_JSON,
@@ -85,18 +86,21 @@ def _publish_course_with_ready_lesson(
     lesson_factory,
     *,
     label: str,
-) -> None:
+) -> str:
+    """Publish course with one ready lesson; returns lesson_id."""
     lesson = lesson_factory(course_id, label=label)
     upload_resp = api.get_upload_url(course_id=course_id, lesson_id=lesson.lesson_id)
     assert upload_resp.status_code == 200, upload_resp.text
     assert api.mark_video_ready(course_id, lesson.lesson_id).status_code == 200
     pr = api.publish_course(course_id)
     assert pr.status_code == 200, pr.text
+    return lesson.lesson_id
 
 
-def _enroll_student(student_api: ApiClient, course_id: str) -> None:
-    enroll_resp = student_api.enroll_course(course_id)
-    assert enroll_resp.status_code in (200, 201), enroll_resp.text
+def _subscribe_student(
+    api_base_url: str, student_api: ApiClient, course_id: str, lesson_id: str
+) -> None:
+    ensure_student_subscription(api_base_url, student_api, course_id, lesson_id)
 
 
 def _module_row(modules: list[dict[str, Any]], module_id: str) -> dict[str, Any]:
@@ -130,6 +134,7 @@ def _assert_no_module_list_leaks(modules: list[dict[str, Any]]) -> None:
 
 
 def test_draft_bank_hidden(
+    api_base_url: str,
     api: ApiClient,
     student_api: ApiClient,
     course_factory,
@@ -140,10 +145,10 @@ def test_draft_bank_hidden(
     )
     _setup_bank_quiz_and_drafts(api, course_id, module_id)
 
-    _publish_course_with_ready_lesson(
+    lesson_id = _publish_course_with_ready_lesson(
         api, course_id, lesson_factory, label="qb-vis-draft-lesson"
     )
-    _enroll_student(student_api, course_id)
+    _subscribe_student(api_base_url, student_api, course_id, lesson_id)
 
     modules = require_course_modules_list(student_api.list_course_modules(course_id))
     row = _module_row(modules, module_id)
@@ -151,6 +156,7 @@ def test_draft_bank_hidden(
 
 
 def test_published_bank_visible(
+    api_base_url: str,
     api: ApiClient,
     student_api: ApiClient,
     course_factory,
@@ -167,10 +173,10 @@ def test_published_bank_visible(
     )
     assert pub_bank.status_code == 200, pub_bank.text
 
-    _publish_course_with_ready_lesson(
+    lesson_id = _publish_course_with_ready_lesson(
         api, course_id, lesson_factory, label="qb-vis-pub-lesson"
     )
-    _enroll_student(student_api, course_id)
+    _subscribe_student(api_base_url, student_api, course_id, lesson_id)
 
     modules = require_course_modules_list(student_api.list_course_modules(course_id))
     row = _module_row(modules, module_id)
@@ -240,6 +246,7 @@ def _score_percent_from_counts(*, correct_count: int, total_count: int) -> int:
 
 
 def test_module_list_includes_latest_score_percent_after_submit(
+    api_base_url: str,
     api: ApiClient,
     student_api: ApiClient,
     course_factory,
@@ -247,6 +254,7 @@ def test_module_list_includes_latest_score_percent_after_submit(
 ) -> None:
     served_n = 2
     course_id, module_id, _ = _publish_bank_and_course(
+        api_base_url,
         api,
         student_api,
         course_factory,
@@ -286,6 +294,7 @@ def test_module_list_includes_latest_score_percent_after_submit(
 
 
 def test_leak_scan(
+    api_base_url: str,
     api: ApiClient,
     student_api: ApiClient,
     course_factory,
@@ -302,10 +311,10 @@ def test_leak_scan(
     )
     assert pub_bank.status_code == 200, pub_bank.text
 
-    _publish_course_with_ready_lesson(
+    lesson_id = _publish_course_with_ready_lesson(
         api, course_id, lesson_factory, label="qb-vis-leak-lesson"
     )
-    _enroll_student(student_api, course_id)
+    _subscribe_student(api_base_url, student_api, course_id, lesson_id)
 
     resp = student_api.list_course_modules(course_id)
     assert resp.status_code == 200, resp.text
@@ -317,6 +326,7 @@ def test_leak_scan(
 
 
 def test_student_cannot_publish(
+    api_base_url: str,
     api: ApiClient,
     student_api: ApiClient,
     course_factory,
@@ -328,10 +338,10 @@ def test_student_cannot_publish(
     )
     bank_id = _setup_bank_quiz_and_drafts(api, course_id, module_id, draft_count=served_n)
 
-    _publish_course_with_ready_lesson(
+    lesson_id = _publish_course_with_ready_lesson(
         api, course_id, lesson_factory, label="qb-vis-student-pub-lesson"
     )
-    _enroll_student(student_api, course_id)
+    _subscribe_student(api_base_url, student_api, course_id, lesson_id)
 
     pr = student_api.publish_question_bank(
         course_id, bank_id, n=served_n, module_id=module_id

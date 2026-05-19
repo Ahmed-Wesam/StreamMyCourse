@@ -15,6 +15,7 @@ from typing import Any
 import pytest
 
 from helpers.api import ApiClient
+from helpers.billing_access import ensure_student_subscription
 from helpers.factories import make_test_title
 from helpers.module_contract import (
     EXPECTED_CATALOG_FORBIDDEN_403,
@@ -92,12 +93,12 @@ def _publish_course_with_ready_lesson(
     assert pr.status_code == 200, pr.text
 
 
-def _enroll_student(student_api: ApiClient, course_id: str) -> None:
-    enroll_resp = student_api.enroll_course(course_id)
-    assert enroll_resp.status_code in (200, 201), enroll_resp.text
+def _subscribe_student(api_base_url: str, student_api: ApiClient, course_id: str, lesson_id: str) -> None:
+    ensure_student_subscription(api_base_url, student_api, course_id, lesson_id)
 
 
 def _publish_bank_and_course(
+    api_base_url: str,
     api: ApiClient,
     student_api: ApiClient,
     course_factory,
@@ -107,7 +108,7 @@ def _publish_bank_and_course(
     served_n: int = 2,
     draft_count: int | None = None,
 ) -> tuple[str, str, list[str]]:
-    """Owner setup: bank + drafts + publish bank + publish course + enroll student.
+    """Owner setup: bank + drafts + publish bank + publish course + grant subscription.
 
     ``draft_count`` defaults to ``served_n``. When larger than ``served_n``, all drafts
     are published but the module quiz still serves ``served_n`` questions per attempt.
@@ -123,10 +124,13 @@ def _publish_bank_and_course(
         course_id, bank_id, n=served_n, module_id=module_id
     )
     assert pub_bank.status_code == 200, pub_bank.text
-    _publish_course_with_ready_lesson(
-        api, course_id, lesson_factory, label=f"{label}-lesson"
-    )
-    _enroll_student(student_api, course_id)
+    lesson = lesson_factory(course_id, label=f"{label}-lesson")
+    upload_resp = api.get_upload_url(course_id=course_id, lesson_id=lesson.lesson_id)
+    assert upload_resp.status_code == 200, upload_resp.text
+    assert api.mark_video_ready(course_id, lesson.lesson_id).status_code == 200
+    pr = api.publish_course(course_id)
+    assert pr.status_code == 200, pr.text
+    _subscribe_student(api_base_url, student_api, course_id, lesson.lesson_id)
     return course_id, module_id, published_question_ids
 
 
@@ -181,7 +185,8 @@ def _assert_start_attempt_contract(body: dict[str, Any], *, served_n: int) -> No
     _assert_no_start_response_leaks(body)
 
 
-def test_enrolled_student_start_returns_bound_questions(
+def test_subscribed_student_start_returns_bound_questions(
+    api_base_url: str,
     api: ApiClient,
     student_api: ApiClient,
     course_factory,
@@ -189,6 +194,7 @@ def test_enrolled_student_start_returns_bound_questions(
 ) -> None:
     served_n = 2
     course_id, module_id, _ = _publish_bank_and_course(
+        api_base_url,
         api,
         student_api,
         course_factory,
@@ -209,6 +215,7 @@ def test_enrolled_student_start_returns_bound_questions(
 
 
 def test_second_start_returns_same_question_ids(
+    api_base_url: str,
     api: ApiClient,
     student_api: ApiClient,
     course_factory,
@@ -216,6 +223,7 @@ def test_second_start_returns_same_question_ids(
 ) -> None:
     served_n = 2
     course_id, module_id, _ = _publish_bank_and_course(
+        api_base_url,
         api,
         student_api,
         course_factory,
@@ -270,6 +278,7 @@ def test_unenrolled_student_start_returns_404(
 
 
 def test_start_before_bank_publish_returns_404(
+    api_base_url: str,
     api: ApiClient,
     student_api: ApiClient,
     course_factory,
@@ -279,10 +288,12 @@ def test_start_before_bank_publish_returns_404(
         api, course_factory, label="qb-start-draft-bank"
     )
     _setup_bank_quiz_and_drafts(api, course_id, module_id, draft_count=2)[0]
-    _publish_course_with_ready_lesson(
-        api, course_id, lesson_factory, label="qb-start-draft-bank-lesson"
-    )
-    _enroll_student(student_api, course_id)
+    lesson = lesson_factory(course_id, label="qb-start-draft-bank-lesson")
+    upload_resp = api.get_upload_url(course_id=course_id, lesson_id=lesson.lesson_id)
+    assert upload_resp.status_code == 200, upload_resp.text
+    assert api.mark_video_ready(course_id, lesson.lesson_id).status_code == 200
+    assert api.publish_course(course_id).status_code == 200
+    _subscribe_student(api_base_url, student_api, course_id, lesson.lesson_id)
 
     resp = student_api.start_module_quiz(course_id, module_id)
     assert resp.status_code == 404, resp.text
@@ -291,6 +302,7 @@ def test_start_before_bank_publish_returns_404(
 
 
 def test_start_wrong_course_id_returns_404(
+    api_base_url: str,
     api: ApiClient,
     student_api: ApiClient,
     course_factory,
@@ -299,6 +311,7 @@ def test_start_wrong_course_id_returns_404(
     """IDOR: valid moduleId from course A must not start under course B path."""
     served_n = 2
     course_a_id, module_a_id, _ = _publish_bank_and_course(
+        api_base_url,
         api,
         student_api,
         course_factory,

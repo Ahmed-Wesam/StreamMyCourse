@@ -8,7 +8,17 @@ HTTPS-driven tests that exercise a deployed backend (API Gateway + Lambda + Post
 
 Every test creates state through the public API, asserts on the API responses, and deletes its state at teardown. Lesson and course cleanup happens via `DELETE /courses/{id}` (course delete cascades to lessons). S3 objects from upload-url tests are removed via boto3 in a session-end safety net (warn-only, never fails CI).
 
-Course **modules**: `tests/integration/test_course_modules.py` covers `GET/POST/DELETE …/courses/{id}/modules`, lesson targeting via optional `moduleId`, ordering across modules vs `GET …/lessons`, delete guard when only one module remains, draft parity (404 for non-owning teachers and students, matching lessons), enrolled students listing modules on published courses, and negatives (`POST /lessons` with unknown `moduleId`, `DELETE …/modules/{unknown}` → 404). IDOR/student-role denials extend `test_access_control.py` and `test_student_permissions_denials.py`.
+Course **modules**: `tests/integration/test_course_modules.py` covers `GET/POST/DELETE …/courses/{id}/modules`, lesson targeting via optional `moduleId`, ordering across modules vs `GET …/lessons`, delete guard when only one module remains, draft parity (404 for non-owning teachers and students, matching lessons), subscribed students listing modules on published courses, and negatives (`POST /lessons` with unknown `moduleId`, `DELETE …/modules/{unknown}` → 404). IDOR/student-role denials extend `test_access_control.py` and `test_student_permissions_denials.py`.
+
+## Billing / subscription access (WS5)
+
+Catalog lesson access, progress, and related student flows require an **active platform subscription** (not course enrollment). Integration tests seed access by POSTing a **mock PayTabs IPN** to `POST /webhooks/payments/paytabs` with header **`X-Mock-Signature: test`** (billing edge mock adapter on dev).
+
+- **`INTEGRATION_BILLING_WEBHOOK`**: set to `0`, `false`, `no`, or `off` to skip tests that need the webhook (including `subscribed_course` / `enrolled_course` fixture path and most subscription-dependent cases).
+- **`INTEGRATION_BILLING_ENV`**: optional; default `dev` — must match the deployment segment inside `cart_id` (`v1|{env}|{user_sub}|{plan_id}`).
+- Tests that assert **403 `subscription_required`** without a subscription may **skip** if the shared student JWT already has an active subscription on dev (**`skip_if_student_has_subscription`**).
+
+If the payments stack is missing or billing is unconfigured, helpers skip with reasons such as **404** (route missing), **503 `billing_unconfigured`**, or **401** (mock signature not accepted).
 
 **Troubleshooting (module tests):** If `GET …/modules` returns API Gateway JWT/IAM authorization errors (`Invalid key=value pair … Authorization header`), or lesson JSON lacks `moduleId` / `moduleOrder`, the deployed **`streammycourse-api`** + **catalog Lambda** are behind the repo (PostgreSQL modules + `infrastructure/templates/api-stack.yaml`). Redeploy the dev/prod backends to match `main`; CI deploys Lambda before HTTPS tests for this reason.
 

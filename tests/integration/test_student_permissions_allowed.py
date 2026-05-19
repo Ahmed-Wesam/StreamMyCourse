@@ -5,7 +5,7 @@ These tests verify the student role can:
 - View published course details
 - View course lessons (for published courses)
 - Enroll in published courses
-- Access playback after enrollment
+- Access playback after subscription
 - Update and view progress
 - See student role in profile
 """
@@ -94,9 +94,10 @@ def test_student_profile_shows_role_student(student_api):
 
 
 def test_student_can_update_progress_and_view_aggregated(
+    api_base_url: str,
     student_api, api, course_factory, lesson_factory
 ):
-    """Student can PUT progress and GET aggregated course progress after enrollment."""
+    """Student can PUT progress and GET aggregated course progress after subscription."""
     # Teacher creates, publishes a course with a lesson
     course = course_factory(label="progress-course")
     lesson = lesson_factory(course.course_id, label="progress-lesson")
@@ -111,9 +112,11 @@ def test_student_can_update_progress_and_view_aggregated(
     publish_resp = api.publish_course(course.course_id)
     assert publish_resp.status_code == 200, f"publish_course failed: {publish_resp.text}"
 
-    # Student enrolls
-    enroll_resp = student_api.enroll_course(course.course_id)
-    assert enroll_resp.status_code == 200, f"enroll failed: {enroll_resp.text}"
+    from helpers.billing_access import ensure_student_subscription
+
+    ensure_student_subscription(
+        api_base_url, student_api, course.course_id, lesson.lesson_id
+    )
 
     # Update progress for the lesson (watched 30 seconds of 60 second video)
     progress_resp = student_api.update_lesson_progress(
