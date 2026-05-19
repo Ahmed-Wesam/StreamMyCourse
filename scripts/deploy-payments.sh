@@ -23,6 +23,20 @@ FULFILL_DIR="$ROOT/infrastructure/lambda/billing_fulfillment"
 PAYMENTS_STACK="StreamMyCourse-Payments-${ENV}"
 RDS_STACK="${RDS_STACK_NAME:-StreamMyCourse-Rds-${ENV}}"
 
+CATALOG_LAMBDA_ARN="${CATALOG_LAMBDA_ARN:-}"
+SUBSCRIPTION_PLAN_ID="${SUBSCRIPTION_PLAN_ID:-}"
+BILLING_RETURN_SUCCESS_URL="${BILLING_RETURN_SUCCESS_URL:-}"
+BILLING_RETURN_CANCEL_URL="${BILLING_RETURN_CANCEL_URL:-}"
+
+case "$ENV" in
+dev)
+  SUBSCRIPTION_PLAN_ID="${SUBSCRIPTION_PLAN_ID:-a0000000-0000-4000-8000-000000000011}"
+  ;;
+prod)
+  SUBSCRIPTION_PLAN_ID="${SUBSCRIPTION_PLAN_ID:-a0000000-0000-4000-8000-000000000012}"
+  ;;
+esac
+
 EDGE_ZIP="/tmp/billing-edge-${ENV}-$$.zip"
 FULFILL_ZIP="/tmp/billing-fulfillment-${ENV}-$$.zip"
 EDGE_BUILD="/tmp/billing-edge-build-${ENV}-$$"
@@ -233,7 +247,11 @@ aws cloudformation deploy \
   "PaytabsServerKey=${PAYTABS_SERVER_KEY}" \
   "PaytabsSecretArn=${PAYTABS_SECRET_ARN}" \
   "PaytabsUseMock=${PAYTABS_USE_MOCK}" \
-  "BillingFulfillmentAlertEmail=${BILLING_FULFILLMENT_ALERT_EMAIL}"
+  "BillingFulfillmentAlertEmail=${BILLING_FULFILLMENT_ALERT_EMAIL}" \
+  "CatalogLambdaArn=${CATALOG_LAMBDA_ARN}" \
+  "SubscriptionPlanId=${SUBSCRIPTION_PLAN_ID}" \
+  "BillingReturnSuccessUrl=${BILLING_RETURN_SUCCESS_URL}" \
+  "BillingReturnCancelUrl=${BILLING_RETURN_CANCEL_URL}"
 
 # W4-P4: sync teacher_merchant_accounts when teacher sub is configured (skip if RDS unreachable).
 if [[ -n "${BILLING_TEACHER_SUB:-}" ]]; then

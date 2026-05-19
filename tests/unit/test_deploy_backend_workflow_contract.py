@@ -197,6 +197,15 @@ def test_deploy_backend_sh_passes_billing_teacher_sub_to_api_stack() -> None:
     assert '"BillingTeacherSub=${BILLING_TEACHER_SUB:-}"' in text
 
 
+def test_deploy_backend_sh_redeploys_payments_with_catalog_invoke() -> None:
+    text = _deploy_backend_sh_text()
+    assert "CATALOG_LAMBDA_ARN" in text
+    assert "BILLING_RETURN_SUCCESS_URL" in text
+    assert "StudentSiteUrl" in text
+    assert "deploy-payments.sh" in text
+    assert "EDGE_REGION" in text
+
+
 def test_api_stack_exposes_billing_and_paytabs_webhook_routes() -> None:
     text = (_repo_root() / "infrastructure" / "templates" / "api-stack.yaml").read_text(
         encoding="utf-8"
