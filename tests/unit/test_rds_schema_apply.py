@@ -269,7 +269,7 @@ def test_split_real_migration_011_contains_expected_billing_ddl(schema_apply):
     assert "INSERT INTO subscription_plans" in joined
     assert "'monthly_all_access'" in joined
     assert "'JOD'" in joined
-    assert "9990" in joined
+    assert "50000" in joined
     assert "amount_minor" in joined
     # fils documented on full-line comment (stripped by applier splitter — no inline ';' in DDL)
     assert "fils" in sql.lower()
@@ -316,6 +316,46 @@ def test_deploy_ps1_lists_migration_011() -> None:
     assert needle in chunk
     assert "010_module_quiz_attempt_submissions.sql" in chunk
     assert chunk.index("010_module_quiz_attempt_submissions.sql") < chunk.index(needle)
+
+
+def test_deploy_backend_bundles_migration_012() -> None:
+    """deploy-backend.yml must cat 012 after 011 in both dev and prod schema bundles."""
+    path = _ROOT / ".github" / "workflows" / "deploy-backend.yml"
+    text = path.read_text(encoding="utf-8")
+    needle = "012_billing_plan_price_50_jod.sql"
+    for marker in ("rds-schema-apply-dev-", "rds-schema-apply-prod-"):
+        start = text.index(marker)
+        end = text.index('> "$PKG/schema.sql"', start)
+        chunk = text[start:end]
+        assert needle in chunk
+        assert "011_billing_subscription.sql" in chunk
+        assert chunk.index("011_billing_subscription.sql") < chunk.index(needle)
+
+
+def test_deploy_rds_stack_sh_bundles_migration_012() -> None:
+    """scripts/deploy-rds-stack.sh must cat 012 after 011."""
+    path = _ROOT / "scripts" / "deploy-rds-stack.sh"
+    text = path.read_text(encoding="utf-8")
+    needle = "012_billing_plan_price_50_jod.sql"
+    start = text.index("cat \\")
+    end = text.index('> "$PKG/schema.sql"', start)
+    chunk = text[start:end]
+    assert needle in chunk
+    assert "011_billing_subscription.sql" in chunk
+    assert chunk.index("011_billing_subscription.sql") < chunk.index(needle)
+
+
+def test_deploy_ps1_lists_migration_012() -> None:
+    """infrastructure/deploy.ps1 schema bundle must include 012 after 011."""
+    path = _ROOT / "infrastructure" / "deploy.ps1"
+    text = path.read_text(encoding="utf-8")
+    needle = "012_billing_plan_price_50_jod.sql"
+    start = text.index("$schemaSqlFiles = @(")
+    end = text.index(")", start)
+    chunk = text[start:end]
+    assert needle in chunk
+    assert "011_billing_subscription.sql" in chunk
+    assert chunk.index("011_billing_subscription.sql") < chunk.index(needle)
 
 
 def test_concatenated_001_003_004_006_007_008_bundle_is_splittable_and_complete(schema_apply):
@@ -376,6 +416,7 @@ def test_concatenated_deploy_schema_bundle_through_011_is_splittable(schema_appl
         "009_module_quiz_attempts.sql",
         "010_module_quiz_attempt_submissions.sql",
         "011_billing_subscription.sql",
+        "012_billing_plan_price_50_jod.sql",
     )
     bundle = "".join((migrations_dir / n).read_text(encoding="utf-8") for n in names)
     parts = schema_apply._split_sql_statements(bundle)
@@ -383,6 +424,8 @@ def test_concatenated_deploy_schema_bundle_through_011_is_splittable(schema_appl
     assert "CREATE TABLE IF NOT EXISTS module_quiz_attempt_submissions" in joined
     assert "CREATE TABLE IF NOT EXISTS subscription_plans" in joined
     assert "CREATE TABLE IF NOT EXISTS user_subscriptions" in joined
+    assert "UPDATE subscription_plans" in joined
+    assert "50000" in joined
     assert len(parts) >= 40
 
 
