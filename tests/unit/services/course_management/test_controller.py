@@ -446,11 +446,15 @@ class TestHandleDispatchPerAction:
             "title": "T",
             "description": "D",
             "status": "PUBLISHED",
-            "enrolled": False,
+            "hasAccess": True,
+            "enrolled": True,
         }
         evt = make_lambda_event(method="GET", path="/courses/c1")
         resp = handle(evt, origin="*", svc=svc, video_bucket="b", auth_svc=MagicMock())
         assert resp["statusCode"] == 200
+        body = json.loads(resp["body"])
+        assert body["hasAccess"] is True
+        assert body["enrolled"] is True
         svc.get_course_detail_with_enrollment.assert_called_once_with(
             "c1",
             cognito_sub="",
@@ -603,6 +607,7 @@ class TestHandleDispatchPerAction:
             "title": "T",
             "description": "D",
             "status": "PUBLISHED",
+            "hasAccess": False,
             "enrolled": False,
         }
         evt = make_lambda_event(method="GET", path="/courses/c1")
@@ -615,6 +620,9 @@ class TestHandleDispatchPerAction:
         )
         assert resp["statusCode"] == 200
         assert resp["headers"]["Access-Control-Allow-Origin"] == "https://app.example"
+        body = json.loads(resp["body"])
+        assert body["hasAccess"] is False
+        assert body["enrolled"] is False
         svc.get_course_detail_with_enrollment.assert_called_once_with(
             "c1",
             cognito_sub="",
@@ -668,9 +676,12 @@ class TestHandleDispatchPerAction:
         svc.ensure_can_view_lessons_and_playback.assert_not_called()
         svc.get_playback_url.assert_not_called()
 
-    def test_enroll_course_200(self, svc: MagicMock, make_lambda_event) -> None:
+    def test_enroll_course_403_subscription_required(self, svc: MagicMock, make_lambda_event) -> None:
         auth = MagicMock()
-        svc.enroll_in_published_course_with_profile.return_value = {"courseId": "c1", "enrolled": True}
+        svc.enroll_in_published_course_with_profile.side_effect = Forbidden(
+            "Subscription required to access this course",
+            code="subscription_required",
+        )
         evt = make_lambda_event(method="POST", path="/courses/c1/enroll")
         evt["requestContext"]["authorizer"] = {
             "claims": {"sub": "user-1", "email": "a@b.com", "custom:role": "student"}
@@ -682,7 +693,9 @@ class TestHandleDispatchPerAction:
             video_bucket="b",
             auth_svc=auth,
         )
-        assert resp["statusCode"] == 200
+        assert resp["statusCode"] == 403
+        body = json.loads(resp["body"])
+        assert body["code"] == "subscription_required"
         svc.enroll_in_published_course_with_profile.assert_called_once_with(
             "c1",
             cognito_sub="user-1",
@@ -691,11 +704,14 @@ class TestHandleDispatchPerAction:
             profile_provisioner=auth,
         )
 
-    def test_enroll_calls_get_or_create_profile_before_enroll_in_published_course(
+    def test_enroll_invokes_service_with_actor_claims(
         self, svc: MagicMock, make_lambda_event
     ) -> None:
         auth = MagicMock()
-        svc.enroll_in_published_course_with_profile.return_value = {"courseId": "c1", "enrolled": True}
+        svc.enroll_in_published_course_with_profile.side_effect = Forbidden(
+            "Subscription required to access this course",
+            code="subscription_required",
+        )
         evt = make_lambda_event(method="POST", path="/courses/c1/enroll")
         evt["requestContext"]["authorizer"] = {"claims": {"sub": "u1"}}
         handle(evt, origin="*", svc=svc, video_bucket="b", auth_svc=auth)

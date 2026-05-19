@@ -21,6 +21,30 @@ class _FakeEnrollments:
         return None
 
 
+class _FakeCourseAccess:
+    def __init__(self, *, has_access: bool = True) -> None:
+        self._has_access = has_access
+
+    def has_granting_subscription(self, user_sub: str) -> bool:
+        return self._has_access
+
+    def has_course_access(
+        self,
+        user_sub: str,
+        course_id: str,
+        role: str,
+        *,
+        course: Course | None = None,
+    ) -> bool:
+        if role == "admin":
+            return True
+        if role == "teacher" and user_sub == "teacher-sub":
+            return True
+        if not self._has_access:
+            return False
+        return user_sub == _STUDENT_SUB and course_id == _CID
+
+
 class _FakeStorageStrict:
     """Mirrors `CourseMediaStorage.presign_get` key validation without boto3."""
 
@@ -98,7 +122,11 @@ class TestSafePresignThumbnails:
                 ),
             ),
         ]
-        svc = CourseManagementService(_LessonsRepo(lessons), _FakeStorageStrict(), _FakeEnrollments())
+        svc = CourseManagementService(
+            _LessonsRepo(lessons),
+            _FakeStorageStrict(),
+            course_access=_FakeCourseAccess(),
+        )
         out = svc.list_lessons(_CID)
         assert len(out) == 2
         assert "thumbnailUrl" not in out[0]
@@ -118,7 +146,11 @@ class TestSafePresignThumbnails:
                 thumbnailKey="not-under/valid/prefix.jpg",
             )
         ]
-        svc = CourseManagementService(_CoursesRepo(courses), _FakeStorageStrict(), _FakeEnrollments())
+        svc = CourseManagementService(
+            _CoursesRepo(courses),
+            _FakeStorageStrict(),
+            course_access=_FakeCourseAccess(),
+        )
         pub = svc.list_published_courses()
         assert len(pub) == 1
         assert "thumbnailUrl" not in pub[0]
@@ -136,7 +168,11 @@ class TestSafePresignThumbnails:
                     videoStatus="ready",
                 )
 
-        svc = CourseManagementService(_OneLessonRepo(), _FakeStorageStrict(), _FakeEnrollments())
+        svc = CourseManagementService(
+            _OneLessonRepo(),
+            _FakeStorageStrict(),
+            course_access=_FakeCourseAccess(),
+        )
         with pytest.raises(BadRequest):
             svc.get_playback_url(_CID, _L1, video_bucket="ignored-when-storage-set")
 
@@ -249,7 +285,7 @@ class TestListCourseModulesPublicModuleQuiz:
         svc = CourseManagementService(
             _ModulesRepo(course=_published_course(), modules=_two_modules()),
             None,
-            _EnrollmentsWithAccess(),
+            course_access=_FakeCourseAccess(),
             module_quiz_visibility=port,
         )
         rows = svc.list_course_modules_public(
@@ -273,7 +309,7 @@ class TestListCourseModulesPublicModuleQuiz:
         svc = CourseManagementService(
             _ModulesRepo(course=_published_course(), modules=_two_modules()),
             None,
-            _EnrollmentsWithAccess(),
+            course_access=_FakeCourseAccess(),
             module_quiz_visibility=port,
         )
         rows = svc.list_course_modules_public(
@@ -289,7 +325,7 @@ class TestListCourseModulesPublicModuleQuiz:
         svc = CourseManagementService(
             _ModulesRepo(course=_draft_course(), modules=_two_modules()),
             None,
-            _EnrollmentsWithAccess(),
+            course_access=_FakeCourseAccess(),
             module_quiz_visibility=port,
         )
         rows = svc.list_course_modules_public(
@@ -312,7 +348,7 @@ class TestListCourseModulesPublicModuleQuiz:
         svc = CourseManagementService(
             _ModulesRepo(course=_published_course(), modules=_two_modules()),
             None,
-            _EnrollmentsWithoutAccess(),
+            course_access=_FakeCourseAccess(has_access=False),
             module_quiz_visibility=port,
         )
         rows = svc.list_course_modules_public(
@@ -332,7 +368,7 @@ class TestListCourseModulesPublicModuleQuiz:
         svc = CourseManagementService(
             _ModulesRepo(course=_published_course(), modules=_two_modules()),
             None,
-            _EnrollmentsWithAccess(),
+            course_access=_FakeCourseAccess(),
         )
         rows = svc.list_course_modules_public(
             _CID, cognito_sub=_STUDENT_SUB, role="student"

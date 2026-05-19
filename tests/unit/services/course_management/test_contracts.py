@@ -62,6 +62,20 @@ class TestAsCourseDto:
         )
         assert dto["enrolled"] is True
 
+    def test_has_access_flag(self) -> None:
+        dto = as_course_dto(
+            {
+                "id": "c1",
+                "title": "T",
+                "description": "",
+                "status": "PUBLISHED",
+                "hasAccess": True,
+                "enrolled": True,
+            }
+        )
+        assert dto["hasAccess"] is True
+        assert dto["enrolled"] is True
+
 
 class TestAsLessonDto:
     def test_passes_through_known_video_status(self) -> None:

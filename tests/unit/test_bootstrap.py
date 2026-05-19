@@ -192,14 +192,19 @@ class TestBuildAwsDepsWiresRdsRepos:
     def test_wires_rds_repos(self, _mocked_rds) -> None:
         from services.auth.rds_repo import UserProfileRdsRepository
         from services.course_management.rds_repo import CourseCatalogRdsRepository
-        from services.enrollment.rds_repo import EnrollmentRdsRepository
         from services.progress.rds_repo import LessonProgressRdsRepository
         from services.question_banks.rds_repo import QuestionBankRdsRepository
+        from services.subscription.repo import SubscriptionRdsRepository
+        from services.subscription.service import CourseAccessService
 
         cfg = _rds_cfg()
         deps = bootstrap_mod.build_aws_deps(cfg)
         assert isinstance(deps.service._repo, CourseCatalogRdsRepository)
-        assert isinstance(deps.service._enrollments, EnrollmentRdsRepository)
+        assert isinstance(deps.service._course_access, CourseAccessService)
+        assert isinstance(
+            deps.service._course_access._subscription_repo,
+            SubscriptionRdsRepository,
+        )
         assert isinstance(deps.auth_service._repo, UserProfileRdsRepository)
         assert isinstance(deps.progress_service._progress_repo, LessonProgressRdsRepository)
         assert isinstance(deps.question_bank_service._repo, QuestionBankRdsRepository)

@@ -109,23 +109,41 @@ def enrollments() -> MagicMock:
 
 
 @pytest.fixture
-def service(
-    repo: MagicMock, storage: MagicMock, enrollments: MagicMock
-) -> CourseManagementService:
-    return CourseManagementService(repo, storage, enrollments)
+def course_access() -> MagicMock:
+    m = MagicMock()
+    m.has_course_access.return_value = False
+    return m
 
 
 @pytest.fixture
-def service_no_storage(repo: MagicMock, enrollments: MagicMock) -> CourseManagementService:
-    return CourseManagementService(repo, None, enrollments)
+def service(
+    repo: MagicMock,
+    storage: MagicMock,
+    enrollments: MagicMock,
+    course_access: MagicMock,
+) -> CourseManagementService:
+    return CourseManagementService(repo, storage, course_access=course_access)
+
+
+@pytest.fixture
+def service_no_storage(
+    repo: MagicMock, enrollments: MagicMock, course_access: MagicMock
+) -> CourseManagementService:
+    return CourseManagementService(repo, None, course_access=course_access)
 
 
 @pytest.fixture
 def service_with_queue(
-    repo: MagicMock, storage: MagicMock, enrollments: MagicMock
+    repo: MagicMock,
+    storage: MagicMock,
+    enrollments: MagicMock,
+    course_access: MagicMock,
 ) -> CourseManagementService:
     return CourseManagementService(
-        repo, storage, enrollments, media_cleanup_queue_url="https://sqs.example/queue"
+        repo,
+        storage,
+        course_access=course_access,
+        media_cleanup_queue_url="https://sqs.example/queue",
     )
 
 
@@ -418,8 +436,12 @@ class TestDeleteCourse:
         self, send_job: MagicMock, repo: MagicMock, enrollments: MagicMock
     ) -> None:
         _L1 = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"
+        course_access = MagicMock()
         svc = CourseManagementService(
-            repo, None, enrollments, media_cleanup_queue_url="https://sqs.example/queue"
+            repo,
+            None,
+            course_access=course_access,
+            media_cleanup_queue_url="https://sqs.example/queue",
         )
         repo.get_course.return_value = _course(id_=_VID)
         repo.list_lessons.return_value = [_lesson(id_=_L1, video_key=_video_key(_VID, _L1))]
@@ -1110,6 +1132,7 @@ class TestGetCourseDetailPublicCatalog:
         assert out["id"] == _VID
         assert out["status"] == "PUBLISHED"
         assert out["enrolled"] is False
+        assert out["hasAccess"] is False
 
     def test_anonymous_draft_raises_not_found(
         self, service: CourseManagementService, repo: MagicMock
@@ -1146,17 +1169,22 @@ class TestGetCourseDetailPublicCatalog:
                 _VID, cognito_sub="other-sub", role="teacher"
             )
 
-    def test_admin_sees_draft_detail_with_enrollment_bypass(
-        self, service: CourseManagementService, repo: MagicMock, enrollments: MagicMock
+    def test_admin_sees_draft_detail_with_access_bypass(
+        self,
+        service: CourseManagementService,
+        repo: MagicMock,
+        enrollments: MagicMock,
+        course_access: MagicMock,
     ) -> None:
         repo.get_course.return_value = _course(id_=_VID, status="DRAFT", created_by="owner-sub")
         repo.list_lessons.return_value = []
+        course_access.has_course_access.return_value = True
         out = service.get_course_detail_with_enrollment(
             _VID, cognito_sub="admin-sub", role="admin"
         )
         assert out["id"] == _VID
         assert out["status"] == "DRAFT"
-        # Admin can manage so viewer_has_lesson_access returns True, enrolled reflects that.
+        assert out["hasAccess"] is True
         assert out["enrolled"] is True
         enrollments.has_enrollment.assert_not_called()
 
@@ -1313,41 +1341,58 @@ class TestListCourseModulesPublic:
 
 class TestEnsureCanViewLessonsAndPlayback:
     def test_anonymous_blank_sub_raises_forbidden(
-        self, service: CourseManagementService, repo: MagicMock, enrollments: MagicMock
+        self,
+        service: CourseManagementService,
+        repo: MagicMock,
+        enrollments: MagicMock,
+        course_access: MagicMock,
     ) -> None:
         """Unauthenticated callers must never reach video playback."""
         repo.get_course.return_value = _course(id_=_VID, status="PUBLISHED")
+        course_access.has_course_access.return_value = False
         with pytest.raises(Forbidden) as ei:
             service.ensure_can_view_lessons_and_playback(
                 _VID, cognito_sub="", role=""
             )
-        assert ei.value.code == "enrollment_required"
+        assert ei.value.code == "subscription_required"
         enrollments.has_enrollment.assert_not_called()
 
-    def test_published_requires_enrollment_when_auth_on(
-        self, service: CourseManagementService, repo: MagicMock, enrollments: MagicMock
+    def test_published_requires_subscription_when_auth_on(
+        self,
+        service: CourseManagementService,
+        repo: MagicMock,
+        enrollments: MagicMock,
+        course_access: MagicMock,
     ) -> None:
         repo.get_course.return_value = _course(id_=_VID, status="PUBLISHED")
-        enrollments.has_enrollment.return_value = False
+        course_access.has_course_access.return_value = False
         with pytest.raises(Forbidden) as ei:
             service.ensure_can_view_lessons_and_playback(
                 _VID, cognito_sub="sub1", role="student"
             )
-        assert ei.value.code == "enrollment_required"
+        assert ei.value.code == "subscription_required"
+        enrollments.has_enrollment.assert_not_called()
 
-    def test_admin_bypasses_enrollment(
-        self, service: CourseManagementService, repo: MagicMock, enrollments: MagicMock
+    def test_admin_bypasses_subscription_check_via_port(
+        self,
+        service: CourseManagementService,
+        repo: MagicMock,
+        enrollments: MagicMock,
+        course_access: MagicMock,
     ) -> None:
         repo.get_course.return_value = _course(id_=_VID, status="PUBLISHED")
-        enrollments.has_enrollment.return_value = False
+        course_access.has_course_access.return_value = True
         c = service.ensure_can_view_lessons_and_playback(
             _VID, cognito_sub="admin-sub", role="admin"
         )
         assert c.id == _VID
         enrollments.has_enrollment.assert_not_called()
 
-    def test_owner_teacher_bypasses_enrollment(
-        self, service: CourseManagementService, repo: MagicMock
+    def test_owner_teacher_allowed_via_port(
+        self,
+        service: CourseManagementService,
+        repo: MagicMock,
+        course_access: MagicMock,
     ) -> None:
         repo.get_course.return_value = Course(
             id=_VID,
@@ -1356,26 +1401,36 @@ class TestEnsureCanViewLessonsAndPlayback:
             status="PUBLISHED",
             createdBy="owner-sub",
         )
+        course_access.has_course_access.return_value = True
         c = service.ensure_can_view_lessons_and_playback(
             _VID, cognito_sub="owner-sub", role="teacher"
         )
         assert c.id == _VID
 
-    def test_enrolled_student_allowed(
-        self, service: CourseManagementService, repo: MagicMock, enrollments: MagicMock
+    def test_subscribed_student_allowed(
+        self,
+        service: CourseManagementService,
+        repo: MagicMock,
+        enrollments: MagicMock,
+        course_access: MagicMock,
     ) -> None:
         repo.get_course.return_value = _course(id_=_VID, status="PUBLISHED")
-        enrollments.has_enrollment.return_value = True
+        course_access.has_course_access.return_value = True
         c = service.ensure_can_view_lessons_and_playback(
             _VID, cognito_sub="stu1", role="student"
         )
         assert c.id == _VID
+        enrollments.has_enrollment.assert_not_called()
 
     def test_teacher_with_blank_owner_course_is_denied(
-        self, service: CourseManagementService, repo: MagicMock, enrollments: MagicMock
+        self,
+        service: CourseManagementService,
+        repo: MagicMock,
+        enrollments: MagicMock,
+        course_access: MagicMock,
     ) -> None:
         repo.get_course.return_value = _course(id_=_VID, status="PUBLISHED", created_by="")
-        enrollments.has_enrollment.return_value = False
+        course_access.has_course_access.return_value = False
         with pytest.raises(Forbidden):
             service.ensure_can_view_lessons_and_playback(
                 _VID, cognito_sub="teacher-sub", role="teacher"
@@ -1383,13 +1438,14 @@ class TestEnsureCanViewLessonsAndPlayback:
 
 
 class TestEnrollInPublishedCourse:
-    def test_writes_enrollment(
+    def test_raises_subscription_required_without_put(
         self, service: CourseManagementService, repo: MagicMock, enrollments: MagicMock
     ) -> None:
         repo.get_course.return_value = _course(id_=_VID, status="PUBLISHED")
-        out = service.enroll_in_published_course(_VID, cognito_sub="u1")
-        assert out == {"courseId": _VID, "enrolled": True}
-        enrollments.put_enrollment.assert_called_once_with(user_sub="u1", course_id=_VID)
+        with pytest.raises(Forbidden) as ei:
+            service.enroll_in_published_course(_VID, cognito_sub="u1")
+        assert ei.value.code == "subscription_required"
+        enrollments.put_enrollment.assert_not_called()
 
 
 class TestSetLessonDuration:
@@ -1538,7 +1594,7 @@ class TestUuidValidation:
 
     @pytest.fixture
     def service(self, repo: MagicMock, storage: MagicMock) -> CourseManagementService:
-        return CourseManagementService(repo, storage, MagicMock())
+        return CourseManagementService(repo, storage, course_access=MagicMock())
 
     def test_get_course_invalid_uuid_raises_not_found(self, service: CourseManagementService) -> None:
         with pytest.raises(NotFound):
@@ -1632,7 +1688,7 @@ class TestUuidValidation:
         """Valid UUIDs should pass validation and reach the repository."""
         valid_course_id = "a673d83c-b4f6-4aa1-be51-45b88bd35295"
         repo.get_course.return_value = _course(id_=valid_course_id)
-        service = CourseManagementService(repo, storage, MagicMock())
+        service = CourseManagementService(repo, storage, course_access=MagicMock())
 
         result = service.get_course(valid_course_id)
 
