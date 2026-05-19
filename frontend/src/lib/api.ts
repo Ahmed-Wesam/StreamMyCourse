@@ -115,6 +115,30 @@ export function isReactivationRequiredError(e: unknown): boolean {
   return e.status === 409 && e.code === 'reactivation_required'
 }
 
+/** True when GET /billing/subscription has no manageable subscription (WS7 manage contract). */
+export function isNotSubscribedError(e: unknown): boolean {
+  if (!(e instanceof ApiError)) return false
+  return e.status === 404 && e.code === 'not_subscribed'
+}
+
+/** True when cancel-at-period-end was already applied. */
+export function isAlreadyCanceledError(e: unknown): boolean {
+  if (!(e instanceof ApiError)) return false
+  return e.status === 409 && e.code === 'already_canceled'
+}
+
+/** True when POST cancel-subscription cannot apply in the current RDS state. */
+export function isCannotCancelError(e: unknown): boolean {
+  if (!(e instanceof ApiError)) return false
+  return e.status === 409 && e.code === 'cannot_cancel'
+}
+
+/** True when POST reactivate-subscription cannot apply in the current RDS state. */
+export function isCannotReactivateError(e: unknown): boolean {
+  if (!(e instanceof ApiError)) return false
+  return e.status === 409 && e.code === 'cannot_reactivate'
+}
+
 function requireApiBaseUrl(): string {
   const base = API_BASE_URL_RAW?.trim()
   if (!base) {
@@ -496,6 +520,47 @@ export async function enrollInCourse(courseId: string): Promise<{ courseId: stri
 
 export type CheckoutSessionResponse = {
   redirect_url: string
+}
+
+/** Manage-contract-v1 read model for GET /billing/subscription. */
+export type SubscriptionSummary = {
+  status: 'active' | 'past_due' | 'canceled'
+  currentPeriodEnd: string
+  cancelAtPeriodEnd: boolean
+  canCancel: boolean
+  canReactivate: boolean
+  nextBillingDate: string | null
+  amountMinor: number
+  currency: string
+  planLabel: string
+  pastDue: boolean
+}
+
+export type CancelSubscriptionResponse = {
+  status: string
+  cancelAtPeriodEnd: boolean
+  currentPeriodEnd: string
+}
+
+export type ReactivateSubscriptionResponse = {
+  status: string
+  cancelAtPeriodEnd: boolean
+  currentPeriodEnd: string
+}
+
+/** Load the signed-in student's manageable subscription summary. */
+export async function getSubscription(): Promise<SubscriptionSummary> {
+  return httpGet<SubscriptionSummary>('/billing/subscription')
+}
+
+/** Cancel subscription at period end (billing edge). */
+export async function cancelSubscription(): Promise<CancelSubscriptionResponse> {
+  return httpPost<CancelSubscriptionResponse>('/billing/cancel-subscription', {})
+}
+
+/** Reactivate a subscription that was canceled at period end (billing edge). */
+export async function reactivateSubscription(): Promise<ReactivateSubscriptionResponse> {
+  return httpPost<ReactivateSubscriptionResponse>('/billing/reactivate-subscription', {})
 }
 
 /** Start PayTabs hosted checkout for platform subscription (amount from server plan row). */

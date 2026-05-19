@@ -1,12 +1,23 @@
 import {
   ApiError,
+  isAlreadyCanceledError,
   isAlreadySubscribedError,
+  isCannotCancelError,
+  isCannotReactivateError,
   isCheckoutInProgressError,
   isBillingUnconfiguredError,
   isLastModuleDeleteError,
   isMediaCleanupUnavailableError,
+  isNotSubscribedError,
   isReactivationRequiredError,
 } from './api'
+
+/** Account route for manage / reactivate (WS7). */
+export const reactivationRequiredAccountPath = '/account/subscription'
+
+/** Subscribe/checkout copy when checkout returns 409 reactivation_required. */
+export const reactivationRequiredSubscribeMessage =
+  'You still have access until your billing period ends. Open Manage subscription (/account/subscription) in your account to reactivate—no new charge today.'
 
 /** Broken or incomplete URL — question banks list route. */
 export const incompleteQuestionBanksListLinkMessage =
@@ -41,6 +52,9 @@ type ApiUserMessageContext =
   | 'uploadThumbnail'
   | 'enroll'
   | 'subscribe'
+  | 'loadSubscription'
+  | 'cancelSubscription'
+  | 'reactivateSubscription'
   | 'loadLesson'
   | 'loadProfile'
   | 'learnRedirect'
@@ -70,6 +84,9 @@ const CONTEXT_FALLBACKS: Record<ApiUserMessageContext, string> = {
   uploadThumbnail: 'The thumbnail could not be uploaded. Try another image.',
   enroll: 'Enrollment in this course could not be completed. Please try again.',
   subscribe: 'Checkout could not be started. Please try again.',
+  loadSubscription: 'Your subscription could not be loaded. Please try again.',
+  cancelSubscription: 'Your subscription could not be canceled. Please try again.',
+  reactivateSubscription: 'Your subscription could not be reactivated. Please try again.',
   loadLesson: 'This lesson could not be loaded. Please try again.',
   loadProfile: 'Your profile could not be loaded. Please try again.',
   learnRedirect: 'Your course could not be opened. Please try again.',
@@ -309,7 +326,19 @@ function mapByApiErrorCode(err: ApiError): string | null {
     return 'A checkout is already in progress. Wait a moment or try again shortly.'
   }
   if (isReactivationRequiredError(err)) {
-    return 'You still have access until your billing period ends. Reactivate your subscription from account settings—no new charge today.'
+    return reactivationRequiredSubscribeMessage
+  }
+  if (isNotSubscribedError(err)) {
+    return 'You do not have a subscription to manage yet.'
+  }
+  if (isAlreadyCanceledError(err)) {
+    return 'Your subscription is already set to cancel at the end of the billing period.'
+  }
+  if (isCannotCancelError(err)) {
+    return 'Your subscription cannot be canceled in its current state.'
+  }
+  if (isCannotReactivateError(err)) {
+    return 'Your subscription cannot be reactivated in its current state.'
   }
   if (isLastModuleDeleteError(err)) {
     return "You can't delete the last module — every course needs at least one section."

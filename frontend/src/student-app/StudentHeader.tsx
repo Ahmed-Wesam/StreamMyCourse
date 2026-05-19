@@ -43,6 +43,7 @@ export function StudentHeader() {
   const hash = location.hash
   const isActive = (to: string) => pathname === to
   const isCoursesList = pathname === '/courses'
+  const isAccount = pathname.startsWith('/account')
   const isCoursePricing = pathname === '/details' && hash === '#pricing'
   const navItemClass = (active: boolean) =>
     [
@@ -126,22 +127,27 @@ export function StudentHeader() {
 
         <div className="hidden md:flex items-center gap-3">
           {isAuthConfigured() ? (
-            signedIn ? (
-              <button
-                type="button"
-                className="px-4 py-2 rounded-md text-sm font-semibold text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors"
-                onClick={() => void handleSignOut()}
-              >
-                Sign out
-              </button>
-            ) : (
-              <Link
-                className="px-4 py-2 rounded-md text-sm font-semibold text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors"
-                to="/login"
-              >
-                Sign in
+            <>
+              <Link className={navItemClass(isAccount)} to="/account/profile">
+                Account
               </Link>
-            )
+              {signedIn ? (
+                <button
+                  type="button"
+                  className="px-4 py-2 rounded-md text-sm font-semibold text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors"
+                  onClick={() => void handleSignOut()}
+                >
+                  Sign out
+                </button>
+              ) : (
+                <Link
+                  className="px-4 py-2 rounded-md text-sm font-semibold text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors"
+                  to="/login"
+                >
+                  Sign in
+                </Link>
+              )}
+            </>
           ) : null}
           <a className="bg-primary text-white px-5 py-2 rounded-lg text-sm hover:bg-blue-700 transition-colors font-semibold" href="/details#pricing">
             Enroll Now
@@ -184,23 +190,32 @@ export function StudentHeader() {
               Courses
             </Link>
             {isAuthConfigured() ? (
-              signedIn ? (
-                <button
-                  type="button"
-                  onClick={() => void handleSignOut()}
-                  className="px-3 py-2 rounded-xl hover:bg-muted/50 text-left text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
-                >
-                  Sign out
-                </button>
-              ) : (
+              <>
                 <Link
-                  to="/login"
+                  to="/account/profile"
                   onClick={() => setMobileOpen(false)}
-                  className="px-3 py-2 rounded-xl hover:bg-muted/50 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
+                  className={navItemClass(isAccount)}
                 >
-                  Sign in
+                  Account
                 </Link>
-              )
+                {signedIn ? (
+                  <button
+                    type="button"
+                    onClick={() => void handleSignOut()}
+                    className="px-3 py-2 rounded-xl hover:bg-muted/50 text-left text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
+                  >
+                    Sign out
+                  </button>
+                ) : (
+                  <Link
+                    to="/login"
+                    onClick={() => setMobileOpen(false)}
+                    className="px-3 py-2 rounded-xl hover:bg-muted/50 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
+                  >
+                    Sign in
+                  </Link>
+                )}
+              </>
             ) : null}
             <a href="/details#pricing" className="mt-2 bg-primary text-white px-4 py-2 rounded-lg text-sm font-semibold text-center">
               Enroll Now

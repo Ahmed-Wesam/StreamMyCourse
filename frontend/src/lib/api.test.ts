@@ -15,6 +15,7 @@ vi.mock('./auth', () => ({
 
 import {
   ApiError,
+  cancelSubscription,
   createCheckoutSession,
   createCourse,
   createCourseModule,
@@ -27,18 +28,23 @@ import {
   getCourse,
   getCourseProgress,
   getPlaybackUrl,
+  getSubscription,
   getUploadUrl,
+  isAlreadyCanceledError,
   isAlreadySubscribedError,
-  isCheckoutInProgressError,
   isBillingUnconfiguredError,
+  isCannotCancelError,
+  isCannotReactivateError,
+  isCheckoutInProgressError,
   isCourseAccessDeniedError,
   isEnrollmentRequiredError,
-  isReactivationRequiredError,
-  isSubscriptionRequiredError,
   isLastModuleDeleteError,
   isMediaCleanupUnavailableError,
+  isNotSubscribedError,
   isPlaybackAuthRequiredError,
   isProgressRdsUnavailableError,
+  isReactivationRequiredError,
+  isSubscriptionRequiredError,
   listCourseModules,
   listCourses,
   listInstructorCourses,
@@ -46,6 +52,7 @@ import {
   markCourseThumbnailReady,
   markLessonVideoReady,
   publishCourse,
+  reactivateSubscription,
   updateCourse,
   updateLessonProgress,
 } from './api'
@@ -361,6 +368,173 @@ describe('checkout session error helpers', () => {
   it('isReactivationRequiredError matches 409 reactivation_required', () => {
     expect(isReactivationRequiredError(new ApiError('x', 409, 'reactivation_required'))).toBe(true)
     expect(isReactivationRequiredError(new ApiError('x', 409, 'already_subscribed'))).toBe(false)
+  })
+})
+
+describe('subscription manage error helpers', () => {
+  it('isNotSubscribedError matches 404 not_subscribed', () => {
+    expect(isNotSubscribedError(new ApiError('x', 404, 'not_subscribed'))).toBe(true)
+    expect(isNotSubscribedError(new ApiError('x', 404, 'not_found'))).toBe(false)
+  })
+
+  it('isAlreadyCanceledError matches 409 already_canceled', () => {
+    expect(isAlreadyCanceledError(new ApiError('x', 409, 'already_canceled'))).toBe(true)
+    expect(isAlreadyCanceledError(new ApiError('x', 409, 'cannot_cancel'))).toBe(false)
+  })
+
+  it('isCannotCancelError matches 409 cannot_cancel', () => {
+    expect(isCannotCancelError(new ApiError('x', 409, 'cannot_cancel'))).toBe(true)
+    expect(isCannotCancelError(new ApiError('x', 409, 'already_canceled'))).toBe(false)
+  })
+
+  it('isCannotReactivateError matches 409 cannot_reactivate', () => {
+    expect(isCannotReactivateError(new ApiError('x', 409, 'cannot_reactivate'))).toBe(true)
+    expect(isCannotReactivateError(new ApiError('x', 409, 'not_subscribed'))).toBe(false)
+  })
+})
+
+const sampleSubscriptionSummary = {
+  status: 'active' as const,
+  currentPeriodEnd: '2026-06-18T00:00:00.000Z',
+  cancelAtPeriodEnd: false,
+  canCancel: true,
+  canReactivate: false,
+  nextBillingDate: '2026-06-18T00:00:00.000Z',
+  amountMinor: 50000,
+  currency: 'JOD',
+  planLabel: '50 JOD / month',
+  pastDue: false,
+}
+
+describe('getSubscription', () => {
+  const originalEnv = import.meta.env.VITE_API_BASE_URL
+
+  beforeEach(() => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => {
+        return new Response(JSON.stringify(sampleSubscriptionSummary), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        })
+      }),
+    )
+    fetchAuthSessionMock.mockResolvedValue({ tokens: { idToken: 't' } })
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    ;(import.meta as any).env.VITE_API_BASE_URL = 'https://api.example/v1'
+  })
+
+  afterEach(() => {
+    vi.unstubAllGlobals()
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    ;(import.meta as any).env.VITE_API_BASE_URL = originalEnv
+    vi.clearAllMocks()
+  })
+
+  it('GETs /billing/subscription with Bearer token', async () => {
+    const result = await getSubscription()
+    expect(result).toEqual(sampleSubscriptionSummary)
+    expect(fetch).toHaveBeenCalledTimes(1)
+    const [url, init] = vi.mocked(fetch).mock.calls[0]
+    expect(String(url)).toContain('/billing/subscription')
+    expect(init?.method).toBeUndefined()
+    const h = new Headers(init?.headers as HeadersInit)
+    expect(h.get('Authorization')).toBe('Bearer t')
+  })
+
+  it('throws ApiError with not_subscribed on 404', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => {
+        return new Response(
+          JSON.stringify({ message: 'No active subscription to manage', code: 'not_subscribed' }),
+          { status: 404, headers: { 'Content-Type': 'application/json' } },
+        )
+      }),
+    )
+    const err = await getSubscription().catch((e: unknown) => e)
+    expect(err).toMatchObject({ status: 404, code: 'not_subscribed' })
+    expect(isNotSubscribedError(err)).toBe(true)
+  })
+})
+
+describe('cancelSubscription', () => {
+  const originalEnv = import.meta.env.VITE_API_BASE_URL
+  const cancelBody = {
+    status: 'canceled',
+    cancelAtPeriodEnd: true,
+    currentPeriodEnd: '2026-06-18T00:00:00.000Z',
+  }
+
+  beforeEach(() => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => {
+        return new Response(JSON.stringify(cancelBody), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        })
+      }),
+    )
+    fetchAuthSessionMock.mockResolvedValue({ tokens: { idToken: 't' } })
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    ;(import.meta as any).env.VITE_API_BASE_URL = 'https://api.example/v1'
+  })
+
+  afterEach(() => {
+    vi.unstubAllGlobals()
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    ;(import.meta as any).env.VITE_API_BASE_URL = originalEnv
+    vi.clearAllMocks()
+  })
+
+  it('POSTs to /billing/cancel-subscription with empty body', async () => {
+    const result = await cancelSubscription()
+    expect(result).toEqual(cancelBody)
+    const [url, init] = vi.mocked(fetch).mock.calls[0]
+    expect(String(url)).toContain('/billing/cancel-subscription')
+    expect(init?.method).toBe('POST')
+    expect(JSON.parse((init?.body as string) ?? '{}')).toEqual({})
+  })
+})
+
+describe('reactivateSubscription', () => {
+  const originalEnv = import.meta.env.VITE_API_BASE_URL
+  const reactivateBody = {
+    status: 'active',
+    cancelAtPeriodEnd: false,
+    currentPeriodEnd: '2026-06-18T00:00:00.000Z',
+  }
+
+  beforeEach(() => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => {
+        return new Response(JSON.stringify(reactivateBody), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        })
+      }),
+    )
+    fetchAuthSessionMock.mockResolvedValue({ tokens: { idToken: 't' } })
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    ;(import.meta as any).env.VITE_API_BASE_URL = 'https://api.example/v1'
+  })
+
+  afterEach(() => {
+    vi.unstubAllGlobals()
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    ;(import.meta as any).env.VITE_API_BASE_URL = originalEnv
+    vi.clearAllMocks()
+  })
+
+  it('POSTs to /billing/reactivate-subscription with empty body', async () => {
+    const result = await reactivateSubscription()
+    expect(result).toEqual(reactivateBody)
+    const [url, init] = vi.mocked(fetch).mock.calls[0]
+    expect(String(url)).toContain('/billing/reactivate-subscription')
+    expect(init?.method).toBe('POST')
+    expect(JSON.parse((init?.body as string) ?? '{}')).toEqual({})
   })
 })
 

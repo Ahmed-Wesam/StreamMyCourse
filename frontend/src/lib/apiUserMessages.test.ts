@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest'
 import { ApiError } from './api'
 import {
   catalogApiUserMessage,
+  reactivationRequiredSubscribeMessage,
   incompleteLessonPlayerLinkMessage,
   incompleteModuleQuizLinkMessage,
   incompleteQuestionBankStudioLinkMessage,
@@ -123,7 +124,23 @@ describe('catalogApiUserMessage', () => {
       'A checkout is already in progress. Wait a moment or try again shortly.',
     )
     expect(catalogApiUserMessage(new ApiError('x', 409, 'reactivation_required'), 'subscribe')).toBe(
-      'You still have access until your billing period ends. Reactivate your subscription from account settings—no new charge today.',
+      reactivationRequiredSubscribeMessage,
+    )
+    expect(reactivationRequiredSubscribeMessage).toContain('/account/subscription')
+  })
+
+  it('maps subscription manage billing codes', () => {
+    expect(catalogApiUserMessage(new ApiError('x', 404, 'not_subscribed'), 'loadSubscription')).toBe(
+      'You do not have a subscription to manage yet.',
+    )
+    expect(catalogApiUserMessage(new ApiError('x', 409, 'already_canceled'), 'cancelSubscription')).toBe(
+      'Your subscription is already set to cancel at the end of the billing period.',
+    )
+    expect(catalogApiUserMessage(new ApiError('x', 409, 'cannot_cancel'), 'cancelSubscription')).toBe(
+      'Your subscription cannot be canceled in its current state.',
+    )
+    expect(catalogApiUserMessage(new ApiError('x', 409, 'cannot_reactivate'), 'reactivateSubscription')).toBe(
+      'Your subscription cannot be reactivated in its current state.',
     )
   })
 
