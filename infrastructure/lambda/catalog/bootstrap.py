@@ -29,9 +29,10 @@ from services.course_management.models import Course
 from services.course_management.rds_repo import CourseCatalogRdsRepository
 from services.course_management.service import CourseManagementService
 from services.course_management.storage import CourseMediaStorage
-from services.enrollment.rds_repo import EnrollmentRdsRepository
 from services.progress.rds_repo import LessonProgressRdsRepository
 from services.progress.service import LessonProgressService
+from services.subscription.repo import SubscriptionRdsRepository
+from services.subscription.service import CourseAccessService
 from services.question_banks.rds_repo import QuestionBankRdsRepository
 from services.question_banks.service import QuestionBankService
 from services.question_banks.visibility import (
@@ -233,7 +234,11 @@ def build_aws_deps(cfg: AppConfig) -> AwsDeps:
 
     conn_factory = _build_rds_connection_factory(cfg)
     course_repo = CourseCatalogRdsRepository(conn_factory)
-    enrollment_repo = EnrollmentRdsRepository(conn_factory)
+    subscription_repo = SubscriptionRdsRepository(
+        conn_factory,
+        deployment_environment=cfg.deployment_environment,
+    )
+    course_access = CourseAccessService(subscription_repo, course_repo)
     auth_repo = UserProfileRdsRepository(conn_factory)
     progress_repo = LessonProgressRdsRepository(conn_factory)
 
@@ -243,14 +248,14 @@ def build_aws_deps(cfg: AppConfig) -> AwsDeps:
     service = CourseManagementService(
         course_repo,
         storage,
-        enrollment_repo,
+        course_access=course_access,
         media_cleanup_queue_url=cfg.media_cleanup_queue_url,
         module_quiz_visibility=module_quiz_visibility,
     )
     auth_service = UserProfileService(auth_repo)
     progress_service = LessonProgressService(
         progress_repo,
-        enrollment_repo,
+        course_access,
         course_repo,
         progress_complete_ratio=cfg.progress_complete_ratio,
         position_slack_sec=cfg.progress_position_slack_sec,

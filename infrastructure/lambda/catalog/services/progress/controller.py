@@ -87,6 +87,10 @@ def _actor_sub(claims: Dict[str, Any]) -> str:
     return str(claims.get("sub", "") or "").strip()
 
 
+def _actor_role(claims: Dict[str, Any]) -> str:
+    return str(claims.get("custom:role") or claims.get("role") or "student").strip().lower()
+
+
 def _route(method: str, path: str) -> Tuple[str, Dict[str, str]]:
     """Route HTTP requests to actions.
 
@@ -135,6 +139,7 @@ def handle_progress_request(
     action, params = _route(method, raw_path)
     claims = apigw_cognito_claims(event)
     user_sub = _actor_sub(claims)
+    role = _actor_role(claims)
 
     try:
         if not user_sub:
@@ -143,6 +148,7 @@ def handle_progress_request(
             result: CourseProgressResponse = progress_svc.get_course_progress(
                 user_sub=user_sub,
                 course_id=params["courseId"],
+                role=role,
             )
             return json_response(200, result, origin)
 
@@ -158,6 +164,7 @@ def handle_progress_request(
                 duration=duration,
                 mark_complete=mark_complete,
                 mark_incomplete=mark_incomplete,
+                role=role,
             )
             return json_response(200, result, origin)
 
