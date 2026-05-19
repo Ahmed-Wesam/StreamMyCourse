@@ -755,6 +755,7 @@ jobs:
           PAYMENT_PROVIDER: ${{ vars.PAYMENT_PROVIDER }}
           PAYTABS_USE_MOCK: ${{ vars.PAYTABS_USE_MOCK }}
           BILLING_FULFILLMENT_ALERT_EMAIL: ${{ vars.BILLING_FULFILLMENT_ALERT_EMAIL }}
+          BILLING_TEACHER_SUB: ${{ vars.BILLING_TEACHER_SUB }}
         run: |
           chmod +x scripts/deploy-backend.sh
           ./scripts/deploy-backend.sh dev
@@ -1206,7 +1207,9 @@ jobs:
       - name: Deploy prod
         env:
           PAYTABS_SECRET_ARN: ${{ secrets.PAYTABS_SECRET_ARN }}
+          PAYTABS_USE_MOCK: ${{ vars.PAYTABS_USE_MOCK }}
           BILLING_FULFILLMENT_ALERT_EMAIL: ${{ vars.BILLING_FULFILLMENT_ALERT_EMAIL }}
+          BILLING_TEACHER_SUB: ${{ vars.BILLING_TEACHER_SUB }}
         run: |
           set -euo pipefail
           if [[ -z "${PAYTABS_SECRET_ARN:-}" ]]; then

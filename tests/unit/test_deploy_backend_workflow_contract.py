@@ -191,6 +191,12 @@ def test_deploy_backend_sh_passes_billing_edge_arn_to_api_stack() -> None:
     assert "${BILLING_PARAM_OVERRIDES[@]}" in text
 
 
+def test_deploy_backend_sh_passes_billing_teacher_sub_to_api_stack() -> None:
+    text = _deploy_backend_sh_text()
+    assert 'export BILLING_TEACHER_SUB="${BILLING_TEACHER_SUB:-}"' in text
+    assert '"BillingTeacherSub=${BILLING_TEACHER_SUB:-}"' in text
+
+
 def test_api_stack_exposes_billing_and_paytabs_webhook_routes() -> None:
     text = (_repo_root() / "infrastructure" / "templates" / "api-stack.yaml").read_text(
         encoding="utf-8"
@@ -214,6 +220,7 @@ def test_deploy_workflow_dev_maps_paytabs_env_for_payments_stack() -> None:
     assert "PAYTABS_API_DOMAIN: ${{ vars.PAYTABS_API_DOMAIN }}" in deploy_dev
     assert "PAYMENT_PROVIDER: ${{ vars.PAYMENT_PROVIDER }}" in deploy_dev
     assert "PAYTABS_USE_MOCK: ${{ vars.PAYTABS_USE_MOCK }}" in deploy_dev
+    assert "BILLING_TEACHER_SUB: ${{ vars.BILLING_TEACHER_SUB }}" in deploy_dev
 
 
 def test_deploy_workflow_prod_passes_paytabs_secret_arn_only() -> None:
@@ -221,6 +228,8 @@ def test_deploy_workflow_prod_passes_paytabs_secret_arn_only() -> None:
     block = _job_block(text, "deploy-backend-prod", "\n  # Prod-only")
     deploy_prod = block[block.index("- name: Deploy prod") :]
     assert "PAYTABS_SECRET_ARN: ${{ secrets.PAYTABS_SECRET_ARN }}" in deploy_prod
+    assert "PAYTABS_USE_MOCK: ${{ vars.PAYTABS_USE_MOCK }}" in deploy_prod
+    assert "BILLING_TEACHER_SUB: ${{ vars.BILLING_TEACHER_SUB }}" in deploy_prod
     assert "PAYTABS_SERVER_KEY" not in deploy_prod
     assert "aws secretsmanager describe-secret" in deploy_prod
     assert "--secret-id streammycourse/paytabs/prod" in deploy_prod
