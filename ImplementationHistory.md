@@ -4,6 +4,37 @@
 
 ---
 
+## 2026-05-18 — Billing workstream split (WS8 / WS9 / WS10)
+
+Planning only (no runtime change): former mega-plan **WS8 go-live** split into **[WS8](plans/billing-workstream-8-billing-ops-pre-go-live.md)** (scheduler, `cancel_agreement` code, alarms, runbooks — **no PayTabs account**) and **[WS9](plans/billing-workstream-9-paytabs-live-go-live.md)** (mock→live keys, dashboard IPN, smoke — **account required**). Former **WS9 ADR/docs** renumbered to **[WS10](plans/billing-workstream-10-adr-contract-documentation.md)**.
+
+---
+
+## 2026-05-18 — WS7 subscription manage + reactivate
+
+### Completed
+
+- [x] **Read API** — `GET /billing/subscription` on **catalog** ([`services/subscription/controller.py`](infrastructure/lambda/catalog/services/subscription/controller.py), [`manage_service.py`](infrastructure/lambda/catalog/services/subscription/manage_service.py)); manage-contract shape (`canCancel`, `canReactivate`, `cancelAtPeriodEnd`, billing summary); **404** `not_subscribed` for none/incomplete/expired.
+- [x] **Cancel / reactivate** — `POST /billing/cancel-subscription` and `POST /billing/reactivate-subscription` on **billing edge** ([`handler.py`](infrastructure/lambda/billing_edge/handler.py)) → catalog internal invoke ([`internal_manage.py`](infrastructure/lambda/catalog/services/subscription/internal_manage.py)); port `cancel_agreement` / `resume_agreement` (mock; live PayTabs cancel deferred to **WS8**).
+- [x] **Fulfillment guard (W7-P3c)** — Skip renewal/activate IPN writes that would undo `canceled` + `cancel_at_period_end` ([`fulfillment_repo.py`](infrastructure/lambda/billing_fulfillment/fulfillment_repo.py)); unit [`test_fulfillment_skip_renewal_when_cancel_at_period_end.py`](tests/unit/billing_fulfillment/test_fulfillment_skip_renewal_when_cancel_at_period_end.py).
+- [x] **IaC** — [`api-stack.yaml`](infrastructure/templates/api-stack.yaml) routes for subscription read + cancel/reactivate; payments stack catalog invoke for manage.
+- [x] **Student SPA** — [`/account`](frontend/src/student-app/App.tsx) shell ([`AccountLayout.tsx`](frontend/src/pages/account/AccountLayout.tsx)): **Profile** ([`AccountProfilePage.tsx`](frontend/src/pages/account/AccountProfilePage.tsx)), **Manage subscription** ([`AccountSubscriptionPage.tsx`](frontend/src/pages/account/AccountSubscriptionPage.tsx)); header link; [`api.ts`](frontend/src/lib/api.ts) + reactivation hint ([`ReactivationRequiredSubscribeHint.tsx`](frontend/src/lib/ReactivationRequiredSubscribeHint.tsx)).
+- [x] **Tests** — Unit: billing edge cancel/reactivate/authz, catalog GET + internal cancel/reactivate, deferred PayTabs cancel note ([`test_deferred_paytabs_cancel_note.py`](tests/unit/billing/test_deferred_paytabs_cancel_note.py)); WS6 regression ([`test_checkout_reactivation_required.py`](tests/unit/billing/test_checkout_reactivation_required.py), [`test_subscribe_contract_gate_order.py`](tests/unit/billing/test_subscribe_contract_gate_order.py)). Integration: [`test_billing_manage_e2e.py`](tests/integration/test_billing_manage_e2e.py).
+- **Child plan** — [`plans/billing-workstream-7-subscription-manage-reactivate.md`](plans/billing-workstream-7-subscription-manage-reactivate.md).
+
+### Operator (manual)
+
+- Deploy catalog + payments + student SPA after merge; confirm migration **011**/**012** on RDS.
+- Pre-rollout: **`PAYTABS_USE_MOCK=true`**; PayTabs **`cancel_agreement`** scheduler (**WS8**); mock→live flip (**WS9**).
+
+### Deferred (not WS7)
+
+- Billing ops pre-go-live: scheduler + `cancel_agreement` code (**[WS8](plans/billing-workstream-8-billing-ops-pre-go-live.md)**).
+- Live PayTabs keys, IPN, smoke (**[WS9](plans/billing-workstream-9-paytabs-live-go-live.md)** — blocked on merchant account).
+- Full billing API table in docs (**[WS10](plans/billing-workstream-10-adr-contract-documentation.md)**).
+
+---
+
 ## 2026-05-18 — WS6 student subscribe + paywall UI
 
 ### Completed
@@ -23,9 +54,9 @@
 
 ### Deferred (not WS6)
 
-- **`POST /billing/reactivate-subscription`** and subscription manage UI (**WS7**).
-- Live PayTabs HPP + Repeat Billing enablement (**WS8**).
-- Full billing API table in docs (**WS9**).
+- Subscription manage/reactivate → **WS7** (shipped same day; see entry above).
+- Billing ops pre-go-live (**WS8**); live PayTabs (**WS9**).
+- Full billing API table in docs (**WS10**).
 
 ---
 
@@ -47,7 +78,7 @@
 
 ### Deferred (not WS5)
 
-- `GET /billing/subscription` (**WS7**); full billing API table in docs (**WS9**). *(Student checkout / paywall → **WS6**, shipped same day.)*
+- Subscription read/manage → **WS7** (shipped 2026-05-18); billing API docs (**WS10**). *(Student checkout / paywall → **WS6**, shipped same day.)*
 
 ---
 
@@ -67,12 +98,12 @@
 ### Operator (manual)
 
 - Set GitHub Environment variables on **dev** and **prod**: **`BILLING_TEACHER_SUB`** (teacher Cognito `sub`), **`PAYTABS_USE_MOCK=true`** (pre-rollout; both envs).
-- PayTabs registration / live test charge deferred to **Workstream 8**; mock + placeholders until §0.9 go-live.
+- PayTabs registration / live test charge deferred to **Workstream 9**; mock + placeholders until §0.9 go-live; **WS8** ops/scheduler without account.
 - Optional: after test IPN, run `billing-mark-payout-ready.sh` for teacher checklist; confirm status API does **not** gate student subscribe.
 
 ### Deferred (not WS4 blockers)
 
-- Live test charge visible in PayTabs Dashboard (**WS8** / when keys exist).
+- Live test charge visible in PayTabs Dashboard (**WS9** / when keys exist).
 - Optional fulfillment `payout.ready` → RDS (**W4-P6**).
 
 ---
