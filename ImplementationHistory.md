@@ -4,9 +4,29 @@
 
 ---
 
+## 2026-05-19 — WS8 billing ops pre-go-live (immediate provider cancel)
+
+### Completed
+
+- [x] **Immediate provider cancel** — `POST /billing/cancel-subscription` invokes `cancel_agreement` after catalog `billing.cancel_at_period_end` ([`billing_edge/handler.py`](infrastructure/lambda/billing_edge/handler.py)); catalog returns `providerSubscriptionId` ([`manage_service.py`](infrastructure/lambda/catalog/services/subscription/manage_service.py), [`repo.py`](infrastructure/lambda/catalog/services/subscription/repo.py)).
+- [x] **PayTabs adapter** — `PayTabsAdapter.cancel_agreement` POST `payment/agreement/cancel` ([`paytabs_adapter.py`](infrastructure/lambda/billing_edge/providers/paytabs_adapter.py)); mock no-op.
+- [x] **Provider failure** — **502** `provider_cancel_failed` when PayTabs cancel fails after RDS cancel.
+- [x] **Removed reactivate** — `POST /billing/reactivate-subscription`, `resume_agreement`, `canReactivate`, frontend reactivate UI; api-stack deployment **V31**.
+- [x] **Checkout** — Removed **`reactivation_required`**; canceled-in-period → **409 `already_subscribed`**.
+- [x] **Fulfillment** — Removed W7-P3c renewal clobber skip ([`fulfillment_repo.py`](infrastructure/lambda/billing_fulfillment/fulfillment_repo.py)).
+- [x] **Ops** — `BillingEdgeErrorAlarm` → shared SNS ([`payments-stack.yaml`](infrastructure/templates/payments-stack.yaml)); [`infrastructure/docs/billing-ops-runbook.md`](infrastructure/docs/billing-ops-runbook.md).
+- [x] **Tests** — Unit + integration [`test_billing_manage_e2e.py`](tests/integration/test_billing_manage_e2e.py) rewritten (no reactivate).
+- **Child plan** — [`plans/billing-workstream-8-billing-ops-pre-go-live.md`](plans/billing-workstream-8-billing-ops-pre-go-live.md).
+
+### Operator
+
+- Pre-rollout unchanged: **`PAYTABS_USE_MOCK=true`** dev + prod until **[WS9](plans/billing-workstream-9-paytabs-live-go-live.md)**.
+
+---
+
 ## 2026-05-18 — Billing workstream split (WS8 / WS9 / WS10)
 
-Planning only (no runtime change): former mega-plan **WS8 go-live** split into **[WS8](plans/billing-workstream-8-billing-ops-pre-go-live.md)** (scheduler, `cancel_agreement` code, alarms, runbooks — **no PayTabs account**) and **[WS9](plans/billing-workstream-9-paytabs-live-go-live.md)** (mock→live keys, dashboard IPN, smoke — **account required**). Former **WS9 ADR/docs** renumbered to **[WS10](plans/billing-workstream-10-adr-contract-documentation.md)**.
+Planning: former mega-plan **WS8 go-live** split into **[WS8](plans/billing-workstream-8-billing-ops-pre-go-live.md)** (ops, mock on) and **[WS9](plans/billing-workstream-9-paytabs-live-go-live.md)** (live PayTabs). Former **WS9 ADR/docs** → **[WS10](plans/billing-workstream-10-adr-contract-documentation.md)**.
 
 ---
 
@@ -25,11 +45,11 @@ Planning only (no runtime change): former mega-plan **WS8 go-live** split into *
 ### Operator (manual)
 
 - Deploy catalog + payments + student SPA after merge; confirm migration **011**/**012** on RDS.
-- Pre-rollout: **`PAYTABS_USE_MOCK=true`**; PayTabs **`cancel_agreement`** scheduler (**WS8**); mock→live flip (**WS9**).
+- Pre-rollout: **`PAYTABS_USE_MOCK=true`**; PayTabs **`cancel_agreement` on student cancel** (**WS8**); mock→live flip (**WS9**).
 
 ### Deferred (not WS7)
 
-- Billing ops pre-go-live: scheduler + `cancel_agreement` code (**[WS8](plans/billing-workstream-8-billing-ops-pre-go-live.md)**).
+- Billing ops pre-go-live: immediate `cancel_agreement` + adapter (**[WS8](plans/billing-workstream-8-billing-ops-pre-go-live.md)**).
 - Live PayTabs keys, IPN, smoke (**[WS9](plans/billing-workstream-9-paytabs-live-go-live.md)** — blocked on merchant account).
 - Full billing API table in docs (**[WS10](plans/billing-workstream-10-adr-contract-documentation.md)**).
 
