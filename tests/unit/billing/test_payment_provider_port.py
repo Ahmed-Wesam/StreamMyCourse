@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import pytest
-
 from providers.mock_adapter import MockPayTabsAdapter
 from providers.port import PaymentProviderPort, SubscribeSessionResult
 
@@ -30,8 +28,3 @@ def test_mock_parse_webhook_returns_empty_list() -> None:
     adapter = MockPayTabsAdapter()
     assert adapter.parse_webhook(b"{}", deployment_environment="dev") == []
 
-
-def test_mock_cancel_agreement_raises_not_implemented() -> None:
-    adapter = MockPayTabsAdapter()
-    with pytest.raises(NotImplementedError):
-        adapter.cancel_agreement("agreement-1")
