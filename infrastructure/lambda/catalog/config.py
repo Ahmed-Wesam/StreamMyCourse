@@ -24,6 +24,9 @@ class AppConfig:
     # Progress tracking configuration (lesson completion thresholds)
     progress_complete_ratio: float = 0.92
     progress_position_slack_sec: int = 30
+    # Billing (merchant status teacher gate + RDS environment key)
+    billing_teacher_sub: str = ""
+    deployment_environment: str = "dev"
 
 _DEFAULT_DB_PORT = 5432
 
@@ -103,6 +106,10 @@ def load_config() -> AppConfig:
         os.environ.get("PROGRESS_POSITION_SLACK_SEC", "30"), 30
     )
 
+    billing_teacher_sub = os.environ.get("BILLING_TEACHER_SUB", "").strip()
+    deployment_raw = os.environ.get("DEPLOYMENT_ENVIRONMENT", "").strip()
+    deployment_environment = (deployment_raw or "dev").lower()
+
     return AppConfig(
         video_bucket=video_bucket,
         default_mp4_url=default_mp4_url,
@@ -116,4 +123,6 @@ def load_config() -> AppConfig:
         media_cleanup_queue_url=media_cleanup_queue_url,
         progress_complete_ratio=progress_complete_ratio,
         progress_position_slack_sec=progress_position_slack_sec,
+        billing_teacher_sub=billing_teacher_sub,
+        deployment_environment=deployment_environment,
     )
