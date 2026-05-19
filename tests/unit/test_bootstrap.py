@@ -70,14 +70,20 @@ def _mocked_rds(monkeypatch: pytest.MonkeyPatch):
 
 class TestLambdaBootstrap:
     def test_returns_none_service_when_rds_env_incomplete(self) -> None:
-        cfg, service, auth_service, progress_service, question_bank_service = (
-            bootstrap_mod.lambda_bootstrap()
-        )
+        (
+            cfg,
+            service,
+            auth_service,
+            progress_service,
+            question_bank_service,
+            merchant_service,
+        ) = bootstrap_mod.lambda_bootstrap()
         assert isinstance(cfg, AppConfig)
         assert service is None
         assert auth_service is None
         assert progress_service is None
         assert question_bank_service is None
+        assert merchant_service is None
 
     def test_warm_cache_returns_same_service_instance(
         self, monkeypatch: pytest.MonkeyPatch, mocked_storage, _mocked_rds
@@ -90,8 +96,8 @@ class TestLambdaBootstrap:
         )
         monkeypatch.setenv("VIDEO_BUCKET", "my-bucket")
 
-        _cfg1, svc1, auth1, prog1, qb1 = bootstrap_mod.lambda_bootstrap()
-        _cfg2, svc2, auth2, prog2, qb2 = bootstrap_mod.lambda_bootstrap()
+        _cfg1, svc1, auth1, prog1, qb1, merch1 = bootstrap_mod.lambda_bootstrap()
+        _cfg2, svc2, auth2, prog2, qb2, merch2 = bootstrap_mod.lambda_bootstrap()
 
         assert svc1 is not None
         assert svc2 is not None
@@ -99,6 +105,7 @@ class TestLambdaBootstrap:
         assert auth1 is auth2
         assert prog1 is prog2
         assert qb1 is qb2
+        assert merch1 is merch2
 
     def test_rds_complete_builds_progress_service(
         self, monkeypatch: pytest.MonkeyPatch, mocked_storage, _mocked_rds
@@ -109,13 +116,19 @@ class TestLambdaBootstrap:
             "DB_SECRET_ARN",
             "arn:aws:secretsmanager:eu-west-1:123:secret:rds-cred-abcdef",
         )
-        _cfg, service, auth_service, progress_service, question_bank_service = (
-            bootstrap_mod.lambda_bootstrap()
-        )
+        (
+            _cfg,
+            service,
+            auth_service,
+            progress_service,
+            question_bank_service,
+            merchant_service,
+        ) = bootstrap_mod.lambda_bootstrap()
         assert service is not None
         assert auth_service is not None
         assert progress_service is not None
         assert question_bank_service is not None
+        assert merchant_service is not None
 
 
 class TestBuildAwsDeps:
@@ -137,6 +150,7 @@ class TestBuildAwsDeps:
         assert deps.auth_service is not None
         assert deps.progress_service is not None
         assert deps.question_bank_service is not None
+        assert deps.merchant_service is not None
 
 
 class TestWarmAwsDepsIfNeeded:
