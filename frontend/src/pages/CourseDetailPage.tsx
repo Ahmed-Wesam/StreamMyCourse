@@ -1,5 +1,5 @@
 import { BookOpen, ChevronLeft, Clock, Play } from 'lucide-react'
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import {
   createCheckoutSession,
@@ -16,6 +16,7 @@ import {
   type LessonProgressItem,
 } from '../lib/api'
 import { catalogApiUserMessage, courseNotFoundMessage } from '../lib/apiUserMessages'
+import { formatSubscribeError } from '../lib/ReactivationRequiredSubscribeHint'
 import {
   subscribeCtaLabel,
   subscribeCtaLoadingLabel,
@@ -264,6 +265,7 @@ function getResumeLesson(
 function CourseDetailBody({
   courseId,
   error,
+  subscribeError,
   loading,
   lessons,
   modules,
@@ -278,6 +280,7 @@ function CourseDetailBody({
 }: {
   courseId: string
   error: string | null
+  subscribeError: ReactNode | null
   loading: boolean
   lessons: Lesson[]
   modules: CourseModule[]
@@ -432,6 +435,11 @@ function CourseDetailBody({
                     >
                       {subscribing ? subscribeCtaLoadingLabel : subscribeCtaLabel}
                     </button>
+                    {subscribeError ? (
+                      <p className="text-sm text-destructive" role="alert">
+                        {subscribeError}
+                      </p>
+                    ) : null}
                   </div>
                 )}
                 {previewOnly && (
@@ -623,6 +631,7 @@ export default function CourseDetailPage() {
   const [lessons, setLessons] = useState<Lesson[]>([])
   const [modules, setModules] = useState<CourseModule[]>([])
   const [error, setError] = useState<string | null>(null)
+  const [subscribeError, setSubscribeError] = useState<ReactNode | null>(null)
   const [loading, setLoading] = useState(true)
   const [previewOnly, setPreviewOnly] = useState(false)
   const [needsSubscription, setNeedsSubscription] = useState(false)
@@ -714,12 +723,12 @@ export default function CourseDetailPage() {
   const onSubscribe = useCallback(async () => {
     if (!courseId) return
     setSubscribing(true)
-    setError(null)
+    setSubscribeError(null)
     try {
       const { redirect_url } = await createCheckoutSession()
       window.location.href = redirect_url
     } catch (e) {
-      setError(catalogApiUserMessage(e, 'subscribe'))
+      setSubscribeError(formatSubscribeError(e))
     } finally {
       setSubscribing(false)
     }
@@ -745,6 +754,7 @@ export default function CourseDetailPage() {
       <CourseDetailBody
         courseId={courseId}
         error={error}
+        subscribeError={subscribeError}
         loading={loading}
         lessons={lessons}
         modules={modules}

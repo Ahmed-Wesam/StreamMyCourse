@@ -4,6 +4,7 @@ import {
   useMemo,
   useRef,
   useState,
+  type ReactNode,
   type RefObject,
   type SyntheticEvent,
 } from 'react'
@@ -23,6 +24,7 @@ import {
   type CourseProgress,
   type Lesson,
 } from '../lib/api'
+import { formatSubscribeError } from '../lib/ReactivationRequiredSubscribeHint'
 import {
   catalogApiUserMessage,
   courseNotFoundMessage,
@@ -187,6 +189,7 @@ export default function LessonPlayerPage() {
   const [modules, setModules] = useState<CourseModule[]>([])
   const [src, setSrc] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [subscribeError, setSubscribeError] = useState<ReactNode | null>(null)
   const [loading, setLoading] = useState(true)
   const [needsSubscription, setNeedsSubscription] = useState(false)
   const [needsSignIn, setNeedsSignIn] = useState(false)
@@ -677,12 +680,12 @@ export default function LessonPlayerPage() {
 
   const handleSubscribe = useCallback(async () => {
     setSubscribing(true)
-    setError(null)
+    setSubscribeError(null)
     try {
       const { redirect_url } = await createCheckoutSession()
       window.location.href = redirect_url
     } catch (err) {
-      setError(catalogApiUserMessage(err, 'subscribe'))
+      setSubscribeError(formatSubscribeError(err))
     } finally {
       setSubscribing(false)
     }
@@ -730,6 +733,7 @@ export default function LessonPlayerPage() {
         needsSignIn={needsSignIn}
         needsSubscription={needsSubscription}
         subscribing={subscribing}
+        subscribeError={subscribeError}
         error={error}
         onSubscribe={() => void handleSubscribe()}
         playbackNavLocked={playbackNavLocked}
@@ -843,6 +847,7 @@ export default function LessonPlayerPage() {
               needsSignIn={needsSignIn}
               needsSubscription={needsSubscription}
               subscribing={subscribing}
+              subscribeError={subscribeError}
               error={error}
               courseId={courseId}
               onSubscribe={handleSubscribe}
