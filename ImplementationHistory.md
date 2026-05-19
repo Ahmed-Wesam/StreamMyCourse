@@ -4,6 +4,31 @@
 
 ---
 
+## 2026-05-18 — WS6 student subscribe + paywall UI
+
+### Completed
+
+- [x] **Checkout API** — `POST /billing/checkout-session` on **billing edge** ([`handler.py`](infrastructure/lambda/billing_edge/handler.py)); gates **`billing_unconfigured` → `reactivation_required` → `already_subscribed` → 200** per [`subscribe-contract-v1.md`](plans/billing/subscribe-contract-v1.md); mock/live HPP via provider port.
+- [x] **Catalog precheck (internal invoke)** — [`internal_checkout.py`](infrastructure/lambda/catalog/services/subscription/internal_checkout.py) + [`checkout_service.py`](infrastructure/lambda/catalog/services/subscription/checkout_service.py): `requires_reactivation_for_checkout` before `has_checkout_blocking_subscription`; **upsert `incomplete`** before edge calls PayTabs (double-click idempotency).
+- [x] **IaC** — [`payments-stack.yaml`](infrastructure/templates/payments-stack.yaml) catalog invoke IAM; [`deploy-backend.yml`](.github/workflows/deploy-backend.yml) / [`deploy-payments.sh`](scripts/deploy-payments.sh) wiring.
+- [x] **Price** — migration **012** (`amount_minor = 50000` for `monthly_all_access`); UI **50 JOD / month** ([`subscribeCopy.ts`](frontend/src/lib/subscribeCopy.ts)).
+- [x] **Student SPA** — Paywall on [`CourseDetailPage.tsx`](frontend/src/pages/CourseDetailPage.tsx) / [`LessonPlayerPage.tsx`](frontend/src/pages/LessonPlayerPage.tsx); **`/billing/success`** and **`/billing/cancel`** ([`BillingSuccessPage.tsx`](frontend/src/pages/BillingSuccessPage.tsx), [`BillingCancelPage.tsx`](frontend/src/pages/BillingCancelPage.tsx)); [`api.ts`](frontend/src/lib/api.ts) + [`apiUserMessages.ts`](frontend/src/lib/apiUserMessages.ts) for subscribe errors.
+- [x] **Tests** — Unit: [`tests/unit/billing/`](tests/unit/billing/) (gate order, `reactivation_required`, subscribe contract); catalog checkout block + internal invoke under [`tests/unit/catalog/`](tests/unit/catalog/). Integration: [`test_billing_checkout_e2e.py`](tests/integration/test_billing_checkout_e2e.py).
+- **Child plan** — [`plans/billing-workstream-6-student-subscribe-paywall-ui.md`](plans/billing-workstream-6-student-subscribe-paywall-ui.md).
+
+### Operator (manual)
+
+- Apply migration **012** on dev/prod RDS; deploy payments + catalog + student SPA after merge.
+- Pre-rollout: **`PAYTABS_USE_MOCK=true`** on dev and prod; IPN remains source of truth for access after checkout.
+
+### Deferred (not WS6)
+
+- **`POST /billing/reactivate-subscription`** and subscription manage UI (**WS7**).
+- Live PayTabs HPP + Repeat Billing enablement (**WS8**).
+- Full billing API table in docs (**WS9**).
+
+---
+
 ## 2026-05-18 — WS5 catalog subscription access (`has_course_access`)
 
 ### Completed
@@ -22,7 +47,7 @@
 
 ### Deferred (not WS5)
 
-- Student checkout / paywall UI (**WS6**); `GET /billing/subscription` (**WS7**); full billing API table in docs (**WS9**).
+- `GET /billing/subscription` (**WS7**); full billing API table in docs (**WS9**). *(Student checkout / paywall → **WS6**, shipped same day.)*
 
 ---
 
@@ -33,7 +58,7 @@
 - [x] **Merchant status API** — `GET /billing/merchant/status` on **catalog** Lambda (`services/billing_merchant/`); Cognito + teacher-only via `BILLING_TEACHER_SUB`; reads `teacher_merchant_accounts` (`payout_ready`, `provider_profile_id`, checklist fields).
 - [x] **Teacher SPA** — [`TeacherPaymentSetup.tsx`](frontend/src/pages/TeacherPaymentSetup.tsx) at **`/settings/payments`** (teacher-app route + header nav); `getMerchantStatus()` in [`frontend/src/lib/billing.ts`](frontend/src/lib/billing.ts); Vitest checklist states.
 - [x] **Pre-rollout mock parity** — **`PAYTABS_USE_MOCK=true`** on **dev and prod** when flag set: [`edge_config.py`](infrastructure/lambda/billing_edge/edge_config.py) uses mock on prod with explicit flag; [`deploy-backend.yml`](.github/workflows/deploy-backend.yml) passes var to both deploy jobs.
-- [x] **Subscribe contract (Q4)** — No **`payout_not_ready`** / `PAYOUT_READY` on checkout; normative gates in [`subscribe-contract-v1.md`](plans/billing/subscribe-contract-v1.md) (`billing_unconfigured` → `already_subscribed` → 200); [`test_subscribe_contract_ws4.py`](tests/unit/billing/test_subscribe_contract_ws4.py).
+- [x] **Subscribe contract (Q4)** — No **`payout_not_ready`** / `PAYOUT_READY` on checkout; normative gates in [`subscribe-contract-v1.md`](plans/billing/subscribe-contract-v1.md) (WS4: `billing_unconfigured` → `already_subscribed`; **WS6** added `reactivation_required` before `already_subscribed`); [`test_subscribe_contract_ws4.py`](tests/unit/billing/test_subscribe_contract_ws4.py).
 - [x] **Merchant RDS sync** — [`billing-sync-merchant-account.sh`](scripts/billing-sync-merchant-account.sh) + [`billing_sync_merchant_account.py`](scripts/billing_sync_merchant_account.py): UPSERT `teacher_sub` / `provider_profile_id`; **`payout_ready` unchanged on conflict**; invoked from [`deploy-payments.sh`](scripts/deploy-payments.sh).
 - [x] **IaC + tests** — [`api-stack.yaml`](infrastructure/templates/api-stack.yaml) merchant route → catalog; catalog env `BILLING_TEACHER_SUB`; unit tests under [`tests/unit/catalog/`](tests/unit/catalog/) and [`tests/unit/billing/`](tests/unit/billing/).
 - [x] **Operator script (optional)** — [`billing-mark-payout-ready.sh`](scripts/billing-mark-payout-ready.sh) sets RDS `payout_ready=true` for **teacher checklist UI only** (not a student gate).
