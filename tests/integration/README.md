@@ -20,6 +20,14 @@ Catalog lesson access, progress, and related student flows require an **active p
 
 If the payments stack is missing or billing is unconfigured, helpers skip with reasons such as **404** (route missing), **503 `billing_unconfigured`**, or **401** (mock signature not accepted).
 
+**Checkout E2E (WS6):** `tests/integration/test_billing_checkout_e2e.py` exercises `POST /billing/checkout-session` (mock `redirect_url`) → mock IPN → playback **200**, **409 `already_subscribed`** when the student already has a granting row (`ensure_student_subscription`), **409 `checkout_in_progress`** on a second checkout before IPN (fresh `incomplete` row), and **200** checkout after a **lapsed** `active` row (`seed_lapsed_subscription_via_ipn`: grant IPN → playback **200**, lapsed IPN → poll until **403** `subscription_required`, then checkout). Same skip flags as above; requires **`INTEGRATION_COGNITO_JWT_STUDENT`**. Run only that file:
+
+```bash
+python -m pytest tests/integration/test_billing_checkout_e2e.py -q
+```
+
+Without a deployed dev API and Cognito student JWT (e.g. via `./scripts/run-local-integration-tests.sh`), collection may still require **`INTEGRATION_API_BASE_URL`** / **`INTEGRATION_VIDEO_BUCKET`** from `conftest.py`; individual tests skip when the student JWT or billing webhook is disabled.
+
 **Troubleshooting (module tests):** If `GET …/modules` returns API Gateway JWT/IAM authorization errors (`Invalid key=value pair … Authorization header`), or lesson JSON lacks `moduleId` / `moduleOrder`, the deployed **`streammycourse-api`** + **catalog Lambda** are behind the repo (PostgreSQL modules + `infrastructure/templates/api-stack.yaml`). Redeploy the dev/prod backends to match `main`; CI deploys Lambda before HTTPS tests for this reason.
 
 **Module delete + media:** `DELETE …/modules/{id}` with lessons carrying **video or thumbnail keys** returns **503** when **`MEDIA_CLEANUP_QUEUE_URL`** is unset (catalog refuses orphan S3 references). Prefer video-free lessons in module-delete tests unless the **`StreamMyCourse-MediaCleanup-*`** stack is deployed.
@@ -175,7 +183,7 @@ GitHub Deploy workflow **Integration HTTP tests** attaches **`environment: dev`*
 |-----------|---------|------|-------------------|
 | Primary Teacher | `INTEGRATION_COGNITO_JWT` | Course owner, full mutating access | `test_courses.py`, `test_publish.py`, `test_lesson_ordering.py` |
 | Alt Teacher | `INTEGRATION_COGNITO_JWT_ALT` | Second teacher (cross-user access control) | `test_access_control.py` |
-| Student | `INTEGRATION_COGNITO_JWT_STUDENT` | Enrolled student (limited read/playback) | `test_enrollment.py`, `test_student_permissions_allowed.py`, `test_student_permissions_denials.py`, `test_progress.py`, `test_playback_auth.py` |
+| Student | `INTEGRATION_COGNITO_JWT_STUDENT` | Enrolled student (limited read/playback) | `test_enrollment.py`, `test_student_permissions_allowed.py`, `test_student_permissions_denials.py`, `test_progress.py`, `test_playback_auth.py`, `test_billing_checkout_e2e.py` |
 
 **On GitHub Environment `dev`** (reuse for both Integration HTTP tests and Verify dev RDS):
 
@@ -215,6 +223,7 @@ tests/integration/
   test_instructor_dashboard.py      -- instructor analytics and dashboard endpoints
   test_lesson_ordering.py           -- lesson sequence management
   test_playback_auth.py             -- video playback authorization (teacher + student principals)
+  test_billing_checkout_e2e.py      -- POST checkout-session, mock IPN, playback (WS6)
   test_playback_upload.py           -- video upload and processing
   test_progress.py                  -- student progress tracking
   test_publish.py                   -- course publish/unpublish lifecycle
