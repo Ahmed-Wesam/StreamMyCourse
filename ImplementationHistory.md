@@ -4,6 +4,28 @@
 
 ---
 
+## 2026-05-18 — WS5 catalog subscription access (`has_course_access`)
+
+### Completed
+
+- [x] **Subscription module** — [`services/subscription/`](infrastructure/lambda/catalog/services/subscription/) (`ports.py`, `repo.py`, `service.py`): `has_granting_subscription` + `has_course_access` per [`access-policy-v1.md`](plans/billing/access-policy-v1.md); `CourseAccessPort` wired in [`bootstrap.py`](infrastructure/lambda/catalog/bootstrap.py).
+- [x] **Consumers** — [`course_management/service.py`](infrastructure/lambda/catalog/services/course_management/service.py) and [`progress/service.py`](infrastructure/lambda/catalog/services/progress/service.py) use subscription (not enrollment) for lesson/playback/progress gates; progress admin bypass; course detail **`hasAccess`** + deprecated **`enrolled`** alias.
+- [x] **Enroll blocked** — `POST /courses/{id}/enroll` → **403** `subscription_required` (no `put_enrollment` grant).
+- [x] **Boundaries** — [`check_lambda_boundaries.py`](scripts/check_lambda_boundaries.py) allows `subscription/repo.py` for psycopg2.
+- [x] **Tests** — Unit: [`tests/unit/catalog/test_subscription_*.py`](tests/unit/catalog/), [`tests/unit/services/course_management/`](tests/unit/services/course_management/), [`tests/unit/services/progress/`](tests/unit/services/progress/). Integration: [`tests/integration/helpers/billing_access.py`](tests/integration/helpers/billing_access.py) mock IPN + seed plan IDs from migration **011**; regression updates in enrollment/progress/playback/question-bank integration tests.
+- **Child plan** — [`plans/billing-workstream-5-catalog-has-course-access.md`](plans/billing-workstream-5-catalog-has-course-access.md).
+
+### Operator (manual)
+
+- Confirm migration **011** on dev/prod RDS; deploy catalog after merge.
+- Integration: existing Cognito trio + `INTEGRATION_BILLING_ENV` (default `dev`); mock IPN uses seed plan `a0000000-…0011` (dev) or `…0012` (prod).
+
+### Deferred (not WS5)
+
+- Student checkout / paywall UI (**WS6**); `GET /billing/subscription` (**WS7**); full billing API table in docs (**WS9**).
+
+---
+
 ## 2026-05-18 — WS4 teacher merchant setup (payout signal, subscribe contract)
 
 ### Completed
