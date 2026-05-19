@@ -22,13 +22,21 @@ def _clear_paytabs_env(monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.delenv(key, raising=False)
 
 
-def test_prod_never_returns_mock_adapter(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_prod_paytabs_use_mock_selects_mock_adapter(monkeypatch: pytest.MonkeyPatch) -> None:
+    _clear_paytabs_env(monkeypatch)
+    monkeypatch.setenv("DEPLOYMENT_ENVIRONMENT", "prod")
+    monkeypatch.setenv("PAYTABS_USE_MOCK", "true")
+    provider = get_payment_provider(load_billing_edge_config())
+    assert isinstance(provider, MockPayTabsAdapter)
+
+
+def test_prod_payment_provider_mock_without_paytabs_use_mock_is_not_mock(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     _clear_paytabs_env(monkeypatch)
     monkeypatch.setenv("DEPLOYMENT_ENVIRONMENT", "prod")
     monkeypatch.setenv("PAYMENT_PROVIDER", "mock")
-    monkeypatch.setenv("PAYTABS_USE_MOCK", "true")
-    cfg = load_billing_edge_config()
-    provider = get_payment_provider(cfg)
+    provider = get_payment_provider(load_billing_edge_config())
     assert provider is None or isinstance(provider, PayTabsAdapter)
     assert not isinstance(provider, MockPayTabsAdapter)
 

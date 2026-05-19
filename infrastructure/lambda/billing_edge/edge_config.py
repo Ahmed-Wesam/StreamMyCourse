@@ -45,7 +45,7 @@ class BillingEdgeConfig:
 
     def wants_mock(self) -> bool:
         if self.is_prod():
-            return False
+            return self.paytabs_use_mock
         if (self.payment_provider or "").lower() == "mock":
             return True
         return self.paytabs_use_mock
@@ -99,6 +99,9 @@ def resolve_paytabs_credentials(
 
 def get_payment_provider(cfg: BillingEdgeConfig) -> Optional[PaymentProviderPort]:
     """Select mock, PayTabs, or None (billing_unconfigured)."""
+    if cfg.wants_mock():
+        return MockPayTabsAdapter(allow_mock_signature=True)
+
     if cfg.is_prod():
         if not cfg.has_paytabs_secret_arn() and not cfg.has_paytabs_inline_keys():
             return None
@@ -111,9 +114,6 @@ def get_payment_provider(cfg: BillingEdgeConfig) -> Optional[PaymentProviderPort
             profile_id=profile_id,
             api_domain=api_domain,
         )
-
-    if cfg.wants_mock():
-        return MockPayTabsAdapter(allow_mock_signature=True)
 
     if (cfg.payment_provider or "").lower() == "paytabs":
         creds = resolve_paytabs_credentials(cfg)
