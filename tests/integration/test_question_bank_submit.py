@@ -193,6 +193,7 @@ def test_submit_wrong_course_id_returns_404(
     """IDOR: attempt started under course A must not submit under course B path."""
     served_n = 2
     course_a_id, module_a_id, _ = _publish_bank_and_course(
+        api_base_url,
         api,
         student_api,
         course_factory,
@@ -333,6 +334,7 @@ def test_retake_redraws_valid_subset_from_published_pool_attempt_two(
     served_n = 2
     published_pool_size = 4
     course_id, module_id, published_ids = _publish_bank_and_course(
+        api_base_url,
         api,
         student_api,
         course_factory,
