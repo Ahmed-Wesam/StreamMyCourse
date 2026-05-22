@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { FIGMA_MOCK_COURSE_PRICING_PLANS } from '../../lib/figma-mocks'
+import { FIGMA_MOCK_COURSE_PRICING_PLANS } from '../../lib/figma-mocks.data'
 
 type PricingPlan = (typeof FIGMA_MOCK_COURSE_PRICING_PLANS)[number]
 

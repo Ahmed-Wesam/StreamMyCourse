@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { ApiError } from './api'
+import { ApiError } from './api/client'
 import { moduleDeleteFailureMessage } from './courseManagementModuleErrors'
 
 describe('moduleDeleteFailureMessage', () => {

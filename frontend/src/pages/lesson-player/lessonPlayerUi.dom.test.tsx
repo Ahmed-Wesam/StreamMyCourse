@@ -5,7 +5,7 @@ import { cleanup, render, screen } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { afterEach, describe, expect, it } from 'vitest'
 
-import type { CourseModule, CourseProgress, Lesson } from '../../lib/api'
+import type { CourseModule, CourseProgress, Lesson } from '../../lib/api/types'
 import {
   CourseLessonsSidebar,
   hasAvailableModuleQuiz,

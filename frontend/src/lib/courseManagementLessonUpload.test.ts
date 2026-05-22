@@ -8,7 +8,7 @@ const getUploadUrl = vi.hoisted(() => vi.fn())
 const markLessonVideoReady = vi.hoisted(() => vi.fn())
 const captureFrameAtVideoPercent = vi.hoisted(() => vi.fn())
 
-vi.mock('./api', () => ({
+vi.mock('./api/catalog', () => ({
   createLesson: (...a: unknown[]) => createLesson(...a),
   getUploadUrl: (...a: unknown[]) => getUploadUrl(...a),
   markLessonVideoReady: (...a: unknown[]) => markLessonVideoReady(...a),

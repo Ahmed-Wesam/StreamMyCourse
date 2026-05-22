@@ -9,7 +9,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 const useAuthenticatorMock = vi.hoisted(() => vi.fn())
 const useCognitoDisplayNameMock = vi.hoisted(() => vi.fn())
 
-vi.mock('@aws-amplify/ui-react', () => ({
+vi.mock('../lib/auth-ui', () => ({
   useAuthenticator: (...args: unknown[]) => useAuthenticatorMock(...args),
 }))
 

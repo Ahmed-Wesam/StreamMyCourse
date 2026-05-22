@@ -6,24 +6,26 @@ import { QuestionBankStudioAddQuestionForm } from '../components/question-banks/
 import { QuestionBankStudioLinkedModule } from '../components/question-banks/QuestionBankStudioLinkedModule'
 import { QuestionBankStudioPublishPanel } from '../components/question-banks/QuestionBankStudioPublishPanel'
 import { QuestionBankStudioQuestionRow } from '../components/question-banks/QuestionBankStudioQuestionRow'
+import { listCourseModules } from '../lib/api/catalog'
 import {
   createQuestionBankQuestion,
   deleteQuestionBankQuestion,
-  listCourseModules,
   listCourseModuleQuizzes,
   listCourseQuestionBanks,
   listQuestionBankQuestions,
   publishQuestionBank,
   updateQuestionBankName,
   updateQuestionBankQuestion,
-  type CourseModule,
-  type CreateQuestionBankQuestionBody,
-  type ModuleQuizRow,
-  type PublishQuestionBankBody,
-  type QuestionBankQuestion,
-  type QuestionBankSummary,
-  type UpdateQuestionBankQuestionBody,
-} from '../lib/api'
+} from '../lib/api/questionBanks'
+import type {
+  CourseModule,
+  CreateQuestionBankQuestionBody,
+  ModuleQuizRow,
+  PublishQuestionBankBody,
+  QuestionBankQuestion,
+  QuestionBankSummary,
+  UpdateQuestionBankQuestionBody,
+} from '../lib/api/types'
 import {
   incompleteQuestionBankStudioLinkMessage,
   questionBankUserMessage,

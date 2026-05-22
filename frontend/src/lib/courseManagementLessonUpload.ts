@@ -2,7 +2,7 @@ import {
   createLesson,
   getUploadUrl,
   markLessonVideoReady,
-} from './api'
+} from './api/catalog'
 import { captureFrameAtVideoPercent } from './videoThumbnail'
 
 type DraftLessonUploadInput = {

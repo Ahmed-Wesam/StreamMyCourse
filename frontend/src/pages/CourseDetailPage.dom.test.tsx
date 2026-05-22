@@ -5,7 +5,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/re
 import { createMemoryRouter, MemoryRouter, Route, RouterProvider, Routes } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { ApiError } from '../lib/api'
+import { ApiError } from '../lib/api/client'
 import CourseDetailPage from './CourseDetailPage'
 
 const api = vi.hoisted(() => ({
@@ -18,8 +18,8 @@ const api = vi.hoisted(() => ({
   updateLessonProgress: vi.fn(),
 }))
 
-vi.mock('../lib/api', async (importOriginal) => {
-  const mod = (await importOriginal()) as typeof import('../lib/api')
+vi.mock('../lib/api/catalog', async (importOriginal) => {
+  const mod = (await importOriginal()) as typeof import('../lib/api/catalog')
   return {
     ...mod,
     getCourse: (...args: unknown[]) => api.getCourse(...args) as ReturnType<typeof mod.getCourse>,
@@ -28,12 +28,26 @@ vi.mock('../lib/api', async (importOriginal) => {
       api.listCourseModules(...args) as ReturnType<typeof mod.listCourseModules>,
     getCourseProgress: (...args: unknown[]) =>
       api.getCourseProgress(...args) as ReturnType<typeof mod.getCourseProgress>,
-    hasSignedInIdToken: (...args: unknown[]) =>
-      api.hasSignedInIdToken(...args) as ReturnType<typeof mod.hasSignedInIdToken>,
-    createCheckoutSession: (...args: unknown[]) =>
-      api.createCheckoutSession(...args) as ReturnType<typeof mod.createCheckoutSession>,
     updateLessonProgress: (...args: unknown[]) =>
       api.updateLessonProgress(...args) as ReturnType<typeof mod.updateLessonProgress>,
+  }
+})
+
+vi.mock('../lib/api/billing', async (importOriginal) => {
+  const mod = (await importOriginal()) as typeof import('../lib/api/billing')
+  return {
+    ...mod,
+    createCheckoutSession: (...args: unknown[]) =>
+      api.createCheckoutSession(...args) as ReturnType<typeof mod.createCheckoutSession>,
+  }
+})
+
+vi.mock('../lib/api/session', async (importOriginal) => {
+  const mod = (await importOriginal()) as typeof import('../lib/api/session')
+  return {
+    ...mod,
+    hasSignedInIdToken: (...args: unknown[]) =>
+      api.hasSignedInIdToken(...args) as ReturnType<typeof mod.hasSignedInIdToken>,
   }
 })
 

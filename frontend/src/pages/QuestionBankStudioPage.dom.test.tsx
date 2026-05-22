@@ -39,8 +39,17 @@ vi.mock('react-router-dom', async (importOriginal) => {
   }
 })
 
-vi.mock('../lib/api', async (importOriginal) => {
-  const mod = (await importOriginal()) as typeof import('../lib/api')
+vi.mock('../lib/api/catalog', async (importOriginal) => {
+  const mod = (await importOriginal()) as typeof import('../lib/api/catalog')
+  return {
+    ...mod,
+    listCourseModules: (...args: unknown[]) =>
+      api.listCourseModules(...args) as ReturnType<typeof mod.listCourseModules>,
+  }
+})
+
+vi.mock('../lib/api/questionBanks', async (importOriginal) => {
+  const mod = (await importOriginal()) as typeof import('../lib/api/questionBanks')
   return {
     ...mod,
     listCourseQuestionBanks: (...args: unknown[]) =>
@@ -59,8 +68,6 @@ vi.mock('../lib/api', async (importOriginal) => {
       api.publishQuestionBank(...args) as ReturnType<typeof mod.publishQuestionBank>,
     listCourseModuleQuizzes: (...args: unknown[]) =>
       api.listCourseModuleQuizzes(...args) as ReturnType<typeof mod.listCourseModuleQuizzes>,
-    listCourseModules: (...args: unknown[]) =>
-      api.listCourseModules(...args) as ReturnType<typeof mod.listCourseModules>,
   }
 })
 

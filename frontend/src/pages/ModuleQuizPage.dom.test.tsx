@@ -5,7 +5,7 @@ import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-li
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { ApiError } from '../lib/api'
+import { ApiError } from '../lib/api/client'
 import { catalogApiUserMessage } from '../lib/questionBankErrors'
 import ModuleQuizPage from './ModuleQuizPage'
 
@@ -16,17 +16,24 @@ const api = vi.hoisted(() => ({
   getCourseProgress: vi.fn(),
 }))
 
-vi.mock('../lib/api', async (importOriginal) => {
-  const mod = (await importOriginal()) as typeof import('../lib/api')
+vi.mock('../lib/api/catalog', async (importOriginal) => {
+  const mod = (await importOriginal()) as typeof import('../lib/api/catalog')
+  return {
+    ...mod,
+    listLessons: (...args: unknown[]) => api.listLessons(...args) as ReturnType<typeof mod.listLessons>,
+    getCourseProgress: (...args: unknown[]) =>
+      api.getCourseProgress(...args) as ReturnType<typeof mod.getCourseProgress>,
+  }
+})
+
+vi.mock('../lib/api/questionBanks', async (importOriginal) => {
+  const mod = (await importOriginal()) as typeof import('../lib/api/questionBanks')
   return {
     ...mod,
     startModuleQuiz: (...args: unknown[]) =>
       api.startModuleQuiz(...args) as ReturnType<typeof mod.startModuleQuiz>,
     submitModuleQuiz: (...args: unknown[]) =>
       api.submitModuleQuiz(...args) as ReturnType<typeof mod.submitModuleQuiz>,
-    listLessons: (...args: unknown[]) => api.listLessons(...args) as ReturnType<typeof mod.listLessons>,
-    getCourseProgress: (...args: unknown[]) =>
-      api.getCourseProgress(...args) as ReturnType<typeof mod.getCourseProgress>,
   }
 })
 

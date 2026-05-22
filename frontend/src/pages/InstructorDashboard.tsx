@@ -6,8 +6,8 @@ import {
   createCourse,
   publishCourse,
   deleteCourse,
-  type Course,
-} from '../lib/api'
+} from '../lib/api/catalog'
+import type { Course } from '../lib/api/types'
 import { catalogApiUserMessage } from '../lib/apiUserMessages'
 
 export default function InstructorDashboard() {

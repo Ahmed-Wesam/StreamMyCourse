@@ -1,6 +1,6 @@
 import { useState } from 'react'
 
-import type { ModuleQuizRow, PublishQuestionBankBody, QuestionBankStatus } from '../../lib/api'
+import type { ModuleQuizRow, PublishQuestionBankBody, QuestionBankStatus } from '../../lib/api/types'
 
 type Props = {
   bankStatus: QuestionBankStatus

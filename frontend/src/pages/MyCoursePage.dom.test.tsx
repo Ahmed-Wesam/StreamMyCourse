@@ -10,7 +10,7 @@ import MyCoursePage from './MyCoursePage'
 const courseOne = { id: 'c-1', title: 'Course One', description: 'First course', status: 'PUBLISHED' as const }
 const courseTwo = { id: 'c-2', title: 'Course Two', description: 'Second course', status: 'PUBLISHED' as const }
 
-vi.mock('../lib/api', () => {
+vi.mock('../lib/api/catalog', () => {
   return {
     listCourses: vi.fn(async () => [courseOne, courseTwo]),
     listCourseModules: vi.fn(async () => [{ id: 'm-1', title: 'Module 1', description: '', order: 1 }]),

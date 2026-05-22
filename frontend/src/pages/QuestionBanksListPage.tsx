@@ -2,7 +2,8 @@ import { useEffect, useRef, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 
 import { CourseManagementLoadingSkeleton } from '../components/course/CourseManagementPageStates'
-import { createQuestionBank, listCourseQuestionBanks, type QuestionBankSummary } from '../lib/api'
+import { createQuestionBank, listCourseQuestionBanks } from '../lib/api/questionBanks'
+import type { QuestionBankSummary } from '../lib/api/types'
 import { questionBankDisplayName, questionBankStatusLabel } from '../lib/questionBankDisplay'
 import {
   incompleteQuestionBanksListLinkMessage,

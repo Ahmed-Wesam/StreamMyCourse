@@ -1,18 +1,16 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link, useLocation, useParams } from 'react-router-dom'
-import {
-  getCourseProgress,
-  isProgressRdsUnavailableError,
-  listLessons,
-  startModuleQuiz,
-  submitModuleQuiz,
-  type ModuleQuizLatestSubmission,
-  type ModuleQuizQuestion,
-  type ModuleQuizResultQuestion,
-  type ModuleQuizStartInProgress,
-  type ModuleQuizStartResponse,
-  type ModuleQuizSubmitResponse,
-} from '../lib/api'
+import { getCourseProgress, listLessons } from '../lib/api/catalog'
+import { isProgressRdsUnavailableError } from '../lib/api/client'
+import { startModuleQuiz, submitModuleQuiz } from '../lib/api/questionBanks'
+import type {
+  ModuleQuizLatestSubmission,
+  ModuleQuizQuestion,
+  ModuleQuizResultQuestion,
+  ModuleQuizStartInProgress,
+  ModuleQuizStartResponse,
+  ModuleQuizSubmitResponse,
+} from '../lib/api/types'
 import {
   courseDetailPath,
   moduleQuizBackLabel,

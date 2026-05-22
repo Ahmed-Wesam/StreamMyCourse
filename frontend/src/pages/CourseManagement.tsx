@@ -11,16 +11,14 @@ import {
   getUploadUrl,
   markCourseThumbnailReady,
   publishCourse,
+} from '../lib/api/catalog'
+import { ApiError } from '../lib/api/client'
+import {
   listCourseModuleQuizzes,
   listCourseQuestionBanks,
   createModuleQuiz,
-  ApiError,
-  type Course,
-  type CourseModule,
-  type Lesson,
-  type ModuleQuizRow,
-  type QuestionBankSummary,
-} from '../lib/api'
+} from '../lib/api/questionBanks'
+import type { Course, CourseModule, Lesson, ModuleQuizRow, QuestionBankSummary } from '../lib/api/types'
 import { createAndUploadDraftLesson } from '../lib/courseManagementLessonUpload'
 import { catalogApiUserMessage } from '../lib/apiUserMessages'
 import { CourseManagementModuleQuizPanel } from '../components/course/CourseManagementModuleQuizPanel'

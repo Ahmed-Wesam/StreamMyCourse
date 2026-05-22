@@ -1,4 +1,4 @@
-import type { CourseModule, Lesson } from './api'
+import type { CourseModule, Lesson } from './api/types'
 
 export type LessonModuleSection = {
   id: string

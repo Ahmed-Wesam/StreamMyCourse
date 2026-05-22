@@ -6,11 +6,8 @@ import {
   listCourseModules,
   listCourses,
   listLessons,
-  type Course,
-  type CourseModule,
-  type CourseProgress,
-  type Lesson,
-} from '../lib/api'
+} from '../lib/api/catalog'
+import type { Course, CourseModule, CourseProgress, Lesson } from '../lib/api/types'
 import { catalogApiUserMessage } from '../lib/apiUserMessages'
 
 type CourseRowData = {

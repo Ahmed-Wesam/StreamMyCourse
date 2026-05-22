@@ -1,4 +1,4 @@
-import type { CourseProgress, Lesson } from './api'
+import type { CourseProgress, Lesson } from './api/types'
 
 export type ModuleQuizReturnTo = string | { pathname: string; search?: string }
 

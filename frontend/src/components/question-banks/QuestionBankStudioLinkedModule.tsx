@@ -1,4 +1,4 @@
-import type { CourseModule, ModuleQuizRow } from '../../lib/api'
+import type { CourseModule, ModuleQuizRow } from '../../lib/api/types'
 import { questionsPerAttemptLabel } from '../../lib/questionBankDisplay'
 import { moduleDisplayTitle } from '../../lib/moduleDisplay'
 

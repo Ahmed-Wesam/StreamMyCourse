@@ -1,4 +1,4 @@
-import type { CourseModule } from '../../lib/api'
+import type { CourseModule } from '../../lib/api/types'
 
 type Props = {
   sortedModules: CourseModule[]

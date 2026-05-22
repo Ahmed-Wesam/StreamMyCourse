@@ -10,7 +10,7 @@ import {
   isNotSubscribedError,
   isProviderAgreementMissingError,
   isProviderCancelFailedError,
-} from './api'
+} from './api/client'
 
 /** Broken or incomplete URL — question banks list route. */
 export const incompleteQuestionBanksListLinkMessage =
