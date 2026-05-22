@@ -4,6 +4,159 @@
 
 ---
 
+## 2026-05-22 — Frontend bundle: deferred auth + scenario CI guard
+
+### Goal
+
+Align bundle budgets with **total first-load gzip** (user rubric: Good **50–150 KB**). Public student home should not download `amplify-vendor` on first paint; auth routes and OAuth callback load Amplify via a lazy shell.
+
+### Changes
+
+- [x] **Remove `@aws-amplify/ui-react`** — [`auth-ui.ts`](frontend/src/lib/auth-ui.ts) re-exports from `@aws-amplify/ui-react-core` only; dependency removed from [`package.json`](frontend/package.json).
+- [x] **Deferred auth (student)** — [`auth-bootstrap.ts`](frontend/src/lib/auth-bootstrap.ts) `needsAuthBootstrap()`; [`AuthGate.tsx`](frontend/src/components/auth/AuthGate.tsx) + lazy [`AuthShell.tsx`](frontend/src/components/auth/AuthShell.tsx) (`configureAmplify`, `AuthenticatorProvider`, `PostLoginRedirect`, `StudentProfileBootstrap`). [`student-main.tsx`](frontend/src/student-main.tsx) no longer configures Amplify globally.
+- [x] **Header session lazy** — [`auth-session-lazy.ts`](frontend/src/lib/auth-session-lazy.ts); [`StudentHeader.tsx`](frontend/src/student-app/StudentHeader.tsx) uses `requestIdleCallback` probe on public routes, skips probe on OAuth `code`+`state`.
+- [x] **`lucide-vendor` chunk** — [`vite.shared-chunks.ts`](frontend/vite.shared-chunks.ts); student HTML entry gzip **8.40 KB** (was ~10.2 KB).
+- [x] **Teacher lazy auth UI** — lazy `SignIn` + `TeacherRoleGate` in [`teacher-app/App.tsx`](frontend/src/teacher-app/App.tsx) / [`ProtectedRoute.tsx`](frontend/src/components/auth/ProtectedRoute.tsx).
+- [x] **Scenario bundle guard** — [`check-frontend-bundle-size-lib.mjs`](scripts/check-frontend-bundle-size-lib.mjs) + HTML entry resolution from `index.html`; [`check-frontend-bundle-size.test.mjs`](scripts/check-frontend-bundle-size.test.mjs) (`node --test`).
+
+### Metrics (`npm run check:bundle`, gzip)
+
+| Metric | Student | Teacher |
+|--------|---------|---------|
+| Entry (from `index.html`) | **8.40 KB** | **8.94 KB** |
+| **firstLoadPublic** (entry + react) | **77.75 KB** | — |
+| **firstLoadWithAuth** (entry + react + amplify) | **179.21 KB** | **179.34 KB** |
+| `react-vendor` | 69.35 KB | 68.96 KB |
+| `amplify-vendor` | 101.46 KB | 101.44 KB |
+| Total JS (all chunks) | 217.21 KB (27) | 196.87 KB (11) |
+
+**Rubric:** Public student path is **Good** (&lt;150 KB). Auth-path totals remain **Warning** (~179 KB) until `amplify-vendor` shrinks; CI enforces **180 KB** ceiling on `firstLoadWithAuth` (Good target **150 KB** documented in [`AGENTS.md`](AGENTS.md)).
+
+### Verification
+
+- `npm run test` — **479** tests; `node --test scripts/check-frontend-bundle-size.test.mjs` — 5 pass.
+- Manual smoke (dev): public `/` should not fetch `amplify-vendor` until idle probe, login, or OAuth return.
+
+### Review follow-ups (same day)
+
+- [x] **`enable-oauth-listener`** — side-effect import in [`AuthShell.tsx`](frontend/src/components/auth/AuthShell.tsx); `configureAmplify()` runs synchronously when the auth chunk loads (not only in `useEffect`).
+- [x] **Profile warm on public routes** — [`warmUserProfileOnce`](frontend/src/lib/auth-session-lazy.ts) after idle `probeSignedIn` in [`StudentHeader.tsx`](frontend/src/student-app/StudentHeader.tsx).
+- [x] **CI** — [`.github/workflows/ci.yml`](.github/workflows/ci.yml) runs `node --test scripts/check-frontend-bundle-size.test.mjs`.
+- [x] **Tests** — [`AuthShell.test.ts`](frontend/src/components/auth/AuthShell.test.ts), [`auth-session-lazy.test.ts`](frontend/src/lib/auth-session-lazy.test.ts).
+- [x] **`ensureAmplifyConfigured`** in [`auth-session-lazy.ts`](frontend/src/lib/auth-session-lazy.ts) before `probeSignedIn` / `warmUserProfileOnce` on public routes; [`markUserProfileWarmed`](frontend/src/lib/auth-session-lazy.ts) dedupes `/users/me` with [`StudentProfileBootstrap`](frontend/src/components/auth/StudentProfileBootstrap.tsx).
+
+---
+
+## 2026-05-22 — Frontend bundle phase 2
+
+### Phase 1 baseline (recap)
+
+From the same day’s **route code splitting** slice ([section below](#2026-05-22--frontend-bundle-dead-hero-asset--route-code-splitting)): removed ~1.8 MB dead `hero-lab-coat.png`, `React.lazy` for non-shell routes, `RouteChunkFallback`. After lazy routes, **entry gzip** was still **~170 KB (student)** and **~161 KB (teacher)** because Amplify UI + React stayed in the eager main chunk; instructor hero still used a large PNG via monolithic `figma-mocks.ts`.
+
+### Phase 2 changes
+
+- [x] **Figma mocks split** — [`figma-mocks.data.ts`](frontend/src/lib/figma-mocks.data.ts) (strings/plans only) + [`figma-mocks.assets.ts`](frontend/src/lib/figma-mocks.assets.ts) (WebP import); data-only imports avoid pulling the image into unrelated chunks.
+- [x] **Instructor hero WebP** — [`dr-bahaa-aburayya.webp`](frontend/src/assets/instructors/dr-bahaa-aburayya.webp) (~12.6 KB) replaces prior PNG in the student catalog bundle path.
+- [x] **Lazy routes** — Carried from phase 1; student/teacher shells stay eager, feature pages async (see prior section).
+- [x] **API module split** — [`frontend/src/lib/api/`](frontend/src/lib/api/) (`client`, `catalog`, `billing`, `questionBanks`, `session`, `types`); [`api.ts`](frontend/src/lib/api.ts) re-exports `./api/index`.
+- [x] **`auth-ui` boundary** — [`auth-ui.ts`](frontend/src/lib/auth-ui.ts) re-exports `useAuthenticator` so route/shell code does not import `@aws-amplify/ui-react` from many files; Amplify UI stays in `amplify-vendor`.
+- [x] **Vendor `manualChunks`** — [`vite.shared-chunks.ts`](frontend/vite.shared-chunks.ts): `react-vendor`, `amplify-vendor` (both [`vite.student.config.ts`](frontend/vite.student.config.ts) and [`vite.teacher.config.ts`](frontend/vite.teacher.config.ts)).
+
+### Production metrics (`npm run build:all`, gzip via `node:zlib`)
+
+| Metric | Student | Teacher |
+|--------|---------|---------|
+| Entry chunk | `student-*.js` | `teacher-*.js` |
+| Entry gzip | **10.66 KB** | **10.42 KB** |
+| `amplify-vendor` gzip | **101.44 KB** | **101.44 KB** |
+| `react-vendor` gzip | **69.35 KB** | **68.96 KB** |
+| Total JS gzip (all `.js` in `assets/`) | **215.69 KB** (23 chunks) | **195.85 KB** (9 chunks) |
+| Instructor WebP in dist | **12,598 bytes** (`dr-bahaa-aburayya-*.webp`, student `assets/`) | — |
+
+Compared to phase 1 entry gzip (~170 / ~161 KB), **first-load app entry is ~94% smaller**; vendor chunks now carry React and Amplify explicitly.
+
+### CI bundle size guard
+
+- Script: [`scripts/check-frontend-bundle-size.mjs`](../scripts/check-frontend-bundle-size.mjs) (run from `frontend/` after `npm run build:all`, or `npm run check:bundle`).
+- CI: [`.github/workflows/ci.yml`](.github/workflows/ci.yml) frontend job — step **Frontend bundle size guard** after `build:all`, before Vitest.
+- Thresholds (gzip): student/teacher **entry 15 KB**; **amplify-vendor 110 KB**; **react-vendor 75 KB** (per SPA). Exit **1** with label + actual vs max on breach; `--dry-run` prints sizes only.
+
+### Verification
+
+- `npm run lint`, `npm run knip`, `npm run test` (**457** tests), `npm run build:all`, `npm run check:bundle` — pass.
+
+---
+
+## 2026-05-22 — Frontend bundle: dead hero asset + route code splitting
+
+### Completed
+
+- [x] **Removed unused static asset** — Deleted [`frontend/public/hero-lab-coat.png`](frontend/public/hero-lab-coat.png) (~1.8 MB per SPA copy from `public/`); no code references. `public/` now only `favicon.svg` and `icons.svg`.
+- [x] **Route loading UI** — [`RouteChunkFallback.tsx`](frontend/src/components/layout/RouteChunkFallback.tsx) + `LazyRoute` (`Suspense`); Vitest [`RouteChunkFallback.dom.test.tsx`](frontend/src/components/layout/RouteChunkFallback.dom.test.tsx).
+- [x] **Student lazy routes** — [`student-app/App.tsx`](frontend/src/student-app/App.tsx): `React.lazy` for course detail, lesson auth, module quiz, login, account pages, billing return pages; shell/home/catalog/account layout stay eager.
+- [x] **Teacher lazy routes** — [`teacher-app/App.tsx`](frontend/src/teacher-app/App.tsx): lazy course management, question banks (list + studio), payment setup; dashboard + auth shell eager.
+- [x] **Route tests** — Updated [`App.dom.test.tsx`](frontend/src/student-app/App.dom.test.tsx) (11 tests) and [`teacher-app/App.dom.test.tsx`](frontend/src/teacher-app/App.dom.test.tsx) (6 tests) with `waitFor` for async chunks.
+
+### Production bundle comparison (`npm run build:all`)
+
+| SPA | Before (single entry, gzip) | After (main entry, gzip) | Notes |
+|-----|----------------------------|--------------------------|--------|
+| Student | ~211 KB | **170 KB** (`student-*.js`) | +8 named route chunks (e.g. `StudentLessonAuth` ~10 KB gzip) |
+| Teacher | ~195 KB | **161 KB** (`teacher-*.js`) | +4 route chunks + shared `api-*.js` split |
+
+Total JS per SPA is similar (code moved to async chunks); **first-load entry** is smaller. Main chunk still >500 KB minified (Amplify/auth in eager shell). Instructor placeholder PNG (`dr-bahaa-aburayya`) still bundled via [`figma-mocks.ts`](frontend/src/lib/figma-mocks.ts) — not in this change.
+
+### Verification
+
+- `npm run lint`, `npm run knip`, `npm run test` (452 tests), `npm run build:all` — pass.
+
+---
+
+## 2026-05-22 — Frontend bundle phase 2
+
+### Phase 1 baseline (recap)
+
+Slice 1 work ([section above](#2026-05-22--frontend-bundle-dead-hero-asset--route-code-splitting)): removed unused `hero-lab-coat.png`; lazy-loaded student/teacher route screens with `RouteChunkFallback`. **Before** single eager entries (~211 KB / ~195 KB gzip); **after phase 1** main `student-*` / `teacher-*` entries ~**170 KB** / ~**161 KB** gzip with code moved into named async route chunks. Amplify + React still lived in the eager shell.
+
+### Phase 2 changes
+
+- [x] **Figma mocks split** — [`figma-mocks.data.ts`](frontend/src/lib/figma-mocks.data.ts) (pricing/instructor copy) + [`figma-mocks.assets.ts`](frontend/src/lib/figma-mocks.assets.ts) (WebP import only where the hero image is needed).
+- [x] **Instructor WebP** — [`dr-bahaa-aburayya.webp`](frontend/src/assets/instructors/dr-bahaa-aburayya.webp) replaces bundled PNG; emitted as a hashed asset chunk (student build only).
+- [x] **Lazy routes** — Retained from phase 1; student/teacher `App.tsx` keep `React.lazy` for non-shell routes.
+- [x] **API module split** — [`frontend/src/lib/api/`](frontend/src/lib/api/) (`client`, `session`, `catalog`, `billing`, `questionBanks`, `types`); barrel [`api.ts`](frontend/src/lib/api.ts) re-exports for callers.
+- [x] **Auth UI split** — [`auth-ui.ts`](frontend/src/lib/auth-ui.ts) for Amplify UI–adjacent helpers; keeps auth config in [`auth.ts`](frontend/src/lib/auth.ts).
+- [x] **Vendor `manualChunks`** — [`vite.shared-chunks.ts`](frontend/vite.shared-chunks.ts): `react-vendor`, `amplify-vendor`; wired in both Vite configs.
+- [x] **CI bundle guard** — [`scripts/check-frontend-bundle-size.mjs`](../scripts/check-frontend-bundle-size.mjs); CI step after `npm run build:all` in [`.github/workflows/ci.yml`](.github/workflows/ci.yml); local `npm run check:bundle`.
+
+### Metrics (`npm run build:all` + bundle guard)
+
+| Metric | Student | Teacher |
+|--------|---------|---------|
+| Entry chunk (`student-*` / `teacher-*`, gzip) | **10.66 KB** (`student-CW_RLyCI.js`) | **10.42 KB** (`teacher-CdwyzAWI.js`) |
+| `amplify-vendor` (gzip) | **101.44 KB** | **101.44 KB** |
+| `react-vendor` (gzip) | **69.35 KB** | **68.96 KB** |
+| Total JS gzip (all `assets/*.js`) | **215.69 KB** (23 chunks) | **195.85 KB** (9 chunks) |
+| Instructor WebP (raw bytes, student dist) | **12,598** (`dr-bahaa-aburayya-*.webp`) | — (not in teacher build) |
+
+Vite build log gzip (same build): entry **10.95 KB** / **10.72 KB**; `amplify-vendor` **104.61 KB**; `react-vendor` **71.80 KB** / **71.41 KB**.
+
+### Bundle guard thresholds (gzip)
+
+| Check | Max |
+|-------|-----|
+| Student entry | 15 KB |
+| Teacher entry | 15 KB |
+| `amplify-vendor` (each SPA) | 110 KB |
+| `react-vendor` (each SPA) | 75 KB |
+
+Script: `node scripts/check-frontend-bundle-size.mjs` (from repo root) or `npm run check:bundle` from `frontend/`. Pass `--dry-run` to print sizes without failing.
+
+### Verification
+
+- `npm run lint`, `npm run knip`, `npm run test` (**457** tests), `npm run build:all`, `npm run check:bundle` — pass.
+
+---
+
 ## 2026-05-19 — WS8 billing ops pre-go-live (immediate provider cancel)
 
 ### Completed
