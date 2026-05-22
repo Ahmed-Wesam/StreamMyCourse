@@ -5,6 +5,8 @@ import { cleanup, render, screen } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { afterEach, describe, expect, it } from 'vitest'
 
+import { FIGMA_MOCK_COURSE_INSTRUCTOR_NAME } from '../lib/figma-mocks.data'
+
 import HomePage from './HomePage'
 
 describe('HomePage', () => {
@@ -40,6 +42,21 @@ describe('HomePage', () => {
     expect(
       screen.getByRole('heading', { name: /Meet Your Instructor/i }),
     ).toBeTruthy()
+  })
+
+  it('shows mock instructor name and WebP hero image', () => {
+    render(
+      <MemoryRouter>
+        <HomePage />
+      </MemoryRouter>,
+    )
+
+    expect(screen.getAllByText(FIGMA_MOCK_COURSE_INSTRUCTOR_NAME).length).toBeGreaterThan(0)
+
+    const instructorImage = screen.getByRole('img', {
+      name: FIGMA_MOCK_COURSE_INSTRUCTOR_NAME,
+    })
+    expect(instructorImage.getAttribute('src') ?? '').toMatch(/\.webp($|\?)/i)
   })
 })
 

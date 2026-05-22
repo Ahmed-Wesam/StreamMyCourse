@@ -12,7 +12,8 @@ import {
 } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { ImageWithFallback } from '../components/figma/ImageWithFallback'
-import { FIGMA_MOCK_COURSE_INSTRUCTOR_IMAGE_SRC, FIGMA_MOCK_COURSE_INSTRUCTOR_NAME } from '../lib/figma-mocks'
+import { FIGMA_MOCK_COURSE_INSTRUCTOR_IMAGE_SRC } from '../lib/figma-mocks.assets'
+import { FIGMA_MOCK_COURSE_INSTRUCTOR_NAME } from '../lib/figma-mocks.data'
 
 const publications = [
   {

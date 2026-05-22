@@ -4,12 +4,8 @@
  * and a row in
  * `reports/figma-student-ui-gap-report.md`.
  */
-import instructorImageSrc from '../assets/instructors/dr-bahaa-aburayya.png'
 
 export const FIGMA_MOCK_COURSE_INSTRUCTOR_NAME = 'Dr. Bahaa Aburayya'
-
-/** Local placeholder used until the catalog API exposes an instructor image field. */
-export const FIGMA_MOCK_COURSE_INSTRUCTOR_IMAGE_SRC = instructorImageSrc
 
 export const FIGMA_MOCK_COURSE_PRICING_PLANS = [
   {
