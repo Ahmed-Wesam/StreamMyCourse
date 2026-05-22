@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { listCourses, listLessons } from '../lib/api'
+import { listCourses, listLessons } from '../lib/api/catalog'
 import { catalogApiUserMessage } from '../lib/apiUserMessages'
 
 export default function LearnRedirectPage() {

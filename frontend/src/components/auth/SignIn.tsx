@@ -1,4 +1,4 @@
-import { useAuthenticator } from '@aws-amplify/ui-react'
+import { useAuthenticator } from '../../lib/auth-ui'
 import { signInWithRedirect } from 'aws-amplify/auth'
 import type { ReactNode } from 'react'
 

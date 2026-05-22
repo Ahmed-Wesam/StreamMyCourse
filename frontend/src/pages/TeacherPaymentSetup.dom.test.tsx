@@ -5,7 +5,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/re
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { ApiError } from '../lib/api'
+import { ApiError } from '../lib/api/client'
 import type { MerchantStatusResponse } from '../lib/billing'
 import TeacherPaymentSetup from './TeacherPaymentSetup'
 

@@ -24,7 +24,7 @@ import {
   publishQuestionBank,
   updateQuestionBankName,
   updateQuestionBankQuestion,
-} from './api'
+} from './api/questionBanks'
 
 /** IDs with `/` so paths must use encodeURIComponent segments. */
 const COURSE_ID = 'c/1'

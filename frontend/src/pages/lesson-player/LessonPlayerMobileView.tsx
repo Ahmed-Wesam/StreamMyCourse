@@ -1,6 +1,6 @@
 import { useEffect, useState, type ReactNode, type RefObject, type SyntheticEvent } from 'react'
 import { Link, type To } from 'react-router-dom'
-import type { CourseModule, CourseProgress, Lesson } from '../../lib/api'
+import type { CourseModule, CourseProgress, Lesson } from '../../lib/api/types'
 import { DraggableBottomSheet } from '../../components/layout/DraggableBottomSheet'
 import {
   CourseLessonsCurriculum,

@@ -1,20 +1,22 @@
 import { BookOpen, ChevronLeft, Clock, Play } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { Link, useParams } from 'react-router-dom'
+import { createCheckoutSession } from '../lib/api/billing'
 import {
-  createCheckoutSession,
   getCourse,
   getCourseProgress,
-  hasSignedInIdToken,
   listLessons,
   listCourseModules,
   updateLessonProgress,
-  type Course,
-  type CourseModule,
-  type CourseProgress,
-  type Lesson,
-  type LessonProgressItem,
-} from '../lib/api'
+} from '../lib/api/catalog'
+import { hasSignedInIdToken } from '../lib/api/session'
+import type {
+  Course,
+  CourseModule,
+  CourseProgress,
+  Lesson,
+  LessonProgressItem,
+} from '../lib/api/types'
 import { catalogApiUserMessage, courseNotFoundMessage } from '../lib/apiUserMessages'
 import {
   subscribeCtaLabel,
@@ -25,7 +27,7 @@ import {
 import { groupLessonsByModule } from '../lib/lessonGrouping'
 import { lessonPlayerPath, moduleQuizLinkTo } from '../lib/moduleQuizNavigation'
 import { PricingSection } from '../components/course/PricingSection'
-import { FIGMA_MOCK_COURSE_INSTRUCTOR_NAME, FIGMA_MOCK_COURSE_PRICING_PLANS } from '../lib/figma-mocks'
+import { FIGMA_MOCK_COURSE_INSTRUCTOR_NAME, FIGMA_MOCK_COURSE_PRICING_PLANS } from '../lib/figma-mocks.data'
 
 /** 0–100 for the thumbnail bar, or null when no in-progress / completed state to show. */
 function lessonThumbnailProgressPercent(

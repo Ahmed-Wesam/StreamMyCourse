@@ -1,15 +1,14 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 
+import { cancelSubscription, getSubscription } from '../../lib/api/billing'
 import {
-  cancelSubscription,
-  getSubscription,
   isAlreadyCanceledError,
   isNotSubscribedError,
   isProviderAgreementMissingError,
   isProviderCancelFailedError,
-  type SubscriptionSummary,
-} from '../../lib/api'
+} from '../../lib/api/client'
+import type { SubscriptionSummary } from '../../lib/api/types'
 import {
   clearProviderCancelRetryFlag,
   readCognitoSubFromSession,

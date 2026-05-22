@@ -1,4 +1,4 @@
-import type { Course } from '../../lib/api'
+import type { Course } from '../../lib/api/types'
 
 type CourseThumbnailEditorProps = {
   course: Course

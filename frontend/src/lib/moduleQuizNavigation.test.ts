@@ -6,7 +6,7 @@ import {
   moduleQuizLinkTo,
   resolveModuleQuizBackTo,
 } from './moduleQuizNavigation'
-import type { CourseProgress, Lesson } from './api'
+import type { CourseProgress, Lesson } from './api/types'
 
 const lessons: Lesson[] = [
   { id: 'l1', title: 'A', order: 0, moduleId: 'm1', moduleOrder: 0, videoStatus: 'ready' },

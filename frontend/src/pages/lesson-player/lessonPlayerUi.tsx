@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link, type To } from 'react-router-dom'
-import type { CourseModule, CourseProgress, Lesson } from '../../lib/api'
+import type { CourseModule, CourseProgress, Lesson } from '../../lib/api/types'
 import { formatModuleQuizQuestionCount, quizScorePercentPillClass } from '../../lib/quizScoreDisplay'
 import { groupLessonsByModule } from '../../lib/lessonGrouping'
 import { lessonPlayerPath, moduleQuizLinkTo } from '../../lib/moduleQuizNavigation'

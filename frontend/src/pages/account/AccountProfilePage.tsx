@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 
-import { fetchMe, type UserProfile } from '../../lib/api'
+import { fetchMe } from '../../lib/api/session'
+import type { UserProfile } from '../../lib/api/types'
 import { catalogApiUserMessage } from '../../lib/apiUserMessages'
 
 type ProfileState =

@@ -12,7 +12,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 
 
-import { ApiError } from '../../lib/api'
+import { ApiError } from '../../lib/api/client'
 
 import {
 
@@ -48,24 +48,15 @@ const billingRetry = vi.hoisted(() => ({
 
 
 
-vi.mock('../../lib/api', async (importOriginal) => {
-
-  const mod = (await importOriginal()) as typeof import('../../lib/api')
-
+vi.mock('../../lib/api/billing', async (importOriginal) => {
+  const mod = (await importOriginal()) as typeof import('../../lib/api/billing')
   return {
-
     ...mod,
-
     getSubscription: (...args: unknown[]) =>
-
       api.getSubscription(...args) as ReturnType<typeof mod.getSubscription>,
-
     cancelSubscription: (...args: unknown[]) =>
-
       api.cancelSubscription(...args) as ReturnType<typeof mod.cancelSubscription>,
-
   }
-
 })
 
 

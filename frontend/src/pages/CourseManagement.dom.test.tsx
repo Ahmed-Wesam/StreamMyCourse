@@ -6,7 +6,7 @@ import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import CourseManagement from './CourseManagement'
-import { ApiError } from '../lib/api'
+import { ApiError } from '../lib/api/client'
 import { questionBankUserMessage } from '../lib/questionBankErrors'
 
 const api = vi.hoisted(() => ({
@@ -40,8 +40,8 @@ vi.mock('react-router-dom', async (importOriginal) => {
   }
 })
 
-vi.mock('../lib/api', async (importOriginal) => {
-  const mod = (await importOriginal()) as typeof import('../lib/api')
+vi.mock('../lib/api/catalog', async (importOriginal) => {
+  const mod = (await importOriginal()) as typeof import('../lib/api/catalog')
   return {
     ...mod,
     getCourse: (...args: unknown[]) => api.getCourse(...args) as ReturnType<typeof mod.getCourse>,
@@ -58,6 +58,13 @@ vi.mock('../lib/api', async (importOriginal) => {
     markLessonVideoReady: (...args: unknown[]) => api.markLessonVideoReady(...args) as ReturnType<typeof mod.markLessonVideoReady>,
     markCourseThumbnailReady: (...args: unknown[]) => api.markCourseThumbnailReady(...args) as ReturnType<typeof mod.markCourseThumbnailReady>,
     publishCourse: (...args: unknown[]) => api.publishCourse(...args) as ReturnType<typeof mod.publishCourse>,
+  }
+})
+
+vi.mock('../lib/api/questionBanks', async (importOriginal) => {
+  const mod = (await importOriginal()) as typeof import('../lib/api/questionBanks')
+  return {
+    ...mod,
     listCourseModuleQuizzes: (...args: unknown[]) =>
       api.listCourseModuleQuizzes(...args) as ReturnType<typeof mod.listCourseModuleQuizzes>,
     listCourseQuestionBanks: (...args: unknown[]) =>

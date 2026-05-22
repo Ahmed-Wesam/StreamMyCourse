@@ -17,8 +17,8 @@ vi.mock('react-router-dom', async () => {
   }
 })
 
-vi.mock('../lib/api', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('../lib/api')>()
+vi.mock('../lib/api/catalog', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../lib/api/catalog')>()
   return {
     ...actual,
     listCourses: vi.fn(async () => [{ id: 'c-1', title: 'Course 1', description: '', status: 'PUBLISHED' }]),
@@ -46,7 +46,7 @@ describe('LearnRedirectPage', () => {
   })
 
   it('shows an empty-courses message when no courses exist', async () => {
-    const api = await import('../lib/api')
+    const api = await import('../lib/api/catalog')
     vi.mocked(api.listCourses).mockResolvedValueOnce([])
 
     render(
@@ -62,7 +62,7 @@ describe('LearnRedirectPage', () => {
   })
 
   it('shows an empty-lessons message when first course has no lessons', async () => {
-    const api = await import('../lib/api')
+    const api = await import('../lib/api/catalog')
     vi.mocked(api.listLessons).mockResolvedValueOnce([])
 
     render(
@@ -78,7 +78,7 @@ describe('LearnRedirectPage', () => {
   })
 
   it('does not navigate after unmount while courses are loading', async () => {
-    const apiMod = await import('../lib/api')
+    const apiMod = await import('../lib/api/catalog')
     let resolveCourses!: (value: Awaited<ReturnType<typeof apiMod.listCourses>>) => void
     vi.mocked(apiMod.listCourses).mockImplementationOnce(
       () =>
@@ -101,7 +101,7 @@ describe('LearnRedirectPage', () => {
   })
 
   it('shows an error message when API calls fail', async () => {
-    const api = await import('../lib/api')
+    const api = await import('../lib/api/catalog')
     vi.mocked(api.listCourses).mockRejectedValue(new Error('Boom'))
 
     render(

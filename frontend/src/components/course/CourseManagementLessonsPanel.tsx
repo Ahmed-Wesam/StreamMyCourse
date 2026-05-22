@@ -1,4 +1,4 @@
-import type { Course, Lesson } from '../../lib/api'
+import type { Course, Lesson } from '../../lib/api/types'
 
 type Props = {
   course: Course

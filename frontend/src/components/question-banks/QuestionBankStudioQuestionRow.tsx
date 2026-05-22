@@ -1,6 +1,6 @@
 import { type FormEvent, useEffect, useState } from 'react'
 
-import type { QuestionBankQuestion, UpdateQuestionBankQuestionBody } from '../../lib/api'
+import type { QuestionBankQuestion, UpdateQuestionBankQuestionBody } from '../../lib/api/types'
 import { questionBankStatusLabel } from '../../lib/questionBankDisplay'
 
 type OptionRow = { key: string; text: string }

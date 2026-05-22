@@ -14,7 +14,7 @@ vi.mock('./auth', () => ({
   isAuthConfigured: () => isAuthConfiguredMock(),
 }))
 
-import { hasSignedInIdToken } from './api'
+import { hasSignedInIdToken } from './api/session'
 
 describe('hasSignedInIdToken', () => {
   afterEach(() => {

@@ -26,8 +26,8 @@ vi.mock('react-router-dom', async (importOriginal) => {
   }
 })
 
-vi.mock('../lib/api', async (importOriginal) => {
-  const mod = (await importOriginal()) as typeof import('../lib/api')
+vi.mock('../lib/api/catalog', async (importOriginal) => {
+  const mod = (await importOriginal()) as typeof import('../lib/api/catalog')
   return {
     ...mod,
     listInstructorCourses: (...args: unknown[]) => api.listInstructorCourses(...args) as ReturnType<typeof mod.listInstructorCourses>,

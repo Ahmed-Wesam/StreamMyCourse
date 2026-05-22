@@ -9,21 +9,17 @@ import {
   type SyntheticEvent,
 } from 'react'
 import { Link, useParams, useSearchParams, type To } from 'react-router-dom'
+import { createCheckoutSession } from '../lib/api/billing'
 import {
-  createCheckoutSession,
   getCourse,
   getCourseProgress,
   getPlaybackUrl,
-  isCourseAccessDeniedError,
-  isPlaybackAuthRequiredError,
   listLessons,
   listCourseModules,
   updateLessonProgress,
-  type Course,
-  type CourseModule,
-  type CourseProgress,
-  type Lesson,
-} from '../lib/api'
+} from '../lib/api/catalog'
+import { isCourseAccessDeniedError, isPlaybackAuthRequiredError } from '../lib/api/client'
+import type { Course, CourseModule, CourseProgress, Lesson } from '../lib/api/types'
 import {
   catalogApiUserMessage,
   courseNotFoundMessage,

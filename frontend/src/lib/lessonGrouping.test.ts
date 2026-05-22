@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import type { CourseModule, Lesson } from './api'
+import type { CourseModule, Lesson } from './api/types'
 import {
   UNSORTED_SECTION_ID,
   groupLessonsByModule,

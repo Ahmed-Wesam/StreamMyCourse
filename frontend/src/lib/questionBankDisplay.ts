@@ -1,4 +1,4 @@
-import type { QuestionBankStatus, QuestionBankSummary } from './api'
+import type { QuestionBankStatus, QuestionBankSummary } from './api/types'
 
 export const UNTITLED_QUESTION_BANK_LABEL = 'Untitled question bank'
 

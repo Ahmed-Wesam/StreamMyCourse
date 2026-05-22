@@ -1,6 +1,6 @@
 import { type FormEvent, useCallback, useState } from 'react'
 
-import type { CreateQuestionBankQuestionBody } from '../../lib/api'
+import type { CreateQuestionBankQuestionBody } from '../../lib/api/types'
 
 type OptionRow = { key: string; text: string }
 

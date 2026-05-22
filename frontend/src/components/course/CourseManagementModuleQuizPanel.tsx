@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 
-import type { CourseModule, ModuleQuizRow, QuestionBankSummary } from '../../lib/api'
+import type { CourseModule, ModuleQuizRow, QuestionBankSummary } from '../../lib/api/types'
 import {
   questionBankDisplayName,
   questionBankStatusLabel,

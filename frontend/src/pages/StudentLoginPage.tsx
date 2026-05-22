@@ -1,4 +1,4 @@
-import { useAuthenticator } from '@aws-amplify/ui-react'
+import { useAuthenticator } from '../lib/auth-ui'
 import { Navigate } from 'react-router-dom'
 
 import { SignIn } from '../components/auth/SignIn'

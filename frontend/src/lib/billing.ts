@@ -1,4 +1,4 @@
-import { ApiError, catalogGet } from './api'
+import { ApiError, catalogGet } from './api/client'
 
 export type MerchantSetupChecklist = {
   paytabsAccountCreated: boolean
