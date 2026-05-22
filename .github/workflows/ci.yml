@@ -30,6 +30,11 @@ jobs:
         run: npm run knip
       - name: Typecheck and production build
         run: npm run build:all
+      - name: Frontend bundle size guard
+        run: node ../scripts/check-frontend-bundle-size.mjs
+        continue-on-error: false
+      - name: Bundle size script unit tests
+        run: node --test ../scripts/check-frontend-bundle-size.test.mjs
       - name: Vitest unit tests
         run: npm run test
         env:
