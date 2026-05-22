@@ -4,19 +4,25 @@
 import { render, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import * as api from '../../lib/api'
+import * as api from '../../lib/api/session'
 import { StudentProfileBootstrap } from './StudentProfileBootstrap'
 
 const mockAuthStatus = vi.hoisted(() => vi.fn())
+const markUserProfileWarmed = vi.hoisted(() => vi.fn())
 
-vi.mock('@aws-amplify/ui-react', () => ({
+vi.mock('../../lib/auth-ui', () => ({
   useAuthenticator: () => ({ authStatus: mockAuthStatus() }),
+}))
+
+vi.mock('../../lib/auth-session-lazy', () => ({
+  markUserProfileWarmed: () => markUserProfileWarmed(),
 }))
 
 describe('StudentProfileBootstrap', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     mockAuthStatus.mockReturnValue('unauthenticated')
+    markUserProfileWarmed.mockReset()
   })
 
   afterEach(() => {
@@ -40,6 +46,7 @@ describe('StudentProfileBootstrap', () => {
 
     await waitFor(() => {
       expect(fetchMe).toHaveBeenCalledTimes(1)
+      expect(markUserProfileWarmed).toHaveBeenCalledTimes(1)
     })
 
     rerender(<StudentProfileBootstrap />)
@@ -71,5 +78,6 @@ describe('StudentProfileBootstrap', () => {
     mockAuthStatus.mockReturnValue('authenticated')
     render(<StudentProfileBootstrap />)
     await waitFor(() => expect(fetchMe).toHaveBeenCalledTimes(1))
+    expect(markUserProfileWarmed).not.toHaveBeenCalled()
   })
 })

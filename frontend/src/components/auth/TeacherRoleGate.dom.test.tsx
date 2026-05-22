@@ -6,18 +6,18 @@ import { fireEvent } from '@testing-library/react'
 import { AuthenticatorProvider } from '@aws-amplify/ui-react-core'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { ApiError } from '../../lib/api'
+import { ApiError } from '../../lib/api/client'
 
 const useAuthenticatorMock = vi.hoisted(() => vi.fn())
 const fetchMeMock = vi.hoisted(() => vi.fn())
 const isAuthConfiguredMock = vi.hoisted(() => vi.fn())
 
-vi.mock('@aws-amplify/ui-react', () => ({
+vi.mock('../../lib/auth-ui', () => ({
   useAuthenticator: (...args: unknown[]) => useAuthenticatorMock(...args),
 }))
 
-vi.mock('../../lib/api', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('../../lib/api')>()
+vi.mock('../../lib/api/session', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../lib/api/session')>()
   return {
     ...actual,
     fetchMe: (...args: unknown[]) => fetchMeMock(...args),
