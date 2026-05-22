@@ -660,7 +660,11 @@ describe('LessonPlayerPage', () => {
     await waitFor(() => {
       expect(screen.queryByRole('link', { name: /Module quiz/i })).toBeNull()
     })
-    const nextLinks = screen.getAllByRole('link', { name: /Next/i })
+    const nextLinks = await waitFor(() => {
+      const links = screen.getAllByRole('link', { name: /Next/i })
+      expect(links.length).toBeGreaterThan(0)
+      return links
+    })
     expect(nextLinks.some((a) => a.getAttribute('href') === '/courses/c1/modules/m1/quiz')).toBe(false)
     expect(nextLinks.some((a) => a.getAttribute('href') === '/courses/c1/lessons/l3')).toBe(true)
   })

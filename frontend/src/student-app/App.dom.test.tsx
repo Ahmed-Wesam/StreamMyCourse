@@ -6,7 +6,7 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import type { ReactNode } from 'react'
 import { cleanup, render, screen, waitFor } from '@testing-library/react'
-import { MemoryRouter } from 'react-router-dom'
+import { MemoryRouter, Outlet } from 'react-router-dom'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 const AuthShellMock = vi.hoisted(() =>
@@ -54,6 +54,9 @@ vi.mock('../pages/account/AccountProfilePage', () => ({
 }))
 vi.mock('../pages/account/AccountSubscriptionPage', () => ({
   default: () => <div data-testid="student-page-account-subscription" />,
+}))
+vi.mock('../components/auth/StudentAccountAuth', () => ({
+  StudentAccountAuth: () => <Outlet />,
 }))
 vi.mock('../components/auth/SignIn', () => ({
   SignIn: ({ children }: { children?: ReactNode }) => <>{children}</>,
