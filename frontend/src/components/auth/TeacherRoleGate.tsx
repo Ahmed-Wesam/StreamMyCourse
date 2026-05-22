@@ -1,6 +1,8 @@
-import { useAuthenticator } from '@aws-amplify/ui-react'
+import { useAuthenticator } from '../../lib/auth-ui'
 import { useEffect, useState, type ReactNode } from 'react'
-import { ApiError, fetchMe, type UserProfile } from '../../lib/api'
+import { ApiError } from '../../lib/api/client'
+import { fetchMe } from '../../lib/api/session'
+import type { UserProfile } from '../../lib/api/types'
 import { catalogApiUserMessage } from '../../lib/apiUserMessages'
 import { isAuthConfigured } from '../../lib/auth'
 

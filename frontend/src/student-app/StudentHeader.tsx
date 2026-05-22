@@ -1,9 +1,28 @@
 import { useEffect, useId, useState } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { BarChart2, Menu } from 'lucide-react'
-import { signOut } from 'aws-amplify/auth'
-import { hasSignedInIdToken } from '../lib/api'
+import { needsAuthBootstrap } from '../lib/auth-bootstrap'
+import { lazySignOut, probeSignedIn, warmUserProfileOnce } from '../lib/auth-session-lazy'
 import { isAuthConfigured } from '../lib/auth'
+
+const COURSE_DETAIL = /^\/courses\/[^/]+$/
+
+function isPublicRoute(pathname: string): boolean {
+  return (
+    pathname === '/' ||
+    pathname === '/details' ||
+    pathname === '/learn' ||
+    pathname === '/courses' ||
+    COURSE_DETAIL.test(pathname)
+  )
+}
+
+function isOAuthCallback(search: string): boolean {
+  const params = new URLSearchParams(search)
+  const code = (params.get('code') ?? '').trim()
+  const state = (params.get('state') ?? '').trim()
+  return Boolean(code && state)
+}
 
 function clearClientAuthState() {
   try {
@@ -75,23 +94,57 @@ export function StudentHeader() {
 
   useEffect(() => {
     let cancelled = false
-    async function run() {
+    let idleId: number | undefined
+    let timeoutId: ReturnType<typeof setTimeout> | undefined
+
+    async function runProbe() {
       if (!isAuthConfigured()) {
         if (!cancelled) setSignedIn(false)
         return
       }
-      const ok = await hasSignedInIdToken()
-      if (!cancelled) setSignedIn(ok)
+      const ok = await probeSignedIn()
+      if (!cancelled) {
+        setSignedIn(ok)
+        if (ok) void warmUserProfileOnce(true)
+      }
     }
-    void run()
+
+    const { pathname: path, search } = location
+
+    if (isOAuthCallback(search)) {
+      return () => {
+        cancelled = true
+      }
+    }
+
+    const scheduleProbe = () => {
+      void runProbe()
+    }
+
+    if (isPublicRoute(path)) {
+      if (typeof requestIdleCallback === 'function') {
+        idleId = requestIdleCallback(scheduleProbe)
+      } else {
+        timeoutId = setTimeout(scheduleProbe, 1)
+      }
+    } else if (needsAuthBootstrap(path, search)) {
+      scheduleProbe()
+    } else {
+      scheduleProbe()
+    }
+
     return () => {
       cancelled = true
+      if (idleId != null && typeof cancelIdleCallback === 'function') {
+        cancelIdleCallback(idleId)
+      }
+      if (timeoutId != null) clearTimeout(timeoutId)
     }
-  }, [])
+  }, [location])
 
   async function handleSignOut() {
     try {
-      await signOut()
+      await lazySignOut()
     } catch {
       // Still clear local state even if Amplify signOut fails
     } finally {

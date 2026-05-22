@@ -1,7 +1,5 @@
-import { useAuthenticator } from '@aws-amplify/ui-react'
+import { useAuthenticator } from '../../lib/auth-ui'
 import { useEffect, useRef } from 'react'
-
-import { fetchMe } from '../../lib/api'
 
 /**
  * On student sign-in, warms the user profile via GET /users/me once per session.
@@ -20,7 +18,12 @@ export function StudentProfileBootstrap() {
       return
     }
     didFetch.current = true
-    void fetchMe().catch(() => {
+    void (async () => {
+      const { fetchMe } = await import('../../lib/api/session')
+      const { markUserProfileWarmed } = await import('../../lib/auth-session-lazy')
+      await fetchMe()
+      markUserProfileWarmed()
+    })().catch(() => {
       // Non-fatal: Cognito trigger or a later /users/me may still provision the row.
     })
   }, [authStatus])

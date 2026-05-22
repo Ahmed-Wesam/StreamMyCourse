@@ -30,6 +30,9 @@ vi.mock('../pages/QuestionBanksListPage', () => ({
 vi.mock('../pages/QuestionBankStudioPage', () => ({
   default: () => <div data-testid="teacher-page-question-bank-studio" />,
 }))
+vi.mock('../pages/TeacherPaymentSetup', () => ({
+  default: () => <div data-testid="teacher-page-payments" />,
+}))
 
 import TeacherApp from './App'
 
@@ -47,24 +50,39 @@ describe('TeacherApp', () => {
     vi.clearAllMocks()
   })
 
-  it('mounts the instructor dashboard at /', () => {
+  it('mounts the instructor dashboard at /', async () => {
     renderAt('/')
-    expect(screen.getByTestId('teacher-page-dashboard')).toBeTruthy()
+    await waitFor(() => {
+      expect(screen.getByTestId('teacher-page-dashboard')).toBeTruthy()
+    })
   })
 
-  it('mounts course management at /courses/:courseId', () => {
+  it('mounts course management at /courses/:courseId', async () => {
     renderAt('/courses/c-1')
-    expect(screen.getByTestId('teacher-page-course-mgmt')).toBeTruthy()
+    await waitFor(() => {
+      expect(screen.getByTestId('teacher-page-course-mgmt')).toBeTruthy()
+    })
   })
 
-  it('mounts the question banks list at /courses/:courseId/question-banks', () => {
+  it('mounts the question banks list at /courses/:courseId/question-banks', async () => {
     renderAt('/courses/c-1/question-banks')
-    expect(screen.getByTestId('teacher-page-question-banks-list')).toBeTruthy()
+    await waitFor(() => {
+      expect(screen.getByTestId('teacher-page-question-banks-list')).toBeTruthy()
+    })
   })
 
-  it('mounts the question bank studio at /courses/:courseId/question-banks/:bankId', () => {
+  it('mounts the question bank studio at /courses/:courseId/question-banks/:bankId', async () => {
     renderAt('/courses/c-1/question-banks/qb-1')
-    expect(screen.getByTestId('teacher-page-question-bank-studio')).toBeTruthy()
+    await waitFor(() => {
+      expect(screen.getByTestId('teacher-page-question-bank-studio')).toBeTruthy()
+    })
+  })
+
+  it('mounts payment setup at /settings/payments', async () => {
+    renderAt('/settings/payments')
+    await waitFor(() => {
+      expect(screen.getByTestId('teacher-page-payments')).toBeTruthy()
+    })
   })
 
   it('redirects unknown paths to dashboard', async () => {
