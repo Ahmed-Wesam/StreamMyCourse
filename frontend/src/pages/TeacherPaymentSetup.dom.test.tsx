@@ -114,6 +114,29 @@ describe('TeacherPaymentSetup', () => {
     })
   })
 
+  it('shows student-site PayTabs URLs from VITE_STUDENT_SITE_URL, not teacher origin', async () => {
+    vi.stubEnv('VITE_STUDENT_SITE_URL', 'https://example-student.test')
+    vi.resetModules()
+    const { default: PaymentSetup } = await import('./TeacherPaymentSetup')
+
+    render(
+      <MemoryRouter initialEntries={['/settings/payments']}>
+        <Routes>
+          <Route path="/settings/payments" element={<PaymentSetup />} />
+        </Routes>
+      </MemoryRouter>,
+    )
+
+    await waitFor(() => {
+      expect(billing.getMerchantStatus).toHaveBeenCalledTimes(1)
+    })
+
+    expect(screen.getByRole('heading', { name: /paytabs urls/i })).toBeTruthy()
+    expect(screen.getByText('https://example-student.test/terms')).toBeTruthy()
+    expect(screen.getByText('https://example-student.test/privacy')).toBeTruthy()
+    expect(screen.queryByText(/teach\./i)).toBeNull()
+  })
+
   it('links to PayTabs docs and refresh reloads status', async () => {
     renderPaymentSetup()
 

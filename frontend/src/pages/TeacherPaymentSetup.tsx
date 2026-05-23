@@ -8,6 +8,7 @@ import {
   type MerchantSetupChecklist,
   type MerchantStatusResponse,
 } from '../lib/billing'
+import { privacyUrl, termsUrl } from '../lib/legalUrls'
 
 const CHECKLIST_ORDER: (keyof MerchantSetupChecklist)[] = [
   'paytabsAccountCreated',
@@ -109,6 +110,24 @@ export default function TeacherPaymentSetup() {
           Server keys are configured by the platform operator only — do not paste secrets in this
           app.
         </p>
+      </section>
+
+      <section className="mb-8 rounded-lg border border-slate-200 bg-slate-50 p-4">
+        <h2 className="text-sm font-semibold text-gray-900">PayTabs URLs</h2>
+        <p className="mt-2 text-sm text-gray-600">
+          Copy these into your PayTabs merchant profile (terms and privacy fields). The checklist
+          item for terms URL stays manual until you confirm it in PayTabs.
+        </p>
+        <dl className="mt-3 space-y-3 text-sm">
+          <div>
+            <dt className="font-medium text-gray-800">Terms and conditions</dt>
+            <dd className="mt-1 font-mono text-xs text-gray-700 break-all">{termsUrl()}</dd>
+          </div>
+          <div>
+            <dt className="font-medium text-gray-800">Privacy policy</dt>
+            <dd className="mt-1 font-mono text-xs text-gray-700 break-all">{privacyUrl()}</dd>
+          </div>
+        </dl>
       </section>
 
       {loading && !status ? (

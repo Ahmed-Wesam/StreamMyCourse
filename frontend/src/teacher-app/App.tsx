@@ -6,6 +6,7 @@ import { ProtectedRoute } from '../components/auth/ProtectedRoute'
 import { TeacherHeader } from './TeacherHeader'
 import { Layout } from '../components/layout/Layout'
 import { LazyRoute, RouteChunkFallback } from '../components/layout/RouteChunkFallback'
+import { studentSiteOrigin } from '../lib/legalUrls'
 
 const SignIn = lazy(() =>
   import('../components/auth/SignIn').then((mod) => ({ default: mod.SignIn })),
@@ -19,7 +20,7 @@ const TeacherPaymentSetup = lazy(() => import('../pages/TeacherPaymentSetup'))
 function TeacherShell() {
   return (
     <ProtectedRoute>
-      <Layout chromeHeader={<TeacherHeader />}>
+      <Layout chromeHeader={<TeacherHeader />} legalBaseUrl={studentSiteOrigin()}>
         <Routes>
           <Route path="/" element={<InstructorDashboard />} />
           <Route
