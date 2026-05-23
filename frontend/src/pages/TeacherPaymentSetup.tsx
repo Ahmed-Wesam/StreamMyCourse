@@ -67,7 +67,7 @@ export default function TeacherPaymentSetup() {
           <h1 className="text-2xl font-bold tracking-tight text-gray-900">Payment setup</h1>
           <p className="mt-2 text-sm text-gray-600">
             Student subscriptions are billed in Jordanian dinar (JOD) as a monthly all-access plan.
-            You are the merchant of record with PayTabs; Stream My Course hosts the API and payment
+            You are the merchant of record with PayTabs; SPSS Spectrum hosts the API and payment
             notifications only.
           </p>
         </div>
