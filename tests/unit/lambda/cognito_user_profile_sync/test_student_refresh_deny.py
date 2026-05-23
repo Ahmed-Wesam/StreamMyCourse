@@ -64,7 +64,7 @@ def _student_refresh_event(
             "userAttributes": {
                 "sub": "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
                 "email": "student@example.com",
-                "custom:student_active_session_id": active_session_id,
+                "custom:active_session_id": active_session_id,
             },
             "groupConfiguration": {
                 "groupsToOverride": [],

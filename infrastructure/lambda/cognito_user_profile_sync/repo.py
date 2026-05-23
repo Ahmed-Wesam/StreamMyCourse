@@ -19,6 +19,10 @@ except Exception:  # pragma: no cover
 
 logger = logging.getLogger(__name__)
 
+# Cognito Schema custom attribute names must be <= 20 characters.
+COGNITO_STUDENT_SESSION_MIRROR_ATTR = "active_session_id"
+COGNITO_STUDENT_SESSION_MIRROR_KEY = f"custom:{COGNITO_STUDENT_SESSION_MIRROR_ATTR}"
+
 ConnectionFactory = Callable[[], Any]
 
 
@@ -40,7 +44,7 @@ def mirror_student_active_session_attribute(
     user_name: str,
     session_id: str,
 ) -> None:
-    """Mirror RDS session id to ``custom:student_active_session_id`` on the pool user."""
+    """Mirror RDS session id to ``custom:active_session_id`` on the pool user."""
     if not user_pool_id or not user_name:
         raise ValueError("user_pool_id and user_name are required")
     client = _cognito_idp_client()
@@ -48,7 +52,7 @@ def mirror_student_active_session_attribute(
         UserPoolId=user_pool_id,
         Username=user_name,
         UserAttributes=[
-            {"Name": "custom:student_active_session_id", "Value": session_id},
+            {"Name": COGNITO_STUDENT_SESSION_MIRROR_KEY, "Value": session_id},
         ],
     )
 

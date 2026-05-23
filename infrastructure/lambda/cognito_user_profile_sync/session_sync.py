@@ -7,6 +7,7 @@ from typing import Any, Dict
 from uuid import uuid4
 
 from repo import (
+    COGNITO_STUDENT_SESSION_MIRROR_KEY,
     get_cached_connection_factory,
     get_student_active_session_id,
     mirror_student_active_session_attribute,
@@ -139,7 +140,7 @@ def handle_pre_token_generation(event: Dict[str, Any], cfg: SyncConfig) -> Dict[
                 raw_attrs = request.get("userAttributes")
                 if isinstance(raw_attrs, dict):
                     active = str(
-                        raw_attrs.get("custom:student_active_session_id") or ""
+                        raw_attrs.get(COGNITO_STUDENT_SESSION_MIRROR_KEY) or ""
                     ).strip()
 
         deny_stale_student_refresh(
