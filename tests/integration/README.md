@@ -131,20 +131,13 @@ With custom pytest arguments:
 ./scripts/run-local-integration-tests.sh -k test_publish -v
 ```
 
-Run without JWT (public endpoints only; auth tests will skip):
-
-```bash
-SKIP_JWT=1 ./scripts/run-local-integration-tests.sh
-```
-
 ### Environment variables
 
 | Variable | Default | Required | Description |
 |----------|---------|----------|-------------|
-| `LOCAL_COGNITO_PASSWORD` | — | Yes (unless `SKIP_JWT=1`) | Password for the CI test user |
+| `LOCAL_COGNITO_PASSWORD` | — | Yes | Password for the CI test user |
 | `LOCAL_COGNITO_USERNAME` | `ci-rds-verify@noreply.local` | No | Username for the CI test user |
 | `AWS_REGION` | `eu-west-1` | No | AWS region for all API calls |
-| `SKIP_JWT` | — | No | Set to `1` to skip JWT minting (auth tests skip) |
 | `SKIP_SLOW_S3_TESTS` | — | No | Set to `1` to skip S3-heavy tests (faster local runs) |
 
 **Hang diagnostics:** Pytest writes `[integration-diag]` lines to stderr: session start (UTC time, API host, JWT lengths only — never values), collected test count, **`test_start nodeid=…`** the moment each test begins (so a hang in CI pinpoints the responsible nodeid even if the test never completes), **`test_done duration_sec=…`** when each test finishes, and a session-finish line with total elapsed wall time. In GitHub Actions, the integration job also prints UTC wall-clock lines immediately before and after `pytest`.

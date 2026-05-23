@@ -48,7 +48,6 @@ USERNAME_ALT="${LOCAL_COGNITO_USERNAME_ALT:-ci-rds-verify-2@noreply.local}"
 PASSWORD_ALT="${LOCAL_COGNITO_PASSWORD_ALT:-}"
 USERNAME_STUDENT="${LOCAL_COGNITO_USERNAME_STUDENT:-ci-student@noreply.local}"
 PASSWORD_STUDENT="${LOCAL_COGNITO_PASSWORD_STUDENT:-}"
-SKIP_JWT="${SKIP_JWT:-}"
 
 # Stack names (dev defaults)
 API_STACK="streammycourse-api"
@@ -127,11 +126,6 @@ log_info "Expected CORS first origin: $INTEGRATION_EXPECTED_CORS_ORIGIN"
 export INTEGRATION_COGNITO_JWT=""
 export INTEGRATION_COGNITO_JWT_ALT=""
 export INTEGRATION_COGNITO_JWT_STUDENT=""
-
-if [[ "$SKIP_JWT" == "1" ]]; then
-    log_error "SKIP_JWT=1 is not supported - all 3 JWTs are required for integration tests"
-    exit 1
-fi
 
 if [[ -z "$PASSWORD" ]]; then
     log_error "LOCAL_COGNITO_PASSWORD is required (primary teacher)"
