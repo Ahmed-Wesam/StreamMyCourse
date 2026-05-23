@@ -1,11 +1,15 @@
 import { fetchAuthSession } from 'aws-amplify/auth'
 import { cognitoUserPoolsTokenProvider, tokenOrchestrator } from 'aws-amplify/auth/cognito'
-import type { AuthSession, JWT } from '@aws-amplify/core'
 
 /** Cognito Pre Token claim and ClientMetadata key (see session_sync.py). */
 export const STUDENT_SESSION_METADATA_KEY = 'student_session_id'
 
-export function studentSessionIdFromIdToken(idToken: JWT | undefined): string | undefined {
+type IdTokenWithPayload = {
+  payload: Record<string, unknown>
+  toString?: () => string
+}
+
+export function studentSessionIdFromIdToken(idToken: IdTokenWithPayload | undefined): string | undefined {
   if (!idToken) return undefined
   const payload = idToken.payload
   for (const key of [STUDENT_SESSION_METADATA_KEY, `custom:${STUDENT_SESSION_METADATA_KEY}`]) {
@@ -36,17 +40,6 @@ export function registerStudentSessionRefreshMetadata(): void {
 /** ClientMetadata for an explicit fetchAuthSession force refresh. */
 export async function buildStudentRefreshClientMetadata(): Promise<Record<string, string>> {
   return clientMetadataFromStoredTokens()
-}
-
-/** Student fetchAuthSession wrapper — passes session metadata on force refresh. */
-export async function fetchStudentAuthSession(options?: {
-  forceRefresh?: boolean
-}): Promise<AuthSession> {
-  if (options?.forceRefresh) {
-    const clientMetadata = await buildStudentRefreshClientMetadata()
-    return fetchAuthSession({ forceRefresh: true, clientMetadata })
-  }
-  return fetchAuthSession()
 }
 
 /** Reset registration flag — test helper only. */

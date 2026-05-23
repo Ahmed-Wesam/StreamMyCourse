@@ -5,7 +5,7 @@ import { notifySessionSuperseded } from '../handleSessionSuperseded'
 const API_BASE_URL_RAW = import.meta.env.VITE_API_BASE_URL as string | undefined
 
 /** Catalog API error code when the student session was superseded by a newer sign-in. */
-export const SESSION_SUPERSEDED = 'session_superseded'
+const SESSION_SUPERSEDED = 'session_superseded'
 
 export class ApiError extends Error {
   readonly status: number
