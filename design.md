@@ -288,9 +288,9 @@ cd infrastructure
 .\deploy.ps1 -Template edge-hosting -StackName StreamMyCourse-EdgeHosting-dev `
     -Environment dev `
     -HostedZoneId Z123456789 `
-    -DomainName dev.streammycourse.click `
-    -TeacherDomainName teach.dev.streammycourse.click `
-    -CertPrimaryDomain dev.streammycourse.click `
+    -DomainName dev.researchspectrum.org `
+    -TeacherDomainName teach.dev.researchspectrum.org `
+    -CertPrimaryDomain dev.researchspectrum.org `
     -AttachCloudFrontAliases true
 ```
 
@@ -309,11 +309,22 @@ cd infrastructure
 - `index.html`: `no-cache` (always fresh)
 - Other root files: `max-age=3600` (1 hour)
 
-**CORS configuration:** When adding hosted origins, update the API stack to include both student and teacher domains:
+**CORS configuration:** When adding hosted origins, update the API stack (and video bucket S3 CORS via **`CorsAllowedOrigins`** on **`StreamMyCourse-Video-{env}`** — wired in [`scripts/deploy-backend.sh`](scripts/deploy-backend.sh) and [`infrastructure/deploy.ps1`](infrastructure/deploy.ps1)) to include both student and teacher domains:
+
+Prod API (`deploy-backend.sh` / `deploy-environment.ps1`):
+
 ```powershell
-.\deploy.ps1 -Template api -StackName ... `
-    -CorsAllowOrigin "https://app.streammycourse.com,https://teach.streammycourse.com,http://localhost:5173,http://localhost:5174" `
-    -GatewayResponseAllowOrigin "http://localhost:5173"  # or a specific origin for error responses
+.\deploy.ps1 -Template api -StackName StreamMyCourse-Api-prod -Environment prod `
+    -CorsAllowOrigin "https://researchspectrum.org,https://teach.researchspectrum.org,http://localhost:5173,http://localhost:5174" `
+    -GatewayResponseAllowOrigin "https://researchspectrum.org"
+```
+
+Dev API:
+
+```powershell
+.\deploy.ps1 -Template api -StackName streammycourse-api -Environment dev `
+    -CorsAllowOrigin "https://dev.researchspectrum.org,https://teach.dev.researchspectrum.org,http://localhost:5173,http://localhost:5174" `
+    -GatewayResponseAllowOrigin "http://localhost:5173"
 ```
 
 ### Backend

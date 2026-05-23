@@ -4,6 +4,36 @@
 
 ---
 
+## 2026-05-23 — Custom domain cutover to researchspectrum.org
+
+### Goal
+
+Move hosted student and teacher SPAs from **`streammycourse.click`** to **`researchspectrum.org`** (prod student on **apex**; teacher on **`teach.*`**; dev on **`dev.*`** / **`teach.dev.*`**).
+
+### Changes
+
+- [x] **GitHub Environment variables** — **`dev`** and **`prod`**: **`ROUTE53_HOSTED_ZONE_ID=Z052750424BDF0ARJGROS`**, **`STUDENT_WEB_DOMAIN`**, **`TEACHER_WEB_DOMAIN`**, **`WEB_CERT_*`**, **`STUDENT_COGNITO_*`**, **`TEACHER_COGNITO_*`** updated to researchspectrum hostnames (trailing slash on Cognito URLs).
+- [x] **Repo CORS / CI** — [`scripts/deploy-backend.sh`](scripts/deploy-backend.sh), [`infrastructure/deploy-environment.ps1`](infrastructure/deploy-environment.ps1), [`.github/workflows/deploy-teacher-web-reusable.yml`](.github/workflows/deploy-teacher-web-reusable.yml), [`frontend/src/teacher-app/TeacherHeader.tsx`](frontend/src/teacher-app/TeacherHeader.tsx) (+ Vitest fallback test).
+- [x] **Edge stacks** — **`StreamMyCourse-EdgeHosting-dev`** / **`-prod`** redeployed in **`us-east-1`**; ACM **ISSUED**; Route 53 aliases in new zone.
+- [x] **Auth + API** — Cognito callback/logout URLs and API **`CorsAllowOrigin`** / Lambda **`ALLOWED_ORIGINS`** aligned with new origins.
+- [x] **Video bucket S3 CORS** — [`scripts/deploy-backend.sh`](scripts/deploy-backend.sh) and [`infrastructure/deploy.ps1`](infrastructure/deploy.ps1) pass env-specific **`CorsAllowedOrigins`** on **`StreamMyCourse-Video-{env}`** so browser **`PUT`** uploads from teacher SPAs work on the new hostnames.
+- [x] **SPAs** — Student and teacher builds synced to edge buckets; CloudFront invalidations.
+
+### Live hostnames
+
+| Env | Student | Teacher |
+|-----|---------|---------|
+| **prod** | https://researchspectrum.org | https://teach.researchspectrum.org |
+| **dev** | https://dev.researchspectrum.org | https://teach.dev.researchspectrum.org |
+
+### Verification
+
+- HTTPS **200** on all four hostnames.
+- Dev integration CORS tests green after **`.env.local`** **`INTEGRATION_EXPECTED_CORS_ORIGIN=https://dev.researchspectrum.org`** (or unset to derive from stack).
+- **`streammycourse.click`** left unchanged (no redirect).
+
+---
+
 ## 2026-05-22 — Frontend bundle: deferred auth + scenario CI guard
 
 ### Goal
