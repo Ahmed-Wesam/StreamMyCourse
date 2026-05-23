@@ -10,7 +10,12 @@ import {
   isNotSubscribedError,
   isProviderAgreementMissingError,
   isProviderCancelFailedError,
+  isSessionSupersededError,
 } from './api/client'
+
+/** Shown when the student session was superseded by a sign-in on another device. */
+export const sessionSupersededUserMessage =
+  'Your account was signed in on another device. Please sign in again to continue.'
 
 /** Broken or incomplete URL — question banks list route. */
 export const incompleteQuestionBanksListLinkMessage =
@@ -307,6 +312,9 @@ function readApiError(err: unknown): ApiError | null {
 }
 
 function mapByApiErrorCode(err: ApiError): string | null {
+  if (isSessionSupersededError(err)) {
+    return sessionSupersededUserMessage
+  }
   if (isBillingUnconfiguredError(err)) {
     return 'Subscriptions are not available right now. Please try again later.'
   }

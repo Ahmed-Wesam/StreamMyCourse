@@ -142,6 +142,12 @@ describe('catalogApiUserMessage', () => {
     ).toMatch(/contact support/i)
   })
 
+  it('maps session_superseded to friendly copy', () => {
+    expect(
+      catalogApiUserMessage(new ApiError('Your account was signed in elsewhere.', 401, 'session_superseded')),
+    ).toBe('Your account was signed in on another device. Please sign in again to continue.')
+  })
+
   it('uses context-specific fallbacks for unknown errors', () => {
     expect(catalogApiUserMessage(new Error('network down'), 'loadCourses')).toBe(
       'Your courses could not be loaded. Please try again.',

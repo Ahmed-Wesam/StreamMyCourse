@@ -71,6 +71,25 @@ vi.mock('./StudentHeader', () => ({
   StudentHeader: () => null,
 }))
 
+const registerStudentSessionRefreshMetadataMock = vi.hoisted(() => vi.fn())
+const hubListenMock = vi.hoisted(() => vi.fn(() => () => {}))
+
+vi.mock('../lib/student-session-refresh', () => ({
+  registerStudentSessionRefreshMetadata: registerStudentSessionRefreshMetadataMock,
+}))
+
+vi.mock('../lib/auth-session-lazy', () => ({
+  lazySignOut: vi.fn(),
+  probeSignedIn: vi.fn(),
+  warmUserProfileOnce: vi.fn(),
+  resetProfileWarmState: vi.fn(),
+  markUserProfileWarmed: vi.fn(),
+}))
+
+vi.mock('aws-amplify/utils', () => ({
+  Hub: { listen: hubListenMock },
+}))
+
 import StudentApp from './App'
 
 function renderAt(path: string) {
@@ -91,6 +110,14 @@ describe('StudentApp', () => {
   it('mounts the home route at /', () => {
     renderAt('/')
     expect(screen.getByTestId('student-page-home')).toBeTruthy()
+  })
+
+  it('mounts StudentSessionGuard and registers refresh metadata at /', () => {
+    registerStudentSessionRefreshMetadataMock.mockClear()
+    hubListenMock.mockClear()
+    renderAt('/')
+    expect(registerStudentSessionRefreshMetadataMock).toHaveBeenCalledTimes(1)
+    expect(hubListenMock).toHaveBeenCalledWith('auth', expect.any(Function))
   })
 
   it('mounts the course detail route at /courses/:courseId', async () => {

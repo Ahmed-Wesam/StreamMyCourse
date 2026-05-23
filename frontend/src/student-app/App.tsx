@@ -5,6 +5,7 @@ import { AuthGate } from '../components/auth/AuthGate'
 import { StudentAccountAuth } from '../components/auth/StudentAccountAuth'
 import { AccountLayout } from '../pages/account/AccountLayout'
 import { StudentHeader } from './StudentHeader'
+import { StudentSessionGuard } from './StudentSessionGuard'
 import { Layout } from '../components/layout/Layout'
 import { LazyRoute } from '../components/layout/RouteChunkFallback'
 import { ScrollToTop } from './ScrollToTop'
@@ -35,7 +36,8 @@ function LegacyPathRedirect({ to }: { to: string }) {
 function StudentApp() {
   return (
     <AuthGate>
-      <Layout chromeHeader={<StudentHeader />}>
+      <StudentSessionGuard>
+        <Layout chromeHeader={<StudentHeader />}>
         <ScrollToTop />
         <Routes>
         <Route path="/" element={<HomePage />} />
@@ -154,6 +156,7 @@ function StudentApp() {
         <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </Layout>
+      </StudentSessionGuard>
     </AuthGate>
   )
 }

@@ -1,6 +1,11 @@
 import { fetchAuthSession } from 'aws-amplify/auth'
 
+import { notifySessionSuperseded } from '../handleSessionSuperseded'
+
 const API_BASE_URL_RAW = import.meta.env.VITE_API_BASE_URL as string | undefined
+
+/** Catalog API error code when the student session was superseded by a newer sign-in. */
+export const SESSION_SUPERSEDED = 'session_superseded'
 
 export class ApiError extends Error {
   readonly status: number
@@ -25,6 +30,29 @@ export async function failedResponseError(res: Response): Promise<ApiError> {
     /* ignore non-JSON */
   }
   return new ApiError(message, res.status, code)
+}
+
+async function raiseResponseError(res: Response): Promise<never> {
+  const err = await failedResponseError(res)
+  if (isSessionSupersededError(err)) {
+    notifySessionSuperseded()
+  }
+  throw err
+}
+
+async function refreshAuthSession() {
+  const { buildStudentRefreshClientMetadata } = await import('../student-session-refresh')
+  const clientMetadata = await buildStudentRefreshClientMetadata()
+  if (Object.keys(clientMetadata).length > 0) {
+    return fetchAuthSession({ forceRefresh: true, clientMetadata })
+  }
+  return fetchAuthSession({ forceRefresh: true })
+}
+
+/** True when the catalog API refused the request because the student signed in elsewhere. */
+export function isSessionSupersededError(e: unknown): boolean {
+  if (!(e instanceof ApiError)) return false
+  return e.code === SESSION_SUPERSEDED
 }
 
 /**
@@ -68,6 +96,7 @@ export function isProgressRdsUnavailableError(e: unknown): boolean {
  */
 export function isPlaybackAuthRequiredError(e: unknown): boolean {
   if (!(e instanceof ApiError)) return false
+  if (isSessionSupersededError(e)) return false
   if (e.status === 401) return true
   if (e.code === 'unauthorized') return true
   return false
@@ -170,8 +199,18 @@ async function authHeader(): Promise<Record<string, string>> {
     let session = await fetchAuthSession()
     let token = bearerFromSession(session)
     if (!token) {
-      session = await fetchAuthSession({ forceRefresh: true })
-      token = bearerFromSession(session)
+      try {
+        session = await refreshAuthSession()
+        token = bearerFromSession(session)
+      } catch {
+        const { buildStudentRefreshClientMetadata, STUDENT_SESSION_METADATA_KEY } = await import(
+          '../student-session-refresh',
+        )
+        const meta = await buildStudentRefreshClientMetadata()
+        if (meta[STUDENT_SESSION_METADATA_KEY]) {
+          notifySessionSuperseded()
+        }
+      }
     }
     if (!token) return {}
     return { Authorization: `Bearer ${token}` }
@@ -194,7 +233,7 @@ export async function httpGet<T>(path: string): Promise<T> {
   const headers = await mergeHeaders({ Accept: 'application/json' })
   const res = await fetch(`${API_BASE_URL}${path}`, { cache: 'no-store', headers })
   if (!res.ok) {
-    throw await failedResponseError(res)
+    await raiseResponseError(res)
   }
   return (await res.json()) as T
 }
@@ -214,7 +253,7 @@ export async function httpPost<T>(path: string, body: unknown): Promise<T> {
     body: JSON.stringify(body),
   })
   if (!res.ok) {
-    throw await failedResponseError(res)
+    await raiseResponseError(res)
   }
   return (await res.json()) as T
 }
@@ -229,7 +268,7 @@ export async function httpPatch<T>(path: string, body: unknown): Promise<T> {
     body: JSON.stringify(body),
   })
   if (!res.ok) {
-    throw await failedResponseError(res)
+    await raiseResponseError(res)
   }
   return (await res.json()) as T
 }
@@ -244,7 +283,7 @@ export async function httpPut<T>(path: string, body?: unknown): Promise<T> {
     body: body !== undefined ? JSON.stringify(body) : undefined,
   })
   if (!res.ok) {
-    throw await failedResponseError(res)
+    await raiseResponseError(res)
   }
   return (await res.json()) as T
 }
@@ -258,7 +297,7 @@ export async function httpDelete<T>(path: string): Promise<T> {
     headers,
   })
   if (!res.ok) {
-    throw await failedResponseError(res)
+    await raiseResponseError(res)
   }
   return (await res.json()) as T
 }
