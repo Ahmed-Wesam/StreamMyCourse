@@ -1,26 +1,8 @@
-import {
-  useEffect,
-  useRef,
-  useState,
-  type Dispatch,
-  type MutableRefObject,
-  type ReactNode,
-  type SetStateAction,
-} from 'react'
-import { Hub } from 'aws-amplify/utils'
+import { lazy, Suspense, useState, type ReactNode } from 'react'
 
-import { sessionSupersededUserMessage } from '../lib/apiUserMessages'
-import { lazySignOut, probeSignedIn } from '../lib/auth-session-lazy'
-import { subscribeSessionSuperseded } from '../lib/handleSessionSuperseded'
-import { registerStudentSessionRefreshMetadata } from '../lib/student-session-refresh'
-
-function clearSupersededUiState(
-  handlingRef: MutableRefObject<boolean>,
-  setMessage: Dispatch<SetStateAction<string | null>>,
-) {
-  handlingRef.current = false
-  setMessage(null)
-}
+const StudentSessionController = lazy(() =>
+  import('./StudentSessionController').then((m) => ({ default: m.StudentSessionController })),
+)
 
 /**
  * Student-only: wires Cognito refresh ClientMetadata and signs out when the API
@@ -30,46 +12,6 @@ function clearSupersededUiState(
  */
 export function StudentSessionGuard({ children }: { children: ReactNode }) {
   const [message, setMessage] = useState<string | null>(null)
-  const handlingRef = useRef(false)
-
-  useEffect(() => {
-    registerStudentSessionRefreshMetadata()
-  }, [])
-
-  useEffect(() => {
-    let cancelled = false
-    const hubStop = Hub.listen('auth', ({ payload }) => {
-      const event = payload.event as string
-      if (event === 'signedIn') {
-        clearSupersededUiState(handlingRef, setMessage)
-      }
-      if (event === 'signedOut') {
-        handlingRef.current = false
-      }
-    })
-
-    void (async () => {
-      const signedIn = await probeSignedIn()
-      if (cancelled || !signedIn || handlingRef.current) return
-      clearSupersededUiState(handlingRef, setMessage)
-    })()
-
-    return () => {
-      cancelled = true
-      hubStop()
-    }
-  }, [])
-
-  useEffect(() => {
-    return subscribeSessionSuperseded(() => {
-      if (handlingRef.current) return
-      handlingRef.current = true
-      setMessage(sessionSupersededUserMessage)
-      void lazySignOut().catch(() => {
-        handlingRef.current = false
-      })
-    })
-  }, [])
 
   return (
     <>
@@ -82,6 +24,9 @@ export function StudentSessionGuard({ children }: { children: ReactNode }) {
           {message}
         </div>
       ) : null}
+      <Suspense fallback={null}>
+        <StudentSessionController onMessage={setMessage} />
+      </Suspense>
       {children}
     </>
   )
