@@ -4,6 +4,29 @@
 
 ---
 
+## 2026-05-23 — Jordan legal pages (Privacy / Terms, EN/AR)
+
+### Goal
+
+Public legal disclosure for **Research Spectrum** (SPSS Spectrum brand) on the student SPA, with bilingual content and cross-site links from the teacher shell and PayTabs merchant setup.
+
+### Changes
+
+- [x] **Public routes** — [`/privacy`](frontend/src/pages/legal/PrivacyPage.tsx), [`/terms`](frontend/src/pages/legal/TermsPage.tsx) on the student SPA ([`frontend/src/student-app/App.tsx`](frontend/src/student-app/App.tsx)); lazy-loaded via [`LegalDocumentPage.tsx`](frontend/src/pages/legal/LegalDocumentPage.tsx) with **EN / AR** toggle and Jordan-formatted dates.
+- [x] **Centralized legal copy** — [`frontend/src/lib/legalConfig.ts`](frontend/src/lib/legalConfig.ts) (entity **Research Spectrum**, brand **SPSS Spectrum**, **`support@researchspectrum.org`**, governing law Jordan); EN/AR content modules under [`frontend/src/lib/legal/content/`](frontend/src/lib/legal/content/) plus counsel-review markdown in [`docs/legal/`](docs/legal/).
+- [x] **Student-site URL helper** — [`frontend/src/lib/legalUrls.ts`](frontend/src/lib/legalUrls.ts) (`studentSiteOrigin`, `termsUrl`, `privacyUrl`); optional override via **`VITE_STUDENT_SITE_URL`** for dev/teacher builds.
+- [x] **Teacher footer** — [`Layout`](frontend/src/components/layout/Layout.tsx) + [`Footer`](frontend/src/components/layout/Footer.tsx) accept **`legalBaseUrl`**; teacher shell passes **`studentSiteOrigin()`** so Privacy/Terms are **absolute links** to the student origin ([`frontend/src/teacher-app/App.tsx`](frontend/src/teacher-app/App.tsx)).
+- [x] **PayTabs merchant setup** — [`TeacherPaymentSetup.tsx`](frontend/src/pages/TeacherPaymentSetup.tsx) surfaces copy-paste **terms** and **privacy** URLs for PayTabs profile fields (checklist item **`termsUrlSet`** remains manual).
+- [x] **Auth bootstrap** — [`needsAuthBootstrap`](frontend/src/lib/auth-bootstrap.ts) skips Amplify on `/privacy` and `/terms` (public, no auth chunk on first paint).
+- [x] **Support contact** — [`TeacherRoleGate.tsx`](frontend/src/components/auth/TeacherRoleGate.tsx) links **`support@researchspectrum.org`** for access issues.
+
+### Verification
+
+- Vitest: [`LegalPages.dom.test.tsx`](frontend/src/pages/legal/LegalPages.dom.test.tsx), [`Layout.dom.test.tsx`](frontend/src/components/layout/Layout.dom.test.tsx), [`TeacherPaymentSetup.dom.test.tsx`](frontend/src/pages/TeacherPaymentSetup.dom.test.tsx), [`auth-bootstrap.test.ts`](frontend/src/lib/auth-bootstrap.test.ts).
+- **`npm run knip`** — no unused exports on legal types after hygiene pass.
+
+---
+
 ## 2026-05-23 — Custom domain cutover to researchspectrum.org
 
 ### Goal

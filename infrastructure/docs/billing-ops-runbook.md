@@ -147,6 +147,19 @@ Monthly **billing cost** alarm lives in [`billing-alarm.yaml`](../templates/bill
 
 ---
 
+## Legal page URLs (PayTabs merchant dashboard)
+
+Paste these into the PayTabs merchant profile **terms** and **privacy** fields (field names vary by dashboard version). Do this **after** the student SPA is deployed and legal routes are live — verify with a browser or `curl -I` that `/terms` and `/privacy` return **200** before saving in PayTabs.
+
+| Env | Terms | Privacy |
+|-----|-------|---------|
+| **prod** (live profile) | `https://researchspectrum.org/terms` | `https://researchspectrum.org/privacy` |
+| **dev** (test profile) | `https://dev.researchspectrum.org/terms` | `https://dev.researchspectrum.org/privacy` |
+
+Teachers see the same URLs on **Payment setup** (`/payment-setup`); copy from there if preferred. The **`termsUrlSet`** checklist item remains **manual** until PayTabs API verification is implemented — operator marks complete only after confirming the URL in the PayTabs dashboard.
+
+---
+
 ## WS9 handoff
 
-Before `PAYTABS_USE_MOCK=false`: confirm SNS email subscriptions, run live cancel + IPN smoke, and extend IPN section with PayTabs dashboard screenshots and escalation contacts.
+Before `PAYTABS_USE_MOCK=false`: confirm SNS email subscriptions, run live cancel + IPN smoke, paste legal URLs per section above, and extend IPN section with PayTabs dashboard screenshots and escalation contacts.
