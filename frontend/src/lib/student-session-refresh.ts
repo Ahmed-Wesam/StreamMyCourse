@@ -1,4 +1,3 @@
-import { fetchAuthSession } from 'aws-amplify/auth'
 import { cognitoUserPoolsTokenProvider, tokenOrchestrator } from 'aws-amplify/auth/cognito'
 
 /** Cognito Pre Token claim and ClientMetadata key (see session_sync.py). */
