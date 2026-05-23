@@ -1,4 +1,5 @@
-import { cognitoUserPoolsTokenProvider, tokenOrchestrator } from 'aws-amplify/auth/cognito'
+import { fetchAuthSession } from 'aws-amplify/auth'
+import { cognitoUserPoolsTokenProvider } from 'aws-amplify/auth/cognito'
 
 /** Cognito Pre Token claim and ClientMetadata key (see session_sync.py). */
 export const STUDENT_SESSION_METADATA_KEY = 'student_session_id'
@@ -19,8 +20,10 @@ export function studentSessionIdFromIdToken(idToken: IdTokenWithPayload | undefi
 }
 
 async function clientMetadataFromStoredTokens(): Promise<Record<string, string>> {
-  const tokens = await tokenOrchestrator.getTokenStore().loadTokens()
-  const sessionId = studentSessionIdFromIdToken(tokens?.idToken ?? undefined)
+  const session = await fetchAuthSession()
+  const sessionId = studentSessionIdFromIdToken(
+    session.tokens?.idToken as IdTokenWithPayload | undefined,
+  )
   return sessionId ? { [STUDENT_SESSION_METADATA_KEY]: sessionId } : {}
 }
 

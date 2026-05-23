@@ -10,7 +10,9 @@ import { notifySessionSuperseded, resetSessionSupersededListenersForTests } from
 const lazySignOutMock = vi.hoisted(() => vi.fn().mockResolvedValue(undefined))
 const probeSignedInMock = vi.hoisted(() => vi.fn().mockResolvedValue(false))
 const registerStudentSessionRefreshMetadataMock = vi.hoisted(() => vi.fn())
-const hubListenMock = vi.hoisted(() => vi.fn(() => () => {}))
+const hubListenMock = vi.hoisted(() =>
+  vi.fn((_channel: string, _cb: (data: { payload: { event: string } }) => void) => () => {}),
+)
 
 vi.mock('../lib/auth-session-lazy', () => ({
   lazySignOut: (...args: unknown[]) => lazySignOutMock(...args),
@@ -64,10 +66,12 @@ describe('StudentSessionGuard', () => {
 
   it('clears banner and re-arms handler after Hub signedIn', async () => {
     let hubCallback: ((data: { payload: { event: string } }) => void) | undefined
-    hubListenMock.mockImplementation((_channel, cb) => {
-      hubCallback = cb as (data: { payload: { event: string } }) => void
-      return () => {}
-    })
+    hubListenMock.mockImplementation(
+      (_channel: string, cb: (data: { payload: { event: string } }) => void) => {
+        hubCallback = cb
+        return () => {}
+      },
+    )
 
     render(
       <StudentSessionGuard>

@@ -24,8 +24,7 @@ const buildStudentRefreshClientMetadataMock = vi.hoisted(() =>
   vi.fn(async () => ({} as Record<string, string>)),
 )
 vi.mock('./student-session-refresh', () => ({
-  buildStudentRefreshClientMetadata: (...args: unknown[]) =>
-    buildStudentRefreshClientMetadataMock(...args),
+  buildStudentRefreshClientMetadata: () => buildStudentRefreshClientMetadataMock(),
   STUDENT_SESSION_METADATA_KEY: 'student_session_id',
   registerStudentSessionRefreshMetadata: vi.fn(),
 }))
