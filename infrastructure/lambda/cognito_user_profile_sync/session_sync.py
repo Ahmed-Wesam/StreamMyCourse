@@ -10,7 +10,6 @@ from repo import (
     COGNITO_STUDENT_SESSION_MIRROR_KEY,
     get_cached_connection_factory,
     get_student_active_session_id,
-    mirror_student_active_session_attribute,
     set_student_active_session_id,
 )
 from sync_config import SyncConfig
@@ -98,23 +97,9 @@ def _bump_student_session(event: Dict[str, Any], cfg: SyncConfig) -> str:
     new_session = str(uuid4())
     factory = get_cached_connection_factory(cfg)
     set_student_active_session_id(factory, user_sub=user_sub, session_id=new_session)
-    user_pool_id = str(event.get("userPoolId") or "").strip()
-    user_name = str(event.get("userName") or "").strip()
-    if not user_pool_id or not user_name:
-        raise RuntimeError("missing userPoolId/userName for Cognito session mirror")
-    try:
-        mirror_student_active_session_attribute(
-            user_pool_id=user_pool_id,
-            user_name=user_name,
-            session_id=new_session,
-        )
-    except Exception:
-        logger.exception(
-            "%s Cognito attribute mirror failed after RDS bump",
-            _LOG_PREFIX,
-            extra={"user_sub_prefix": user_sub[:8]},
-        )
-        raise
+    # Do not call AdminUpdateUserAttributes here: Cognito blocks while this Pre Token
+    # trigger runs, so mirroring the custom attribute deadlocks until Lambda timeout.
+    # RDS is authoritative; student_session_id is injected via claimsOverrideDetails.
     return new_session
 
 
