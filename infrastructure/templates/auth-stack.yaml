@@ -238,8 +238,8 @@ Resources:
       LambdaConfig: !If
         - ShouldDeployUserProfileSync
         - PostAuthentication: !GetAtt UserProfileSyncLambda.Arn
-          PreTokenGeneration: !GetAtt UserProfileSyncLambda.Arn
           PreTokenGenerationConfig:
+            LambdaArn: !GetAtt UserProfileSyncLambda.Arn
             LambdaVersion: V1_0
         - !Ref AWS::NoValue
 
