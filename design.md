@@ -267,6 +267,19 @@ The frontend is built as **two separate SPAs** deployed to different subdomains:
 - No sensitive data in logs (console logs removed from frontend)
 - **Public legal pages (student SPA):** [`/privacy`](frontend/src/pages/legal/PrivacyPage.tsx) and [`/terms`](frontend/src/pages/legal/TermsPage.tsx) are **unauthenticated** static routes (no Amplify bootstrap on first paint). Copy is centralized in [`legalConfig.ts`](frontend/src/lib/legalConfig.ts) (Research Spectrum entity, Jordan governing law, **`support@researchspectrum.org`**). Teacher SPA footer links to the **student origin** via [`legalUrls.ts`](frontend/src/lib/legalUrls.ts) (`VITE_STUDENT_SITE_URL` override in dev). PayTabs merchant setup ([`TeacherPaymentSetup.tsx`](frontend/src/pages/TeacherPaymentSetup.tsx)) exposes the same absolute URLs for terms/privacy profile fields.
 
+### Student single-session (MVP)
+
+**Policy (implemented in repo; requires auth stack + catalog deploy + migration 013 apply):** at most **one active student session** per Cognito user. The **teacher app client is exempt** — same user may hold a concurrent teacher SPA session without cross-client sign-out.
+
+| Layer | Behavior |
+| --- | --- |
+| **RDS authority** | [`users.student_active_session_id`](infrastructure/database/migrations/013_student_active_session.sql) — canonical session id; **soft rollout:** empty/`''` until the user's first student-client authentication (legacy tokens pass through). |
+| **Cognito Pre Token Generation** | [`cognito_user_profile_sync/session_sync.py`](infrastructure/lambda/cognito_user_profile_sync/session_sync.py) on student `callerContext.clientId` only: **authentication** bumps session + injects ID claim `student_session_id`; **refresh** compares `request.clientMetadata.student_session_id` (presented) to RDS active session and **denies** stale refresh via unhandled Lambda error (no new tokens). Wired in [`auth-stack.yaml`](infrastructure/templates/auth-stack.yaml) (`PreTokenGeneration` + `custom:student_active_session_id`). Mechanism: [`plans/student-single-session-refresh-spike.md`](plans/student-single-session-refresh-spike.md). |
+| **Catalog API guard** | [`services/auth/session.py`](infrastructure/lambda/catalog/services/auth/session.py) middleware in [`index.py`](infrastructure/lambda/catalog/index.py): student JWT `aud` + `student_session_id` claim vs RDS → **`401`** with **`code: session_superseded`**. |
+| **Student SPA** | [`StudentSessionGuard`](frontend/src/student-app/StudentSessionGuard.tsx) registers refresh [`ClientMetadata`](frontend/src/lib/student-session-refresh.ts) and signs out on `session_superseded`; mounted in [`student-app/App.tsx`](frontend/src/student-app/App.tsx). |
+
+**Client contract:** superseded devices receive **`session_superseded`** on protected API calls and failed refresh; user must sign in again. **`AdminUserGlobalSignOut` is not used** — it would revoke refresh tokens for both student and teacher clients on the shared pool.
+
 ---
 
 ## 10. Deployment (MVP)

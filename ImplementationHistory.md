@@ -4,6 +4,31 @@
 
 ---
 
+## 2026-05-23 — Student single-session (Slice 6 docs; implementation in repo)
+
+### Goal
+
+Enforce **one active student session** per user without terminating concurrent **teacher** SPA sessions on the shared Cognito user pool.
+
+### Changes (implemented in repo)
+
+- [x] **RDS migration 013** — [`infrastructure/database/migrations/013_student_active_session.sql`](infrastructure/database/migrations/013_student_active_session.sql): `users.student_active_session_id` (empty default = soft rollout until first student login).
+- [x] **Cognito triggers** — [`auth-stack.yaml`](infrastructure/templates/auth-stack.yaml): `PreTokenGeneration` on [`cognito_user_profile_sync`](infrastructure/lambda/cognito_user_profile_sync/) (`handler.py` → [`session_sync.py`](infrastructure/lambda/cognito_user_profile_sync/session_sync.py)); refresh deny via `clientMetadata.student_session_id` vs RDS; `custom:student_active_session_id` mirror attribute.
+- [x] **Catalog API guard** — [`services/auth/session.py`](infrastructure/lambda/catalog/services/auth/session.py) + wiring in [`index.py`](infrastructure/lambda/catalog/index.py) / [`bootstrap.py`](infrastructure/lambda/catalog/bootstrap.py); **`401`** **`session_superseded`** when JWT session claim lags RDS.
+- [x] **Student SPA** — [`StudentSessionGuard.tsx`](frontend/src/student-app/StudentSessionGuard.tsx) + [`student-session-refresh.ts`](frontend/src/lib/student-session-refresh.ts) (refresh metadata registration); [`handleSessionSuperseded.ts`](frontend/src/lib/handleSessionSuperseded.ts) + user copy in [`apiUserMessages.ts`](frontend/src/lib/apiUserMessages.ts).
+- [x] **Tests** — unit: [`tests/unit/catalog/test_student_session.py`](tests/unit/catalog/test_student_session.py), [`test_student_session_guard.py`](tests/unit/catalog/test_student_session_guard.py), [`tests/unit/lambda/cognito_user_profile_sync/test_student_refresh_deny.py`](tests/unit/lambda/cognito_user_profile_sync/test_student_refresh_deny.py); frontend Vitest for guard/refresh/API; integration: [`tests/integration/test_student_single_session.py`](tests/integration/test_student_single_session.py) (requires deployed auth Pre Token + catalog guard).
+
+### Design reference
+
+- Spike / mechanism: [`plans/student-single-session-refresh-spike.md`](plans/student-single-session-refresh-spike.md)
+- MVP contract: [`design.md` §9](./design.md) — Student single-session
+
+### Deploy note
+
+Not claimed live in prod from this entry alone — **auth stack deploy** (Pre Token trigger, custom attribute) + **catalog Lambda** + **migration 013** apply-schema are required for end-to-end behavior in an environment.
+
+---
+
 ## 2026-05-23 — Jordan legal pages (Privacy / Terms, EN/AR)
 
 ### Goal
