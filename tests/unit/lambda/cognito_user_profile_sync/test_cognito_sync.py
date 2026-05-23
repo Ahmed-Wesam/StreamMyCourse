@@ -40,7 +40,7 @@ def _sample_post_auth_event(
         key = "custom:role" if use_custom_role_key else "role"
         attrs[key] = role_attr
     if student_active_session_id is not None:
-        attrs["custom:student_active_session_id"] = student_active_session_id
+        attrs["custom:active_session_id"] = student_active_session_id
     evt: Dict[str, Any] = {
         "version": "1",
         "triggerSource": "PostAuthentication_Authentication",

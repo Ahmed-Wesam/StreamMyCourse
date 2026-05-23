@@ -219,7 +219,7 @@ Resources:
           AttributeDataType: String
           Mutable: true
           Required: false
-        - Name: student_active_session_id
+        - Name: active_session_id
           AttributeDataType: String
           Mutable: true
           Required: false
