@@ -582,10 +582,16 @@ if ($Template -eq "edge-hosting") {
     $cfDeployArgs += '--parameter-overrides'
     $cfDeployArgs += $rdsOverrides
 } elseif ($Template -eq "video") {
+    $videoCors = if ($Environment -eq 'prod') {
+        'https://researchspectrum.org,https://teach.researchspectrum.org,http://localhost:5173,http://127.0.0.1:5173,http://localhost:5174,http://127.0.0.1:5174'
+    } else {
+        'https://dev.researchspectrum.org,https://teach.dev.researchspectrum.org,http://localhost:5173,http://127.0.0.1:5173,http://localhost:5174,http://127.0.0.1:5174'
+    }
     $videoOverrides = @(
         "Environment=$Environment",
         "InvalidationLambdaCodeS3Bucket=$videoArtifactBucket",
-        "InvalidationLambdaCodeS3Key=$videoInvalidationKey"
+        "InvalidationLambdaCodeS3Key=$videoInvalidationKey",
+        "CorsAllowedOrigins=$videoCors"
     )
     $cfDeployArgs += '--parameter-overrides'
     $cfDeployArgs += $videoOverrides
