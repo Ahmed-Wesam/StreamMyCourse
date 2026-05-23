@@ -34,6 +34,15 @@ Move hosted student and teacher SPAs from **`streammycourse.click`** to **`resea
 
 ---
 
+## 2026-05-23 — SPSS Spectrum branding and instructor photo
+
+### Changes
+
+- [x] **User-facing copy** — Replaced legacy **Stream My Course** strings in SPA shells ([`frontend/student.html`](frontend/student.html), [`frontend/teacher.html`](frontend/teacher.html), [`frontend/index.html`](frontend/index.html)), headers, auth, subscribe copy, and teacher payment setup with **SPSS Spectrum**; added **`og:title`** / **`og:description`** for link previews.
+- [x] **Instructor hero** — Updated [`frontend/src/assets/instructors/dr-bahaa-aburayya.webp`](frontend/src/assets/instructors/dr-bahaa-aburayya.webp) (cropped portrait for the home page circle).
+
+---
+
 ## 2026-05-22 — Frontend bundle: deferred auth + scenario CI guard
 
 ### Goal
