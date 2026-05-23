@@ -2,7 +2,7 @@
 export const subscribePaywallTitle = 'Subscribe to unlock all courses'
 
 export const subscribePaywallBody =
-  'One monthly subscription gives access to every published course on StreamMyCourse.'
+  'One monthly subscription gives access to every published course on SPSS Spectrum.'
 
 export const subscribeCtaLabel = 'Subscribe — 50 JOD / month'
 
