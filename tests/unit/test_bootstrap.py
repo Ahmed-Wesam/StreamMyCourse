@@ -74,6 +74,7 @@ class TestLambdaBootstrap:
             cfg,
             service,
             auth_service,
+            auth_repo,
             progress_service,
             question_bank_service,
             merchant_service,
@@ -82,6 +83,7 @@ class TestLambdaBootstrap:
         assert isinstance(cfg, AppConfig)
         assert service is None
         assert auth_service is None
+        assert auth_repo is None
         assert progress_service is None
         assert question_bank_service is None
         assert merchant_service is None
@@ -98,13 +100,14 @@ class TestLambdaBootstrap:
         )
         monkeypatch.setenv("VIDEO_BUCKET", "my-bucket")
 
-        _cfg1, svc1, auth1, prog1, qb1, merch1, sub_manage1 = bootstrap_mod.lambda_bootstrap()
-        _cfg2, svc2, auth2, prog2, qb2, merch2, sub_manage2 = bootstrap_mod.lambda_bootstrap()
+        _cfg1, svc1, auth1, repo1, prog1, qb1, merch1, sub_manage1 = bootstrap_mod.lambda_bootstrap()
+        _cfg2, svc2, auth2, repo2, prog2, qb2, merch2, sub_manage2 = bootstrap_mod.lambda_bootstrap()
 
         assert svc1 is not None
         assert svc2 is not None
         assert svc1 is svc2
         assert auth1 is auth2
+        assert repo1 is repo2
         assert prog1 is prog2
         assert qb1 is qb2
         assert merch1 is merch2
@@ -123,6 +126,7 @@ class TestLambdaBootstrap:
             _cfg,
             service,
             auth_service,
+            auth_repo,
             progress_service,
             question_bank_service,
             merchant_service,
@@ -130,6 +134,7 @@ class TestLambdaBootstrap:
         ) = bootstrap_mod.lambda_bootstrap()
         assert service is not None
         assert auth_service is not None
+        assert auth_repo is not None
         assert progress_service is not None
         assert question_bank_service is not None
         assert merchant_service is not None
@@ -153,6 +158,7 @@ class TestBuildAwsDeps:
         assert deps.cfg is cfg
         assert deps.service is not None
         assert deps.auth_service is not None
+        assert deps.auth_repo is not None
         assert deps.progress_service is not None
         assert deps.question_bank_service is not None
         assert deps.merchant_service is not None
@@ -212,6 +218,7 @@ class TestBuildAwsDepsWiresRdsRepos:
             SubscriptionRdsRepository,
         )
         assert isinstance(deps.auth_service._repo, UserProfileRdsRepository)
+        assert deps.auth_repo is deps.auth_service._repo
         assert isinstance(deps.progress_service._progress_repo, LessonProgressRdsRepository)
         assert isinstance(deps.question_bank_service._repo, QuestionBankRdsRepository)
         assert deps.service._module_quiz_visibility is not None

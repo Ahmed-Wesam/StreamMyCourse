@@ -42,6 +42,8 @@ def test_load_sync_config_strips_env_and_defaults(monkeypatch) -> None:
     monkeypatch.setenv("DB_HOST", " db.local ")
     monkeypatch.setenv("DB_NAME", "   ")
     monkeypatch.setenv("DB_PORT", "15432")
+    monkeypatch.setenv("STUDENT_COGNITO_CLIENT_ID", " student-id ")
+    monkeypatch.setenv("TEACHER_COGNITO_CLIENT_ID", " teacher-id ")
 
     cfg = load_sync_config()
     assert cfg.db_secret_arn == "arn:x"
@@ -49,4 +51,6 @@ def test_load_sync_config_strips_env_and_defaults(monkeypatch) -> None:
     # blank -> default postgres
     assert cfg.db_name == "postgres"
     assert cfg.db_port == 15432
+    assert cfg.student_client_id == "student-id"
+    assert cfg.teacher_client_id == "teacher-id"
 

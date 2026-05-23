@@ -15,8 +15,12 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from handler import sync_post_authentication
+from handler import lambda_handler, sync_post_authentication
 from sync_config import SyncConfig
+
+STUDENT_CLIENT_ID = "student-client-id-example"
+TEACHER_CLIENT_ID = "teacher-client-id-example"
+ACTIVE_SESSION = "22222222-2222-2222-2222-222222222222"
 
 
 def _sample_post_auth_event(
@@ -25,6 +29,8 @@ def _sample_post_auth_event(
     email: str = "student@example.com",
     role_attr: str | None = "teacher",
     use_custom_role_key: bool = True,
+    client_id: str | None = None,
+    student_active_session_id: str | None = None,
 ) -> Dict[str, Any]:
     attrs: Dict[str, str] = {
         "sub": sub,
@@ -33,7 +39,9 @@ def _sample_post_auth_event(
     if role_attr is not None:
         key = "custom:role" if use_custom_role_key else "role"
         attrs[key] = role_attr
-    return {
+    if student_active_session_id is not None:
+        attrs["custom:student_active_session_id"] = student_active_session_id
+    evt: Dict[str, Any] = {
         "version": "1",
         "triggerSource": "PostAuthentication_Authentication",
         "region": "eu-west-1",
@@ -42,6 +50,9 @@ def _sample_post_auth_event(
         "request": {"userAttributes": attrs},
         "response": {},
     }
+    if client_id is not None:
+        evt["callerContext"] = {"clientId": client_id}
+    return evt
 
 
 @pytest.fixture
@@ -51,6 +62,8 @@ def rds_cfg() -> SyncConfig:
         db_host="db.local",
         db_name="app",
         db_port=5432,
+        student_client_id=STUDENT_CLIENT_ID,
+        teacher_client_id=TEACHER_CLIENT_ID,
     )
 
 
@@ -110,7 +123,7 @@ def test_sync_does_not_raise_on_upsert_failure(rds_cfg: SyncConfig) -> None:
     assert out is evt
 
 
-def test_lambda_handler_uses_config_loader() -> None:
+def test_lambda_handler_routes_post_authentication() -> None:
     cfg = SyncConfig(
         db_secret_arn="arn:aws:secretsmanager:eu-west-1:123:secret:x",
         db_host="db.local",
@@ -121,9 +134,64 @@ def test_lambda_handler_uses_config_loader() -> None:
     with (
         patch("handler._config_loader", return_value=cfg),
         patch("handler.sync_post_authentication", return_value={"ok": True}) as sync_mock,
+        patch("handler.handle_pre_token_generation") as pre_token_mock,
     ):
-        from handler import lambda_handler
-
         out = lambda_handler(evt, None)
     sync_mock.assert_called_once()
+    pre_token_mock.assert_not_called()
     assert out == {"ok": True}
+
+
+def test_lambda_handler_routes_pre_token_generation() -> None:
+    cfg = SyncConfig(
+        db_secret_arn="arn:aws:secretsmanager:eu-west-1:123:secret:x",
+        db_host="db.local",
+        db_name="app",
+        db_port=5432,
+    )
+    evt = {
+        "triggerSource": "TokenGeneration_RefreshTokens",
+        "callerContext": {"clientId": STUDENT_CLIENT_ID},
+        "request": {},
+        "response": {},
+    }
+    with (
+        patch("handler._config_loader", return_value=cfg),
+        patch("handler.handle_pre_token_generation", return_value={"token": True}) as pre_token_mock,
+        patch("handler.sync_post_authentication") as sync_mock,
+    ):
+        out = lambda_handler(evt, None)
+    pre_token_mock.assert_called_once()
+    sync_mock.assert_not_called()
+    assert out == {"token": True}
+
+
+def test_sync_student_client_does_not_copy_cognito_session_to_rds(rds_cfg: SyncConfig) -> None:
+    """Pre Token bump owns session id; PostAuth must not write a stale attribute."""
+    evt = _sample_post_auth_event(
+        role_attr="student",
+        client_id=STUDENT_CLIENT_ID,
+        student_active_session_id=ACTIVE_SESSION,
+    )
+    mock_factory = MagicMock()
+    with (
+        patch("handler.get_cached_connection_factory", return_value=mock_factory),
+        patch("handler.upsert_user_profile") as mock_upsert,
+    ):
+        sync_post_authentication(evt, rds_cfg)
+    assert mock_upsert.call_args.kwargs.get("student_active_session_id") is None
+
+
+def test_sync_teacher_client_does_not_set_student_session(rds_cfg: SyncConfig) -> None:
+    evt = _sample_post_auth_event(
+        role_attr="teacher",
+        client_id=TEACHER_CLIENT_ID,
+        student_active_session_id=ACTIVE_SESSION,
+    )
+    mock_factory = MagicMock()
+    with (
+        patch("handler.get_cached_connection_factory", return_value=mock_factory),
+        patch("handler.upsert_user_profile") as mock_upsert,
+    ):
+        sync_post_authentication(evt, rds_cfg)
+    assert mock_upsert.call_args.kwargs.get("student_active_session_id") is None
