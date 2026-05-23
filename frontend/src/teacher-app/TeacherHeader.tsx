@@ -8,7 +8,7 @@ const studentSiteUrl =
   typeof import.meta.env.VITE_STUDENT_SITE_URL === 'string' &&
   import.meta.env.VITE_STUDENT_SITE_URL.length > 0
     ? import.meta.env.VITE_STUDENT_SITE_URL
-    : 'https://dev.streammycourse.click'
+    : 'https://dev.researchspectrum.org'
 
 export function TeacherHeader() {
   const { user, signOut } = useAuthenticator((ctx) => [ctx.user, ctx.signOut])

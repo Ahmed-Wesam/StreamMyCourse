@@ -87,7 +87,7 @@ jobs:
         working-directory: frontend
         env:
           VITE_API_BASE_URL: ${{ secrets.VITE_API_BASE_URL }}
-          VITE_STUDENT_SITE_URL: ${{ inputs.target_environment == 'prod' && 'https://app.streammycourse.click' || 'https://dev.streammycourse.click' }}
+          VITE_STUDENT_SITE_URL: ${{ inputs.target_environment == 'prod' && 'https://researchspectrum.org' || 'https://dev.researchspectrum.org' }}
           VITE_COGNITO_USER_POOL_ID: ${{ secrets.VITE_COGNITO_USER_POOL_ID }}
           VITE_COGNITO_USER_POOL_CLIENT_ID: ${{ secrets.VITE_COGNITO_TEACHER_CLIENT_ID }}
           VITE_COGNITO_DOMAIN: ${{ secrets.VITE_COGNITO_DOMAIN }}
