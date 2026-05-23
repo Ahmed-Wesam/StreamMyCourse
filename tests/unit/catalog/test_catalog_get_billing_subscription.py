@@ -73,6 +73,7 @@ def _bootstrap_returning(cfg: AppConfig, *, manage_svc: Any):
             cfg,
             MagicMock(name="course_svc"),
             MagicMock(name="auth_svc"),
+            MagicMock(name="auth_repo"),
             MagicMock(name="progress_svc"),
             MagicMock(name="qb_svc"),
             MagicMock(name="merchant_svc"),
