@@ -13,6 +13,23 @@ vi.mock('./auth', () => ({
   isAuthConfigured: () => true,
 }))
 
+const notifySessionSupersededMock = vi.hoisted(() => vi.fn())
+vi.mock('./handleSessionSuperseded', () => ({
+  notifySessionSuperseded: (...args: unknown[]) => notifySessionSupersededMock(...args),
+  subscribeSessionSuperseded: () => () => {},
+  resetSessionSupersededListenersForTests: () => {},
+}))
+
+const buildStudentRefreshClientMetadataMock = vi.hoisted(() =>
+  vi.fn(async () => ({} as Record<string, string>)),
+)
+vi.mock('./student-session-refresh', () => ({
+  buildStudentRefreshClientMetadata: (...args: unknown[]) =>
+    buildStudentRefreshClientMetadataMock(...args),
+  STUDENT_SESSION_METADATA_KEY: 'student_session_id',
+  registerStudentSessionRefreshMetadata: vi.fn(),
+}))
+
 import {
   ApiError,
   cancelSubscription,
@@ -44,6 +61,7 @@ import {
   isNotSubscribedError,
   isPlaybackAuthRequiredError,
   isProgressRdsUnavailableError,
+  isSessionSupersededError,
   isSubscriptionRequiredError,
   listCourseModules,
   listCourses,
@@ -178,6 +196,20 @@ describe('catalog GET without signed-in session', () => {
   })
 })
 
+describe('isSessionSupersededError', () => {
+  it('matches session_superseded code', () => {
+    expect(isSessionSupersededError(new ApiError('signed in elsewhere', 401, 'session_superseded'))).toBe(true)
+  })
+
+  it('is false for other 401 codes', () => {
+    expect(isSessionSupersededError(new ApiError('auth', 401, 'unauthorized'))).toBe(false)
+  })
+
+  it('is false for non-ApiError', () => {
+    expect(isSessionSupersededError(new Error('session_superseded'))).toBe(false)
+  })
+})
+
 describe('isEnrollmentRequiredError', () => {
   it('matches enrollment_required code', () => {
     expect(isEnrollmentRequiredError(new ApiError('x', 403, 'enrollment_required'))).toBe(true)
@@ -223,6 +255,12 @@ describe('isPlaybackAuthRequiredError', () => {
 
   it('is false for non-ApiError', () => {
     expect(isPlaybackAuthRequiredError(new Error('fail'))).toBe(false)
+  })
+
+  it('is false for session_superseded (handled by StudentSessionGuard)', () => {
+    expect(
+      isPlaybackAuthRequiredError(new ApiError('signed in elsewhere', 401, 'session_superseded')),
+    ).toBe(false)
   })
 })
 
@@ -1059,6 +1097,42 @@ describe('authHeader swallows fetchAuthSession errors', () => {
   })
   it('issues request without Authorization header', async () => {
     await getCourse('c1')
+    const [, init] = vi.mocked(fetch).mock.calls[0]
+    expect(new Headers(init?.headers as HeadersInit).has('Authorization')).toBe(false)
+  })
+})
+
+describe('authHeader refresh failure with student session metadata', () => {
+  const originalEnv = import.meta.env.VITE_API_BASE_URL
+  beforeEach(() => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () =>
+        new Response(JSON.stringify({ id: 'x', title: 'T', description: 'D', status: 'PUBLISHED' }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        }),
+      ),
+    )
+    fetchAuthSessionMock
+      .mockResolvedValueOnce({ tokens: {} })
+      .mockRejectedValueOnce(new Error('refresh denied'))
+    buildStudentRefreshClientMetadataMock.mockResolvedValue({
+      student_session_id: '11111111-1111-1111-1111-111111111111',
+    })
+    notifySessionSupersededMock.mockClear()
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    ;(import.meta as any).env.VITE_API_BASE_URL = 'https://api.example/v1'
+  })
+  afterEach(() => {
+    vi.unstubAllGlobals()
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    ;(import.meta as any).env.VITE_API_BASE_URL = originalEnv
+    vi.clearAllMocks()
+  })
+  it('notifies session superseded when refresh fails with stored student session id', async () => {
+    await getCourse('c1')
+    expect(notifySessionSupersededMock).toHaveBeenCalledTimes(1)
     const [, init] = vi.mocked(fetch).mock.calls[0]
     expect(new Headers(init?.headers as HeadersInit).has('Authorization')).toBe(false)
   })
