@@ -351,6 +351,9 @@ jobs:
       - name: Run pytest
         id: pytest
         working-directory: tests/integration
+        env:
+          COGNITO_TEST_PASSWORD_STUDENT: ${{ secrets.COGNITO_RDS_VERIFY_TEST_PASSWORD_STUDENT }}
+          COGNITO_TEST_USERNAME_STUDENT: ${{ vars.COGNITO_RDS_VERIFY_TEST_USERNAME_STUDENT }}
         run: |
           echo "[integration-diag] pytest_start=$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
           # Disable errexit only around pytest so the end marker is emitted even
@@ -479,6 +482,7 @@ jobs:
             "${{ github.workspace }}/infrastructure/database/migrations/010_module_quiz_attempt_submissions.sql" \
             "${{ github.workspace }}/infrastructure/database/migrations/011_billing_subscription.sql" \
             "${{ github.workspace }}/infrastructure/database/migrations/012_billing_plan_price_50_jod.sql" \
+            "${{ github.workspace }}/infrastructure/database/migrations/013_student_active_session.sql" \
             > "$PKG/schema.sql"
           pip install psycopg2-binary==2.9.9 \
             --quiet \
@@ -656,6 +660,7 @@ jobs:
           WS="${{ github.workspace }}"
           cp "$WS/infrastructure/lambda/cognito_user_profile_sync/_vendor_bootstrap.py" "$PKG/"
           cp "$WS/infrastructure/lambda/cognito_user_profile_sync/handler.py" "$PKG/"
+          cp "$WS/infrastructure/lambda/cognito_user_profile_sync/session_sync.py" "$PKG/"
           cp "$WS/infrastructure/lambda/cognito_user_profile_sync/sync_config.py" "$PKG/"
           cp "$WS/infrastructure/lambda/cognito_user_profile_sync/repo.py" "$PKG/"
           pip install psycopg2-binary==2.9.9 \
@@ -714,6 +719,43 @@ jobs:
             --region "${{ env.AWS_REGION }}" \
             --no-fail-on-empty-changeset \
             --parameter-overrides "${auth_params[@]}"
+
+          # Second pass: wire sync Lambda client IDs (avoids CFN cycle Pool -> Lambda -> Client -> Pool).
+          student_client_id="$(aws cloudformation describe-stacks \
+            --stack-name "$STACK" \
+            --region "${{ env.AWS_REGION }}" \
+            --query "Stacks[0].Outputs[?OutputKey=='StudentUserPoolClientId'].OutputValue" \
+            --output text 2>/dev/null || true)"
+          teacher_client_id="$(aws cloudformation describe-stacks \
+            --stack-name "$STACK" \
+            --region "${{ env.AWS_REGION }}" \
+            --query "Stacks[0].Outputs[?OutputKey=='TeacherUserPoolClientId'].OutputValue" \
+            --output text 2>/dev/null || true)"
+          if [[ -n "$student_client_id" && "$student_client_id" != "None" && -n "$teacher_client_id" && "$teacher_client_id" != "None" ]]; then
+            auth_params_client=(
+              "Environment=dev"
+              "CognitoDomainPrefix=${{ vars.COGNITO_DOMAIN_PREFIX }}"
+              "GoogleClientId=${GOOGLE_OAUTH_CLIENT_ID}"
+              "GoogleClientSecret=${GOOGLE_OAUTH_CLIENT_SECRET}"
+              "RdsStackName=StreamMyCourse-Rds-dev"
+              "EnableUserProfileSync=true"
+              "CognitoUserProfileSyncCodeS3Bucket=${{ steps.cognito_sync_pkg.outputs.bucket }}"
+              "CognitoUserProfileSyncCodeS3Key=${{ steps.cognito_sync_pkg.outputs.key }}"
+              "StudentCognitoClientId=${student_client_id}"
+              "TeacherCognitoClientId=${teacher_client_id}"
+            )
+            [[ -n "$student_cb" ]] && auth_params_client+=("StudentCallbackUrls=$student_cb")
+            [[ -n "$student_lo" ]] && auth_params_client+=("StudentLogoutUrls=$student_lo")
+            [[ -n "$teacher_cb" ]] && auth_params_client+=("TeacherCallbackUrls=$teacher_cb")
+            [[ -n "$teacher_lo" ]] && auth_params_client+=("TeacherLogoutUrls=$teacher_lo")
+            aws cloudformation deploy \
+              --template-file "${{ github.workspace }}/infrastructure/templates/auth-stack.yaml" \
+              --stack-name "$STACK" \
+              --capabilities CAPABILITY_IAM CAPABILITY_NAMED_IAM \
+              --region "${{ env.AWS_REGION }}" \
+              --no-fail-on-empty-changeset \
+              --parameter-overrides "${auth_params_client[@]}"
+          fi
 
           USER_POOL_ARN="$(aws cloudformation describe-stacks \
             --stack-name "$STACK" \
@@ -939,6 +981,7 @@ jobs:
             "${{ github.workspace }}/infrastructure/database/migrations/010_module_quiz_attempt_submissions.sql" \
             "${{ github.workspace }}/infrastructure/database/migrations/011_billing_subscription.sql" \
             "${{ github.workspace }}/infrastructure/database/migrations/012_billing_plan_price_50_jod.sql" \
+            "${{ github.workspace }}/infrastructure/database/migrations/013_student_active_session.sql" \
             > "$PKG/schema.sql"
           pip install psycopg2-binary==2.9.9 \
             --quiet \
@@ -1131,6 +1174,7 @@ jobs:
           WS="${{ github.workspace }}"
           cp "$WS/infrastructure/lambda/cognito_user_profile_sync/_vendor_bootstrap.py" "$PKG/"
           cp "$WS/infrastructure/lambda/cognito_user_profile_sync/handler.py" "$PKG/"
+          cp "$WS/infrastructure/lambda/cognito_user_profile_sync/session_sync.py" "$PKG/"
           cp "$WS/infrastructure/lambda/cognito_user_profile_sync/sync_config.py" "$PKG/"
           cp "$WS/infrastructure/lambda/cognito_user_profile_sync/repo.py" "$PKG/"
           pip install psycopg2-binary==2.9.9 \
@@ -1172,6 +1216,40 @@ jobs:
               "EnableUserProfileSync=true" \
               "CognitoUserProfileSyncCodeS3Bucket=${{ steps.cognito_sync_pkg_prod.outputs.bucket }}" \
               "CognitoUserProfileSyncCodeS3Key=${{ steps.cognito_sync_pkg_prod.outputs.key }}"
+
+          student_client_id="$(aws cloudformation describe-stacks \
+            --stack-name "$STACK" \
+            --region "${{ env.AWS_REGION }}" \
+            --query "Stacks[0].Outputs[?OutputKey=='StudentUserPoolClientId'].OutputValue" \
+            --output text 2>/dev/null || true)"
+          teacher_client_id="$(aws cloudformation describe-stacks \
+            --stack-name "$STACK" \
+            --region "${{ env.AWS_REGION }}" \
+            --query "Stacks[0].Outputs[?OutputKey=='TeacherUserPoolClientId'].OutputValue" \
+            --output text 2>/dev/null || true)"
+          if [[ -n "$student_client_id" && "$student_client_id" != "None" && -n "$teacher_client_id" && "$teacher_client_id" != "None" ]]; then
+            aws cloudformation deploy \
+              --template-file "${{ github.workspace }}/infrastructure/templates/auth-stack.yaml" \
+              --stack-name "$STACK" \
+              --capabilities CAPABILITY_IAM CAPABILITY_NAMED_IAM \
+              --region "${{ env.AWS_REGION }}" \
+              --no-fail-on-empty-changeset \
+              --parameter-overrides \
+                "Environment=prod" \
+                "CognitoDomainPrefix=${{ vars.COGNITO_DOMAIN_PREFIX }}" \
+                ${STUDENT_COGNITO_CALLBACK_URLS:+StudentCallbackUrls=${STUDENT_COGNITO_CALLBACK_URLS}} \
+                ${STUDENT_COGNITO_LOGOUT_URLS:+StudentLogoutUrls=${STUDENT_COGNITO_LOGOUT_URLS}} \
+                ${TEACHER_COGNITO_CALLBACK_URLS:+TeacherCallbackUrls=${TEACHER_COGNITO_CALLBACK_URLS}} \
+                ${TEACHER_COGNITO_LOGOUT_URLS:+TeacherLogoutUrls=${TEACHER_COGNITO_LOGOUT_URLS}} \
+                "GoogleClientId=${GOOGLE_OAUTH_CLIENT_ID}" \
+                "GoogleClientSecret=${GOOGLE_OAUTH_CLIENT_SECRET}" \
+                "RdsStackName=StreamMyCourse-Rds-prod" \
+                "EnableUserProfileSync=true" \
+                "CognitoUserProfileSyncCodeS3Bucket=${{ steps.cognito_sync_pkg_prod.outputs.bucket }}" \
+                "CognitoUserProfileSyncCodeS3Key=${{ steps.cognito_sync_pkg_prod.outputs.key }}" \
+                "StudentCognitoClientId=${student_client_id}" \
+                "TeacherCognitoClientId=${teacher_client_id}"
+          fi
 
           USER_POOL_ARN="$(aws cloudformation describe-stacks \
             --stack-name "$STACK" \
