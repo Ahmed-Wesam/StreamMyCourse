@@ -142,6 +142,7 @@ class AwsDeps:
     cfg: AppConfig
     service: CourseManagementService
     auth_service: UserProfileService
+    auth_repo: UserProfileRdsRepository
     progress_service: LessonProgressService
     question_bank_service: QuestionBankService
     merchant_service: MerchantStatusService
@@ -286,6 +287,7 @@ def build_aws_deps(cfg: AppConfig) -> AwsDeps:
         cfg=cfg,
         service=service,
         auth_service=auth_service,
+        auth_repo=auth_repo,
         progress_service=progress_service,
         question_bank_service=question_bank_service,
         merchant_service=merchant_service,
@@ -305,6 +307,7 @@ def lambda_bootstrap() -> Tuple[
     AppConfig,
     Optional[CourseManagementService],
     Optional[UserProfileService],
+    Optional[UserProfileRdsRepository],
     Optional[LessonProgressService],
     Optional[QuestionBankService],
     Optional[MerchantStatusService],
@@ -313,12 +316,12 @@ def lambda_bootstrap() -> Tuple[
     """
     Composition root: load config and construct dependencies once.
     When RDS settings are incomplete the catalog cannot be wired, so
-    ``(cfg, None, None, None, None, None, None)`` is returned and the handler responds
+    ``(cfg, None, None, None, None, None, None, None)`` is returned and the handler responds
     with a configuration error.
     """
     cfg = load_config()
     if not _rds_config_complete(cfg):
-        return cfg, None, None, None, None, None, None
+        return cfg, None, None, None, None, None, None, None
 
     existing = get_cached_aws_deps()
     if existing is not None:
@@ -326,6 +329,7 @@ def lambda_bootstrap() -> Tuple[
             existing.cfg,
             existing.service,
             existing.auth_service,
+            existing.auth_repo,
             existing.progress_service,
             existing.question_bank_service,
             existing.merchant_service,
@@ -338,6 +342,7 @@ def lambda_bootstrap() -> Tuple[
         deps.cfg,
         deps.service,
         deps.auth_service,
+        deps.auth_repo,
         deps.progress_service,
         deps.question_bank_service,
         deps.merchant_service,

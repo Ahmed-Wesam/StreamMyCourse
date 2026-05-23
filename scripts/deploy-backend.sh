@@ -306,6 +306,7 @@ echo "Deploying API stack: $API_STACK (video bucket: $VIDEO_BUCKET)"
 # JWT audience validation in the TOKEN authorizer must accept every app client that mints
 # IdTokens for this API (teacher + student). CI integration tests mint both audiences.
 AUTH_STACK_NAME="StreamMyCourse-Auth-${ENV}"
+STUDENT_CLIENT="${STUDENT_CLIENT:-}"
 COGNITO_CLIENT_IDS="${COGNITO_CLIENT_IDS:-}"
 if [[ -z "${COGNITO_CLIENT_IDS}" ]]; then
   if aws cloudformation describe-stacks --stack-name "$AUTH_STACK_NAME" --region "$REGION" &>/dev/null; then
@@ -314,11 +315,13 @@ if [[ -z "${COGNITO_CLIENT_IDS}" ]]; then
       --region "$REGION" \
       --query "Stacks[0].Outputs[?OutputKey=='TeacherUserPoolClientId'].OutputValue" \
       --output text)"
-    STUDENT_CLIENT="$(aws cloudformation describe-stacks \
-      --stack-name "$AUTH_STACK_NAME" \
-      --region "$REGION" \
-      --query "Stacks[0].Outputs[?OutputKey=='StudentUserPoolClientId'].OutputValue" \
-      --output text)"
+    if [[ -z "${STUDENT_CLIENT}" || "${STUDENT_CLIENT}" == "None" ]]; then
+      STUDENT_CLIENT="$(aws cloudformation describe-stacks \
+        --stack-name "$AUTH_STACK_NAME" \
+        --region "$REGION" \
+        --query "Stacks[0].Outputs[?OutputKey=='StudentUserPoolClientId'].OutputValue" \
+        --output text)"
+    fi
     CID_PARTS=()
     if [[ -n "${TEACHER_CLIENT}" && "${TEACHER_CLIENT}" != "None" ]]; then
       CID_PARTS+=("${TEACHER_CLIENT}")
@@ -329,6 +332,15 @@ if [[ -z "${COGNITO_CLIENT_IDS}" ]]; then
     if ((${#CID_PARTS[@]})); then
       COGNITO_CLIENT_IDS="$(IFS=,; echo "${CID_PARTS[*]}")"
     fi
+  fi
+fi
+if [[ -z "${STUDENT_CLIENT}" || "${STUDENT_CLIENT}" == "None" ]]; then
+  if aws cloudformation describe-stacks --stack-name "$AUTH_STACK_NAME" --region "$REGION" &>/dev/null; then
+    STUDENT_CLIENT="$(aws cloudformation describe-stacks \
+      --stack-name "$AUTH_STACK_NAME" \
+      --region "$REGION" \
+      --query "Stacks[0].Outputs[?OutputKey=='StudentUserPoolClientId'].OutputValue" \
+      --output text)"
   fi
 fi
 if [[ -z "${COGNITO_CLIENT_IDS}" ]]; then
@@ -345,6 +357,9 @@ if [[ -n "${COGNITO_USER_POOL_ARN:-}" ]]; then
 fi
 if [[ -n "${COGNITO_CLIENT_IDS}" ]]; then
   COGNITO_OVERRIDE+=("CognitoClientId=${COGNITO_CLIENT_IDS}")
+fi
+if [[ -n "${STUDENT_CLIENT:-}" && "${STUDENT_CLIENT}" != "None" ]]; then
+  COGNITO_OVERRIDE+=("StudentCognitoClientId=${STUDENT_CLIENT}")
 fi
 
 # Catalog Lambda requires VPC + DB_* from the RDS stack exports.
