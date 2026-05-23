@@ -14,6 +14,8 @@ class SyncConfig:
     db_host: str
     db_name: str
     db_port: int
+    student_client_id: str = ""
+    teacher_client_id: str = ""
 
 
 _DEFAULT_DB_PORT = 5432
@@ -35,4 +37,6 @@ def load_sync_config() -> SyncConfig:
         db_host=os.environ.get("DB_HOST", "").strip(),
         db_name=os.environ.get("DB_NAME", "postgres").strip() or "postgres",
         db_port=_parse_db_port(os.environ.get("DB_PORT", "")),
+        student_client_id=os.environ.get("STUDENT_COGNITO_CLIENT_ID", "").strip(),
+        teacher_client_id=os.environ.get("TEACHER_COGNITO_CLIENT_ID", "").strip(),
     )

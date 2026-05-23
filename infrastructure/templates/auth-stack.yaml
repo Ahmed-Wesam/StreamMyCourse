@@ -73,6 +73,19 @@ Parameters:
     Default: ''
     Description: S3 key for the Cognito user profile sync Lambda deployment zip
 
+  StudentCognitoClientId:
+    Type: String
+    Default: ''
+    Description: >-
+      Student app client ID for single-session Pre Token routing (set from stack
+      output on deploy; avoids circular Ref from sync Lambda to UserPoolClient).
+
+  TeacherCognitoClientId:
+    Type: String
+    Default: ''
+    Description: >-
+      Teacher app client ID for Pre Token pass-through routing (optional guard).
+
 Conditions:
   HasRdsStackName: !Not [!Equals [!Ref RdsStackName, '']]
   HasSyncLambdaCode: !And
@@ -130,6 +143,14 @@ Resources:
                   - ec2:AssignPrivateIpAddresses
                   - ec2:UnassignPrivateIpAddresses
                 Resource: '*'
+        - PolicyName: CognitoAdminUpdateUserAttributes
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - cognito-idp:AdminUpdateUserAttributes
+                Resource: !Sub 'arn:aws:cognito-idp:${AWS::Region}:${AWS::AccountId}:userpool/*'
       Tags:
         - Key: Project
           Value: StreamMyCourse
@@ -166,6 +187,8 @@ Resources:
           DB_NAME: !ImportValue
             'Fn::Sub': '${RdsStackName}-DbName'
           LOG_LEVEL: INFO
+          STUDENT_COGNITO_CLIENT_ID: !Ref StudentCognitoClientId
+          TEACHER_COGNITO_CLIENT_ID: !Ref TeacherCognitoClientId
       Code:
         S3Bucket: !Ref CognitoUserProfileSyncCodeS3Bucket
         S3Key: !Ref CognitoUserProfileSyncCodeS3Key
@@ -196,6 +219,10 @@ Resources:
           AttributeDataType: String
           Mutable: true
           Required: false
+        - Name: student_active_session_id
+          AttributeDataType: String
+          Mutable: true
+          Required: false
       UserAttributeUpdateSettings:
         AttributesRequireVerificationBeforeUpdate: []
       EmailConfiguration:
@@ -211,6 +238,9 @@ Resources:
       LambdaConfig: !If
         - ShouldDeployUserProfileSync
         - PostAuthentication: !GetAtt UserProfileSyncLambda.Arn
+          PreTokenGeneration: !GetAtt UserProfileSyncLambda.Arn
+          PreTokenGenerationConfig:
+            LambdaVersion: V1_0
         - !Ref AWS::NoValue
 
   UserProfileSyncLambdaPermission:
@@ -287,6 +317,7 @@ Resources:
       AccessTokenValidity: 60
       IdTokenValidity: 60
       RefreshTokenValidity: 30
+      EnableTokenRevocation: true
       TokenValidityUnits:
         AccessToken: minutes
         IdToken: minutes
