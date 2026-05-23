@@ -1,4 +1,4 @@
-"""Cognito PostAuthentication trigger: upsert ``users`` row in RDS (idempotent)."""
+"""Cognito PostAuthentication and Pre Token Generation triggers."""
 
 from __future__ import annotations
 
@@ -8,6 +8,7 @@ import logging
 from typing import Any, Dict
 
 from repo import get_cached_connection_factory, upsert_user_profile
+from session_sync import handle_pre_token_generation
 from sync_config import SyncConfig, load_sync_config
 
 logger = logging.getLogger(__name__)
@@ -15,6 +16,7 @@ _LOG_PREFIX = "cognito_user_profile_sync"
 
 # Test hook: patch in unit tests to avoid config / DB wiring.
 _config_loader = load_sync_config
+_pre_token_client_warned = False
 
 
 def _normalize_role(raw: str) -> str:
@@ -49,9 +51,18 @@ def sync_post_authentication(event: Dict[str, Any], cfg: SyncConfig) -> Dict[str
         )
         return event
 
+    # Session id authority is Pre Token Generation (bump on login); do not copy a
+    # possibly stale Cognito attribute into RDS here — that briefly re-opens a
+    # superseded token until the subsequent TokenGeneration bump runs.
+
     try:
         factory = get_cached_connection_factory(cfg)
-        upsert_user_profile(factory, user_sub=user_sub, email=email, role=role)
+        upsert_user_profile(
+            factory,
+            user_sub=user_sub,
+            email=email,
+            role=role,
+        )
         logger.info(
             "%s upserted user",
             _LOG_PREFIX,
@@ -68,7 +79,19 @@ def sync_post_authentication(event: Dict[str, Any], cfg: SyncConfig) -> Dict[str
 
 
 def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
-    """Lambda entry point for Cognito PostAuthentication."""
+    """Lambda entry point for Cognito user-pool triggers."""
     logging.getLogger().setLevel(logging.INFO)
+    global _pre_token_client_warned
     cfg = _config_loader()
-    return sync_post_authentication(event, cfg)
+    trigger_source = str(event.get("triggerSource") or "")
+    if trigger_source.startswith("TokenGeneration_"):
+        if not (cfg.student_client_id or "").strip() and not _pre_token_client_warned:
+            logger.warning(
+                "%s STUDENT_COGNITO_CLIENT_ID unset; student Pre Token session logic disabled",
+                _LOG_PREFIX,
+            )
+            _pre_token_client_warned = True
+        return handle_pre_token_generation(event, cfg)
+    if trigger_source == "PostAuthentication_Authentication":
+        return sync_post_authentication(event, cfg)
+    return event
