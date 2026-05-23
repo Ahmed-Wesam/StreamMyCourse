@@ -80,13 +80,13 @@ cd infrastructure
 ```powershell
 # Dev SPA → dev API
 .\deploy.ps1 -Template web -StackName StreamMyCourse-Web-dev -Environment dev `
-  -DomainName dev.streammycourse.click -HostedZoneId YOUR_ZONE_ID `
+  -DomainName dev.researchspectrum.org -HostedZoneId YOUR_ZONE_ID `
   -CertificateArn YOUR_DEV_CERT_ARN `
   -ApiBaseUrl "https://YOUR_DEV_API.execute-api.eu-west-1.amazonaws.com/dev"
 
 # Prod SPA → prod API
 .\deploy.ps1 -Template web -StackName StreamMyCourse-Web-prod -Environment prod `
-  -DomainName app.streammycourse.click -HostedZoneId YOUR_ZONE_ID `
+  -DomainName researchspectrum.org -HostedZoneId YOUR_ZONE_ID `
   -CertificateArn YOUR_PROD_CERT_ARN `
   -ApiBaseUrl "https://YOUR_PROD_API.execute-api.eu-west-1.amazonaws.com/prod"
 ```
@@ -103,14 +103,14 @@ cd infrastructure
 cd infrastructure
 .\deploy.ps1 -Template teacher-web -StackName StreamMyCourse-TeacherWeb-dev -Environment dev `
   -Region eu-west-1 `
-  -DomainName teach.dev.streammycourse.click -HostedZoneId YOUR_ZONE_ID `
+  -DomainName teach.dev.researchspectrum.org -HostedZoneId YOUR_ZONE_ID `
   -CertificateArn YOUR_DEV_CERT_ARN `
   -ApiBaseUrl "https://YOUR_DEV_API.execute-api.eu-west-1.amazonaws.com/dev"
 
 # Teacher prod SPA
 .\deploy.ps1 -Template teacher-web -StackName StreamMyCourse-TeacherWeb-prod -Environment prod `
   -Region eu-west-1 `
-  -DomainName teach.streammycourse.click -HostedZoneId YOUR_ZONE_ID `
+  -DomainName teach.researchspectrum.org -HostedZoneId YOUR_ZONE_ID `
   -CertificateArn YOUR_PROD_CERT_ARN `
   -ApiBaseUrl "https://YOUR_PROD_API.execute-api.eu-west-1.amazonaws.com/prod"
 ```
@@ -129,7 +129,7 @@ aws cloudformation describe-stacks --stack-name streammycourse-api --region eu-w
 ```powershell
 .\deploy.ps1 -Template api -StackName streammycourse-api -Environment dev `
   -VideoBucketName YOUR_BUCKET -VideoUrl "https://YOUR_BUCKET.s3.REGION.amazonaws.com" `
-  -CorsAllowOrigin "https://dev.streammycourse.click,https://teach.dev.streammycourse.click,http://localhost:5173" -GatewayResponseAllowOrigin '*'
+  -CorsAllowOrigin "https://dev.researchspectrum.org,https://teach.dev.researchspectrum.org,http://localhost:5173,http://localhost:5174" -GatewayResponseAllowOrigin 'http://localhost:5173'
 ```
 
 Optional **`deploy.ps1`** API parameters: `-VideoUrl`, `-DefaultMp4Url` (passed through to CloudFormation).
@@ -153,8 +153,8 @@ Set on GitHub Environments **`dev`** and **`prod`** (values differ per env). Req
 |----------|---------|
 | **`COGNITO_DOMAIN_PREFIX`** | **Required** for full deploy. Globally unique Cognito hosted UI prefix (auth stack); empty fails the workflow. |
 | **`ROUTE53_HOSTED_ZONE_ID`** | Route 53 hosted zone for DNS validation (cert) and alias records (web stacks). |
-| **`STUDENT_WEB_DOMAIN`** | Full hostname for the student SPA stack (e.g. `dev.streammycourse.click`). Also the default **primary** name on the ACM cert unless **`WEB_CERT_DOMAIN`** is set. |
-| **`TEACHER_WEB_DOMAIN`** | Full hostname for the teacher SPA stack (e.g. `teach.dev.streammycourse.click`). |
+| **`STUDENT_WEB_DOMAIN`** | Full hostname for the student SPA stack (e.g. `dev.researchspectrum.org`). Also the default **primary** name on the ACM cert unless **`WEB_CERT_DOMAIN`** is set. |
+| **`TEACHER_WEB_DOMAIN`** | Full hostname for the teacher SPA stack (e.g. `teach.dev.researchspectrum.org`). |
 | **`WEB_CERT_DOMAIN`** | Optional. Primary **`DomainName`** on the ACM certificate when it should differ from **`STUDENT_WEB_DOMAIN`**. |
 | **`WEB_CERT_SANS`** | Optional. Comma-separated extra names on the same ACM cert (e.g. teacher hostname) when not covered by the primary name. |
 
