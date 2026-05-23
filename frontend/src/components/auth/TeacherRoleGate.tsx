@@ -5,6 +5,7 @@ import { fetchMe } from '../../lib/api/session'
 import type { UserProfile } from '../../lib/api/types'
 import { catalogApiUserMessage } from '../../lib/apiUserMessages'
 import { isAuthConfigured } from '../../lib/auth'
+import { legalConfig } from '../../lib/legalConfig'
 
 /**
  * After Cognito sign-in, loads `/users/me` and allows only teacher or admin roles.
@@ -61,8 +62,8 @@ export function TeacherRoleGate({ children }: { children: ReactNode }) {
           <h1 className="text-xl font-semibold text-gray-900">Sign-in required</h1>
           <p className="mt-2 text-gray-600">
             Your session may have expired. Please sign out and sign in again. If the problem continues, contact{' '}
-            <a className="font-medium text-emerald-700 hover:text-emerald-800" href="mailto:streammycourse@gmail.com">
-              streammycourse@gmail.com
+            <a className="font-medium text-emerald-700 hover:text-emerald-800" href={`mailto:${legalConfig.supportEmail}`}>
+              {legalConfig.supportEmail}
             </a>
             .
           </p>
@@ -84,8 +85,8 @@ export function TeacherRoleGate({ children }: { children: ReactNode }) {
           <p className="mt-2 text-gray-600">
             This account doesn’t have access to the Instructor Dashboard. If you believe this is a mistake, please
             contact{' '}
-            <a className="font-medium text-emerald-700 hover:text-emerald-800" href="mailto:streammycourse@gmail.com">
-              streammycourse@gmail.com
+            <a className="font-medium text-emerald-700 hover:text-emerald-800" href={`mailto:${legalConfig.supportEmail}`}>
+              {legalConfig.supportEmail}
             </a>
             .
           </p>
@@ -116,8 +117,8 @@ export function TeacherRoleGate({ children }: { children: ReactNode }) {
         <p className="mt-2 text-gray-600">
           This account doesn’t have access to the Instructor Dashboard. If you believe this is a mistake, please
           contact{' '}
-          <a className="font-medium text-emerald-700 hover:text-emerald-800" href="mailto:streammycourse@gmail.com">
-            streammycourse@gmail.com
+          <a className="font-medium text-emerald-700 hover:text-emerald-800" href={`mailto:${legalConfig.supportEmail}`}>
+            {legalConfig.supportEmail}
           </a>
           .
         </p>

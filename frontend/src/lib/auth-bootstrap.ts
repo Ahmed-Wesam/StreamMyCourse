@@ -18,6 +18,8 @@ export function needsAuthBootstrap(pathname: string, search: string): boolean {
     pathname === '/details' ||
     pathname === '/learn' ||
     pathname === '/courses' ||
+    pathname === '/terms' ||
+    pathname === '/privacy' ||
     COURSE_DETAIL.test(pathname)
   ) {
     return false

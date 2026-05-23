@@ -19,6 +19,14 @@ describe('needsAuthBootstrap', () => {
     it('returns false for course detail (not lesson or quiz)', () => {
       expect(needsAuthBootstrap('/courses/c1', '')).toBe(false)
     })
+
+    it('returns false for terms page', () => {
+      expect(needsAuthBootstrap('/terms', '')).toBe(false)
+    })
+
+    it('returns false for privacy page', () => {
+      expect(needsAuthBootstrap('/privacy', '')).toBe(false)
+    })
   })
 
   describe('OAuth callback (search only; hash ignored)', () => {

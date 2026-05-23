@@ -63,7 +63,44 @@ describe('Layout', () => {
     )
 
     expect(screen.getByRole('contentinfo')).toBeTruthy()
-    expect(screen.getByText(/Privacy/)).toBeTruthy()
+    expect(screen.getByRole('link', { name: /Privacy/i }).getAttribute('href')).toBe('/privacy')
+    expect(screen.getByRole('link', { name: /Terms/i }).getAttribute('href')).toBe('/terms')
+  })
+
+  it('renders Footer legal links as relative paths by default', () => {
+    render(
+      <MemoryRouter>
+        <Layout>
+          <p>Page</p>
+        </Layout>
+      </MemoryRouter>,
+    )
+
+    const privacy = screen.getByRole('link', { name: /Privacy/i })
+    const terms = screen.getByRole('link', { name: /Terms/i })
+
+    expect(privacy.tagName).toBe('A')
+    expect(terms.tagName).toBe('A')
+    expect(privacy.getAttribute('href')).toBe('/privacy')
+    expect(terms.getAttribute('href')).toBe('/terms')
+  })
+
+  it('renders Footer legal links as absolute URLs when legalBaseUrl is set', () => {
+    render(
+      <MemoryRouter>
+        <Layout legalBaseUrl="https://example-student.test">
+          <p>Page</p>
+        </Layout>
+      </MemoryRouter>,
+    )
+
+    const privacy = screen.getByRole('link', { name: /Privacy/i })
+    const terms = screen.getByRole('link', { name: /Terms/i })
+
+    expect(privacy.tagName).toBe('A')
+    expect(terms.tagName).toBe('A')
+    expect(privacy.getAttribute('href')).toBe('https://example-student.test/privacy')
+    expect(terms.getAttribute('href')).toBe('https://example-student.test/terms')
   })
 
   it('renders children inside main content area', () => {

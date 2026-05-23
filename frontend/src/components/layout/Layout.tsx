@@ -7,9 +7,11 @@ type LayoutProps = {
   showChrome?: boolean
   /** Fixed app chrome (e.g. `StudentHeader` / `TeacherHeader`). Shells clear the bar themselves; main does not add `pt-16`. */
   chromeHeader?: ReactNode
+  /** Student site origin for absolute legal footer links (teacher shell). */
+  legalBaseUrl?: string
 }
 
-export function Layout({ children, showChrome = true, chromeHeader }: LayoutProps) {
+export function Layout({ children, showChrome = true, chromeHeader, legalBaseUrl }: LayoutProps) {
   if (!showChrome) {
     return <>{children}</>
   }
@@ -23,7 +25,7 @@ export function Layout({ children, showChrome = true, chromeHeader }: LayoutProp
       <main className="min-w-0 flex-1">
         <div className={mainInnerClass}>{children}</div>
       </main>
-      <Footer />
+      <Footer legalBaseUrl={legalBaseUrl} />
     </div>
   )
 }

@@ -24,6 +24,8 @@ const AccountProfilePage = lazy(() => import('../pages/account/AccountProfilePag
 const AccountSubscriptionPage = lazy(() => import('../pages/account/AccountSubscriptionPage'))
 const BillingSuccessPage = lazy(() => import('../pages/BillingSuccessPage'))
 const BillingCancelPage = lazy(() => import('../pages/BillingCancelPage'))
+const PrivacyPage = lazy(() => import('../pages/legal/PrivacyPage'))
+const TermsPage = lazy(() => import('../pages/legal/TermsPage'))
 
 function LegacyPathRedirect({ to }: { to: string }) {
   const location = useLocation()
@@ -122,6 +124,22 @@ function StudentApp() {
           element={
             <LazyRoute>
               <BillingCancelPage />
+            </LazyRoute>
+          }
+        />
+        <Route
+          path="/privacy"
+          element={
+            <LazyRoute>
+              <PrivacyPage />
+            </LazyRoute>
+          }
+        />
+        <Route
+          path="/terms"
+          element={
+            <LazyRoute>
+              <TermsPage />
             </LazyRoute>
           }
         />
