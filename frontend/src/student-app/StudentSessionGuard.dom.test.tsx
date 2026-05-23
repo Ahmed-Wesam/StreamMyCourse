@@ -37,14 +37,16 @@ describe('StudentSessionGuard', () => {
     registerStudentSessionRefreshMetadataMock.mockClear()
   })
 
-  it('registers student refresh metadata on mount without AuthenticatorProvider', () => {
+  it('registers student refresh metadata on mount without AuthenticatorProvider', async () => {
     render(
       <StudentSessionGuard>
         <div data-testid="child" />
       </StudentSessionGuard>,
     )
-    expect(registerStudentSessionRefreshMetadataMock).toHaveBeenCalledTimes(1)
     expect(screen.getByTestId('child')).toBeTruthy()
+    await waitFor(() => {
+      expect(registerStudentSessionRefreshMetadataMock).toHaveBeenCalledTimes(1)
+    })
   })
 
   it('calls lazySignOut and shows banner on session_superseded', async () => {
@@ -53,6 +55,10 @@ describe('StudentSessionGuard', () => {
         <div data-testid="child" />
       </StudentSessionGuard>,
     )
+
+    await waitFor(() => {
+      expect(registerStudentSessionRefreshMetadataMock).toHaveBeenCalledTimes(1)
+    })
 
     notifySessionSuperseded()
 
@@ -76,7 +82,9 @@ describe('StudentSessionGuard', () => {
       </StudentSessionGuard>,
     )
 
-    expect(hubListenMock).toHaveBeenCalledWith('auth', expect.any(Function))
+    await waitFor(() => {
+      expect(hubListenMock).toHaveBeenCalledWith('auth', expect.any(Function))
+    })
     expect(hubCallback).toBeDefined()
 
     notifySessionSuperseded()
@@ -104,6 +112,10 @@ describe('StudentSessionGuard', () => {
         <div data-testid="child" />
       </StudentSessionGuard>,
     )
+
+    await waitFor(() => {
+      expect(registerStudentSessionRefreshMetadataMock).toHaveBeenCalledTimes(1)
+    })
 
     notifySessionSuperseded()
     notifySessionSuperseded()
@@ -141,6 +153,10 @@ describe('StudentSessionGuard', () => {
         <div data-testid="child" />
       </StudentSessionGuard>,
     )
+
+    await waitFor(() => {
+      expect(registerStudentSessionRefreshMetadataMock).toHaveBeenCalledTimes(1)
+    })
 
     notifySessionSuperseded()
     await waitFor(() => {

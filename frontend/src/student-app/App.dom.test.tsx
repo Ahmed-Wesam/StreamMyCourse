@@ -112,11 +112,13 @@ describe('StudentApp', () => {
     expect(screen.getByTestId('student-page-home')).toBeTruthy()
   })
 
-  it('mounts StudentSessionGuard and registers refresh metadata at /', () => {
+  it('mounts StudentSessionGuard and registers refresh metadata at /', async () => {
     registerStudentSessionRefreshMetadataMock.mockClear()
     hubListenMock.mockClear()
     renderAt('/')
-    expect(registerStudentSessionRefreshMetadataMock).toHaveBeenCalledTimes(1)
+    await waitFor(() => {
+      expect(registerStudentSessionRefreshMetadataMock).toHaveBeenCalledTimes(1)
+    })
     expect(hubListenMock).toHaveBeenCalledWith('auth', expect.any(Function))
   })
 
