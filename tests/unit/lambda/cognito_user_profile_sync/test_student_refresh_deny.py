@@ -13,7 +13,7 @@ from __future__ import annotations
 import os
 import sys
 from typing import Any, Dict
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -146,6 +146,39 @@ def test_pre_token_refresh_denies_when_client_metadata_session_id_empty_and_rds_
     ):
         with pytest.raises(StudentSessionSupersededError):
             handle_pre_token_generation(evt, session_cfg)
+
+
+def test_pre_token_authentication_bumps_rds_without_cognito_mirror(session_cfg: SyncConfig) -> None:
+    """Student login bump must not call Cognito AdminUpdateUserAttributes (Pre Token deadlock)."""
+    evt: Dict[str, Any] = {
+        "version": "1",
+        "triggerSource": "TokenGeneration_Authentication",
+        "region": "eu-west-1",
+        "userPoolId": "eu-west-1_example",
+        "userName": "Google_123",
+        "callerContext": {"clientId": STUDENT_CLIENT_ID},
+        "request": {
+            "userAttributes": {
+                "sub": "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
+                "email": "student@example.com",
+            },
+        },
+        "response": {},
+    }
+    mock_factory = MagicMock()
+    with (
+        patch("session_sync.get_cached_connection_factory", return_value=mock_factory),
+        patch("session_sync.set_student_active_session_id") as mock_set,
+        patch("repo.mirror_student_active_session_attribute") as mock_mirror,
+    ):
+        out = handle_pre_token_generation(evt, session_cfg)
+
+    mock_set.assert_called_once()
+    mock_mirror.assert_not_called()
+    session_id = out["response"]["claimsOverrideDetails"]["claimsToAddOrOverride"][
+        "student_session_id"
+    ]
+    assert session_id == mock_set.call_args.kwargs["session_id"]
 
 
 def test_deny_stale_student_refresh_raises_client_metadata_session_id_vs_rds_active() -> None:
