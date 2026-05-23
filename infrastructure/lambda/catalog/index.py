@@ -9,6 +9,7 @@ from typing import Any, Dict, Optional
 from bootstrap import get_cached_aws_deps, lambda_bootstrap, warm_aws_deps_if_needed
 from config import load_config, AppConfig
 from services.auth.controller import handle_users_me
+from services.auth.session import check_student_session
 from services.billing_merchant.controller import handle_merchant_status
 from services.subscription.controller import handle_get_subscription
 from services.common.http import apigw_routing_path, json_response, options_response, pick_origin
@@ -22,6 +23,8 @@ logger = logging.getLogger(__name__)
 
 # Configure logging on module load (cold start)
 configure_logging()
+
+_student_session_guard_warned = False
 
 _INTERNAL_BILLING_CHECKOUT = "billing.checkout"
 _INTERNAL_BILLING_ROLLBACK = "billing.rollback_checkout"
@@ -118,6 +121,7 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 cfg,
                 service,
                 auth_service,
+                auth_repo,
                 progress_service,
                 question_bank_service,
                 merchant_service,
@@ -146,75 +150,98 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                     )
             else:
                 parts = [p for p in raw_path.split("/") if p]
+                route_response: Optional[Dict[str, Any]] = None
 
-                qb_resp = None
-                if question_bank_service is not None:
-                    qb_resp = handle_question_banks_request(
+                global _student_session_guard_warned
+                if (
+                    auth_repo is not None
+                    and not (cfg.student_cognito_client_id or "").strip()
+                    and not _student_session_guard_warned
+                ):
+                    logger.warning(
+                        "STUDENT_COGNITO_CLIENT_ID unset; student single-session guard disabled",
+                    )
+                    _student_session_guard_warned = True
+
+                if method != "OPTIONS" and auth_repo is not None:
+                    route_response = check_student_session(
                         event,
-                        origin=origin,
-                        qb_svc=question_bank_service,
+                        origin,
+                        auth_repo,
+                        cfg.student_cognito_client_id,
                     )
 
-                if qb_resp is not None:
-                    response = qb_resp
-                elif (
-                    len(parts) == 3
-                    and parts[0] == "courses"
-                    and parts[2] == "progress"
-                    and method in ("GET", "OPTIONS")
-                ):
-                    response = handle_progress_request(
-                        event,
-                        origin=origin,
-                        progress_svc=progress_service,
-                    )
-                elif (
-                    len(parts) == 5
-                    and parts[0] == "courses"
-                    and parts[2] == "lessons"
-                    and parts[4] == "progress"
-                    and method in ("PUT", "OPTIONS")
-                ):
-                    response = handle_progress_request(
-                        event,
-                        origin=origin,
-                        progress_svc=progress_service,
-                    )
-                elif method == "GET" and parts == ["users", "me"]:
-                    response = handle_users_me(
-                        event,
-                        origin=origin,
-                        auth_svc=auth_service,
-                    )
-                elif (
-                    method == "GET"
-                    and parts == ["billing", "merchant", "status"]
-                    and merchant_service is not None
-                ):
-                    response = handle_merchant_status(
-                        event,
-                        origin=origin,
-                        merchant_svc=merchant_service,
-                        billing_teacher_sub=cfg.billing_teacher_sub,
-                    )
-                elif (
-                    method == "GET"
-                    and parts == ["billing", "subscription"]
-                    and subscription_manage_service is not None
-                ):
-                    response = handle_get_subscription(
-                        event,
-                        origin=origin,
-                        manage_svc=subscription_manage_service,
-                    )
-                else:
-                    response = course_management_handle(
-                        event,
-                        origin=origin,
-                        svc=service,
-                        video_bucket=cfg.video_bucket,
-                        auth_svc=auth_service,
-                    )
+                if route_response is None:
+                    qb_resp = None
+                    if question_bank_service is not None:
+                        qb_resp = handle_question_banks_request(
+                            event,
+                            origin=origin,
+                            qb_svc=question_bank_service,
+                        )
+
+                    if qb_resp is not None:
+                        route_response = qb_resp
+                    elif (
+                        len(parts) == 3
+                        and parts[0] == "courses"
+                        and parts[2] == "progress"
+                        and method in ("GET", "OPTIONS")
+                    ):
+                        route_response = handle_progress_request(
+                            event,
+                            origin=origin,
+                            progress_svc=progress_service,
+                        )
+                    elif (
+                        len(parts) == 5
+                        and parts[0] == "courses"
+                        and parts[2] == "lessons"
+                        and parts[4] == "progress"
+                        and method in ("PUT", "OPTIONS")
+                    ):
+                        route_response = handle_progress_request(
+                            event,
+                            origin=origin,
+                            progress_svc=progress_service,
+                        )
+                    elif method == "GET" and parts == ["users", "me"]:
+                        route_response = handle_users_me(
+                            event,
+                            origin=origin,
+                            auth_svc=auth_service,
+                        )
+                    elif (
+                        method == "GET"
+                        and parts == ["billing", "merchant", "status"]
+                        and merchant_service is not None
+                    ):
+                        route_response = handle_merchant_status(
+                            event,
+                            origin=origin,
+                            merchant_svc=merchant_service,
+                            billing_teacher_sub=cfg.billing_teacher_sub,
+                        )
+                    elif (
+                        method == "GET"
+                        and parts == ["billing", "subscription"]
+                        and subscription_manage_service is not None
+                    ):
+                        route_response = handle_get_subscription(
+                            event,
+                            origin=origin,
+                            manage_svc=subscription_manage_service,
+                        )
+                    else:
+                        route_response = course_management_handle(
+                            event,
+                            origin=origin,
+                            svc=service,
+                            video_bucket=cfg.video_bucket,
+                            auth_svc=auth_service,
+                        )
+
+                response = route_response
 
         # Calculate duration and log request completion
         duration_ms = int((time.perf_counter() - start_time) * 1000)

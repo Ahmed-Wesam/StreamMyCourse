@@ -27,6 +27,7 @@ class AppConfig:
     # Billing (merchant status teacher gate + RDS environment key)
     billing_teacher_sub: str = ""
     deployment_environment: str = "dev"
+    student_cognito_client_id: str = ""
 
 _DEFAULT_DB_PORT = 5432
 
@@ -109,6 +110,7 @@ def load_config() -> AppConfig:
     billing_teacher_sub = os.environ.get("BILLING_TEACHER_SUB", "").strip()
     deployment_raw = os.environ.get("DEPLOYMENT_ENVIRONMENT", "").strip()
     deployment_environment = (deployment_raw or "dev").lower()
+    student_cognito_client_id = os.environ.get("STUDENT_COGNITO_CLIENT_ID", "").strip()
 
     return AppConfig(
         video_bucket=video_bucket,
@@ -125,4 +127,5 @@ def load_config() -> AppConfig:
         progress_position_slack_sec=progress_position_slack_sec,
         billing_teacher_sub=billing_teacher_sub,
         deployment_environment=deployment_environment,
+        student_cognito_client_id=student_cognito_client_id,
     )

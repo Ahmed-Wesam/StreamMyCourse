@@ -98,6 +98,16 @@ class UserProfileRdsRepository:
         row = cur.fetchone()
         return _row_to_profile(row) if row else None
 
+    def get_student_active_session_id(self, user_sub: str) -> str:
+        cur = self._execute(
+            "SELECT student_active_session_id FROM users WHERE user_sub = %s",
+            (user_sub,),
+        )
+        row = cur.fetchone()
+        if not row:
+            return ""
+        return str(row[0] or "")
+
     def put_profile(
         self, *, user_sub: str, email: str, role: str
     ) -> Dict[str, Any]:

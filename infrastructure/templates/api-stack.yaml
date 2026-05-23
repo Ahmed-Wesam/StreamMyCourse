@@ -63,6 +63,13 @@ Parameters:
       Supports comma-separated list for multiple clients (e.g., student + teacher apps).
       Required for public route JWT verification.
 
+  StudentCognitoClientId:
+    Type: String
+    Default: ''
+    Description: >-
+      Student app client ID for catalog single-session enforcement (STUDENT_COGNITO_CLIENT_ID).
+      Empty disables the API middleware check until wired by deploy.
+
   RdsStackName:
     Type: String
     MinLength: 1
@@ -250,6 +257,7 @@ Resources:
           DEPLOYMENT_ENVIRONMENT: !Ref Environment
           PROGRESS_COMPLETE_RATIO: !Ref ProgressCompleteRatio
           PROGRESS_POSITION_SLACK_SEC: !Ref ProgressPositionSlackSec
+          STUDENT_COGNITO_CLIENT_ID: !Ref StudentCognitoClientId
       Tags:
         - Key: Project
           Value: StreamMyCourse
