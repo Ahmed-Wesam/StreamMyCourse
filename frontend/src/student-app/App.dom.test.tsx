@@ -72,9 +72,7 @@ vi.mock('./StudentHeader', () => ({
 }))
 
 const registerStudentSessionRefreshMetadataMock = vi.hoisted(() => vi.fn())
-const hubListenMock = vi.hoisted(() =>
-  vi.fn((_channel: string, _cb: (data: { payload: { event: string } }) => void) => () => {}),
-)
+const hubListenMock = vi.hoisted(() => vi.fn().mockReturnValue(() => {}))
 
 vi.mock('../lib/student-session-refresh', () => ({
   registerStudentSessionRefreshMetadata: registerStudentSessionRefreshMetadataMock,
