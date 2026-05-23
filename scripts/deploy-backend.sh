@@ -13,6 +13,21 @@ dev | prod) ;;
 esac
 
 REGION="${AWS_REGION:-eu-west-1}"
+case "$ENV" in
+prod)
+  API_STACK="StreamMyCourse-Api-prod"
+  CORS="https://researchspectrum.org,https://teach.researchspectrum.org,http://localhost:5173,http://localhost:5174"
+  VIDEO_CORS="https://researchspectrum.org,https://teach.researchspectrum.org,http://localhost:5173,http://127.0.0.1:5173,http://localhost:5174,http://127.0.0.1:5174"
+  GW_ALLOW="https://researchspectrum.org"
+  ;;
+dev)
+  API_STACK="streammycourse-api"
+  CORS="https://dev.researchspectrum.org,https://teach.dev.researchspectrum.org,http://localhost:5173,http://localhost:5174"
+  VIDEO_CORS="https://dev.researchspectrum.org,https://teach.dev.researchspectrum.org,http://localhost:5173,http://127.0.0.1:5173,http://localhost:5174,http://127.0.0.1:5174"
+  GW_ALLOW="http://localhost:5173"
+  ;;
+esac
+
 export BILLING_TEACHER_SUB="${BILLING_TEACHER_SUB:-}"
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 TEMPLATE_DIR="$ROOT/infrastructure/templates"
@@ -190,6 +205,7 @@ aws cloudformation deploy \
     "Environment=${ENV}" \
     "InvalidationLambdaCodeS3Bucket=${ARTIFACT_BUCKET}" \
     "InvalidationLambdaCodeS3Key=${INV_KEY}" \
+    "CorsAllowedOrigins=${VIDEO_CORS}" \
   --capabilities CAPABILITY_IAM CAPABILITY_NAMED_IAM \
   --region "$REGION" \
   --no-fail-on-empty-changeset
@@ -285,19 +301,6 @@ BILLING_PARAM_OVERRIDES=()
 if [[ -n "${BILLING_EDGE_ARN:-}" ]]; then
   BILLING_PARAM_OVERRIDES=("BillingEdgeLambdaArn=${BILLING_EDGE_ARN}")
 fi
-
-case "$ENV" in
-prod)
-  API_STACK="StreamMyCourse-Api-prod"
-  CORS="https://app.streammycourse.click,https://teach.streammycourse.click,http://localhost:5173,http://localhost:5174"
-  GW_ALLOW="https://app.streammycourse.click"
-  ;;
-dev)
-  API_STACK="streammycourse-api"
-  CORS="https://dev.streammycourse.click,https://teach.dev.streammycourse.click,http://localhost:5173,http://localhost:5174"
-  GW_ALLOW="http://localhost:5173"
-  ;;
-esac
 
 echo "Deploying API stack: $API_STACK (video bucket: $VIDEO_BUCKET)"
 # JWT audience validation in the TOKEN authorizer must accept every app client that mints

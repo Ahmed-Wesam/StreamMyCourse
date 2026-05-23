@@ -112,11 +112,11 @@ $apiStack = if ($Environment -eq 'prod') {
 
 $cors = if ($Environment -eq 'prod') {
 
-    'https://app.streammycourse.click,https://teach.streammycourse.click,http://localhost:5173,http://localhost:5174'
+    'https://researchspectrum.org,https://teach.researchspectrum.org,http://localhost:5173,http://localhost:5174'
 
 } else {
 
-    'https://dev.streammycourse.click,https://teach.dev.streammycourse.click,http://localhost:5173,http://localhost:5174'
+    'https://dev.researchspectrum.org,https://teach.dev.researchspectrum.org,http://localhost:5173,http://localhost:5174'
 
 }
 
@@ -124,7 +124,7 @@ $cors = if ($Environment -eq 'prod') {
 
 $gatewayResponseOrigin = if ($Environment -eq 'prod') {
 
-    'https://app.streammycourse.click'
+    'https://researchspectrum.org'
 
 } else {
 
