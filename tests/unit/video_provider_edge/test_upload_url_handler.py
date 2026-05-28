@@ -106,6 +106,7 @@ def test_upload_url_returns_contract(monkeypatch: pytest.MonkeyPatch) -> None:
     resp = video_edge_handler.lambda_handler(_upload_event(), None)
 
     assert resp["statusCode"] == 200
+    assert resp["headers"]["Access-Control-Allow-Origin"] == "https://teacher.example.com"
     body = _parse_body(resp)
     assert body == {
         "uploadUrl": _UPLOAD_URL,
@@ -260,7 +261,9 @@ def test_upload_url_forwards_thumbnail_upload_to_catalog(
 
     resp = video_edge_handler.lambda_handler(evt, None)
 
-    assert resp == catalog_response
+    assert resp["statusCode"] == 200
+    assert resp["headers"]["Access-Control-Allow-Origin"] == "https://teacher.example.com"
+    assert _parse_body(resp) == json.loads(catalog_response["body"])
     assert catalog_calls[0]["catalog_lambda_arn"] == "arn:aws:lambda:eu-west-1:1:function:catalog"
 
 

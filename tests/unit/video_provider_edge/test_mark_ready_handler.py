@@ -84,6 +84,7 @@ def test_mark_ready_dev_bypass_when_metadata_unavailable(
     resp = video_edge_handler.lambda_handler(_mark_ready_event(), None)
 
     assert resp["statusCode"] == 200
+    assert resp["headers"]["Access-Control-Allow-Origin"] == "https://teacher.example.com"
     assert _parse_body(resp) == {"lessonId": _LESSON_ID, "videoStatus": "ready"}
     assert prepare_calls[0]["user_sub"] == _USER_SUB
     assert prepare_calls[0]["course_id"] == _COURSE_ID

@@ -95,17 +95,99 @@ _S3_UPLOAD_KINDS = frozenset({"thumbnail", "lessonThumbnail"})
 
 _CSP_API = "default-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'"
 
+_CORS_ALLOW_METHODS = "GET,POST,PUT,PATCH,DELETE,OPTIONS"
 
 
 
 
-def _json_response(status_code: int, body: Dict[str, Any]) -> Dict[str, Any]:
 
-    return {
+def _allowed_origins(cfg: VideoProviderEdgeConfig) -> list[str]:
 
-        "statusCode": status_code,
+    raw = (cfg.cors_allow_origin or "").strip()
 
-        "headers": {
+    if not raw:
+
+        return []
+
+    return [part.strip() for part in raw.split(",") if part.strip()]
+
+
+
+
+
+def _pick_cors_origin(event: Dict[str, Any], cfg: VideoProviderEdgeConfig) -> str | None:
+
+    allowed = _allowed_origins(cfg)
+
+    request_origin = _header_lookup(event.get("headers") or {}, "Origin")
+
+    if not allowed:
+
+        return request_origin or None
+
+    if allowed == ["*"]:
+
+        return request_origin or "*"
+
+    if request_origin and request_origin in allowed:
+
+        return request_origin
+
+    return allowed[0]
+
+
+
+
+
+def _apply_cors_headers(
+
+    headers: Dict[str, str],
+
+    cors_origin: str | None,
+
+    *,
+
+    allow_methods: str | None = None,
+
+) -> Dict[str, str]:
+
+    out = dict(headers)
+
+    if not cors_origin:
+
+        return out
+
+    out["Access-Control-Allow-Origin"] = cors_origin
+
+    out["Access-Control-Allow-Methods"] = allow_methods or _CORS_ALLOW_METHODS
+
+    out["Access-Control-Allow-Headers"] = "Content-Type,Authorization"
+
+    if cors_origin.startswith("https://"):
+
+        out["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+
+    return out
+
+
+
+
+
+def _json_response(
+
+    status_code: int,
+
+    body: Dict[str, Any],
+
+    *,
+
+    cors_origin: str | None = None,
+
+) -> Dict[str, Any]:
+
+    headers = _apply_cors_headers(
+
+        {
 
             "content-type": "application/json",
 
@@ -119,6 +201,16 @@ def _json_response(status_code: int, body: Dict[str, Any]) -> Dict[str, Any]:
 
         },
 
+        cors_origin,
+
+    )
+
+    return {
+
+        "statusCode": status_code,
+
+        "headers": headers,
+
         "body": json.dumps(body),
 
     }
@@ -127,9 +219,43 @@ def _json_response(status_code: int, body: Dict[str, Any]) -> Dict[str, Any]:
 
 
 
-def _error_response(status_code: int, code: str, message: str) -> Dict[str, Any]:
+def _error_response(
 
-    return _json_response(status_code, {"code": code, "message": message})
+    status_code: int,
+
+    code: str,
+
+    message: str,
+
+    *,
+
+    cors_origin: str | None = None,
+
+) -> Dict[str, Any]:
+
+    return _json_response(
+
+        status_code,
+
+        {"code": code, "message": message},
+
+        cors_origin=cors_origin,
+
+    )
+
+
+
+
+
+def _with_cors(response: Dict[str, Any], cors_origin: str | None) -> Dict[str, Any]:
+
+    if not cors_origin:
+
+        return response
+
+    headers = _apply_cors_headers(dict(response.get("headers") or {}), cors_origin)
+
+    return {**response, "headers": headers}
 
 
 
@@ -147,13 +273,7 @@ def _options_response(
 
 ) -> Dict[str, Any]:
 
-    headers = event.get("headers") or {}
-
-    origin = _header_lookup(headers, "Origin") if isinstance(headers, dict) else ""
-
-    if not origin and cfg.cors_allow_origin:
-
-        origin = cfg.cors_allow_origin
+    cors_origin = _pick_cors_origin(event, cfg)
 
     response_headers: Dict[str, str] = {
 
@@ -165,17 +285,15 @@ def _options_response(
 
     }
 
-    if origin:
+    response_headers = _apply_cors_headers(
 
-        response_headers["Access-Control-Allow-Origin"] = origin
+        response_headers,
 
-        response_headers["Access-Control-Allow-Methods"] = allow_methods
+        cors_origin,
 
-        response_headers["Access-Control-Allow-Headers"] = "Content-Type,Authorization"
+        allow_methods=allow_methods,
 
-        if origin.startswith("https://"):
-
-            response_headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+    )
 
     return {
 
@@ -403,11 +521,13 @@ def _upload_kind_from_payload(payload: Dict[str, Any]) -> str:
 
 def _handle_upload_url(event: Dict[str, Any], cfg: VideoProviderEdgeConfig) -> Dict[str, Any]:
 
+    cors_origin = _pick_cors_origin(event, cfg)
+
     user_sub = _claims_sub(event)
 
     if not user_sub:
 
-        return _error_response(401, "unauthorized", "Missing authenticated user")
+        return _error_response(401, "unauthorized", "Missing authenticated user", cors_origin=cors_origin)
 
 
 
@@ -415,7 +535,9 @@ def _handle_upload_url(event: Dict[str, Any], cfg: VideoProviderEdgeConfig) -> D
 
     if not cfg.is_configured():
 
-        return _error_response(503, "video_unconfigured", "Video uploads are not configured")
+        return _error_response(
+            503, "video_unconfigured", "Video uploads are not configured", cors_origin=cors_origin
+        )
 
 
 
@@ -425,7 +547,9 @@ def _handle_upload_url(event: Dict[str, Any], cfg: VideoProviderEdgeConfig) -> D
 
     except ValueError:
 
-        return _error_response(400, "bad_request", "Request body must be valid JSON")
+        return _error_response(
+            400, "bad_request", "Request body must be valid JSON", cors_origin=cors_origin
+        )
 
 
 
@@ -435,15 +559,22 @@ def _handle_upload_url(event: Dict[str, Any], cfg: VideoProviderEdgeConfig) -> D
 
         if not catalog_arn:
 
-            return _error_response(503, "video_unconfigured", "Video uploads are not configured")
+            return _error_response(
+                503, "video_unconfigured", "Video uploads are not configured", cors_origin=cors_origin
+            )
 
         try:
 
-            return _invoke_catalog_apigw(event=event, catalog_lambda_arn=catalog_arn)
+            return _with_cors(
+                _invoke_catalog_apigw(event=event, catalog_lambda_arn=catalog_arn),
+                cors_origin,
+            )
 
         except CatalogInvokeError:
 
-            return _error_response(503, "video_unconfigured", "Video uploads are not configured")
+            return _error_response(
+                503, "video_unconfigured", "Video uploads are not configured", cors_origin=cors_origin
+            )
 
 
 
@@ -453,11 +584,11 @@ def _handle_upload_url(event: Dict[str, Any], cfg: VideoProviderEdgeConfig) -> D
 
     if not course_id:
 
-        return _error_response(400, "bad_request", "'courseId' is required")
+        return _error_response(400, "bad_request", "'courseId' is required", cors_origin=cors_origin)
 
     if not lesson_id:
 
-        return _error_response(400, "bad_request", "'lessonId' is required")
+        return _error_response(400, "bad_request", "'lessonId' is required", cors_origin=cors_origin)
 
 
 
@@ -475,11 +606,15 @@ def _handle_upload_url(event: Dict[str, Any], cfg: VideoProviderEdgeConfig) -> D
 
         except (TypeError, ValueError):
 
-            return _error_response(400, "bad_request", "'filesize' must be a valid integer")
+            return _error_response(
+                400, "bad_request", "'filesize' must be a valid integer", cors_origin=cors_origin
+            )
 
         if filesize <= 0:
 
-            return _error_response(400, "bad_request", "'filesize' must be positive")
+            return _error_response(
+                400, "bad_request", "'filesize' must be positive", cors_origin=cors_origin
+            )
 
 
 
@@ -511,11 +646,13 @@ def _handle_upload_url(event: Dict[str, Any], cfg: VideoProviderEdgeConfig) -> D
 
     except CatalogInvokeHttpError as exc:
 
-        return _error_response(exc.status_code, exc.code, exc.message)
+        return _error_response(exc.status_code, exc.code, exc.message, cors_origin=cors_origin)
 
     except CatalogInvokeError:
 
-        return _error_response(503, "video_unconfigured", "Video uploads are not configured")
+        return _error_response(
+            503, "video_unconfigured", "Video uploads are not configured", cors_origin=cors_origin
+        )
 
 
 
@@ -539,7 +676,9 @@ def _handle_upload_url(event: Dict[str, Any], cfg: VideoProviderEdgeConfig) -> D
 
     except KinescopeUploadError:
 
-        return _error_response(503, "video_unconfigured", "Video uploads are not configured")
+        return _error_response(
+            503, "video_unconfigured", "Video uploads are not configured", cors_origin=cors_origin
+        )
 
 
 
@@ -575,13 +714,15 @@ def _handle_upload_url(event: Dict[str, Any], cfg: VideoProviderEdgeConfig) -> D
 
             )
 
-            return _error_response(409, "upload_conflict", exc.message)
+            return _error_response(409, "upload_conflict", exc.message, cors_origin=cors_origin)
 
-        return _error_response(exc.status_code, exc.code, exc.message)
+        return _error_response(exc.status_code, exc.code, exc.message, cors_origin=cors_origin)
 
     except CatalogInvokeError:
 
-        return _error_response(503, "video_unconfigured", "Video uploads are not configured")
+        return _error_response(
+            503, "video_unconfigured", "Video uploads are not configured", cors_origin=cors_origin
+        )
 
 
 
@@ -601,6 +742,8 @@ def _handle_upload_url(event: Dict[str, Any], cfg: VideoProviderEdgeConfig) -> D
 
         },
 
+        cors_origin=cors_origin,
+
     )
 
 
@@ -609,11 +752,13 @@ def _handle_upload_url(event: Dict[str, Any], cfg: VideoProviderEdgeConfig) -> D
 
 def _handle_mark_ready(event: Dict[str, Any], cfg: VideoProviderEdgeConfig) -> Dict[str, Any]:
 
+    cors_origin = _pick_cors_origin(event, cfg)
+
     user_sub = _claims_sub(event)
 
     if not user_sub:
 
-        return _error_response(401, "unauthorized", "Missing authenticated user")
+        return _error_response(401, "unauthorized", "Missing authenticated user", cors_origin=cors_origin)
 
 
 
@@ -621,7 +766,9 @@ def _handle_mark_ready(event: Dict[str, Any], cfg: VideoProviderEdgeConfig) -> D
 
     if not cfg.is_configured():
 
-        return _error_response(503, "video_unconfigured", "Video mark-ready is not configured")
+        return _error_response(
+            503, "video_unconfigured", "Video mark-ready is not configured", cors_origin=cors_origin
+        )
 
 
 
@@ -631,7 +778,7 @@ def _handle_mark_ready(event: Dict[str, Any], cfg: VideoProviderEdgeConfig) -> D
 
     if parsed_path is None:
 
-        return _error_response(404, "not_found", "Not found")
+        return _error_response(404, "not_found", "Not found", cors_origin=cors_origin)
 
     course_id, lesson_id = parsed_path
 
@@ -643,7 +790,7 @@ def _handle_mark_ready(event: Dict[str, Any], cfg: VideoProviderEdgeConfig) -> D
 
     except ValueError:
 
-        return _error_response(400, "invalid_request", "Invalid JSON body")
+        return _error_response(400, "invalid_request", "Invalid JSON body", cors_origin=cors_origin)
 
 
 
@@ -671,11 +818,13 @@ def _handle_mark_ready(event: Dict[str, Any], cfg: VideoProviderEdgeConfig) -> D
 
     except CatalogInvokeHttpError as exc:
 
-        return _error_response(exc.status_code, exc.code, exc.message)
+        return _error_response(exc.status_code, exc.code, exc.message, cors_origin=cors_origin)
 
     except CatalogInvokeError:
 
-        return _error_response(503, "video_unconfigured", "Video mark-ready is not configured")
+        return _error_response(
+            503, "video_unconfigured", "Video mark-ready is not configured", cors_origin=cors_origin
+        )
 
 
 
@@ -683,7 +832,9 @@ def _handle_mark_ready(event: Dict[str, Any], cfg: VideoProviderEdgeConfig) -> D
 
     if not video_key:
 
-        return _error_response(400, "invalid_request", "No video uploaded for lesson")
+        return _error_response(
+            400, "invalid_request", "No video uploaded for lesson", cors_origin=cors_origin
+        )
 
 
 
@@ -707,7 +858,9 @@ def _handle_mark_ready(event: Dict[str, Any], cfg: VideoProviderEdgeConfig) -> D
 
         if metadata is None or not video_status_confirms_done(metadata.status):
 
-            return _error_response(400, "video_not_ready", "Video is still processing")
+            return _error_response(
+                400, "video_not_ready", "Video is still processing", cors_origin=cors_origin
+            )
 
         provider_metadata_supplied = True
 
@@ -747,15 +900,17 @@ def _handle_mark_ready(event: Dict[str, Any], cfg: VideoProviderEdgeConfig) -> D
 
     except CatalogInvokeHttpError as exc:
 
-        return _error_response(exc.status_code, exc.code, exc.message)
+        return _error_response(exc.status_code, exc.code, exc.message, cors_origin=cors_origin)
 
     except CatalogInvokeError:
 
-        return _error_response(503, "video_unconfigured", "Video mark-ready is not configured")
+        return _error_response(
+            503, "video_unconfigured", "Video mark-ready is not configured", cors_origin=cors_origin
+        )
 
 
 
-    return _json_response(200, result)
+    return _json_response(200, result, cors_origin=cors_origin)
 
 
 
@@ -893,13 +1048,20 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
 
     video_ready = _is_video_ready_path(path)
 
+    cors_origin = _pick_cors_origin(event, cfg)
+
 
 
     if not cfg.is_configured() and method in ("POST", "PUT", "OPTIONS"):
 
         if path == _UPLOAD_POST_PATH or video_ready:
 
-            return _error_response(503, "video_unconfigured", "Video provider edge is not configured")
+            return _error_response(
+                503,
+                "video_unconfigured",
+                "Video provider edge is not configured",
+                cors_origin=cors_origin,
+            )
 
 
 
@@ -931,5 +1093,5 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
 
 
 
-    return _error_response(404, "not_found", "Not found")
+    return _error_response(404, "not_found", "Not found", cors_origin=cors_origin)
 
