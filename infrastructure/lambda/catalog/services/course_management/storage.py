@@ -10,7 +10,6 @@ from services.course_management.s3_common import (
     ALLOWED_VIDEO_CONTENT_TYPES,
     S3_DELETE_BATCH,
     extension_for_video_content_type,
-    is_valid_media_object_key as _is_valid_media_object_key,
     is_valid_video_object_key,
     normalize_content_type,
     s3_client as _s3_client,
