@@ -22,6 +22,8 @@ from video_catalog_invoke import (
 
     CatalogInvokeHttpError,
 
+    invoke_catalog_apigw,
+
     invoke_video_apply_mark_ready,
 
     invoke_video_commit_pending_upload,
@@ -75,6 +77,8 @@ _invoke_video_apply_mark_ready = invoke_video_apply_mark_ready
 
 _invoke_video_webhook_status = invoke_video_webhook_status
 
+_invoke_catalog_apigw = invoke_catalog_apigw
+
 _init_kinescope_upload = init_kinescope_lesson_upload
 
 _fetch_kinescope_metadata = fetch_video_metadata
@@ -86,6 +90,8 @@ _delete_kinescope_video = delete_kinescope_video
 _UPLOAD_POST_PATH = "/upload-url"
 
 _WEBHOOK_POST_PATH = "/webhooks/kinescope"
+
+_S3_UPLOAD_KINDS = frozenset({"thumbnail", "lessonThumbnail"})
 
 _CSP_API = "default-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'"
 
@@ -387,6 +393,14 @@ def _metadata_to_invoke_payload(metadata: KinescopeVideoMetadata) -> Dict[str, A
 
 
 
+def _upload_kind_from_payload(payload: Dict[str, Any]) -> str:
+
+    return str(payload.get("uploadKind") or "lesson").strip() or "lesson"
+
+
+
+
+
 def _handle_upload_url(event: Dict[str, Any], cfg: VideoProviderEdgeConfig) -> Dict[str, Any]:
 
     user_sub = _claims_sub(event)
@@ -411,7 +425,25 @@ def _handle_upload_url(event: Dict[str, Any], cfg: VideoProviderEdgeConfig) -> D
 
     except ValueError:
 
-        return _error_response(400, "invalid_request", "Invalid JSON body")
+        return _error_response(400, "bad_request", "Request body must be valid JSON")
+
+
+
+    upload_kind = _upload_kind_from_payload(payload)
+
+    if upload_kind in _S3_UPLOAD_KINDS:
+
+        if not catalog_arn:
+
+            return _error_response(503, "video_unconfigured", "Video uploads are not configured")
+
+        try:
+
+            return _invoke_catalog_apigw(event=event, catalog_lambda_arn=catalog_arn)
+
+        except CatalogInvokeError:
+
+            return _error_response(503, "video_unconfigured", "Video uploads are not configured")
 
 
 
@@ -419,9 +451,13 @@ def _handle_upload_url(event: Dict[str, Any], cfg: VideoProviderEdgeConfig) -> D
 
     lesson_id = str(payload.get("lessonId") or "").strip()
 
-    if not course_id or not lesson_id:
+    if not course_id:
 
-        return _error_response(400, "invalid_request", "courseId and lessonId are required")
+        return _error_response(400, "bad_request", "'courseId' is required")
+
+    if not lesson_id:
+
+        return _error_response(400, "bad_request", "'lessonId' is required")
 
 
 
@@ -439,11 +475,11 @@ def _handle_upload_url(event: Dict[str, Any], cfg: VideoProviderEdgeConfig) -> D
 
         except (TypeError, ValueError):
 
-            return _error_response(400, "invalid_request", "filesize must be a positive integer")
+            return _error_response(400, "bad_request", "'filesize' must be a valid integer")
 
         if filesize <= 0:
 
-            return _error_response(400, "invalid_request", "filesize must be a positive integer")
+            return _error_response(400, "bad_request", "'filesize' must be positive")
 
 
 

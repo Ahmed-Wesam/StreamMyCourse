@@ -221,6 +221,80 @@ def test_upload_url_deletes_orphan_kinescope_video_on_commit_conflict(
     assert delete_calls == [_VIDEO_KEY]
 
 
+def test_upload_url_forwards_thumbnail_upload_to_catalog(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    catalog_calls: list[Dict[str, Any]] = []
+    catalog_response = {
+        "statusCode": 200,
+        "headers": {"content-type": "application/json"},
+        "body": json.dumps(
+            {
+                "uploadUrl": "https://bucket.s3.amazonaws.com/thumb",
+                "thumbnailKey": f"{_COURSE_ID}/thumbnail/x.jpg",
+            }
+        ),
+    }
+
+    monkeypatch.setattr(video_edge_handler, "_load_config", lambda: _edge_config())
+    monkeypatch.setattr(
+        video_edge_handler,
+        "_invoke_catalog_apigw",
+        lambda **kw: catalog_calls.append(kw) or catalog_response,
+    )
+    monkeypatch.setattr(
+        video_edge_handler,
+        "_invoke_video_prepare_upload",
+        MagicMock(side_effect=AssertionError("should not prepare video for thumbnail")),
+    )
+
+    evt = _upload_event()
+    evt["body"] = json.dumps(
+        {
+            "courseId": _COURSE_ID,
+            "filename": "cover.jpg",
+            "contentType": "image/jpeg",
+            "uploadKind": "thumbnail",
+        }
+    )
+
+    resp = video_edge_handler.lambda_handler(evt, None)
+
+    assert resp == catalog_response
+    assert catalog_calls[0]["catalog_lambda_arn"] == "arn:aws:lambda:eu-west-1:1:function:catalog"
+
+
+def test_upload_url_rejects_non_video_content_type_via_catalog_prepare(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(video_edge_handler, "_load_config", lambda: _edge_config())
+    monkeypatch.setattr(
+        video_edge_handler,
+        "_invoke_video_prepare_upload",
+        MagicMock(
+            side_effect=CatalogInvokeHttpError(
+                status_code=400,
+                code="bad_request",
+                message="Invalid or unsupported video content type",
+            )
+        ),
+    )
+
+    evt = _upload_event()
+    evt["body"] = json.dumps(
+        {
+            "courseId": _COURSE_ID,
+            "lessonId": _LESSON_ID,
+            "filename": "x.bin",
+            "contentType": "application/octet-stream",
+        }
+    )
+
+    resp = video_edge_handler.lambda_handler(evt, None)
+    assert resp["statusCode"] == 400
+    assert _parse_body(resp)["code"] == "bad_request"
+
+
 def test_options_upload_url_returns_204_with_cors(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(video_edge_handler, "_load_config", lambda: _edge_config())
     evt = {

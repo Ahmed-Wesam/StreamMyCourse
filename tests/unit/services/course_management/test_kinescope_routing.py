@@ -38,6 +38,16 @@ def test_kinescope_routing_detects_upload_url() -> None:
     assert not kinescope_http_routed_on_catalog(cfg, method="GET", parts=["upload-url"])
 
 
+def test_kinescope_routing_allows_s3_thumbnail_upload_on_catalog() -> None:
+    cfg = _kinescope_cfg()
+    assert not kinescope_http_routed_on_catalog(
+        cfg, method="POST", parts=["upload-url"], upload_kind="thumbnail"
+    )
+    assert not kinescope_http_routed_on_catalog(
+        cfg, method="POST", parts=["upload-url"], upload_kind="lessonThumbnail"
+    )
+
+
 def test_catalog_upload_url_returns_video_edge_required() -> None:
     event = {
         "requestContext": {"http": {"method": "POST"}},

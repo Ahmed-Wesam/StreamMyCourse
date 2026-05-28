@@ -18,7 +18,10 @@ from services.common.logging_setup import configure_logging
 from services.common.runtime_context import bind_from_lambda_event, clear_request_context, set_request_path
 from services.common.internal_invoke import run_internal_handler
 from services.course_management.controller import handle as course_management_handle
-from services.course_management.kinescope_routing import kinescope_http_routed_on_catalog
+from services.course_management.kinescope_routing import (
+    kinescope_http_routed_on_catalog,
+    upload_kind_from_apigw_event,
+)
 from services.course_management.video_webhooks import handle_kinescope_drm_auth
 from services.question_banks.controller import handle_question_banks_request
 
@@ -331,7 +334,14 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                             origin=origin,
                             svc=service,
                         )
-                    elif kinescope_http_routed_on_catalog(cfg, method=method, parts=parts):
+                    elif kinescope_http_routed_on_catalog(
+                        cfg,
+                        method=method,
+                        parts=parts,
+                        upload_kind=upload_kind_from_apigw_event(event)
+                        if method == "POST" and parts == ["upload-url"]
+                        else None,
+                    ):
                         if method == "OPTIONS":
                             route_response = options_response(origin)
                         else:
