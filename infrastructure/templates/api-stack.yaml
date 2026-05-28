@@ -1726,7 +1726,7 @@ Resources:
       Integration:
         IntegrationHttpMethod: POST
         Type: AWS_PROXY
-        Uri: !Sub 'arn:aws:apigateway:${AWS::Region}:${AWS::AccountId}:lambda:path/2015-03-31/functions/${CatalogLambda.Arn}/invocations'
+        Uri: !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${CatalogLambda.Arn}/invocations'
 
   # API Gateway Method: OPTIONS /webhooks/kinescope (CORS preflight)
   WebhooksKinescopeOptionsMethod:
@@ -1739,7 +1739,7 @@ Resources:
       Integration:
         IntegrationHttpMethod: POST
         Type: AWS_PROXY
-        Uri: !Sub 'arn:aws:apigateway:${AWS::Region}:${AWS::AccountId}:lambda:path/2015-03-31/functions/${CatalogLambda.Arn}/invocations'
+        Uri: !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${CatalogLambda.Arn}/invocations'
 
   # API Gateway Method: POST /webhooks/kinescope/drm-auth (public DRM callback)
   WebhooksKinescopeDrmAuthPostMethod:
@@ -1752,7 +1752,7 @@ Resources:
       Integration:
         IntegrationHttpMethod: POST
         Type: AWS_PROXY
-        Uri: !Sub 'arn:aws:apigateway:${AWS::Region}:${AWS::AccountId}:lambda:path/2015-03-31/functions/${CatalogLambda.Arn}/invocations'
+        Uri: !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${CatalogLambda.Arn}/invocations'
 
   # API Gateway Method: OPTIONS /webhooks/kinescope/drm-auth (CORS preflight)
   WebhooksKinescopeDrmAuthOptionsMethod:
@@ -1765,7 +1765,7 @@ Resources:
       Integration:
         IntegrationHttpMethod: POST
         Type: AWS_PROXY
-        Uri: !Sub 'arn:aws:apigateway:${AWS::Region}:${AWS::AccountId}:lambda:path/2015-03-31/functions/${CatalogLambda.Arn}/invocations'
+        Uri: !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${CatalogLambda.Arn}/invocations'
 
   # API Gateway Deployment
   # Include Lambda artifact key in Description so this resource updates whenever the
