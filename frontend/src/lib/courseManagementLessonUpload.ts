@@ -3,6 +3,7 @@ import {
   getUploadUrl,
   markLessonVideoReady,
 } from './api/catalog'
+import { ApiError } from './api/client'
 import { captureFrameAtVideoPercent } from './videoThumbnail'
 
 type DraftLessonUploadInput = {
@@ -80,9 +81,45 @@ async function uploadLessonVideoFile(
   await uploadWithProgress(xhr, videoFile, onUploadProgress, 40, 50)
 }
 
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
+/** Mark lesson ready after upload; Kinescope may still be transcoding so retry until ready or timeout. */
+async function markLessonVideoReadyAfterUpload(
+  courseId: string,
+  lessonId: string,
+  provider: VideoUploadInit['provider'],
+  thumbnailKey?: string,
+): Promise<'ready' | 'pending'> {
+  const options = thumbnailKey ? { thumbnailKey } : undefined
+  const maxAttempts = provider === 'kinescope' ? 30 : 1
+  const retryDelayMs = 10_000
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      const result = await markLessonVideoReady(courseId, lessonId, options)
+      if (result.videoStatus === 'ready') return 'ready'
+    } catch (err) {
+      const stillProcessing =
+        provider === 'kinescope' &&
+        err instanceof ApiError &&
+        err.status === 400 &&
+        (err.code === 'video_not_ready' || /processing/i.test(err.message))
+      if (stillProcessing && attempt < maxAttempts) {
+        await sleep(retryDelayMs)
+        continue
+      }
+      if (stillProcessing) return 'pending'
+      throw err
+    }
+  }
+  return 'pending'
+}
+
 /**
  * Create a draft lesson, upload video via the active provider, best-effort lesson thumbnail,
- * then mark video ready when the provider expects immediate readiness (S3).
+ * then mark video ready (immediate for S3; polled for Kinescope while transcoding).
  */
 export async function createAndUploadDraftLesson({
   courseId,
@@ -127,20 +164,17 @@ export async function createAndUploadDraftLesson({
     // Continue without lesson thumbnail if decode/seek fails
   }
 
-  const marksReadyOnUpload = videoUpload.provider === 's3'
-
-  if (marksReadyOnUpload) {
-    onUploadProgress(95)
-    await markLessonVideoReady(
-      courseId,
-      lessonResult.lessonId,
-      lessonThumbKey ? { thumbnailKey: lessonThumbKey } : undefined,
-    )
-  }
+  onUploadProgress(95)
+  const videoStatus = await markLessonVideoReadyAfterUpload(
+    courseId,
+    lessonResult.lessonId,
+    videoUpload.provider,
+    lessonThumbKey,
+  )
 
   onUploadProgress(100)
   return {
     lessonId: lessonResult.lessonId,
-    videoStatus: marksReadyOnUpload ? 'ready' : 'pending',
+    videoStatus,
   }
 }

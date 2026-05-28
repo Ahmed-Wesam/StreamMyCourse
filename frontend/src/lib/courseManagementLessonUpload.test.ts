@@ -19,6 +19,7 @@ vi.mock('./videoThumbnail', () => ({
 }))
 
 import { createAndUploadDraftLesson } from './courseManagementLessonUpload'
+import { ApiError } from './api/client'
 
 function xhrListeners() {
   const m = new Map<string, Set<(ev?: unknown) => void>>()
@@ -112,7 +113,7 @@ describe('createAndUploadDraftLesson', () => {
     expect(vi.mocked(fetch)).toHaveBeenCalled()
   })
 
-  it('does not mark ready immediately when upload provider is kinescope', async () => {
+  it('marks ready after kinescope upload (dev bypass or when processing completes)', async () => {
     getUploadUrl.mockReset()
     getUploadUrl
       .mockResolvedValueOnce({
@@ -121,6 +122,7 @@ describe('createAndUploadDraftLesson', () => {
         uploadMethod: 'post',
       })
       .mockResolvedValueOnce({ uploadUrl: 'https://s3.example/put-thumb', thumbnailKey: 'thumb-key-1' })
+    markLessonVideoReady.mockResolvedValue({ lessonId: 'les-1', videoStatus: 'ready' })
 
     let openedMethod = ''
     class KinescopeXHR {
@@ -153,22 +155,106 @@ describe('createAndUploadDraftLesson', () => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     vi.stubGlobal('XMLHttpRequest', KinescopeXHR as any)
 
-    const progress: number[] = []
-    await createAndUploadDraftLesson({
+    const result = await createAndUploadDraftLesson({
       courseId: 'c1',
       lessonInput: { title: 'Kinescope lesson', moduleId: 'm9' },
       videoFile: new File([new Uint8Array([1, 2, 3])], 'lesson.mp4', { type: 'video/mp4' }),
-      onUploadProgress: (n) => progress.push(n),
+      onUploadProgress: vi.fn(),
     })
 
     expect(openedMethod).toBe('POST')
-    expect(getUploadUrl).toHaveBeenNthCalledWith(1, 'lesson.mp4', 'video/mp4', {
+    expect(markLessonVideoReady).toHaveBeenCalledWith('c1', 'les-1', { thumbnailKey: 'thumb-key-1' })
+    expect(result.videoStatus).toBe('ready')
+  })
+
+  it('retries mark ready when kinescope is still processing then succeeds', async () => {
+    vi.useFakeTimers()
+    getUploadUrl.mockReset()
+    getUploadUrl
+      .mockResolvedValueOnce({
+        uploadUrl: 'https://kinescope.example/upload',
+        provider: 'kinescope',
+        uploadMethod: 'post',
+      })
+      .mockResolvedValueOnce({ uploadUrl: 'https://s3.example/put-thumb', thumbnailKey: 'thumb-key-1' })
+    markLessonVideoReady
+      .mockRejectedValueOnce(new ApiError('Video is still processing', 400, 'video_not_ready'))
+      .mockResolvedValueOnce({ lessonId: 'les-1', videoStatus: 'ready' })
+
+    class KinescopeXHR {
+      status = 200
+      statusText = 'OK'
+      upload = { addEventListener: vi.fn() }
+      open = vi.fn()
+      setRequestHeader = vi.fn()
+      send = vi.fn(() => {
+        queueMicrotask(() => listeners.fire('load'))
+      })
+      addEventListener(type: string, fn: EventListener) {
+        listeners.add(type, fn as (ev?: unknown) => void)
+      }
+    }
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    vi.stubGlobal('XMLHttpRequest', KinescopeXHR as any)
+
+    const pending = createAndUploadDraftLesson({
       courseId: 'c1',
-      lessonId: 'les-1',
-      filesize: 3,
+      lessonInput: { title: 'Kinescope lesson' },
+      videoFile: new File([new Uint8Array([1])], 'lesson.mp4', { type: 'video/mp4' }),
+      onUploadProgress: vi.fn(),
     })
-    expect(markLessonVideoReady).not.toHaveBeenCalled()
-    expect(progress[progress.length - 1]).toBe(100)
+
+    await vi.runAllTimersAsync()
+    const result = await pending
+
+    expect(markLessonVideoReady).toHaveBeenCalledTimes(2)
+    expect(result.videoStatus).toBe('ready')
+    vi.useRealTimers()
+  })
+
+  it('returns pending when kinescope processing never completes within retry window', async () => {
+    vi.useFakeTimers()
+    getUploadUrl.mockReset()
+    getUploadUrl
+      .mockResolvedValueOnce({
+        uploadUrl: 'https://kinescope.example/upload',
+        provider: 'kinescope',
+        uploadMethod: 'post',
+      })
+      .mockResolvedValueOnce({ uploadUrl: 'https://s3.example/put-thumb', thumbnailKey: 'thumb-key-1' })
+    markLessonVideoReady.mockRejectedValue(
+      new ApiError('Video is still processing', 400, 'video_not_ready'),
+    )
+
+    class KinescopeXHR {
+      status = 200
+      statusText = 'OK'
+      upload = { addEventListener: vi.fn() }
+      open = vi.fn()
+      setRequestHeader = vi.fn()
+      send = vi.fn(() => {
+        queueMicrotask(() => listeners.fire('load'))
+      })
+      addEventListener(type: string, fn: EventListener) {
+        listeners.add(type, fn as (ev?: unknown) => void)
+      }
+    }
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    vi.stubGlobal('XMLHttpRequest', KinescopeXHR as any)
+
+    const pending = createAndUploadDraftLesson({
+      courseId: 'c1',
+      lessonInput: { title: 'Kinescope lesson' },
+      videoFile: new File([new Uint8Array([1])], 'lesson.mp4', { type: 'video/mp4' }),
+      onUploadProgress: vi.fn(),
+    })
+
+    await vi.runAllTimersAsync()
+    const result = await pending
+
+    expect(markLessonVideoReady).toHaveBeenCalledTimes(30)
+    expect(result.videoStatus).toBe('pending')
+    vi.useRealTimers()
   })
 
   it('rejects when createLesson fails before upload', async () => {

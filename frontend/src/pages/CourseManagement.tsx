@@ -167,7 +167,9 @@ export default function CourseManagement() {
         onUploadProgress: setUploadProgress,
       })
       if (uploadResult.videoStatus === 'pending') {
-        setInfo('Video uploaded. Processing in progress; publishing unlocks once a lesson is ready.')
+        setInfo(
+          'Video uploaded but is still processing. Refresh in a few minutes or wait for the status to update.',
+        )
       }
       setShowAddLesson(false)
       setNewLessonTitle('')
