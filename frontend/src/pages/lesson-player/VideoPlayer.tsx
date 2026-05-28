@@ -73,6 +73,8 @@ export function VideoPlayer({
       className={className}
       src={playback.playbackUrl}
       onLoadedMetadata={onS3LoadedMetadata}
+      onDurationChange={onS3LoadedMetadata}
+      onCanPlay={onS3LoadedMetadata}
       onTimeUpdate={(e: SyntheticEvent<HTMLVideoElement>) => {
         const video = e.currentTarget
         const positionSec = Math.floor(video.currentTime)

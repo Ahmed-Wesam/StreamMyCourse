@@ -1182,6 +1182,75 @@ describe('LessonPlayerPage', () => {
     expect(screen.queryByRole('button', { name: 'Close curriculum' })).toBeNull()
   })
 
+  it('seeks to saved progress when metadata loads before course progress API returns', async () => {
+    let resolveProgress!: (value: Awaited<ReturnType<typeof api.getCourseProgress>>) => void
+    api.getCourseProgress.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveProgress = resolve
+        }),
+    )
+
+    renderLessonPlayer()
+
+    const video = await waitFor(() => {
+      const el = document.querySelector('video')
+      expect(el).not.toBeNull()
+      return el as HTMLVideoElement
+    })
+
+    Object.defineProperty(video, 'duration', { writable: true, configurable: true, value: Number.NaN })
+    Object.defineProperty(video, 'readyState', { writable: true, configurable: true, value: 1 })
+    Object.defineProperty(video, 'currentTime', { writable: true, configurable: true, value: 0 })
+
+    fireEvent.loadedMetadata(video)
+    expect(video.currentTime).toBe(0)
+
+    resolveProgress({
+      courseId: 'c1',
+      totalReadyLessons: 3,
+      completedCount: 0,
+      percentComplete: 0,
+      lessons: [
+        { lessonId: 'l1', completed: false, lastPositionSec: 120 },
+        { lessonId: 'l2', completed: false, lastPositionSec: 0 },
+        { lessonId: 'l3', completed: false, lastPositionSec: 0 },
+      ],
+    })
+
+    await waitFor(() => {
+      expect(video.currentTime).toBe(120)
+    })
+  })
+
+  it('seeks using catalog duration when video duration is not available yet', async () => {
+    api.getCourseProgress.mockResolvedValue({
+      courseId: 'c1',
+      totalReadyLessons: 3,
+      completedCount: 0,
+      percentComplete: 0,
+      lessons: [{ lessonId: 'l1', completed: false, lastPositionSec: 120 }],
+    })
+
+    renderLessonPlayer()
+
+    const video = await waitFor(() => {
+      const el = document.querySelector('video')
+      expect(el).not.toBeNull()
+      return el as HTMLVideoElement
+    })
+
+    Object.defineProperty(video, 'duration', { writable: true, configurable: true, value: Number.NaN })
+    Object.defineProperty(video, 'readyState', { writable: true, configurable: true, value: 1 })
+    Object.defineProperty(video, 'currentTime', { writable: true, configurable: true, value: 0 })
+
+    fireEvent.loadedMetadata(video)
+
+    await waitFor(() => {
+      expect(video.currentTime).toBe(120)
+    })
+  })
+
   it('hides the desktop sidebar toggle while the sidebar is open', async () => {
     mockMatchMedia(true)
     renderLessonPlayer()
