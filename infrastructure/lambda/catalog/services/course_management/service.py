@@ -28,7 +28,6 @@ from services.course_management.ports import (
 )
 from services.course_management.video_providers.kinescope_adapter import (
     KinescopeVideoMetadata,
-    fetch_kinescope_video_metadata,
     webhook_status_confirmed_by_api,
 )
 from services.course_management.video_providers.port import (
@@ -771,14 +770,11 @@ class CourseManagementService:
         lesson_id: str,
         *,
         video_key: str,
+        provider_metadata: KinescopeVideoMetadata | None = None,
+        provider_metadata_supplied: bool | None = None,
     ) -> Dict[str, Any]:
-        """Kinescope (async transcode): require provider done in prod; dev allows fixture bypass."""
-        metadata: KinescopeVideoMetadata | None = None
-        if self._kinescope_api_token:
-            metadata = fetch_kinescope_video_metadata(
-                api_token=self._kinescope_api_token,
-                video_id=video_key,
-            )
+        """Kinescope (async transcode): require edge-verified metadata in prod; dev allows bypass."""
+        metadata: KinescopeVideoMetadata | None = provider_metadata
         if metadata is not None and webhook_status_confirmed_by_api(
             "done", metadata.status
         ):
@@ -792,6 +788,82 @@ class CourseManagementService:
             lesson_id,
             video_key,
         )
+        self._repo.set_lesson_video_status(course_id=course_id, lesson_id=lesson_id, status="ready")
+        return {"lessonId": lesson_id, "videoStatus": "ready"}
+
+    def prepare_lesson_video_mark_ready(
+        self,
+        *,
+        course_id: str,
+        lesson_id: str,
+        cognito_sub: str,
+        role: str,
+    ) -> Dict[str, Any]:
+        self.ensure_can_modify_course(
+            course_id,
+            cognito_sub=cognito_sub,
+            role=role,
+        )
+        if not _is_valid_uuid(course_id):
+            raise NotFound("Course not found")
+        if not _is_valid_uuid(lesson_id):
+            raise NotFound("Lesson not found")
+        lesson = self._repo.get_lesson_by_id(course_id, lesson_id)
+        if not lesson:
+            raise NotFound("Lesson not found")
+        if not lesson.videoKey:
+            raise BadRequest("No video uploaded for lesson")
+        return {
+            "courseId": course_id,
+            "lessonId": lesson_id,
+            "videoKey": lesson.videoKey.strip(),
+        }
+
+    def apply_lesson_video_mark_ready(
+        self,
+        *,
+        course_id: str,
+        lesson_id: str,
+        video_key: str,
+        cognito_sub: str,
+        role: str,
+        thumbnail_key: str | None = None,
+        provider_metadata: KinescopeVideoMetadata | None = None,
+        provider_metadata_supplied: bool | None = None,
+    ) -> Dict[str, Any]:
+        self.ensure_can_modify_course(
+            course_id,
+            cognito_sub=cognito_sub,
+            role=role,
+        )
+        if not _is_valid_uuid(course_id):
+            raise NotFound("Course not found")
+        if not _is_valid_uuid(lesson_id):
+            raise NotFound("Lesson not found")
+        lesson = self._repo.get_lesson_by_id(course_id, lesson_id)
+        if not lesson:
+            raise NotFound("Lesson not found")
+        if not lesson.videoKey:
+            raise BadRequest("No video uploaded for lesson")
+        if video_key.strip() != lesson.videoKey.strip():
+            raise BadRequest("Video key mismatch")
+        if thumbnail_key:
+            self._validate_lesson_thumbnail_key(course_id, lesson_id, thumbnail_key)
+            old_thumb = lesson.thumbnailKey.strip()
+            if old_thumb and old_thumb != thumbnail_key.strip():
+                self._delete_media_keys([old_thumb])
+            self._repo.set_lesson_thumbnail(course_id, lesson_id, thumbnail_key)
+        if (
+            self._video_provider is not None
+            and not self._video_provider.marks_ready_on_upload_complete
+        ):
+            return self._mark_async_provider_lesson_ready(
+                course_id,
+                lesson_id,
+                video_key=video_key,
+                provider_metadata=provider_metadata,
+                provider_metadata_supplied=provider_metadata_supplied,
+            )
         self._repo.set_lesson_video_status(course_id=course_id, lesson_id=lesson_id, status="ready")
         return {"lessonId": lesson_id, "videoStatus": "ready"}
 
@@ -875,6 +947,66 @@ class CourseManagementService:
             cognito_sub=sub,
             role=role,
         )
+
+    def prepare_lesson_video_upload(
+        self,
+        *,
+        course_id: str,
+        lesson_id: str,
+        filename: str,
+        content_type: str,
+        filesize: int | None,
+        cognito_sub: str,
+        role: str,
+    ) -> Dict[str, Any]:
+        self.ensure_can_modify_course(
+            course_id,
+            cognito_sub=cognito_sub,
+            role=role,
+        )
+        if not _is_valid_uuid(course_id):
+            raise NotFound("Course not found")
+        if not _is_valid_uuid(lesson_id):
+            raise NotFound("Lesson not found")
+        lesson = self._repo.get_lesson_by_id(course_id, lesson_id)
+        if not lesson:
+            raise NotFound("Lesson not found")
+        return {
+            "courseId": course_id,
+            "lessonId": lesson_id,
+            "filename": filename,
+            "contentType": content_type,
+            "filesize": filesize,
+            "expectedVideoKey": (lesson.videoKey or "").strip(),
+        }
+
+    def commit_pending_lesson_video_upload(
+        self,
+        *,
+        course_id: str,
+        lesson_id: str,
+        video_key: str,
+        expected_video_key: str,
+        cognito_sub: str,
+        role: str,
+    ) -> Dict[str, Any]:
+        self.ensure_can_modify_course(
+            course_id,
+            cognito_sub=cognito_sub,
+            role=role,
+        )
+        if not _is_valid_uuid(course_id):
+            raise NotFound("Course not found")
+        if not _is_valid_uuid(lesson_id):
+            raise NotFound("Lesson not found")
+        self._repo.set_lesson_video_if_video_key_matches(
+            course_id=course_id,
+            lesson_id=lesson_id,
+            video_key=video_key,
+            status="pending",
+            expected_video_key=expected_video_key,
+        )
+        return {"committed": True}
 
     def get_upload_url(
         self,
@@ -987,7 +1119,13 @@ class CourseManagementService:
         self._repo.set_course_thumbnail(course_id, thumbnail_key)
         return {"id": course_id, "thumbnailReady": True}
 
-    def handle_kinescope_media_status(self, payload: Dict[str, Any]) -> Dict[str, Any]:
+    def handle_kinescope_media_status(
+        self,
+        payload: Dict[str, Any],
+        *,
+        verified_metadata: KinescopeVideoMetadata | None = None,
+        verified_metadata_supplied: bool = False,
+    ) -> Dict[str, Any]:
         event_type = str(payload.get("event") or "").strip()
         if event_type != "media.update.status":
             raise BadRequest("Unsupported Kinescope webhook event")
@@ -1011,42 +1149,41 @@ class CourseManagementService:
             return {"ignored": True}
 
         course_id, lesson_id = loc
-        verified_metadata: KinescopeVideoMetadata | None = None
+        resolved_metadata: KinescopeVideoMetadata | None = None
         if status in ("done", "error", "aborted"):
-            if not self._kinescope_api_token:
+            if verified_metadata_supplied:
+                if verified_metadata is None:
+                    logger.warning(
+                        "kinescope webhook rejected mutating event without verified metadata video_id=%s status=%s",
+                        video_id,
+                        status,
+                    )
+                    return {"ignored": True, "reason": "verification_failed"}
+                if not webhook_status_confirmed_by_api(status, verified_metadata.status):
+                    logger.warning(
+                        "kinescope webhook status mismatch video_id=%s webhook=%s api=%s",
+                        video_id,
+                        status,
+                        verified_metadata.status,
+                    )
+                    return {"ignored": True, "reason": "status_mismatch"}
+                resolved_metadata = verified_metadata
+            else:
                 logger.warning(
-                    "kinescope webhook rejected mutating event without API token video_id=%s status=%s",
+                    "kinescope webhook rejected mutating event without edge-verified metadata "
+                    "video_id=%s status=%s",
                     video_id,
                     status,
                 )
                 return {"ignored": True, "reason": "verification_unconfigured"}
-            verified_metadata = fetch_kinescope_video_metadata(
-                api_token=self._kinescope_api_token,
-                video_id=video_id,
-            )
-            if verified_metadata is None:
-                logger.warning(
-                    "kinescope webhook could not verify video_id=%s status=%s",
-                    video_id,
-                    status,
-                )
-                return {"ignored": True, "reason": "verification_failed"}
-            if not webhook_status_confirmed_by_api(status, verified_metadata.status):
-                logger.warning(
-                    "kinescope webhook status mismatch video_id=%s webhook=%s api=%s",
-                    video_id,
-                    status,
-                    verified_metadata.status,
-                )
-                return {"ignored": True, "reason": "status_mismatch"}
 
         if status == "done":
-            assert verified_metadata is not None
+            assert resolved_metadata is not None
             return {
                 "courseId": course_id,
                 "lessonId": lesson_id,
                 **self._apply_kinescope_ready_metadata(
-                    course_id, lesson_id, verified_metadata
+                    course_id, lesson_id, resolved_metadata
                 ),
             }
         if status in ("error", "aborted"):

@@ -12,6 +12,9 @@
 # For dev and prod, scripts/deploy-backend.sh deploys StreamMyCourse-MediaCleanup-{env} (SQS + worker)
 # and StreamMyCourse-Payments-{env} (billing edge + fulfillment queue) before the API stack, then
 # passes media cleanup queue URL/ARN and billing edge ARN + fulfillment queue URL/ARN into api-stack.yaml.
+# When VIDEO_PROVIDER=kinescope (dev default), deploy-backend.sh also deploys
+# StreamMyCourse-VideoProviderEdge-{env} after the first API deploy and re-deploys api-stack with
+# VideoProviderEdgeLambdaArn so upload/webhook routes target the edge Lambda.
 name: Deploy
 
 on:

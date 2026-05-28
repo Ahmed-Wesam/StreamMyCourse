@@ -109,6 +109,13 @@ Parameters:
       ARN of the billing edge Lambda from StreamMyCourse-Payments-{env}. When
       empty, billing routes are not attached to this API.
 
+  VideoProviderEdgeLambdaArn:
+    Type: String
+    Default: ''
+    Description: >-
+      ARN of the video provider edge Lambda from StreamMyCourse-VideoProviderEdge-{env}.
+      When set with VideoProvider=kinescope, upload/webhook routes target the edge.
+
   BillingTeacherSub:
     Type: String
     Default: ''
@@ -178,6 +185,11 @@ Conditions:
   IsProd: !Equals [!Ref Environment, prod]
   HasMediaCleanupQueueArn: !Not [!Equals [!Ref MediaCleanupQueueArn, '']]
   HasBillingEdgeLambdaArn: !Not [!Equals [!Ref BillingEdgeLambdaArn, '']]
+  IsKinescopeProvider: !Equals [!Ref VideoProvider, kinescope]
+  HasVideoProviderEdgeLambdaArn: !Not [!Equals [!Ref VideoProviderEdgeLambdaArn, '']]
+  UseKinescopeVideoEdge: !And
+    - !Condition IsKinescopeProvider
+    - !Condition HasVideoProviderEdgeLambdaArn
 
 Resources:
   # Lambda Execution Role
@@ -310,12 +322,21 @@ Resources:
           PROGRESS_POSITION_SLACK_SEC: !Ref ProgressPositionSlackSec
           STUDENT_COGNITO_CLIENT_ID: !Ref StudentCognitoClientId
           VIDEO_PROVIDER: !Ref VideoProvider
-          KINESCOPE_API_TOKEN: !Ref KinescopeApiToken
-          KINESCOPE_PARENT_ID: !Ref KinescopeParentId
+          KINESCOPE_API_TOKEN: !If
+            - UseKinescopeVideoEdge
+            - ''
+            - !Ref KinescopeApiToken
+          KINESCOPE_PARENT_ID: !If
+            - UseKinescopeVideoEdge
+            - ''
+            - !Ref KinescopeParentId
           KINESCOPE_DRM_JWT_SECRET: !Ref KinescopeDrmJwtSecret
           KINESCOPE_DRM_JWT_ISSUER: !Ref KinescopeDrmJwtIssuer
           KINESCOPE_DRM_JWT_AUDIENCE: !Ref KinescopeDrmJwtAudience
-          KINESCOPE_WEBHOOK_SECRET: !Ref KinescopeWebhookSecret
+          KINESCOPE_WEBHOOK_SECRET: !If
+            - UseKinescopeVideoEdge
+            - ''
+            - !Ref KinescopeWebhookSecret
       Tags:
         - Key: Project
           Value: StreamMyCourse
@@ -766,6 +787,15 @@ Resources:
     Condition: HasBillingEdgeLambdaArn
     Properties:
       FunctionName: !Ref BillingEdgeLambdaArn
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${CatalogApi}/*'
+
+  VideoProviderEdgeLambdaApiPermission:
+    Type: AWS::Lambda::Permission
+    Condition: UseKinescopeVideoEdge
+    Properties:
+      FunctionName: !Ref VideoProviderEdgeLambdaArn
       Action: lambda:InvokeFunction
       Principal: apigateway.amazonaws.com
       SourceArn: !Sub 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${CatalogApi}/*'
@@ -1437,7 +1467,10 @@ Resources:
       Integration:
         IntegrationHttpMethod: POST
         Type: AWS_PROXY
-        Uri: !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${CatalogLambda.Arn}/invocations'
+        Uri: !If
+          - UseKinescopeVideoEdge
+          - !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${VideoProviderEdgeLambdaArn}/invocations'
+          - !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${CatalogLambda.Arn}/invocations'
 
   # API Gateway Method: OPTIONS /courses/{courseId}/lessons/{lessonId}/video-ready (CORS preflight)
   LessonVideoReadyOptionsMethod:
@@ -1450,7 +1483,10 @@ Resources:
       Integration:
         IntegrationHttpMethod: POST
         Type: AWS_PROXY
-        Uri: !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${CatalogLambda.Arn}/invocations'
+        Uri: !If
+          - UseKinescopeVideoEdge
+          - !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${VideoProviderEdgeLambdaArn}/invocations'
+          - !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${CatalogLambda.Arn}/invocations'
 
   # API Gateway Method: GET /playback/{courseId}/{lessonId}
   PlaybackGetMethod:
@@ -1491,7 +1527,10 @@ Resources:
       Integration:
         IntegrationHttpMethod: POST
         Type: AWS_PROXY
-        Uri: !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${CatalogLambda.Arn}/invocations'
+        Uri: !If
+          - UseKinescopeVideoEdge
+          - !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${VideoProviderEdgeLambdaArn}/invocations'
+          - !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${CatalogLambda.Arn}/invocations'
 
   # API Gateway Method: OPTIONS /upload-url (CORS preflight)
   UploadUrlOptionsMethod:
@@ -1504,7 +1543,10 @@ Resources:
       Integration:
         IntegrationHttpMethod: POST
         Type: AWS_PROXY
-        Uri: !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${CatalogLambda.Arn}/invocations'
+        Uri: !If
+          - UseKinescopeVideoEdge
+          - !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${VideoProviderEdgeLambdaArn}/invocations'
+          - !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${CatalogLambda.Arn}/invocations'
 
   UsersMeGetMethod:
     Type: AWS::ApiGateway::Method
@@ -1726,7 +1768,10 @@ Resources:
       Integration:
         IntegrationHttpMethod: POST
         Type: AWS_PROXY
-        Uri: !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${CatalogLambda.Arn}/invocations'
+        Uri: !If
+          - UseKinescopeVideoEdge
+          - !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${VideoProviderEdgeLambdaArn}/invocations'
+          - !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${CatalogLambda.Arn}/invocations'
 
   # API Gateway Method: OPTIONS /webhooks/kinescope (CORS preflight)
   WebhooksKinescopeOptionsMethod:
@@ -1739,7 +1784,10 @@ Resources:
       Integration:
         IntegrationHttpMethod: POST
         Type: AWS_PROXY
-        Uri: !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${CatalogLambda.Arn}/invocations'
+        Uri: !If
+          - UseKinescopeVideoEdge
+          - !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${VideoProviderEdgeLambdaArn}/invocations'
+          - !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${CatalogLambda.Arn}/invocations'
 
   # API Gateway Method: POST /webhooks/kinescope/drm-auth (public DRM callback)
   WebhooksKinescopeDrmAuthPostMethod:
@@ -1775,7 +1823,7 @@ Resources:
   # Bump logical id when API methods/resources change so CloudFormation always
   # creates a new deployment; otherwise the stage can keep serving an old snapshot
   # (symptom: GET /courses/{id}/lessons returns API GW 403 Missing Authentication Token).
-  CatalogApiDeploymentV33:
+  CatalogApiDeploymentV34:
     Type: AWS::ApiGateway::Deployment
     DependsOn:
       - CatalogLambdaApiPermission
@@ -1853,7 +1901,7 @@ Resources:
     Type: AWS::ApiGateway::Stage
     Properties:
       RestApiId: !Ref CatalogApi
-      DeploymentId: !Ref CatalogApiDeploymentV33
+      DeploymentId: !Ref CatalogApiDeploymentV34
       StageName: !Ref Environment
       Description: !Sub '${Environment} stage for Catalog API'
       MethodSettings:

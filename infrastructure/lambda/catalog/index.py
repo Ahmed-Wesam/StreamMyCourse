@@ -16,11 +16,10 @@ from services.common.http import apigw_routing_path, json_response, options_resp
 from services.progress.controller import handle_progress_request
 from services.common.logging_setup import configure_logging
 from services.common.runtime_context import bind_from_lambda_event, clear_request_context, set_request_path
+from services.common.internal_invoke import run_internal_handler
 from services.course_management.controller import handle as course_management_handle
-from services.course_management.video_webhooks import (
-    handle_kinescope_drm_auth,
-    handle_kinescope_webhook,
-)
+from services.course_management.kinescope_routing import kinescope_http_routed_on_catalog
+from services.course_management.video_webhooks import handle_kinescope_drm_auth
 from services.question_banks.controller import handle_question_banks_request
 
 logger = logging.getLogger(__name__)
@@ -33,6 +32,24 @@ _student_session_guard_warned = False
 _INTERNAL_BILLING_CHECKOUT = "billing.checkout"
 _INTERNAL_BILLING_ROLLBACK = "billing.rollback_checkout"
 _INTERNAL_BILLING_CANCEL_AT_PERIOD_END = "billing.cancel_at_period_end"
+_INTERNAL_VIDEO_PREPARE = "video.prepare_upload"
+_INTERNAL_VIDEO_COMMIT = "video.commit_pending_upload"
+_INTERNAL_VIDEO_PREPARE_MARK_READY = "video.prepare_mark_ready"
+_INTERNAL_VIDEO_APPLY_MARK_READY = "video.apply_mark_ready"
+_INTERNAL_VIDEO_WEBHOOK_STATUS = "video.webhook_status"
+
+_INTERNAL_EVENTS = frozenset(
+    {
+        _INTERNAL_BILLING_CHECKOUT,
+        _INTERNAL_BILLING_ROLLBACK,
+        _INTERNAL_BILLING_CANCEL_AT_PERIOD_END,
+        _INTERNAL_VIDEO_PREPARE,
+        _INTERNAL_VIDEO_COMMIT,
+        _INTERNAL_VIDEO_PREPARE_MARK_READY,
+        _INTERNAL_VIDEO_APPLY_MARK_READY,
+        _INTERNAL_VIDEO_WEBHOOK_STATUS,
+    }
+)
 
 
 def _rds_config_complete(cfg: AppConfig) -> bool:
@@ -74,6 +91,78 @@ def _handle_internal_billing_event(event: Dict[str, Any]) -> Dict[str, Any]:
     raise ValueError(f"unknown internal billing event: {internal!r}")
 
 
+def _handle_internal_video_event(event: Dict[str, Any]) -> Dict[str, Any]:
+    """Direct invoke only — video provider edge upload-url orchestration."""
+    from services.course_management.internal_video import (
+        handle_internal_video_apply_mark_ready,
+        handle_internal_video_commit_pending_upload,
+        handle_internal_video_prepare_mark_ready,
+        handle_internal_video_prepare_upload,
+        handle_internal_video_webhook_status,
+    )
+
+    cfg = load_config()
+    if not _rds_config_complete(cfg):
+        raise RuntimeError(
+            "Catalog is not configured: set DB_HOST, DB_NAME, and DB_SECRET_ARN"
+        )
+    warm_aws_deps_if_needed(cfg)
+    deps = get_cached_aws_deps()
+    if deps is None or deps.service is None:
+        raise RuntimeError("Catalog dependencies are not available")
+    internal = event.get("internal")
+    if internal == _INTERNAL_VIDEO_PREPARE:
+        return run_internal_handler(
+            handle_internal_video_prepare_upload,
+            event,
+            course_service=deps.service,
+        )
+    if internal == _INTERNAL_VIDEO_COMMIT:
+        return run_internal_handler(
+            handle_internal_video_commit_pending_upload,
+            event,
+            course_service=deps.service,
+        )
+    if internal == _INTERNAL_VIDEO_PREPARE_MARK_READY:
+        return run_internal_handler(
+            handle_internal_video_prepare_mark_ready,
+            event,
+            course_service=deps.service,
+        )
+    if internal == _INTERNAL_VIDEO_APPLY_MARK_READY:
+        return run_internal_handler(
+            handle_internal_video_apply_mark_ready,
+            event,
+            course_service=deps.service,
+        )
+    if internal == _INTERNAL_VIDEO_WEBHOOK_STATUS:
+        return run_internal_handler(
+            handle_internal_video_webhook_status,
+            event,
+            course_service=deps.service,
+        )
+    raise ValueError(f"unknown internal video event: {internal!r}")
+
+
+def _handle_internal_event(event: Dict[str, Any]) -> Dict[str, Any]:
+    internal = event.get("internal")
+    if internal in (
+        _INTERNAL_BILLING_CHECKOUT,
+        _INTERNAL_BILLING_ROLLBACK,
+        _INTERNAL_BILLING_CANCEL_AT_PERIOD_END,
+    ):
+        return _handle_internal_billing_event(event)
+    if internal in (
+        _INTERNAL_VIDEO_PREPARE,
+        _INTERNAL_VIDEO_COMMIT,
+        _INTERNAL_VIDEO_PREPARE_MARK_READY,
+        _INTERNAL_VIDEO_APPLY_MARK_READY,
+        _INTERNAL_VIDEO_WEBHOOK_STATUS,
+    ):
+        return _handle_internal_video_event(event)
+    raise ValueError(f"unknown internal event: {internal!r}")
+
+
 def handle_internal_billing_checkout(event: Dict[str, Any]) -> Dict[str, Any]:
     return _handle_internal_billing_event(event)
 
@@ -88,12 +177,8 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         # Bind request context for correlation IDs
         bind_from_lambda_event(event=event, lambda_context=context)
 
-        if event.get("internal") in (
-            _INTERNAL_BILLING_CHECKOUT,
-            _INTERNAL_BILLING_ROLLBACK,
-            _INTERNAL_BILLING_CANCEL_AT_PERIOD_END,
-        ):
-            return _handle_internal_billing_event(event)
+        if event.get("internal") in _INTERNAL_EVENTS:
+            return _handle_internal_event(event)
 
         method = (
             event.get("requestContext", {}).get("http", {}).get("method")
@@ -236,13 +321,6 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                             origin=origin,
                             manage_svc=subscription_manage_service,
                         )
-                    elif method in ("POST", "OPTIONS") and parts == ["webhooks", "kinescope"]:
-                        route_response = handle_kinescope_webhook(
-                            event,
-                            origin=origin,
-                            svc=service,
-                            webhook_secret=cfg.kinescope_webhook_secret,
-                        )
                     elif method in ("POST", "OPTIONS") and parts == [
                         "webhooks",
                         "kinescope",
@@ -253,6 +331,22 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                             origin=origin,
                             svc=service,
                         )
+                    elif kinescope_http_routed_on_catalog(cfg, method=method, parts=parts):
+                        if method == "OPTIONS":
+                            route_response = options_response(origin)
+                        else:
+                            route_response = json_response(
+                                503,
+                                {
+                                    "message": (
+                                        "Kinescope upload, mark-ready, and status webhook routes "
+                                        "require the video provider edge Lambda. Redeploy the "
+                                        "backend with VideoProviderEdgeLambdaArn wired."
+                                    ),
+                                    "code": "video_edge_required",
+                                },
+                                origin,
+                            )
                     else:
                         route_response = course_management_handle(
                             event,

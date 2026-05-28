@@ -340,7 +340,6 @@ fi
 
 echo "Deploying API stack: $API_STACK (video bucket: $VIDEO_BUCKET, video provider: $VIDEO_PROVIDER)"
 # JWT audience validation in the TOKEN authorizer must accept every app client that mints
-# IdTokens for this API (teacher + student). CI integration tests mint both audiences.
 AUTH_STACK_NAME="StreamMyCourse-Auth-${ENV}"
 STUDENT_CLIENT="${STUDENT_CLIENT:-}"
 COGNITO_CLIENT_IDS="${COGNITO_CLIENT_IDS:-}"
@@ -408,31 +407,81 @@ if ! aws cloudformation describe-stacks --stack-name "$RDS_STACK_NAME" --region 
     exit 1
 fi
 
-# api-stack.yaml exceeds API Gateway's change-set inline template limit (51,200 bytes);
-# stage the template via the artifacts bucket (same as Lambda zips).
-aws cloudformation deploy \
-  --template-file "$TEMPLATE_DIR/api-stack.yaml" \
-  --s3-bucket "$ARTIFACT_BUCKET" \
-  --s3-prefix "cf-api-template/${ENV}/" \
-  --stack-name "$API_STACK" \
-  --capabilities CAPABILITY_IAM CAPABILITY_NAMED_IAM \
-  --region "$REGION" \
-  --no-fail-on-empty-changeset \
-  --parameter-overrides \
-  "Environment=${ENV}" \
-  "LambdaCodeS3Bucket=${ARTIFACT_BUCKET}" \
-  "LambdaCodeS3Key=${ZIP_KEY}" \
-  "TokenAuthorizerCodeS3Key=${AUTH_ZIP_KEY}" \
-  "VideoBucketName=${VIDEO_BUCKET}" \
-  "VideoUrl=${BUCKET_URL}" \
-  "CorsAllowOrigin=${CORS}" \
-  "GatewayResponseAllowOrigin=${GW_ALLOW}" \
-  "BillingTeacherSub=${BILLING_TEACHER_SUB:-}" \
-  "${COGNITO_OVERRIDE[@]}" \
-  "${RDS_STACK_OVERRIDE[@]}" \
-  "${MEDIA_PARAM_OVERRIDES[@]}" \
-  "${BILLING_PARAM_OVERRIDES[@]}" \
-  "${KINESCOPE_PARAM_OVERRIDES[@]}"
+VIDEO_EDGE_PARAM_OVERRIDES=()
+VIDEO_EDGE_STACK="StreamMyCourse-VideoProviderEdge-${ENV}"
+
+# When catalog already exists (typical update deploy), refresh the edge stack and wire routes
+# in the same api-stack deploy — avoids a window where Kinescope HTTP routes fall back to catalog.
+PREFLIGHT_CATALOG_ARN=""
+if aws cloudformation describe-stacks --stack-name "$API_STACK" --region "$REGION" &>/dev/null; then
+  PREFLIGHT_CATALOG_FN="$(aws cloudformation describe-stacks \
+    --stack-name "$API_STACK" \
+    --region "$REGION" \
+    --query 'Stacks[0].Outputs[?OutputKey==`LambdaFunctionName`].OutputValue' \
+    --output text)"
+  if [[ -n "$PREFLIGHT_CATALOG_FN" && "$PREFLIGHT_CATALOG_FN" != "None" ]]; then
+    PREFLIGHT_CATALOG_ARN="$(aws lambda get-function \
+      --function-name "$PREFLIGHT_CATALOG_FN" \
+      --region "$REGION" \
+      --query 'Configuration.FunctionArn' \
+      --output text)"
+  fi
+fi
+
+if [[ "$VIDEO_PROVIDER" == "kinescope" && -n "$PREFLIGHT_CATALOG_ARN" && "$PREFLIGHT_CATALOG_ARN" != "None" ]]; then
+  export CATALOG_LAMBDA_ARN="$PREFLIGHT_CATALOG_ARN"
+  export CORS_ALLOW_ORIGIN="${CORS}"
+  VIDEO_EDGE_SCRIPT="${ROOT}/scripts/deploy-video-provider-edge.sh"
+  chmod +x "$VIDEO_EDGE_SCRIPT"
+  echo "Pre-deploy: refreshing video provider edge (existing catalog ARN)"
+  "$VIDEO_EDGE_SCRIPT" "$ENV" "$REGION" "$ARTIFACT_BUCKET" "$SUFFIX"
+  PREFLIGHT_VIDEO_EDGE_ARN="$(aws cloudformation describe-stacks \
+    --stack-name "$VIDEO_EDGE_STACK" \
+    --region "$REGION" \
+    --query 'Stacks[0].Outputs[?OutputKey==`VideoProviderEdgeLambdaArn`].OutputValue' \
+    --output text)"
+  if [[ -n "$PREFLIGHT_VIDEO_EDGE_ARN" && "$PREFLIGHT_VIDEO_EDGE_ARN" != "None" ]]; then
+    VIDEO_EDGE_PARAM_OVERRIDES=("VideoProviderEdgeLambdaArn=${PREFLIGHT_VIDEO_EDGE_ARN}")
+  else
+    echo "Failed to read VideoProviderEdgeLambdaArn from $VIDEO_EDGE_STACK" >&2
+    exit 1
+  fi
+fi
+
+_deploy_api_stack() {
+  local phase_label="${1:-}"
+  if [[ -n "$phase_label" ]]; then
+    echo "Deploying API stack ($phase_label): $API_STACK (video bucket: $VIDEO_BUCKET, video provider: $VIDEO_PROVIDER)"
+  fi
+  # api-stack.yaml exceeds API Gateway's change-set inline template limit (51,200 bytes);
+  # stage the template via the artifacts bucket (same as Lambda zips).
+  aws cloudformation deploy \
+    --template-file "$TEMPLATE_DIR/api-stack.yaml" \
+    --s3-bucket "$ARTIFACT_BUCKET" \
+    --s3-prefix "cf-api-template/${ENV}/" \
+    --stack-name "$API_STACK" \
+    --capabilities CAPABILITY_IAM CAPABILITY_NAMED_IAM \
+    --region "$REGION" \
+    --no-fail-on-empty-changeset \
+    --parameter-overrides \
+    "Environment=${ENV}" \
+    "LambdaCodeS3Bucket=${ARTIFACT_BUCKET}" \
+    "LambdaCodeS3Key=${ZIP_KEY}" \
+    "TokenAuthorizerCodeS3Key=${AUTH_ZIP_KEY}" \
+    "VideoBucketName=${VIDEO_BUCKET}" \
+    "VideoUrl=${BUCKET_URL}" \
+    "CorsAllowOrigin=${CORS}" \
+    "GatewayResponseAllowOrigin=${GW_ALLOW}" \
+    "BillingTeacherSub=${BILLING_TEACHER_SUB:-}" \
+    "${COGNITO_OVERRIDE[@]}" \
+    "${RDS_STACK_OVERRIDE[@]}" \
+    "${MEDIA_PARAM_OVERRIDES[@]}" \
+    "${BILLING_PARAM_OVERRIDES[@]}" \
+    "${KINESCOPE_PARAM_OVERRIDES[@]}" \
+    "${VIDEO_EDGE_PARAM_OVERRIDES[@]}"
+}
+
+_deploy_api_stack "phase A"
 
 API_ENDPOINT="$(aws cloudformation describe-stacks \
   --stack-name "$API_STACK" \
@@ -478,4 +527,30 @@ if [[ -n "${CATALOG_LAMBDA_ARN:-}" && "${CATALOG_LAMBDA_ARN}" != "None" ]]; then
   chmod +x "$PAY_SCRIPT"
   echo "Updating payments stack with catalog invoke + billing return URLs"
   "$PAY_SCRIPT" "$ENV" "$REGION" "$ARTIFACT_BUCKET" "$SUFFIX"
+fi
+
+# Video provider edge (Kinescope): first-time env only — catalog did not exist pre-deploy.
+if [[ "$VIDEO_PROVIDER" == "kinescope" && -n "${CATALOG_LAMBDA_ARN:-}" && "${CATALOG_LAMBDA_ARN}" != "None" ]]; then
+  if ((${#VIDEO_EDGE_PARAM_OVERRIDES[@]} == 0)); then
+    export CATALOG_LAMBDA_ARN
+    export CORS_ALLOW_ORIGIN="${CORS}"
+    VIDEO_EDGE_SCRIPT="${ROOT}/scripts/deploy-video-provider-edge.sh"
+    chmod +x "$VIDEO_EDGE_SCRIPT"
+    echo "Deploying video provider edge stack with catalog invoke (first-time wiring)"
+    "$VIDEO_EDGE_SCRIPT" "$ENV" "$REGION" "$ARTIFACT_BUCKET" "$SUFFIX"
+    VIDEO_EDGE_ARN="$(aws cloudformation describe-stacks \
+      --stack-name "$VIDEO_EDGE_STACK" \
+      --region "$REGION" \
+      --query 'Stacks[0].Outputs[?OutputKey==`VideoProviderEdgeLambdaArn`].OutputValue' \
+      --output text)"
+    if [[ -n "${VIDEO_EDGE_ARN:-}" && "${VIDEO_EDGE_ARN}" != "None" ]]; then
+      VIDEO_EDGE_PARAM_OVERRIDES=("VideoProviderEdgeLambdaArn=${VIDEO_EDGE_ARN}")
+      _deploy_api_stack "wire video edge routes"
+    else
+      echo "Failed to read VideoProviderEdgeLambdaArn from $VIDEO_EDGE_STACK" >&2
+      exit 1
+    fi
+  else
+    echo "Video provider edge routes wired in catalog deploy (pre-deploy refresh)"
+  fi
 fi
