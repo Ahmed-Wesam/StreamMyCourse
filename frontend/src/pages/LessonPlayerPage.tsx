@@ -237,15 +237,18 @@ export default function LessonPlayerPage() {
         setModules(sortModulesByOrder(m))
         setLessons(sortLessonsByOrdering(l))
         try {
+          const progressPromise = getCourseProgress(courseId).then(
+            (prog) => ({ ok: true as const, prog }),
+            () => ({ ok: false as const }),
+          )
           const pb = await getPlaybackUrl(courseId, lessonId)
           if (cancelled) return
           setPlayback(pb)
-          try {
-            const prog = await getCourseProgress(courseId)
-            if (!cancelled) setCourseProgress(prog)
-          } catch {
-            // Silently ignore expected progress errors (RDS unavailable, auth not configured)
-          }
+          void progressPromise.then((progResult) => {
+            if (!cancelled && progResult.ok) {
+              setCourseProgress(progResult.prog)
+            }
+          })
         } catch (inner) {
           if (cancelled) return
           if (isCourseAccessDeniedError(inner)) {
@@ -361,6 +364,29 @@ export default function LessonPlayerPage() {
     return savedPosition > 0 ? savedPosition : 0
   }, [resumeTimeSec, courseProgress, lessonId])
 
+  const applyResumeSeek = useCallback(() => {
+    const video = videoRef.current
+    if (!video || resumeAppliedRef.current) return
+    if (video.readyState < HTMLMediaElement.HAVE_METADATA) return
+
+    const resumeTime = getResumeTimeSec()
+    if (resumeTime <= 0) return
+
+    const activeLesson = lessons.find((l) => l.id === lessonId)
+    const catalogDuration = activeLesson?.duration ?? 0
+    const mediaDuration = video.duration
+    const effectiveDuration =
+      Number.isFinite(mediaDuration) && mediaDuration > 0
+        ? mediaDuration
+        : catalogDuration > 0
+          ? catalogDuration
+          : 0
+    if (effectiveDuration > 0 && resumeTime >= effectiveDuration) return
+
+    video.currentTime = resumeTime
+    resumeAppliedRef.current = true
+  }, [getResumeTimeSec, lessonId, lessons])
+
   // Handle S3 metadata loaded — resume seek + client-side duration discovery for S3 uploads.
   const handleS3LoadedMetadata = useCallback(() => {
     const video = videoRef.current
@@ -377,21 +403,20 @@ export default function LessonPlayerPage() {
       durationSentRef.current = true
       // Send duration update (best effort - don't block playback on this)
       void updateLessonProgress(courseId, lessonId, {
-        lastPositionSec: 0,
+        lastPositionSec: getResumeTimeSec(),
         durationSec: videoDuration,
       }).catch(() => {
         // Silently ignore - duration update is best effort
       })
     }
 
-    if (resumeAppliedRef.current) return
+    applyResumeSeek()
+  }, [applyResumeSeek, courseId, lessonId, lessons, getResumeTimeSec])
 
-    const resumeTime = getResumeTimeSec()
-    if (resumeTime > 0 && resumeTime < video.duration) {
-      video.currentTime = resumeTime
-      resumeAppliedRef.current = true
-    }
-  }, [getResumeTimeSec, courseId, lessonId, lessons])
+  // Resume when saved progress arrives after the video element already loaded metadata.
+  useEffect(() => {
+    applyResumeSeek()
+  }, [applyResumeSeek, courseProgress, playback])
 
   // Reset flags when lesson changes
   useEffect(() => {
