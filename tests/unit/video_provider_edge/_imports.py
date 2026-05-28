@@ -31,6 +31,7 @@ def _load_module(name: str, filename: str) -> ModuleType:
     return mod
 
 
+_load_module("apigw_path", "apigw_path.py")
 _load_module("video_catalog_invoke", "video_catalog_invoke.py")
 _load_module("video_edge_config", "video_edge_config.py")
 _load_module("kinescope_http", "kinescope_http.py")

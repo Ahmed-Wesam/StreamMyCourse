@@ -93,6 +93,44 @@ def test_mark_ready_dev_bypass_when_metadata_unavailable(
     assert apply_calls[0]["provider_metadata_supplied"] is False
 
 
+def test_mark_ready_uses_literal_path_when_resource_path_is_template(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    prepare_calls: list[Dict[str, Any]] = []
+
+    monkeypatch.setattr(video_edge_handler, "_load_config", lambda: _edge_config())
+    monkeypatch.setattr(
+        video_edge_handler,
+        "_invoke_video_prepare_mark_ready",
+        lambda **kw: prepare_calls.append(kw)
+        or {"courseId": _COURSE_ID, "lessonId": _LESSON_ID, "videoKey": _VIDEO_KEY},
+    )
+    monkeypatch.setattr(
+        video_edge_handler,
+        "_invoke_video_apply_mark_ready",
+        lambda **kw: {"lessonId": _LESSON_ID, "videoStatus": "ready"},
+    )
+    monkeypatch.setattr(
+        video_edge_handler,
+        "_fetch_kinescope_metadata",
+        lambda **kw: None,
+    )
+
+    evt = _mark_ready_event()
+    evt["requestContext"] = {
+        "resourcePath": "/courses/{courseId}/lessons/{lessonId}/video-ready",
+        "stage": "dev",
+        "authorizer": {"claims": {"sub": _USER_SUB, "custom:role": "teacher"}},
+    }
+    evt["path"] = _VIDEO_READY_PATH
+
+    resp = video_edge_handler.lambda_handler(evt, None)
+
+    assert resp["statusCode"] == 200
+    assert prepare_calls[0]["course_id"] == _COURSE_ID
+    assert prepare_calls[0]["lesson_id"] == _LESSON_ID
+
+
 def test_mark_ready_prod_passes_verified_metadata_to_catalog(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
