@@ -101,7 +101,20 @@ jobs:
             echo "INTEGRATION_API_BASE_URL=$API_BASE_URL"
             echo "INTEGRATION_VIDEO_BUCKET=$VIDEO_BUCKET"
             echo "INTEGRATION_AWS_REGION=${AWS_REGION}"
+            echo "INTEGRATION_VIDEO_PROVIDER=kinescope"
           } >> "$GITHUB_ENV"
+
+      - name: Require Kinescope webhook secret for integration session
+        env:
+          KINESCOPE_WEBHOOK_SECRET: ${{ secrets.KINESCOPE_WEBHOOK_SECRET }}
+        run: |
+          set -euo pipefail
+          if [[ -z "${KINESCOPE_WEBHOOK_SECRET:-}" ]]; then
+            echo "::error::GitHub Environment \"${{ inputs.github_environment }}\" must set KINESCOPE_WEBHOOK_SECRET for Kinescope integration session."
+            exit 1
+          fi
+          echo "::add-mask::$KINESCOPE_WEBHOOK_SECRET"
+          echo "INTEGRATION_KINESCOPE_WEBHOOK_SECRET=$KINESCOPE_WEBHOOK_SECRET" >> "$GITHUB_ENV"
 
       - name: Require Cognito credentials for RDS verify
         env:
