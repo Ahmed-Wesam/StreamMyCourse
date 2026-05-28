@@ -230,6 +230,30 @@ class TestPrepareUploadServiceAuthz:
             "expectedVideoKey": "existing-key",
         }
 
+    def test_rejects_non_video_content_type(
+        self, repo: MagicMock, video_provider: MagicMock, enrollments: MagicMock
+    ) -> None:
+        repo.get_course.return_value = _course(created_by=_OWNER_SUB)
+        repo.get_lesson_by_id.return_value = _lesson()
+
+        svc = CourseManagementService(
+            repo=repo,
+            image_storage=MagicMock(),
+            video_provider=video_provider,
+            course_access=enrollments,
+        )
+
+        with pytest.raises(BadRequest, match="Invalid or unsupported video content type"):
+            svc.prepare_lesson_video_upload(
+                course_id=_COURSE_ID,
+                lesson_id=_LESSON_ID,
+                filename="x.bin",
+                content_type="application/octet-stream",
+                filesize=None,
+                cognito_sub=_OWNER_SUB,
+                role="teacher",
+            )
+
 
 class TestCommitPendingUploadService:
     def test_persists_pending_status(

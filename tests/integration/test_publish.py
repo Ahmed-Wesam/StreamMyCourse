@@ -7,8 +7,10 @@ import os
 
 import httpx
 import pytest
+import uuid
 
 from helpers.api import ApiClient
+from helpers.video_provider import expects_s3_presigned_upload
 
 # Tiny valid JPEG (1×1 px) for lesson-thumbnail PUT (same as test_playback_upload).
 _TINY_JPEG = base64.b64decode(
@@ -78,9 +80,12 @@ def test_full_publish_flow_appears_in_catalog(
     assert upload_resp.status_code == 200
     upload_body = upload_resp.json()
     assert upload_body["uploadUrl"]
-    assert upload_body["videoKey"].startswith(
-        f"{course.course_id}/lessons/{lesson.lesson_id}/video/"
-    )
+    if expects_s3_presigned_upload():
+        assert upload_body["videoKey"].startswith(
+            f"{course.course_id}/lessons/{lesson.lesson_id}/video/"
+        )
+    else:
+        uuid.UUID(upload_body["videoKey"])
 
     # 2. Lesson thumbnail + mark the lesson ready (videoKey set + optional thumb).
     thumb = api.get_lesson_thumbnail_upload_url(

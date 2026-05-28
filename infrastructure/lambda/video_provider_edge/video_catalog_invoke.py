@@ -208,6 +208,48 @@ def invoke_video_apply_mark_ready(
     )
 
 
+def invoke_catalog_apigw(
+    *,
+    event: Dict[str, Any],
+    catalog_lambda_arn: str,
+) -> Dict[str, Any]:
+    """Forward an API Gateway proxy event to catalog (e.g. S3 thumbnail upload-url)."""
+    client = boto3.client("lambda")
+    try:
+        response = client.invoke(
+            FunctionName=catalog_lambda_arn,
+            InvocationType="RequestResponse",
+            Payload=json.dumps(event).encode("utf-8"),
+        )
+    except (BotoCoreError, ClientError) as exc:
+        logger.exception("catalog_apigw_invoke_failed")
+        raise CatalogInvokeError("catalog invoke failed") from exc
+
+    status = response.get("StatusCode")
+    if status != 200:
+        raise CatalogInvokeError(f"catalog invoke status {status!r}")
+
+    function_error = response.get("FunctionError")
+    if function_error:
+        logger.error("catalog_apigw_function_error error=%s", function_error)
+        raise CatalogInvokeError(f"catalog function error: {function_error}")
+
+    raw_payload = response.get("Payload")
+    if raw_payload is None:
+        raise CatalogInvokeError("catalog invoke returned no payload")
+
+    body = raw_payload.read()
+    try:
+        parsed = json.loads(body.decode("utf-8"))
+    except (json.JSONDecodeError, UnicodeDecodeError) as exc:
+        raise CatalogInvokeError("catalog invoke returned invalid JSON") from exc
+
+    if not isinstance(parsed, dict) or "statusCode" not in parsed:
+        raise CatalogInvokeError("catalog invoke returned non-API-Gateway payload")
+
+    return parsed
+
+
 def invoke_video_webhook_status(
     *,
     webhook_payload: Dict[str, Any],

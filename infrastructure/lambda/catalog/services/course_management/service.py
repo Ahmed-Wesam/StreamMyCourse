@@ -30,6 +30,10 @@ from services.course_management.video_providers.kinescope_adapter import (
     KinescopeVideoMetadata,
     webhook_status_confirmed_by_api,
 )
+from services.course_management.s3_common import (
+    ALLOWED_VIDEO_CONTENT_TYPES,
+    normalize_content_type,
+)
 from services.course_management.video_providers.port import (
     KinescopePlayback,
     S3Playback,
@@ -971,6 +975,9 @@ class CourseManagementService:
         lesson = self._repo.get_lesson_by_id(course_id, lesson_id)
         if not lesson:
             raise NotFound("Lesson not found")
+        norm_ct = normalize_content_type(content_type)
+        if norm_ct not in ALLOWED_VIDEO_CONTENT_TYPES:
+            raise BadRequest("Invalid or unsupported video content type")
         return {
             "courseId": course_id,
             "lessonId": lesson_id,
