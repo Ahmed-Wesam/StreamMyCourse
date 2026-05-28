@@ -10,6 +10,8 @@ Every test creates state through the public API, asserts on the API responses, a
 
 Course **modules**: `tests/integration/test_course_modules.py` covers `GET/POST/DELETE …/courses/{id}/modules`, lesson targeting via optional `moduleId`, ordering across modules vs `GET …/lessons`, delete guard when only one module remains, draft parity (404 for non-owning teachers and students, matching lessons), subscribed students listing modules on published courses, and negatives (`POST /lessons` with unknown `moduleId`, `DELETE …/modules/{unknown}` → 404). IDOR/student-role denials extend `test_access_control.py` and `test_student_permissions_denials.py`.
 
+**Kinescope (dev default):** When `INTEGRATION_VIDEO_PROVIDER=kinescope`, `tests/integration/test_kinescope_drm_auth.py` posts the provider-shaped `{id, token}` payload to `POST /webhooks/kinescope/drm-auth` after playback mints `drmAuthToken`. Requires catalog deploy with `KINESCOPE_DRM_JWT_SECRET` and Kinescope project auth URL registered (`scripts/configure-kinescope-drm-auth.sh`, also run from `deploy-backend.sh` on kinescope envs).
+
 ## Billing / subscription access (WS5)
 
 Catalog lesson access, progress, and related student flows require an **active platform subscription** (not course enrollment). Integration tests seed access by POSTing a **mock PayTabs IPN** to `POST /webhooks/payments/paytabs` with header **`X-Mock-Signature: test`** (billing edge mock adapter on dev).
@@ -176,7 +178,7 @@ GitHub Deploy workflow **Integration HTTP tests** attaches **`environment: dev`*
 |-----------|---------|------|-------------------|
 | Primary Teacher | `INTEGRATION_COGNITO_JWT` | Course owner, full mutating access | `test_courses.py`, `test_publish.py`, `test_lesson_ordering.py` |
 | Alt Teacher | `INTEGRATION_COGNITO_JWT_ALT` | Second teacher (cross-user access control) | `test_access_control.py` |
-| Student | `INTEGRATION_COGNITO_JWT_STUDENT` | Enrolled student (limited read/playback) | `test_enrollment.py`, `test_student_permissions_allowed.py`, `test_student_permissions_denials.py`, `test_progress.py`, `test_playback_auth.py`, `test_billing_checkout_e2e.py` |
+| Student | `INTEGRATION_COGNITO_JWT_STUDENT` | Enrolled student (limited read/playback) | `test_enrollment.py`, `test_student_permissions_allowed.py`, `test_student_permissions_denials.py`, `test_progress.py`, `test_playback_auth.py`, `test_kinescope_drm_auth.py`, `test_billing_checkout_e2e.py` |
 
 **On GitHub Environment `dev`** (reuse for both Integration HTTP tests and Verify dev RDS):
 
@@ -207,6 +209,8 @@ tests/integration/
   conftest.py                       -- fixtures (api, http_client, course_factory, lesson_factory) + session safety net
   helpers/
     api.py                          -- ApiClient wrapping httpx.Client with one method per route
+    kinescope_drm_auth.py           -- POST /webhooks/kinescope/drm-auth (Kinescope `{id, token}` shape)
+    kinescope_webhook.py            -- POST /webhooks/kinescope media status callbacks
   test_access_control.py            -- cross-teacher access restrictions (owner vs non-owner)
   test_auth_gateway.py              -- `/users/me`, CORS preflight, POST /courses vs Cognito (optional JWT)
   test_bootstrap_edges.py           -- cold-start and initialization edge cases
@@ -216,6 +220,8 @@ tests/integration/
   test_instructor_dashboard.py      -- instructor analytics and dashboard endpoints
   test_lesson_ordering.py           -- lesson sequence management
   test_playback_auth.py             -- video playback authorization (teacher + student principals)
+  test_kinescope_drm_auth.py        -- Kinescope DRM auth webhook (subscription/owner via `{id, token}`)
+  test_kinescope_webhook.py         -- Kinescope transcoding status webhook
   test_billing_checkout_e2e.py      -- POST checkout-session, mock IPN, playback (WS6)
   test_playback_upload.py           -- video upload and processing
   test_progress.py                  -- student progress tracking

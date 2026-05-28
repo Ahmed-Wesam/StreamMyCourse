@@ -42,10 +42,15 @@ def _service(*, has_access: bool = True) -> CourseManagementService:
     )
 
 
-def _event(token: str, *, video_id: str = "video-1") -> dict[str, Any]:
+def _event(token: str, *, video_id: str = "video-1", use_kinescope_id: bool = False) -> dict[str, Any]:
+    body: dict[str, Any] = {"token": token}
+    if use_kinescope_id:
+        body["id"] = video_id
+    else:
+        body["videoId"] = video_id
     return {
         "requestContext": {"http": {"method": "POST"}},
-        "body": json.dumps({"token": token, "videoId": video_id}),
+        "body": json.dumps(body),
     }
 
 
@@ -64,6 +69,23 @@ def test_authorize_kinescope_drm_valid_returns_true() -> None:
         },
     )
     assert svc.authorize_kinescope_drm({"token": token, "videoId": "video-1"}) is True
+
+
+def test_authorize_kinescope_drm_accepts_kinescope_id_field() -> None:
+    svc = _service(has_access=True)
+    token = _jwt(
+        "test-secret",
+        {
+            "sub": "student-sub",
+            "video_id": "video-1",
+            "role": "student",
+            "iss": "streammycourse",
+            "aud": "kinescope",
+            "iat": int(time.time()),
+            "exp": int(time.time()) + 300,
+        },
+    )
+    assert svc.authorize_kinescope_drm({"token": token, "id": "video-1"}) is True
 
 
 def test_authorize_kinescope_drm_teacher_owner_without_subscription() -> None:
@@ -159,6 +181,20 @@ def test_authorize_kinescope_drm_no_access_returns_false() -> None:
         },
     )
     assert svc.authorize_kinescope_drm({"token": token, "videoId": "video-1"}) is False
+
+
+def test_webhook_drm_auth_returns_200_when_authorized_kinescope_payload() -> None:
+    svc = MagicMock()
+    svc.authorize_kinescope_drm.return_value = True
+    resp = handle_kinescope_drm_auth(
+        _event("valid.jwt.token", use_kinescope_id=True),
+        origin="*",
+        svc=svc,
+    )
+    assert resp["statusCode"] == 200
+    svc.authorize_kinescope_drm.assert_called_once()
+    call_payload = svc.authorize_kinescope_drm.call_args[0][0]
+    assert call_payload.get("id") == "video-1"
 
 
 def test_webhook_drm_auth_returns_200_when_authorized() -> None:

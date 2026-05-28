@@ -490,6 +490,17 @@ API_ENDPOINT="$(aws cloudformation describe-stacks \
   --output text)"
 echo "ApiEndpoint: $API_ENDPOINT"
 
+if [[ "$VIDEO_PROVIDER" == "kinescope" ]]; then
+  CONFIG_DRM_SCRIPT="${ROOT}/scripts/configure-kinescope-drm-auth.sh"
+  if [[ ! -f "$CONFIG_DRM_SCRIPT" ]]; then
+    echo "Error: missing ${CONFIG_DRM_SCRIPT} (required when VIDEO_PROVIDER=kinescope)." >&2
+    exit 1
+  fi
+  chmod +x "$CONFIG_DRM_SCRIPT"
+  echo "Registering Kinescope DRM auth backend for $ENV"
+  "$CONFIG_DRM_SCRIPT" "$API_ENDPOINT" "$KINESCOPE_PARENT_ID"
+fi
+
 # WS6: wire catalog checkout precheck invoke + return URLs on billing edge (after catalog exists).
 CATALOG_FN_NAME="$(aws cloudformation describe-stacks \
   --stack-name "$API_STACK" \

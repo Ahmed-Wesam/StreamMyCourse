@@ -4,6 +4,35 @@
 
 ---
 
+## 2026-05-28 — Kinescope DRM auth wiring and player sizing
+
+### Goal
+
+Enable enrollment-gated Kinescope DRM on **dev**: accept Kinescope’s auth-backend payload shape,
+register the catalog `drm-auth` URL during kinescope deploys, fix tiny embed layout, and add tests.
+
+### Changes
+
+- [x] **Catalog** — [`service.py`](infrastructure/lambda/catalog/services/course_management/service.py): `authorize_kinescope_drm` reads Kinescope `id` (in addition to `videoId` / `video_id`); access still via `viewer_has_lesson_access` (subscription + owner/admin bypass).
+- [x] **Deploy** — [`configure-kinescope-drm-auth.sh`](scripts/configure-kinescope-drm-auth.sh) PUTs project/workspace DRM auth URL; [`deploy-backend.sh`](scripts/deploy-backend.sh) runs it when `VIDEO_PROVIDER=kinescope`.
+- [x] **Frontend** — [`VideoPlayer.tsx`](frontend/src/pages/lesson-player/VideoPlayer.tsx): `aspect-video` wrapper + full-size Kinescope embed; DOM test in [`VideoPlayer.dom.test.tsx`](frontend/src/pages/lesson-player/VideoPlayer.dom.test.tsx).
+- [x] **Tests** — unit coverage in [`test_kinescope_drm_auth.py`](tests/unit/services/course_management/test_kinescope_drm_auth.py); HTTPS integration in [`test_kinescope_drm_auth.py`](tests/integration/test_kinescope_drm_auth.py) (requires `INTEGRATION_VIDEO_PROVIDER=kinescope` on deployed dev).
+
+### Deploy / integration note
+
+Dev Kinescope project **Devo** DRM auth backend registered with `strict: true` at
+`POST /webhooks/kinescope/drm-auth` on the dev API. Integration DRM tests need the catalog Lambda
+with the `id` field fix deployed (Deploy workflow on `main` or `./scripts/deploy-backend.sh dev`).
+
+### Verification
+
+- `python scripts/check_lambda_boundaries.py`
+- `python -m pytest tests/unit/services/course_management/test_kinescope_drm_auth.py -q`
+- `python -m pytest tests/unit -q`
+- `npm run test -- src/pages/lesson-player/VideoPlayer.dom.test.tsx` (from `frontend/`)
+
+---
+
 ## 2026-05-28 — Video provider edge (docs + verification)
 
 ### Goal

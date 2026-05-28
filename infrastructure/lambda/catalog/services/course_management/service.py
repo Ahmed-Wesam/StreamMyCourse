@@ -927,8 +927,9 @@ class CourseManagementService:
 
     def authorize_kinescope_drm(self, payload: Dict[str, Any]) -> bool:
         token = str(payload.get("token") or "").strip()
+        # Kinescope auth backend posts `id` for the video; tests may use videoId/video_id.
         requested_video_id = str(
-            payload.get("videoId") or payload.get("video_id") or ""
+            payload.get("videoId") or payload.get("video_id") or payload.get("id") or ""
         ).strip()
         claims = self._verify_kinescope_drm_jwt(token)
         if claims is None:
