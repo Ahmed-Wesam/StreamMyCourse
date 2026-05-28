@@ -4,6 +4,34 @@
 
 ---
 
+## 2026-05-27 — Kinescope provider cutover docs closeout
+
+### Goal
+
+Close documentation after the Kinescope integration slices by recording the provider-port decision,
+updated module boundaries, and current API/environment contracts.
+
+### Changes (documentation + architecture records)
+
+- [x] **ADR added** — [`adr-0011-video-provider-port-kinescope-cutover.md`](plans/architecture/adr-0011-video-provider-port-kinescope-cutover.md): accepted decision for `VideoProviderPort`, default `VIDEO_PROVIDER=kinescope`, and webhook/DRM contract.
+- [x] **Module map refreshed** — [`module-map.md`](plans/architecture/module-map.md): added `video_providers/*`, `video_webhooks.py`, `image_storage.py`, `s3_common.py`, and current `lambda_bootstrap()` return shape.
+- [x] **Design contract updated** — [`design.md`](design.md): video pipeline now documents provider upload/playback flow, `GET /playback` provider payload shape, `POST /webhooks/kinescope`, `POST /webhooks/kinescope/drm-auth`, and Kinescope env variables.
+- [x] **Roadmap baseline corrected** — [`roadmap.md`](roadmap.md): Kinescope moved from speculative low-level design to shipped baseline; Phase 2 language now focuses on hardening/operations.
+
+### Implemented code anchors reflected by this closeout
+
+- Video provider port + adapters: [`services/course_management/video_providers/`](infrastructure/lambda/catalog/services/course_management/video_providers/)
+- Webhook handlers: [`video_webhooks.py`](infrastructure/lambda/catalog/services/course_management/video_webhooks.py), [`index.py`](infrastructure/lambda/catalog/index.py)
+- Service-level playback + DRM auth: [`service.py`](infrastructure/lambda/catalog/services/course_management/service.py)
+- API stack env/routes: [`api-stack.yaml`](infrastructure/templates/api-stack.yaml)
+
+### Verification
+
+- `python -m pytest tests/unit/services/course_management/test_kinescope_webhook.py -q`
+- `python scripts/check_lambda_boundaries.py`
+
+---
+
 ## 2026-05-23 — Student single-session (Slice 6 docs; implementation in repo)
 
 ### Goal

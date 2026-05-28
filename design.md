@@ -1,6 +1,6 @@
 # StreamMyCourse — MVP Design Document
 
-> **Status:** The **MVP defined in this document is shipped** and running in dev/prod. Further product scope, Phase 2 work, and the **engineering quality bar** (clean, maintainable code—prefer supported APIs over brittle UI hacks) are tracked in **[roadmap.md](./roadmap.md)** and **[ImplementationHistory.md](./ImplementationHistory.md)**. **Last updated:** 2026-05-16 · **Stack:** React 19 + AWS (Serverless) · **Frontend tests:** Vitest (optional **`npm run test:coverage`** — v8 only when `--coverage`; see **`frontend/vitest.config.ts`**).
+> **Status:** The **MVP defined in this document is shipped** and running in dev/prod. Further product scope, Phase 2 work, and the **engineering quality bar** (clean, maintainable code—prefer supported APIs over brittle UI hacks) are tracked in **[roadmap.md](./roadmap.md)** and **[ImplementationHistory.md](./ImplementationHistory.md)**. **Last updated:** 2026-05-27 · **Stack:** React 19 + AWS (Serverless) · **Frontend tests:** Vitest (optional **`npm run test:coverage`** — v8 only when `--coverage`; see **`frontend/vitest.config.ts`**).
 
 A free video course platform where instructors upload content and students stream it. No payments in MVP — all courses are free.
 
@@ -37,9 +37,9 @@ A free video course platform where instructors upload content and students strea
 React (Vite + TS + Tailwind)
         │
         ├── REST API via API Gateway → Lambda (Python): courses, lessons,
-        │   publish, presigned upload-url, playback URL
+        │   publish, provider upload-url init, provider playback contract, webhooks
         │
-        └── MP4 playback direct from S3 (CloudFront deferred to Phase 2)
+        └── Kinescope-first video provider via ports (S3/VdoCipher adapters retained)
 ```
 
 **Current Implementation:**
@@ -49,7 +49,7 @@ React (Vite + TS + Tailwind)
 - **RDS PostgreSQL** catalog is the only persistence path; VPC-attached Lambda with `DB_HOST` / `DB_NAME` / `DB_PORT` / `DB_SECRET_ARN` from the api stack (see §10). DynamoDB path was removed; `RdsStackName` is required for api stack deploy
 - S3 bucket CORS configured for browser PUT uploads
 - API Gateway REST API with OPTIONS on routes; **GatewayResponses** for DEFAULT_4XX/5XX add CORS headers on error paths; stack parameter `CorsAllowOrigin` feeds Lambda `ALLOWED_ORIGINS`
-- No CloudFront yet (direct S3 URLs for MVP simplicity)
+- Video provider cutover uses `VIDEO_PROVIDER` (`kinescope` default) with typed playback responses from the same `GET /playback/{courseId}/{lessonId}` API contract
 
 **MVP scope:** API-invoked Lambda only (no event sources). Cognito is **optional** (enabled only when the API stack receives a User Pool ARN). MediaConvert/CloudFront-video are Phase 2.
 
@@ -80,16 +80,20 @@ React (Vite + TS + Tailwind)
 ## 5. Video Pipeline (MVP)
 
 ```
-Manual upload (local) → S3 (MP4) → Browser <video> (presigned GET; Range-capable CORS)
-                         ↓
-              CloudFront (same bucket via OAC) — optional origin URLs; invalidation Lambda per env
+Teacher upload init → `POST /upload-url` → active provider (`VIDEO_PROVIDER`)
+                    ↓
+Kinescope upload + transcode status webhooks (`POST /webhooks/kinescope`)
+                    ↓
+Student playback contract (`GET /playback/{courseId}/{lessonId}`):
+  - Kinescope: `{ provider: "kinescope", videoId, drmAuthToken }`
+  - S3: `{ provider: "s3", playbackUrl }`
 ```
 
-- **Format:** MP4 only
-- **Transcoding:** None in MVP
-- **No event triggers:** No S3 event → Lambda (prevents loop/chaining)
-- **Upload:** Presigned S3 URLs via Lambda (`POST /upload-url` with `courseId` + `lessonId`); lessons created under a course; after client upload, `PUT .../video-ready` marks lesson video **ready** (MVP trust model)
-- **CORS:** S3 bucket configured for cross-origin PUT from browser; presigned playback GETs need **`Range`** / **`If-Range`** in the video bucket’s **`AllowedHeaders`** (see [`video-stack.yaml`](infrastructure/templates/video-stack.yaml)) so browsers can preflight and use byte-range requests for MP4.
+- **Provider abstraction:** `services/course_management/video_providers/port.py` isolates provider-specific upload/playback/delete operations from domain flow.
+- **Upload:** `POST /upload-url` initializes provider upload (optional `filesize` for Kinescope init) and persists the returned `videoKey` in lesson metadata (`pending`). Client upload: S3 presigned **PUT**; Kinescope **POST** binary to init `endpoint` (`uploadMethod`: `post` or `tus` for very large files).
+- **Processing status:** webhook `POST /webhooks/kinescope` accepts `media.update.status`; `done` marks lesson `ready` (after Kinescope API status check when token configured), `error`/`aborted` marks `failed`.
+- **Playback:** lesson playback route returns provider-discriminated payloads — Kinescope (`provider`, `videoId`, `drmAuthToken`) or S3 (`provider`, `playbackUrl`).
+- **DRM callback:** `POST /webhooks/kinescope/drm-auth` validates a signed token and current lesson access before returning `{ "allow": true|false }`.
 
 ---
 
@@ -146,18 +150,27 @@ PUT    /courses/{id}/lessons/{lid}/video-ready   // Mark uploaded video ready (M
 
 ### Playback
 ```
-GET  /playback/{courseId}/{lessonId}   // Presigned MP4 URL; Cognito + enrollment (or owner/admin) when auth enforced — stricter than GET /courses/{id}/lessons
+GET  /playback/{courseId}/{lessonId}   // Provider playback contract; Kinescope `{ provider, videoId, drmAuthToken }`, S3 `{ provider, playbackUrl }`; Cognito + enrollment (or owner/admin) when auth enforced
 ```
 
 ### Upload (Instructor)
 ```
-POST /upload-url                       // Presigned S3 PUT: lesson video (courseId + lessonId) or
+POST /upload-url                       // Lesson video (courseId + lessonId + optional filesize) or
                                        // course thumbnail (courseId + uploadKind: "thumbnail", optional filename/contentType)
+                                       // Returns provider upload contract: S3 presigned PUT URL or Kinescope POST endpoint + uploadMethod
 ```
 
 ### User profile (Auth)
 ```
 GET  /users/me                         // Returns a per-user profile row (requires Cognito authorizer when enabled)
+```
+
+### Video provider webhooks
+```
+POST /webhooks/kinescope              // Provider status callback (`media.update.status`); optional
+                                       // shared secret via ?token= or X-Kinescope-Webhook-Secret;
+                                       // mutating events re-verified against Kinescope GET /videos/{id}
+POST /webhooks/kinescope/drm-auth     // DRM auth callback; validates signed token + enrollment/access
 ```
 
 ---
@@ -263,7 +276,7 @@ The frontend is built as **two separate SPAs** deployed to different subdomains:
 - **Auth enforced:** Protected routes (mutations, `/courses/mine`, **`GET /playback/...`**, etc.) require a valid Cognito context and the controller rejects missing `sub`. Public reads remain public, but are wired to a **permissive API Gateway REQUEST authorizer** so authenticated callers can supply `sub`/`role` context **without any Cognito/JWKS calls** from the in-VPC catalog Lambda. Draft content still stays hidden (404) from non-managers and the API never returns `videoKey`. Thumbnail presigned URLs in those responses are effectively **public** for **PUBLISHED** courses — do not put PII or paid-only content in cover/lesson thumbnail images.
 - Hosted student/teacher SPAs backed by **`StreamMyCourse-Auth-*`** use **Google-only** pool clients (no native username/password on those clients), shrinking phishing/brute-force surface on public sign-in compared to parallel native + social.
 - **API Gateway vs Lambda:** The stage must point at a **deployment** that includes those authorizer settings. If the stage lags the REST API definition (CloudFormation updated methods but not the deployment snapshot), the browser can send a valid `Authorization` bearer while Lambda still sees **no** `requestContext.authorizer.claims` and returns **`Authentication required`** (`code: unauthorized`). The API stack ties **`AWS::ApiGateway::Deployment`** `Description` to **`LambdaCodeS3Key`** so each catalog zip upload publishes a new deployment; if drift is suspected, operators can run **`aws apigateway create-deployment`** for the REST API id and stage (see [`ImplementationHistory.md`](./ImplementationHistory.md)).
-- No DRM and no recording prevention in MVP.
+- Kinescope DRM auth callback is enforced through signed JWT claims (`KINESCOPE_DRM_JWT_SECRET`, issuer, audience) and existing lesson-access checks (`authorize_kinescope_drm` in service). Recording prevention capability is provider-managed, not a browser-only control.
 - No sensitive data in logs (console logs removed from frontend)
 - **Public legal pages (student SPA):** [`/privacy`](frontend/src/pages/legal/PrivacyPage.tsx) and [`/terms`](frontend/src/pages/legal/TermsPage.tsx) are **unauthenticated** static routes (no Amplify bootstrap on first paint). Copy is centralized in [`legalConfig.ts`](frontend/src/lib/legalConfig.ts) (Research Spectrum entity, Jordan governing law, **`support@researchspectrum.org`**). Teacher SPA footer links to the **student origin** via [`legalUrls.ts`](frontend/src/lib/legalUrls.ts) (`VITE_STUDENT_SITE_URL` override in dev). PayTabs merchant setup ([`TeacherPaymentSetup.tsx`](frontend/src/pages/TeacherPaymentSetup.tsx)) exposes the same absolute URLs for terms/privacy profile fields.
 
@@ -344,12 +357,13 @@ Dev API:
 ### Backend
 - Deploy API Gateway + Lambda via CloudFormation ([`infrastructure/templates/api-stack.yaml`](infrastructure/templates/api-stack.yaml)); requires **RDS stack** (`RdsStackName` parameter). DynamoDB path was removed; the api stack now depends exclusively on RDS PostgreSQL.
 - Lambda code packaged as a zip and uploaded to an artifacts S3 bucket; stack references `LambdaCodeS3Bucket` / `LambdaCodeS3Key`. **CI and [`deploy.ps1`](infrastructure/deploy.ps1)** use a **git-SHA-based key** (`catalog-{env}-{sha}.zip`) so each deploy changes the parameter and the stack updates Lambda (fixed keys caused empty changesets). The same key is referenced from **`CatalogApiDeploymentV10.Description`** in [`infrastructure/templates/api-stack.yaml`](infrastructure/templates/api-stack.yaml) so **API Gateway** also receives a **new deployment** when the artifact changes (avoids a stage serving an older snapshot while methods in the console already show Cognito). The deployment resource logical id is occasionally bumped so template-only route changes still replace the stage snapshot (`CatalogApiDeploymentV9`→`V10` added module REST routes).
+- **Video provider env contract:** api stack passes `VIDEO_PROVIDER` (`kinescope`/`s3`/`vdocipher`) plus Kinescope vars `KINESCOPE_API_TOKEN`, `KINESCOPE_PARENT_ID`, `KINESCOPE_DRM_JWT_SECRET`, `KINESCOPE_DRM_JWT_ISSUER`, and `KINESCOPE_DRM_JWT_AUDIENCE`; `config.py` defaults to `VIDEO_PROVIDER=kinescope`.
 - **Course modules:** **`DELETE …/courses/{id}/modules/{moduleId}`** with lessons that reference **non-empty video/thumbnail keys** requires **`MEDIA_CLEANUP_QUEUE_URL`** on the catalog Lambda; if the queue URL is unset, the API returns **503** (same posture as **`DELETE …/lessons`** with media)—keep integration tests video-free unless the stack includes the media-cleanup deployment.
 - **Auth stack (Cognito):** On each **dev** / **prod** full deploy, [`.github/workflows/deploy-backend.yml`](.github/workflows/deploy-backend.yml) **requires** GitHub Environment variable **`COGNITO_DOMAIN_PREFIX`** and GitHub Environment secrets **`GOOGLE_OAUTH_CLIENT_ID`** + **`GOOGLE_OAUTH_CLIENT_SECRET`** (dedicated fail-fast steps), then packages [`infrastructure/lambda/cognito_user_profile_sync/`](infrastructure/lambda/cognito_user_profile_sync/) to S3 and runs `aws cloudformation deploy` for `StreamMyCourse-Auth-<env>` with **Google OAuth parameters always**, **`RdsStackName`**, **`EnableUserProfileSync=true`**, and the sync Lambda S3 keys when RDS is in use. It passes **`UserPoolArn`** into `scripts/deploy-backend.sh` via `COGNITO_USER_POOL_ARN` so the API stack gets `CognitoUserPoolArn`. Local auth deploy: `.\infrastructure\deploy.ps1 -Template auth` **must** include **`-GoogleClientId`** and **`-GoogleClientSecret`** (script validates non-empty); optional **`-RdsStackName`**, **`-EnableUserProfileSync`**, and sync code bucket/key when wiring the PostAuthentication Lambda locally.
 - **SPA Cognito env (after auth stack exists):** Builds read **`VITE_COGNITO_*`**, **`VITE_API_BASE_URL`**, and **`VITE_COGNITO_DOMAIN`** from GitHub **Environment** secrets (`dev` / `prod`) via [`deploy-web-reusable.yml`](.github/workflows/deploy-web-reusable.yml) and [`deploy-teacher-web-reusable.yml`](.github/workflows/deploy-teacher-web-reusable.yml). Use [`scripts/set-github-auth-secrets-from-stack.ps1`](scripts/set-github-auth-secrets-from-stack.ps1) (AWS + `gh`) or [`scripts/print-auth-stack-outputs.ps1`](scripts/print-auth-stack-outputs.ps1) / [`.sh`](scripts/print-auth-stack-outputs.sh) plus [`infrastructure/docs/admin-auth-runbook.md`](infrastructure/docs/admin-auth-runbook.md); then push **`main`** so the **Deploy** workflow rebuilds SPAs (manual web workflows are optional). **`npm run build:student` / `build:teacher`** run [`scripts/check-cognito-spa-env.mjs`](scripts/check-cognito-spa-env.mjs) first: if pool id and client id are set, **`VITE_COGNITO_DOMAIN`** must be set or the build fails (unit-tested in [`tests/unit/test_cognito_spa_env_contract.py`](tests/unit/test_cognito_spa_env_contract.py)). **Runtime parity:** Amplify configures **Hosted UI OAuth only** ([`frontend/src/lib/auth.ts`](frontend/src/lib/auth.ts)); SPA code treats Cognito/auth as configured only when **pool id**, **client id**, and **`VITE_COGNITO_DOMAIN`** are all present (Vitest predicate in [`frontend/src/lib/cognito-hosted-ui-env.test.ts`](frontend/src/lib/cognito-hosted-ui-env.test.ts)).
 - **Google-only public clients:** The auth stack template ([`infrastructure/templates/auth-stack.yaml`](infrastructure/templates/auth-stack.yaml)) always provisions **Google** as the identity provider and sets student/teacher app clients to **`SupportedIdentityProviders: [Google]`** only; **`GoogleClientId` / `GoogleClientSecret`** are **required** parameters. Native password/SRP **ExplicitAuthFlows** are not enabled on those clients (OAuth code + refresh). SPAs use Google sign-in via **[`frontend/src/components/auth/SignIn.tsx`](frontend/src/components/auth/SignIn.tsx)** (custom Hosted UI redirect with **`signInWithRedirect`**; **`AuthenticatorProvider`** + **`useAuthenticator`** for session state—no Amplify `<Authenticator>` form) and [`infrastructure/docs/admin-auth-runbook.md`](infrastructure/docs/admin-auth-runbook.md).
 - **Post-login SPA navigation:** Hosted UI returns to **`/`**; the app stores the pre-login in-SPA path in **`sessionStorage`** (sanitized in [`frontend/src/lib/post-login-return.ts`](frontend/src/lib/post-login-return.ts)) before **`signInWithRedirect`**, and [`frontend/src/components/auth/PostLoginRedirect.tsx`](frontend/src/components/auth/PostLoginRedirect.tsx) restores it after **`authStatus`** becomes **`authenticated`**. Each SPA entry ([`frontend/src/student-main.tsx`](frontend/src/student-main.tsx), [`frontend/src/teacher-main.tsx`](frontend/src/teacher-main.tsx)) mounts **`AuthenticatorProvider`** around **`BrowserRouter`** so auth hooks work on shell chrome ([`frontend/src/components/layout/Layout.tsx`](frontend/src/components/layout/Layout.tsx) **`chromeHeader`** → [`StudentHeader`](frontend/src/student-app/StudentHeader.tsx) / [`TeacherHeader`](frontend/src/teacher-app/TeacherHeader.tsx)) and **`/login`** ([`frontend/src/pages/StudentLoginPage.tsx`](frontend/src/pages/StudentLoginPage.tsx)).
-- **Catalog Lambda:** no direct event sources in MVP (no S3 triggers on the catalog function, no schedules). **Async media cleanup (dev/prod):** [`scripts/deploy-backend.sh`](scripts/deploy-backend.sh) deploys **`StreamMyCourse-MediaCleanup-<env>`** ([`infrastructure/templates/media-cleanup-stack.yaml`](infrastructure/templates/media-cleanup-stack.yaml) — SQS + DLQ + worker Lambda). After **`DELETE /courses/{id}`** removes DB rows, the catalog **requires** `MEDIA_CLEANUP_QUEUE_URL` and enqueues deduplicated S3 keys (SQS send failures surface as errors); the worker calls **`s3:DeleteObjects`** in batches. Integration tests that assert S3 removal after course delete **poll** until the worker runs ([`tests/integration/test_s3_cleanup.py`](tests/integration/test_s3_cleanup.py)).
+- **Catalog Lambda:** no direct event sources in MVP (no S3 triggers on the catalog function, no schedules). **Async media cleanup (dev/prod):** [`scripts/deploy-backend.sh`](scripts/deploy-backend.sh) deploys **`StreamMyCourse-MediaCleanup-<env>`** ([`infrastructure/templates/media-cleanup-stack.yaml`](infrastructure/templates/media-cleanup-stack.yaml) — SQS + DLQ + worker Lambda). After **`DELETE /courses/{id}`** removes DB rows, the catalog **requires** `MEDIA_CLEANUP_QUEUE_URL` and enqueues deduplicated cleanup payloads (S3 object keys and Kinescope video IDs; SQS send failures surface as errors). The worker executes provider-specific deletes; S3 batches use **`s3:DeleteObjects`**. Integration tests that assert S3 removal after course delete **poll** until the worker runs ([`tests/integration/test_s3_cleanup.py`](tests/integration/test_s3_cleanup.py)).
 - **RDS PostgreSQL (deployed dev/prod):** [`infrastructure/templates/rds-stack.yaml`](infrastructure/templates/rds-stack.yaml) provisions a 1-AZ VPC, private **`db.t4g.micro`** (PostgreSQL 16, encrypted), Secrets Manager credential (auto-generated), and Interface / Gateway VPC endpoints (**Secrets Manager, CloudWatch Logs, SQS** Interface; **S3, DynamoDB** Gateway for other services). Pass **`RdsStackName`** on the api stack: [`api-stack.yaml`](infrastructure/templates/api-stack.yaml) imports SubnetIds / SecurityGroupIds to attach the Lambda to the VPC, injects `DB_HOST/PORT/NAME/SECRET_ARN`, and raises the Lambda timeout to **30s** (VPC cold start + Secrets Manager fetch). [`scripts/deploy-backend.sh`](scripts/deploy-backend.sh) / [`infrastructure/deploy.ps1`](infrastructure/deploy.ps1) vendor **`psycopg2-binary`** for `manylinux2014_x86_64` into the Lambda zip (see [`requirements.txt`](infrastructure/lambda/catalog/requirements.txt) + [`_vendor_bootstrap.py`](infrastructure/lambda/catalog/_vendor_bootstrap.py)). Runbook: [`tests/integration/README.md`](tests/integration/README.md); rationale: [ADR-0008](plans/architecture/adr-0008-dynamodb-to-rds-migration.md).
 - **RDS dev rollout via CI/CD:** [`.github/workflows/deploy-backend.yml`](.github/workflows/deploy-backend.yml) chains **`deploy-rds-dev`** (upload a small **schema-applier** Lambda zip to the artifacts bucket, then deploy `StreamMyCourse-Rds-dev` with `SchemaApplierCodeS3Bucket` / `SchemaApplierCodeS3Key` so [`rds-stack.yaml`](infrastructure/templates/rds-stack.yaml) provisions **`StreamMyCourse-RdsSchemaApplier-<env>`** in the private subnet) → **`apply-schema-dev`** (`aws lambda invoke` on that function; DDL runs inside the VPC, no `psql` from the runner) → **`deploy-backend-dev`** (`RDS_STACK_NAME` + `USE_RDS=true`) → **`verify-dev-rds`** ([`tests/integration/test_rds_path.py`](tests/integration/test_rds_path.py)). Source: [`infrastructure/lambda/rds_schema_apply/index.py`](infrastructure/lambda/rds_schema_apply/index.py). Prod mirrors the chain: **`deploy-rds-prod`** → **`apply-schema-prod`** → **`deploy-backend-prod`** → **`verify-prod-rds`** (see [`.github/workflows/deploy-backend.yml`](.github/workflows/deploy-backend.yml)).
 - **Verify dev / prod RDS auth:** **`verify-dev-rds`** and **`verify-prod-rds`** call [`.github/workflows/verify-rds-reusable.yml`](.github/workflows/verify-rds-reusable.yml) with **`github_environment: dev`** or **`prod`** plus stack inputs only. Each GitHub Environment stores the **same secret/variable key names** (**`COGNITO_RDS_VERIFY_TEST_PASSWORD`**, optional **`COGNITO_RDS_VERIFY_JWT`**, optional **`COGNITO_RDS_VERIFY_TEST_USERNAME`**); values are per-environment. The reusable job mints a Cognito **IdToken** via **`AdminInitiateAuth`** against the **auth stack passed as input** (dev vs prod). Runtime pytest env **`INTEGRATION_COGNITO_JWT`** is set by the job (not a GitHub secret name). Bootstrap user: [`scripts/ensure-ci-rds-verify-cognito-user.sh`](scripts/ensure-ci-rds-verify-cognito-user.sh); details: [`tests/integration/README.md`](tests/integration/README.md).
@@ -419,7 +433,7 @@ Ordered engineering priorities before large Phase 2 (monetization / DRM) work. D
 
 ## 14. Post-MVP roadmap (Phase 2+)
 
-See [`roadmap.md`](./roadmap.md) for phased vision (monetization, DRM/Kinescope option, scale, admin, search, live streaming) and cost notes. §13 is the **bridge** between today’s MVP and that document’s Phase 2.
+See [`roadmap.md`](./roadmap.md) for phased vision (payments, scale, admin, search, live streaming, and additional video/provider evolution) and cost notes. §13 is the **bridge** between today’s baseline and that document’s Phase 2+ items.
 
 ---
 
