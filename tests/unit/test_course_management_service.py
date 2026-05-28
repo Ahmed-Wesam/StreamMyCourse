@@ -10,7 +10,8 @@ from services.common.errors import BadRequest
 from services.course_management.contracts import as_course_module_list
 from services.course_management.models import Course, CourseModule, Lesson
 from services.course_management.service import CourseManagementService
-from services.course_management.storage import _is_valid_media_object_key
+from services.course_management.s3_common import is_valid_media_object_key, is_valid_video_object_key
+from services.course_management.video_providers.port import S3Playback
 
 
 class _FakeEnrollments:
@@ -45,12 +46,36 @@ class _FakeCourseAccess:
         return user_sub == _STUDENT_SUB and course_id == _CID
 
 
+class _FakeVideoProviderStrict:
+    """Mirrors S3 video playback key validation without boto3."""
+
+    @property
+    def provider_id(self) -> str:
+        return "s3"
+
+    @property
+    def marks_ready_on_upload_complete(self) -> bool:
+        return True
+
+    def init_lesson_upload(self, **kwargs):  # pragma: no cover
+        raise NotImplementedError
+
+    def resolve_playback(self, *, video_key: str, expires_seconds: int = 3600) -> S3Playback:
+        k = (video_key or "").strip()
+        if not is_valid_video_object_key(k):
+            raise BadRequest("Invalid object key for playback")
+        return S3Playback(provider="s3", playback_url=f"https://signed.test/{k}")
+
+    def delete_videos(self, keys):  # pragma: no cover
+        return []
+
+
 class _FakeStorageStrict:
     """Mirrors `CourseMediaStorage.presign_get` key validation without boto3."""
 
     def presign_get(self, *, key: str, expires_seconds: int = 3600) -> str:
         k = (key or "").strip()
-        if not _is_valid_media_object_key(k):
+        if not is_valid_media_object_key(k):
             raise BadRequest("Invalid object key for playback")
         return f"https://signed.test/{k}"
 
@@ -172,9 +197,10 @@ class TestSafePresignThumbnails:
             _OneLessonRepo(),
             _FakeStorageStrict(),
             course_access=_FakeCourseAccess(),
+            video_provider=_FakeVideoProviderStrict(),
         )
         with pytest.raises(BadRequest):
-            svc.get_playback_url(_CID, _L1, video_bucket="ignored-when-storage-set")
+            svc.get_playback_url(_CID, _L1)
 
 
 _MID1 = "11111111-1111-4111-8111-111111111111"

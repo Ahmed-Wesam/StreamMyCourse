@@ -22,6 +22,12 @@ Parameters:
     Type: String
     Description: S3 key for the media cleanup Lambda deployment package
 
+  KinescopeApiToken:
+    Type: String
+    Default: ''
+    NoEcho: true
+    Description: Optional Kinescope API token for provider-based video deletes
+
   MessageRetentionPeriod:
     Type: Number
     Default: 1209600
@@ -133,6 +139,7 @@ Resources:
       Environment:
         Variables:
           VIDEO_BUCKET: !Ref VideoBucketName
+          KINESCOPE_API_TOKEN: !Ref KinescopeApiToken
           LOG_LEVEL: INFO
       Tags:
         - Key: Project

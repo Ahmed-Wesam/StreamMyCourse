@@ -30,6 +30,7 @@ from helpers.cleanup import (
     delete_orphan_media_for_course_prefixes,
     log_integration_cleanup_error,
 )
+from helpers.video_provider import expects_kinescope, integration_kinescope_webhook_secret
 
 
 def _required_env(name: str) -> str:
@@ -70,6 +71,16 @@ def pytest_sessionstart(session: pytest.Session) -> None:
         f"api_host={host} bucket_set={bool(bucket)} region={region} "
         f"jwt_lens(primary,alt,student)=({j1},{j2},{j3})"
     )
+    if (
+        api
+        and expects_kinescope()
+        and not integration_kinescope_webhook_secret()
+    ):
+        pytest.exit(
+            "INTEGRATION_KINESCOPE_WEBHOOK_SECRET (or KINESCOPE_WEBHOOK_SECRET) is required "
+            "when INTEGRATION_VIDEO_PROVIDER=kinescope. See tests/integration/README.md.",
+            returncode=2,
+        )
 
 
 def pytest_collection_finish(session: pytest.Session) -> None:
@@ -277,7 +288,9 @@ def subscribed_course(
         upload_resp = api.get_upload_url(course_id=course_id, lesson_id=lesson_id)
         assert upload_resp.status_code == 200, f"Failed to get upload URL: {upload_resp.text}"
 
-        api.mark_video_ready(course_id, lesson_id)
+        from helpers.lesson_ready import ensure_lesson_video_ready
+
+        ensure_lesson_video_ready(api, course_id, lesson_id)
         api.publish_course(course_id)
 
         ensure_student_subscription(api_base_url, student_api, course_id, lesson_id)

@@ -46,7 +46,7 @@ describe('createAndUploadDraftLesson', () => {
     )
     createLesson.mockResolvedValue({ lessonId: 'les-1', moduleId: 'm1', order: 0 })
     getUploadUrl
-      .mockResolvedValueOnce({ uploadUrl: 'https://s3.example/put-video' })
+      .mockResolvedValueOnce({ uploadUrl: 'https://s3.example/put-video', provider: 's3' })
       .mockResolvedValueOnce({ uploadUrl: 'https://s3.example/put-thumb', thumbnailKey: 'thumb-key-1' })
     markLessonVideoReady.mockResolvedValue({ lessonId: 'les-1', videoStatus: 'ready' })
     captureFrameAtVideoPercent.mockResolvedValue(new Blob([new Uint8Array([0xff, 0xd8])], { type: 'image/jpeg' }))
@@ -100,6 +100,7 @@ describe('createAndUploadDraftLesson', () => {
     expect(getUploadUrl).toHaveBeenNthCalledWith(1, 'lesson.mp4', 'video/mp4', {
       courseId: 'c1',
       lessonId: 'les-1',
+      filesize: 3,
     })
     expect(getUploadUrl).toHaveBeenNthCalledWith(2, 'lesson-thumb.jpg', 'image/jpeg', {
       courseId: 'c1',
@@ -109,6 +110,65 @@ describe('createAndUploadDraftLesson', () => {
     expect(markLessonVideoReady).toHaveBeenCalledWith('c1', 'les-1', { thumbnailKey: 'thumb-key-1' })
     expect(progress[progress.length - 1]).toBe(100)
     expect(vi.mocked(fetch)).toHaveBeenCalled()
+  })
+
+  it('does not mark ready immediately when upload provider is kinescope', async () => {
+    getUploadUrl.mockReset()
+    getUploadUrl
+      .mockResolvedValueOnce({
+        uploadUrl: 'https://kinescope.example/upload',
+        provider: 'kinescope',
+        uploadMethod: 'post',
+      })
+      .mockResolvedValueOnce({ uploadUrl: 'https://s3.example/put-thumb', thumbnailKey: 'thumb-key-1' })
+
+    let openedMethod = ''
+    class KinescopeXHR {
+      status = 200
+      statusText = 'OK'
+      upload = {
+        addEventListener: (type: string, fn: EventListener) => {
+          if (type === 'progress') {
+            queueMicrotask(() =>
+              (fn as (e: ProgressEvent) => void)({
+                lengthComputable: true,
+                loaded: 50,
+                total: 100,
+              } as ProgressEvent),
+            )
+          }
+        },
+      }
+      open = vi.fn((method: string) => {
+        openedMethod = method
+      })
+      setRequestHeader = vi.fn()
+      send = vi.fn(() => {
+        queueMicrotask(() => listeners.fire('load'))
+      })
+      addEventListener(type: string, fn: EventListener) {
+        listeners.add(type, fn as (ev?: unknown) => void)
+      }
+    }
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    vi.stubGlobal('XMLHttpRequest', KinescopeXHR as any)
+
+    const progress: number[] = []
+    await createAndUploadDraftLesson({
+      courseId: 'c1',
+      lessonInput: { title: 'Kinescope lesson', moduleId: 'm9' },
+      videoFile: new File([new Uint8Array([1, 2, 3])], 'lesson.mp4', { type: 'video/mp4' }),
+      onUploadProgress: (n) => progress.push(n),
+    })
+
+    expect(openedMethod).toBe('POST')
+    expect(getUploadUrl).toHaveBeenNthCalledWith(1, 'lesson.mp4', 'video/mp4', {
+      courseId: 'c1',
+      lessonId: 'les-1',
+      filesize: 3,
+    })
+    expect(markLessonVideoReady).not.toHaveBeenCalled()
+    expect(progress[progress.length - 1]).toBe(100)
   })
 
   it('rejects when createLesson fails before upload', async () => {
@@ -235,6 +295,10 @@ describe('createAndUploadDraftLesson', () => {
   })
 
   it('marks ready without thumbnail when thumbnail PUT fetch is not ok', async () => {
+    getUploadUrl.mockReset()
+    getUploadUrl
+      .mockResolvedValueOnce({ uploadUrl: 'https://s3.example/put-video', provider: 's3' })
+      .mockResolvedValueOnce({ uploadUrl: 'https://s3.example/put-thumb', thumbnailKey: 'thumb-key-1' })
     vi.mocked(fetch).mockResolvedValueOnce(new Response(null, { status: 403, statusText: 'Forbidden' }))
 
     await createAndUploadDraftLesson({
@@ -250,7 +314,7 @@ describe('createAndUploadDraftLesson', () => {
   it('marks ready without thumbnail when thumbnail getUploadUrl rejects', async () => {
     getUploadUrl.mockReset()
     getUploadUrl
-      .mockResolvedValueOnce({ uploadUrl: 'https://s3.example/put-video' })
+      .mockResolvedValueOnce({ uploadUrl: 'https://s3.example/put-video', provider: 's3' })
       .mockRejectedValueOnce(new Error('thumbnail policy'))
 
     await createAndUploadDraftLesson({
@@ -266,7 +330,7 @@ describe('createAndUploadDraftLesson', () => {
   it('marks ready without thumbnail when captureFrame throws', async () => {
     captureFrameAtVideoPercent.mockRejectedValueOnce(new Error('decode'))
     getUploadUrl.mockReset()
-    getUploadUrl.mockResolvedValueOnce({ uploadUrl: 'https://s3.example/put-video' })
+    getUploadUrl.mockResolvedValueOnce({ uploadUrl: 'https://s3.example/put-video', provider: 's3' })
 
     await createAndUploadDraftLesson({
       courseId: 'c1',
@@ -282,7 +346,7 @@ describe('createAndUploadDraftLesson', () => {
   it('uses video/mp4 when file type is empty', async () => {
     captureFrameAtVideoPercent.mockRejectedValueOnce(new Error('skip'))
     getUploadUrl.mockReset()
-    getUploadUrl.mockResolvedValueOnce({ uploadUrl: 'https://s3.example/put-video' })
+    getUploadUrl.mockResolvedValueOnce({ uploadUrl: 'https://s3.example/put-video', provider: 's3' })
 
     await createAndUploadDraftLesson({
       courseId: 'c1',

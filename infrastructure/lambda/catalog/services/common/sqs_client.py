@@ -21,10 +21,14 @@ def send_media_cleanup_job(
     course_id: str,
     keys: List[str],
     *,
+    s3_keys: Optional[List[str]] = None,
+    kinescope_video_ids: Optional[List[str]] = None,
     sqs_client: Optional[_SQSClientProtocol] = None,
 ) -> None:
-    """Enqueue one message per course with all S3 keys. Propagates SQS API errors."""
-    if not keys:
+    """Enqueue one or more cleanup messages. Propagates SQS API errors."""
+    s3_keys = list(s3_keys if s3_keys is not None else keys)
+    kinescope_video_ids = list(kinescope_video_ids or [])
+    if not s3_keys and not kinescope_video_ids:
         return
     if not queue_url:
         raise BadRequest("Media cleanup queue URL is required when keys are non-empty")
@@ -34,17 +38,19 @@ def send_media_cleanup_job(
 
         client = boto3.client("sqs")
 
-    payload = {
-        "courseId": course_id,
-        "keys": keys,
-        "timestamp": datetime.now(timezone.utc).isoformat(),
-    }
-    ts = payload["timestamp"]
+    ts = datetime.now(timezone.utc).isoformat()
     max_bytes = 240 * 1024  # headroom below SQS 256 KiB limit
-    chunks = list(_chunk_keys_for_messages(course_id, keys, ts, max_bytes))
-    total_chunks = len(chunks)
-    for idx, part in enumerate(chunks):
-        part_body = json.dumps({"courseId": course_id, "keys": part, "timestamp": ts})
+    messages = list(
+        _build_messages(
+            course_id=course_id,
+            timestamp=ts,
+            s3_keys=s3_keys,
+            kinescope_video_ids=kinescope_video_ids,
+            max_bytes=max_bytes,
+        )
+    )
+    total_chunks = len(messages)
+    for idx, part_body in enumerate(messages):
         try:
             _send_one(client, queue_url, part_body)
         except Exception:
@@ -58,6 +64,37 @@ def send_media_cleanup_job(
                 exc_info=True,
             )
             raise
+
+
+def _build_messages(
+    *,
+    course_id: str,
+    timestamp: str,
+    s3_keys: List[str],
+    kinescope_video_ids: List[str],
+    max_bytes: int,
+) -> List[str]:
+    messages: List[str] = []
+    if s3_keys:
+        for chunk in _chunk_keys_for_messages(course_id, s3_keys, timestamp, max_bytes):
+            body = {
+                "courseId": course_id,
+                "timestamp": timestamp,
+                "keys": chunk,
+                "provider": "s3",
+                "s3Keys": chunk,
+            }
+            messages.append(json.dumps(body))
+    if kinescope_video_ids:
+        for chunk in _chunk_kinescope_ids_for_messages(course_id, kinescope_video_ids, timestamp, max_bytes):
+            body = {
+                "courseId": course_id,
+                "timestamp": timestamp,
+                "provider": "kinescope",
+                "kinescopeVideoIds": chunk,
+            }
+            messages.append(json.dumps(body))
+    return messages
 
 
 def _chunk_keys_for_messages(course_id: str, keys: List[str], timestamp: str, max_bytes: int) -> List[List[str]]:
@@ -77,6 +114,39 @@ def _chunk_keys_for_messages(course_id: str, keys: List[str], timestamp: str, ma
         if len(json.dumps(solo).encode("utf-8")) > max_bytes:
             raise BadRequest("An object key is too large to fit in an SQS media-cleanup message")
         current = [key]
+    if current:
+        chunks.append(current)
+    return chunks
+
+
+def _chunk_kinescope_ids_for_messages(
+    course_id: str, video_ids: List[str], timestamp: str, max_bytes: int
+) -> List[List[str]]:
+    chunks: List[List[str]] = []
+    current: List[str] = []
+    for video_id in video_ids:
+        trial_ids = current + [video_id]
+        trial = {
+            "courseId": course_id,
+            "provider": "kinescope",
+            "kinescopeVideoIds": trial_ids,
+            "timestamp": timestamp,
+        }
+        if len(json.dumps(trial).encode("utf-8")) <= max_bytes:
+            current = trial_ids
+            continue
+        if current:
+            chunks.append(current)
+            current = []
+        solo = {
+            "courseId": course_id,
+            "provider": "kinescope",
+            "kinescopeVideoIds": [video_id],
+            "timestamp": timestamp,
+        }
+        if len(json.dumps(solo).encode("utf-8")) > max_bytes:
+            raise BadRequest("A Kinescope video ID is too large to fit in an SQS media-cleanup message")
+        current = [video_id]
     if current:
         chunks.append(current)
     return chunks

@@ -5,6 +5,7 @@ from uuid import UUID
 
 import pytest
 
+import services.course_management.s3_common as s3_common_mod
 import services.course_management.storage as storage_mod
 from services.common.errors import BadRequest
 from services.course_management.models import PresignResult
@@ -38,23 +39,21 @@ class TestS3ClientFactory:
     def test_raises_when_boto3_unavailable(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        monkeypatch.setattr(storage_mod, "boto3", None)
-        monkeypatch.setattr(storage_mod, "Config", None)
+        monkeypatch.setattr(s3_common_mod, "boto3", None)
+        monkeypatch.setattr(s3_common_mod, "Config", None)
         with pytest.raises(RuntimeError, match="boto3 is not available"):
-            storage_mod._s3_client()
+            s3_common_mod.s3_client()
 
     def test_uses_env_region_and_sigv4_config(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        # Replace boto3 + Config with mocks so we can inspect what the factory
-        # passes in without hitting the real AWS SDK.
         mock_boto3 = MagicMock()
         mock_config_cls = MagicMock()
-        monkeypatch.setattr(storage_mod, "boto3", mock_boto3)
-        monkeypatch.setattr(storage_mod, "Config", mock_config_cls)
+        monkeypatch.setattr(s3_common_mod, "boto3", mock_boto3)
+        monkeypatch.setattr(s3_common_mod, "Config", mock_config_cls)
         monkeypatch.setenv("AWS_REGION", "us-west-2")
 
-        storage_mod._s3_client()
+        s3_common_mod.s3_client()
 
         mock_config_cls.assert_called_once()
         cfg_kwargs = mock_config_cls.call_args.kwargs
@@ -72,12 +71,12 @@ class TestS3ClientFactory:
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         mock_boto3 = MagicMock()
-        monkeypatch.setattr(storage_mod, "boto3", mock_boto3)
-        monkeypatch.setattr(storage_mod, "Config", MagicMock())
+        monkeypatch.setattr(s3_common_mod, "boto3", mock_boto3)
+        monkeypatch.setattr(s3_common_mod, "Config", MagicMock())
         monkeypatch.delenv("AWS_REGION", raising=False)
         monkeypatch.setenv("AWS_DEFAULT_REGION", "ap-south-1")
 
-        storage_mod._s3_client()
+        s3_common_mod.s3_client()
 
         client_kwargs = mock_boto3.client.call_args.kwargs
         assert client_kwargs["region_name"] == "ap-south-1"
@@ -86,12 +85,12 @@ class TestS3ClientFactory:
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         mock_boto3 = MagicMock()
-        monkeypatch.setattr(storage_mod, "boto3", mock_boto3)
-        monkeypatch.setattr(storage_mod, "Config", MagicMock())
+        monkeypatch.setattr(s3_common_mod, "boto3", mock_boto3)
+        monkeypatch.setattr(s3_common_mod, "Config", MagicMock())
         monkeypatch.delenv("AWS_REGION", raising=False)
         monkeypatch.delenv("AWS_DEFAULT_REGION", raising=False)
 
-        storage_mod._s3_client()
+        s3_common_mod.s3_client()
 
         client_kwargs = mock_boto3.client.call_args.kwargs
         assert client_kwargs["region_name"] == "eu-west-1"
@@ -152,14 +151,9 @@ class TestPresignPut:
             ("video/webm", "webm"),
             ("video/quicktime", "mov"),
             ("video/x-msvideo", "avi"),
-            ("image/jpeg", "jpg"),
-            ("image/jpg", "jpg"),
-            ("image/png", "png"),
-            ("image/webp", "webp"),
-            ("image/gif", "gif"),
         ],
     )
-    def test_extension_mapping_for_presign_put_and_thumbnails(
+    def test_extension_mapping_for_video_content_types(
         self, monkeypatch: pytest.MonkeyPatch, content_type: str, expected_ext: str
     ) -> None:
         mock_s3 = MagicMock()
@@ -169,22 +163,25 @@ class TestPresignPut:
         monkeypatch.setattr(storage_mod, "uuid4", lambda: fixed)
         storage = storage_mod.CourseMediaStorage("b")
 
-        if content_type.startswith("video/"):
+        storage.presign_put(
+            course_id=CID,
+            lesson_id=LID,
+            filename="ignored",
+            content_type=content_type,
+        )
+        key = mock_s3.generate_presigned_url.call_args.kwargs["Params"]["Key"]
+        assert key.endswith(f".{expected_ext}")
+        assert f"/video/{fixed}.{expected_ext}" in key
+
+    def test_presign_put_rejects_image_content_type(self, patched_storage) -> None:
+        storage, _ = patched_storage
+        with pytest.raises(BadRequest, match="Invalid or unsupported video content type"):
             storage.presign_put(
                 course_id=CID,
                 lesson_id=LID,
-                filename="ignored",
-                content_type=content_type,
+                filename="x.jpg",
+                content_type="image/jpeg",
             )
-            key = mock_s3.generate_presigned_url.call_args.kwargs["Params"]["Key"]
-            assert key.endswith(f".{expected_ext}")
-            assert f"/video/{fixed}.{expected_ext}" in key
-        elif content_type.startswith("image/"):
-            storage.presign_thumbnail_put(
-                course_id=CID, filename="ignored", content_type=content_type
-            )
-            key = mock_s3.generate_presigned_url.call_args.kwargs["Params"]["Key"]
-            assert key == f"{CID}/thumbnail/{fixed}.{expected_ext}"
 
     def test_presign_put_rejects_slash_in_course_or_lesson_id(self, patched_storage) -> None:
         storage, _ = patched_storage
@@ -195,27 +192,6 @@ class TestPresignPut:
                 filename="x.mp4",
                 content_type="video/mp4",
             )
-
-
-class TestPresignThumbnailPut:
-    def test_course_thumbnail_key_shape(self, patched_storage, frozen_uuid: UUID) -> None:
-        storage, _ = patched_storage
-        r = storage.presign_thumbnail_put(
-            course_id=CID, filename="x.jpg", content_type="image/jpeg"
-        )
-        assert r.videoKey == f"{CID}/thumbnail/{frozen_uuid}.jpg"
-
-
-class TestPresignLessonThumbnailPut:
-    def test_lesson_thumbnail_key_shape(self, patched_storage, frozen_uuid: UUID) -> None:
-        storage, _ = patched_storage
-        r = storage.presign_lesson_thumbnail_put(
-            course_id=CID,
-            lesson_id=LID,
-            filename="x.png",
-            content_type="image/png",
-        )
-        assert r.videoKey == f"{CID}/lessons/{LID}/thumbnail/{frozen_uuid}.png"
 
 
 class TestPresignGet:
@@ -229,17 +205,19 @@ class TestPresignGet:
         assert kwargs["ClientMethod"] == "get_object"
         assert kwargs["Params"] == {"Bucket": "my-bucket", "Key": k}
 
-    def test_accepts_lesson_thumbnail_key(self, patched_storage) -> None:
+    def test_rejects_lesson_thumbnail_key(self, patched_storage) -> None:
         storage, mock_s3 = patched_storage
         k = f"{CID}/lessons/{LID}/thumbnail/33333333-3333-4333-8333-333333333333.webp"
-        storage.presign_get(key=k)
-        assert mock_s3.generate_presigned_url.call_args.kwargs["Params"]["Key"] == k
+        with pytest.raises(BadRequest, match="Invalid object key"):
+            storage.presign_get(key=k)
+        mock_s3.generate_presigned_url.assert_not_called()
 
-    def test_accepts_course_thumbnail_key(self, patched_storage) -> None:
+    def test_rejects_course_thumbnail_key(self, patched_storage) -> None:
         storage, mock_s3 = patched_storage
         k = f"{CID}/thumbnail/44444444-4444-4444-8444-444444444444.gif"
-        storage.presign_get(key=k)
-        assert mock_s3.generate_presigned_url.call_args.kwargs["Params"]["Key"] == k
+        with pytest.raises(BadRequest, match="Invalid object key"):
+            storage.presign_get(key=k)
+        mock_s3.generate_presigned_url.assert_not_called()
 
     def test_explicit_expiry_overrides_default(self, patched_storage) -> None:
         storage, mock_s3 = patched_storage
@@ -300,7 +278,7 @@ class TestDeleteObjects:
 
     def test_batches_over_1000_keys(self, monkeypatch: pytest.MonkeyPatch, patched_storage) -> None:
         storage, mock_s3 = patched_storage
-        monkeypatch.setattr(storage_mod, "_S3_DELETE_BATCH", 2)
+        monkeypatch.setattr(storage_mod, "S3_DELETE_BATCH", 2)
         keys = [
             f"{CID}/lessons/{LID}/video/11111111-1111-4111-8111-{i:012d}.mp4" for i in range(5)
         ]

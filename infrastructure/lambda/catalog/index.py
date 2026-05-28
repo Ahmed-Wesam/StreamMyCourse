@@ -17,6 +17,10 @@ from services.progress.controller import handle_progress_request
 from services.common.logging_setup import configure_logging
 from services.common.runtime_context import bind_from_lambda_event, clear_request_context, set_request_path
 from services.course_management.controller import handle as course_management_handle
+from services.course_management.video_webhooks import (
+    handle_kinescope_drm_auth,
+    handle_kinescope_webhook,
+)
 from services.question_banks.controller import handle_question_banks_request
 
 logger = logging.getLogger(__name__)
@@ -231,6 +235,23 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                             event,
                             origin=origin,
                             manage_svc=subscription_manage_service,
+                        )
+                    elif method in ("POST", "OPTIONS") and parts == ["webhooks", "kinescope"]:
+                        route_response = handle_kinescope_webhook(
+                            event,
+                            origin=origin,
+                            svc=service,
+                            webhook_secret=cfg.kinescope_webhook_secret,
+                        )
+                    elif method in ("POST", "OPTIONS") and parts == [
+                        "webhooks",
+                        "kinescope",
+                        "drm-auth",
+                    ]:
+                        route_response = handle_kinescope_drm_auth(
+                            event,
+                            origin=origin,
+                            svc=service,
                         )
                     else:
                         route_response = course_management_handle(

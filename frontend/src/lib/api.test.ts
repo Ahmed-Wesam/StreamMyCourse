@@ -898,7 +898,12 @@ describe('getPlaybackUrl fetchMe deleteLesson markCourseThumbnailReady', () => {
         const url = String(input)
         const method = init?.method ?? 'GET'
         if (url.includes('/playback/'))
-          return new Response(JSON.stringify({ url: 'https://cdn.example/video.m3u8' }), {
+          return new Response(
+            JSON.stringify({
+              provider: 's3',
+              playbackUrl: 'https://cdn.example/video.m3u8',
+            }),
+            {
             status: 200,
             headers: { 'Content-Type': 'application/json' },
           })
@@ -939,9 +944,61 @@ describe('getPlaybackUrl fetchMe deleteLesson markCourseThumbnailReady', () => {
   })
   it('getPlaybackUrl GETs /playback/{courseId}/{lessonId}', async () => {
     const p = await getPlaybackUrl('c1', 'l1')
-    expect(p.url).toContain('m3u8')
+    expect(p.provider).toBe('s3')
+    if (p.provider === 's3') {
+      expect(p.playbackUrl).toContain('m3u8')
+    }
     const [url] = vi.mocked(fetch).mock.calls[0]
     expect(String(url)).toContain('/playback/c1/l1')
+  })
+  it('getPlaybackUrl returns kinescope payload shape when provider response is returned', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input, init) => {
+        const url = String(input)
+        const method = init?.method ?? 'GET'
+        if (url.includes('/playback/') && method === 'GET') {
+          return new Response(
+            JSON.stringify({
+              provider: 'kinescope',
+              videoId: 'ks-video-1',
+              drmAuthToken: 'drm-token-1',
+            }),
+            { status: 200, headers: { 'Content-Type': 'application/json' } },
+          )
+        }
+        if (url.includes('/users/me'))
+          return new Response(
+            JSON.stringify({
+              userId: 'u1',
+              email: 'e@e.com',
+              role: 'student',
+              cognitoSub: 's',
+              createdAt: '',
+              updatedAt: '',
+            }),
+            { status: 200, headers: { 'Content-Type': 'application/json' } },
+          )
+        if (method === 'DELETE' && url.includes('/lessons/'))
+          return new Response(JSON.stringify({ lessonId: 'l1', deleted: true }), {
+            status: 200,
+            headers: { 'Content-Type': 'application/json' },
+          })
+        if (method === 'PUT' && url.includes('/thumbnail-ready'))
+          return new Response(JSON.stringify({ id: 'c1', thumbnailReady: true }), {
+            status: 200,
+            headers: { 'Content-Type': 'application/json' },
+          })
+        return new Response('{}', { status: 200 })
+      }),
+    )
+
+    const p = await getPlaybackUrl('c1', 'l1')
+    expect('provider' in p && p.provider === 'kinescope').toBe(true)
+    if ('provider' in p && p.provider === 'kinescope') {
+      expect(p.videoId).toBe('ks-video-1')
+      expect(p.drmAuthToken).toBe('drm-token-1')
+    }
   })
   it('fetchMe GETs /users/me', async () => {
     const me = await fetchMe()

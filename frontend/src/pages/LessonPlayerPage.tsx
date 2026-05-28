@@ -6,7 +6,6 @@ import {
   useState,
   type ReactNode,
   type RefObject,
-  type SyntheticEvent,
 } from 'react'
 import { Link, useParams, useSearchParams, type To } from 'react-router-dom'
 import { createCheckoutSession } from '../lib/api/billing'
@@ -19,7 +18,7 @@ import {
   updateLessonProgress,
 } from '../lib/api/catalog'
 import { isCourseAccessDeniedError, isPlaybackAuthRequiredError } from '../lib/api/client'
-import type { Course, CourseModule, CourseProgress, Lesson } from '../lib/api/types'
+import type { Course, CourseModule, CourseProgress, Lesson, Playback } from '../lib/api/types'
 import {
   catalogApiUserMessage,
   courseNotFoundMessage,
@@ -38,6 +37,7 @@ import {
   sortModulesByOrder,
   VideoSkeleton,
 } from './lesson-player/lessonPlayerUi'
+import { VideoPlayer } from './lesson-player/VideoPlayer'
 
 // Progress tracking constants
 const PROGRESS_INTERVAL_MS = 15000 // 15 seconds between heartbeat attempts
@@ -46,12 +46,13 @@ const MAX_SAME_POSITION_STREAK = 20 // Stop saving if timestamp doesn't change
 
 function LessonPrimaryColumn({
   loading,
-  src,
+  playback,
+  resumeTimeSec,
   videoRef,
-  onLoadedMetadata,
-  onTimeUpdate,
-  onEnded,
-  onPause,
+  onS3LoadedMetadata,
+  onPlaybackProgress,
+  onPlaybackEnded,
+  onPlaybackPause,
   activeLessonTitle,
   activeModuleLabel,
   isLessonCompleted,
@@ -66,12 +67,13 @@ function LessonPrimaryColumn({
   playbackNavLocked,
 }: {
   loading: boolean
-  src: string | null
+  playback: Playback | null
+  resumeTimeSec: number
   videoRef: RefObject<HTMLVideoElement | null>
-  onLoadedMetadata: () => void
-  onTimeUpdate: (e: SyntheticEvent<HTMLVideoElement>) => void
-  onEnded: () => void
-  onPause: () => void
+  onS3LoadedMetadata: () => void
+  onPlaybackProgress: (positionSec: number, durationSec: number) => void
+  onPlaybackEnded: () => void
+  onPlaybackPause: (positionSec: number) => void
   activeLessonTitle: string
   activeModuleLabel: string
   isLessonCompleted: boolean
@@ -94,18 +96,15 @@ function LessonPrimaryColumn({
         <VideoSkeleton />
       ) : (
         <div className="overflow-hidden rounded-xl bg-black shadow-md shadow-slate-900/10">
-          <video
-            ref={videoRef}
-            controls
-            playsInline
-            preload="metadata"
-            crossOrigin="anonymous"
+          <VideoPlayer
+            playback={playback}
+            resumeTimeSec={resumeTimeSec}
+            videoRef={videoRef}
+            onS3LoadedMetadata={onS3LoadedMetadata}
+            onPlaybackProgress={onPlaybackProgress}
+            onPlaybackEnded={onPlaybackEnded}
+            onPlaybackPause={onPlaybackPause}
             className="aspect-video w-full"
-            src={src || undefined}
-            onLoadedMetadata={onLoadedMetadata}
-            onTimeUpdate={onTimeUpdate}
-            onEnded={onEnded}
-            onPause={onPause}
           />
         </div>
       )}
@@ -182,7 +181,7 @@ export default function LessonPlayerPage() {
   const [course, setCourse] = useState<Course | null>(null)
   const [lessons, setLessons] = useState<Lesson[]>([])
   const [modules, setModules] = useState<CourseModule[]>([])
-  const [src, setSrc] = useState<string | null>(null)
+  const [playback, setPlayback] = useState<Playback | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [subscribeError, setSubscribeError] = useState<ReactNode | null>(null)
   const [loading, setLoading] = useState(true)
@@ -201,8 +200,10 @@ export default function LessonPlayerPage() {
   const videoRef = useRef<HTMLVideoElement | null>(null)
   // Track if we've applied the initial resume time to prevent re-seeking
   const resumeAppliedRef = useRef<boolean>(false)
-  // Track if we've sent duration update to prevent duplicate calls
+  // Track if we've sent duration update to prevent duplicate calls (S3 path only)
   const durationSentRef = useRef<boolean>(false)
+  const lastPlaybackPositionRef = useRef(0)
+  const lastPlaybackDurationRef = useRef(0)
 
   const playbackNavLocked = needsSubscription || needsSignIn
 
@@ -218,7 +219,7 @@ export default function LessonPlayerPage() {
     async function run() {
       setNeedsSubscription(false)
       setNeedsSignIn(false)
-      setSrc(null)
+      setPlayback(null)
       setCourseProgress(null)
       try {
         const c = await getCourse(courseId)
@@ -238,7 +239,7 @@ export default function LessonPlayerPage() {
         try {
           const pb = await getPlaybackUrl(courseId, lessonId)
           if (cancelled) return
-          setSrc(pb.url)
+          setPlayback(pb)
           try {
             const prog = await getCourseProgress(courseId)
             if (!cancelled) setCourseProgress(prog)
@@ -249,12 +250,12 @@ export default function LessonPlayerPage() {
           if (cancelled) return
           if (isCourseAccessDeniedError(inner)) {
             setNeedsSubscription(true)
-            setSrc(null)
+            setPlayback(null)
             setError(null)
             setCourseProgress(null)
           } else if (isPlaybackAuthRequiredError(inner)) {
             setNeedsSignIn(true)
-            setSrc(null)
+            setPlayback(null)
             setError(null)
             setCourseProgress(null)
           } else {
@@ -266,7 +267,7 @@ export default function LessonPlayerPage() {
         if (cancelled) return
         setError(catalogApiUserMessage(e, 'loadLesson'))
         setCourse(null)
-        setSrc(null)
+        setPlayback(null)
         setLessons([])
         setModules([])
         setCourseProgress(null)
@@ -360,8 +361,8 @@ export default function LessonPlayerPage() {
     return savedPosition > 0 ? savedPosition : 0
   }, [resumeTimeSec, courseProgress, lessonId])
 
-  // Handle video metadata loaded - set initial time if resuming, and send duration to backend
-  const handleLoadedMetadata = useCallback(() => {
+  // Handle S3 metadata loaded — resume seek + client-side duration discovery for S3 uploads.
+  const handleS3LoadedMetadata = useCallback(() => {
     const video = videoRef.current
     if (!video) return
 
@@ -396,7 +397,22 @@ export default function LessonPlayerPage() {
   useEffect(() => {
     resumeAppliedRef.current = false
     durationSentRef.current = false
+    lastPlaybackPositionRef.current = 0
+    lastPlaybackDurationRef.current = 0
   }, [lessonId])
+
+  const effectiveLessonDurationSec = useCallback((): number => {
+    const activeLesson = lessons.find((l) => l.id === lessonId)
+    const fromLesson = activeLesson?.duration ?? 0
+    if (fromLesson > 0) return fromLesson
+    if (lastPlaybackDurationRef.current > 0) {
+      return Math.ceil(lastPlaybackDurationRef.current)
+    }
+    const fromVideo = videoRef.current ? Math.floor(videoRef.current.duration) : 0
+    return fromVideo > 0 ? fromVideo : 0
+  }, [lessons, lessonId])
+
+  const playbackResumeTimeSec = useMemo(() => getResumeTimeSec(), [getResumeTimeSec])
 
   // Helper to track and limit repeated saves at the same timestamp (e.g., user paused for hours)
   const shouldSkipBecauseSamePosition = (positionSec: number): boolean => {
@@ -418,62 +434,68 @@ export default function LessonPlayerPage() {
     return false
   }
 
-  const handleTimeUpdate = (e: SyntheticEvent<HTMLVideoElement>) => {
-    const video = e.currentTarget
-    const now = Date.now()
+  const reportPlaybackProgress = useCallback(
+    (positionSec: number, durationFromPlayer: number) => {
+      lastPlaybackPositionRef.current = positionSec
+      if (durationFromPlayer > 0) {
+        lastPlaybackDurationRef.current = durationFromPlayer
+      }
+      const now = Date.now()
 
-    // Circuit breaker: stop if too many failures
-    if (circuitOpenRef.current) return
+      if (circuitOpenRef.current) return
 
-    const positionSec = Math.floor(video.currentTime)
-    if (samePositionCircuitOpenRef.current && lastSentPositionSecRef.current === positionSec) return
+      if (samePositionCircuitOpenRef.current && lastSentPositionSecRef.current === positionSec) return
 
-    // Throttle: 15 seconds between attempts
-    if (now - lastAttemptRef.current < PROGRESS_INTERVAL_MS) return
+      if (now - lastAttemptRef.current < PROGRESS_INTERVAL_MS) return
 
-    // Skip if already have in-flight request
-    if (inFlightProgressRef.current) return
+      if (inFlightProgressRef.current) return
 
-    const lessonProgress = courseProgress?.lessons.find((l) => l.lessonId === lessonId)
-    if (lessonProgress?.completed) return
+      const lessonProgress = courseProgress?.lessons.find((l) => l.lessonId === lessonId)
+      if (lessonProgress?.completed) return
 
-    const activeLesson = lessons.find((l) => l.id === lessonId)
-    const fromVideo =
-      Number.isFinite(video.duration) && video.duration > 0 ? Math.floor(video.duration) : 0
-    const durationSec = fromVideo > 0 ? fromVideo : (activeLesson?.duration ?? 0)
+      const activeLesson = lessons.find((l) => l.id === lessonId)
+      const lessonDuration = activeLesson?.duration ?? 0
+      const durationSec =
+        lessonDuration > 0
+          ? lessonDuration
+          : durationFromPlayer > 0
+            ? durationFromPlayer
+            : 0
 
-    // Record attempt time before sending
-    lastAttemptRef.current = now
+      lastAttemptRef.current = now
 
-    if (shouldSkipBecauseSamePosition(positionSec)) return
+      if (shouldSkipBecauseSamePosition(positionSec)) return
 
-    const promise = updateLessonProgress(courseId, lessonId, {
-      lastPositionSec: positionSec,
-      durationSec,
-    })
-    inFlightProgressRef.current = promise
-    promise
-      .then(() => {
-        if (!isUnmountedRef.current) {
-          // Reset failure count on success
-          consecutiveFailuresRef.current = 0
-        }
+      const promise = updateLessonProgress(courseId, lessonId, {
+        lastPositionSec: positionSec,
+        durationSec,
       })
-      .catch(() => {
-        // Count failures and trip circuit breaker if needed
-        consecutiveFailuresRef.current++
-        if (consecutiveFailuresRef.current >= MAX_CONSECUTIVE_FAILURES) {
-          circuitOpenRef.current = true
-        }
-      })
-      .finally(() => {
-        inFlightProgressRef.current = null
-      })
-  }
+      inFlightProgressRef.current = promise
+      promise
+        .then(() => {
+          if (!isUnmountedRef.current) {
+            consecutiveFailuresRef.current = 0
+          }
+        })
+        .catch(() => {
+          consecutiveFailuresRef.current++
+          if (consecutiveFailuresRef.current >= MAX_CONSECUTIVE_FAILURES) {
+            circuitOpenRef.current = true
+          }
+        })
+        .finally(() => {
+          inFlightProgressRef.current = null
+        })
+    },
+    [courseId, lessonId, lessons, courseProgress],
+  )
 
   const handleVideoEnded = async () => {
     const activeLesson = lessons.find((l) => l.id === lessonId)
     if (!activeLesson) return
+
+    const durationSec = effectiveLessonDurationSec()
+    const positionSec = durationSec > 0 ? durationSec : currentPlaybackPositionSec()
 
     // Circuit breaker check
     if (circuitOpenRef.current) return
@@ -485,8 +507,8 @@ export default function LessonPlayerPage() {
 
     try {
       await updateLessonProgress(courseId, lessonId, {
-        lastPositionSec: activeLesson.duration || 0,
-        durationSec: activeLesson.duration || 0,
+        lastPositionSec: positionSec,
+        durationSec,
         markComplete: true,
       })
       // Reset failure count on success
@@ -511,10 +533,12 @@ export default function LessonPlayerPage() {
     const activeLesson = lessons.find((l) => l.id === lessonId)
     if (!activeLesson) return
 
+    const durationSec = effectiveLessonDurationSec()
+
     try {
       await updateLessonProgress(courseId, lessonId, {
-        lastPositionSec: activeLesson.duration || 0,
-        durationSec: activeLesson.duration || 0,
+        lastPositionSec: durationSec > 0 ? durationSec : currentPlaybackPositionSec(),
+        durationSec,
         markComplete: true,
       })
       consecutiveFailuresRef.current = 0
@@ -617,8 +641,7 @@ export default function LessonPlayerPage() {
     // the position changes (user resumes playback).
     if (shouldSkipBecauseSamePosition(positionSec)) return
 
-    const activeLesson = lessons.find((l) => l.id === lessonId)
-    const durationSec = activeLesson?.duration ?? 0
+    const durationSec = effectiveLessonDurationSec()
 
     try {
       await updateLessonProgress(courseId, lessonId, {
@@ -632,35 +655,30 @@ export default function LessonPlayerPage() {
         circuitOpenRef.current = true
       }
     }
-  }, [courseId, lessonId, lessons])
+  }, [courseId, lessonId, effectiveLessonDurationSec])
 
-  // Video pause checkpoint
-  const handlePause = useCallback(() => {
-    const video = videoRef.current
-    if (!video) return
-    saveCheckpoint(Math.floor(video.currentTime))
-  }, [saveCheckpoint])
+  const handlePlaybackPause = useCallback(
+    (positionSec: number) => {
+      saveCheckpoint(positionSec)
+    },
+    [saveCheckpoint],
+  )
 
-  // Visibility change checkpoint
+  const currentPlaybackPositionSec = useCallback((): number => {
+    const fromVideo = videoRef.current ? Math.floor(videoRef.current.currentTime) : 0
+    return fromVideo > 0 ? fromVideo : lastPlaybackPositionRef.current
+  }, [])
+
   const handleVisibilityChange = useCallback(() => {
     if (document.hidden) {
-      const video = videoRef.current
-      if (!video) return
-      saveCheckpoint(Math.floor(video.currentTime))
+      saveCheckpoint(currentPlaybackPositionSec())
     }
-  }, [saveCheckpoint])
+  }, [saveCheckpoint, currentPlaybackPositionSec])
 
-  // Pagehide checkpoint - best effort save
   const handlePageHide = useCallback(() => {
-    const video = videoRef.current
-    if (!video || circuitOpenRef.current) return
-
-    const positionSec = Math.floor(video.currentTime)
-
-    // Best-effort save using checkpoint helper
-    // Request may not complete if tab closes before fetch finishes
-    saveCheckpoint(positionSec)
-  }, [saveCheckpoint])
+    if (circuitOpenRef.current) return
+    saveCheckpoint(currentPlaybackPositionSec())
+  }, [saveCheckpoint, currentPlaybackPositionSec])
 
   // Checkpoint event listeners
   useEffect(() => {
@@ -719,12 +737,13 @@ export default function LessonPlayerPage() {
         activeLessonTitle={activeLessonTitle}
         activeModuleLabel={activeModuleLabel}
         loading={loading}
-        src={src}
+        playback={playback}
+        resumeTimeSec={playbackResumeTimeSec}
         videoRef={videoRef}
-        onLoadedMetadata={handleLoadedMetadata}
-        onTimeUpdate={handleTimeUpdate}
-        onEnded={handleVideoEnded}
-        onPause={handlePause}
+        onS3LoadedMetadata={handleS3LoadedMetadata}
+        onPlaybackProgress={reportPlaybackProgress}
+        onPlaybackEnded={handleVideoEnded}
+        onPlaybackPause={handlePlaybackPause}
         needsSignIn={needsSignIn}
         needsSubscription={needsSubscription}
         subscribing={subscribing}
@@ -850,12 +869,13 @@ export default function LessonPlayerPage() {
 
             <LessonPrimaryColumn
               loading={loading}
-              src={src}
+              playback={playback}
+              resumeTimeSec={playbackResumeTimeSec}
               videoRef={videoRef}
-              onLoadedMetadata={handleLoadedMetadata}
-              onTimeUpdate={handleTimeUpdate}
-              onEnded={handleVideoEnded}
-              onPause={handlePause}
+              onS3LoadedMetadata={handleS3LoadedMetadata}
+              onPlaybackProgress={reportPlaybackProgress}
+              onPlaybackEnded={handleVideoEnded}
+              onPlaybackPause={handlePlaybackPause}
               activeLessonTitle={activeLessonTitle}
               activeModuleLabel={activeModuleLabel}
               isLessonCompleted={isLessonCompleted}

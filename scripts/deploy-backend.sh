@@ -28,6 +28,42 @@ dev)
   ;;
 esac
 
+# Video provider: Kinescope on dev only until prod is explicitly cut over (prod stays S3).
+case "$ENV" in
+dev)
+  VIDEO_PROVIDER="${VIDEO_PROVIDER:-kinescope}"
+  ;;
+prod)
+  VIDEO_PROVIDER="${VIDEO_PROVIDER:-s3}"
+  ;;
+*)
+  VIDEO_PROVIDER="${VIDEO_PROVIDER:-s3}"
+  ;;
+esac
+
+KINESCOPE_PARAM_OVERRIDES=("VideoProvider=${VIDEO_PROVIDER}")
+if [[ "$VIDEO_PROVIDER" == "kinescope" ]]; then
+  KINESCOPE_API_TOKEN="${KINESCOPE_API_TOKEN:-}"
+  KINESCOPE_PARENT_ID="${KINESCOPE_PARENT_ID:-}"
+  KINESCOPE_DRM_JWT_SECRET="${KINESCOPE_DRM_JWT_SECRET:-}"
+  KINESCOPE_WEBHOOK_SECRET="${KINESCOPE_WEBHOOK_SECRET:-}"
+  if [[ -z "$KINESCOPE_API_TOKEN" || -z "$KINESCOPE_PARENT_ID" ]]; then
+    echo "Error: VIDEO_PROVIDER=kinescope requires KINESCOPE_API_TOKEN and KINESCOPE_PARENT_ID (GitHub Environment dev secrets or local env)." >&2
+    exit 1
+  fi
+  if [[ -z "$KINESCOPE_DRM_JWT_SECRET" ]]; then
+    echo "Error: VIDEO_PROVIDER=kinescope requires KINESCOPE_DRM_JWT_SECRET for playback DRM JWT minting." >&2
+    exit 1
+  fi
+  KINESCOPE_PARAM_OVERRIDES+=(
+    "KinescopeApiToken=${KINESCOPE_API_TOKEN}"
+    "KinescopeParentId=${KINESCOPE_PARENT_ID}"
+    "KinescopeDrmJwtSecret=${KINESCOPE_DRM_JWT_SECRET}"
+    "KinescopeWebhookSecret=${KINESCOPE_WEBHOOK_SECRET}"
+  )
+  export KINESCOPE_API_TOKEN
+fi
+
 export BILLING_TEACHER_SUB="${BILLING_TEACHER_SUB:-}"
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 TEMPLATE_DIR="$ROOT/infrastructure/templates"
@@ -302,7 +338,7 @@ if [[ -n "${BILLING_EDGE_ARN:-}" ]]; then
   BILLING_PARAM_OVERRIDES=("BillingEdgeLambdaArn=${BILLING_EDGE_ARN}")
 fi
 
-echo "Deploying API stack: $API_STACK (video bucket: $VIDEO_BUCKET)"
+echo "Deploying API stack: $API_STACK (video bucket: $VIDEO_BUCKET, video provider: $VIDEO_PROVIDER)"
 # JWT audience validation in the TOKEN authorizer must accept every app client that mints
 # IdTokens for this API (teacher + student). CI integration tests mint both audiences.
 AUTH_STACK_NAME="StreamMyCourse-Auth-${ENV}"
@@ -395,7 +431,8 @@ aws cloudformation deploy \
   "${COGNITO_OVERRIDE[@]}" \
   "${RDS_STACK_OVERRIDE[@]}" \
   "${MEDIA_PARAM_OVERRIDES[@]}" \
-  "${BILLING_PARAM_OVERRIDES[@]}"
+  "${BILLING_PARAM_OVERRIDES[@]}" \
+  "${KINESCOPE_PARAM_OVERRIDES[@]}"
 
 API_ENDPOINT="$(aws cloudformation describe-stacks \
   --stack-name "$API_STACK" \

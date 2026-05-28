@@ -289,6 +289,36 @@ describe('CourseManagement', () => {
     })
   })
 
+  it('hides Publish Course button when all lesson videos are still processing', async () => {
+    api.listLessons.mockResolvedValue([
+      {
+        id: 'l1',
+        title: 'Lesson 1',
+        order: 1,
+        moduleId: 'm1',
+        moduleOrder: 0,
+        videoStatus: 'pending',
+        duration: 0,
+      },
+      {
+        id: 'l2',
+        title: 'Lesson 2',
+        order: 2,
+        moduleId: 'm1',
+        moduleOrder: 0,
+        videoStatus: 'pending',
+        duration: 0,
+      },
+    ])
+
+    renderCourseManagement()
+
+    await waitFor(() => {
+      expect(screen.getByText('Manage Course')).toBeTruthy()
+    })
+    expect(screen.queryByText('Publish Course')).toBeNull()
+  })
+
   it('calls publishCourse when Publish Course clicked', async () => {
     renderCourseManagement()
 

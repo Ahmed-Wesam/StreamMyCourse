@@ -1,6 +1,6 @@
-import { useEffect, useState, type ReactNode, type RefObject, type SyntheticEvent } from 'react'
+import { useEffect, useState, type ReactNode, type RefObject } from 'react'
 import { Link, type To } from 'react-router-dom'
-import type { CourseModule, CourseProgress, Lesson } from '../../lib/api/types'
+import type { CourseModule, CourseProgress, Lesson, Playback } from '../../lib/api/types'
 import { DraggableBottomSheet } from '../../components/layout/DraggableBottomSheet'
 import {
   CourseLessonsCurriculum,
@@ -9,6 +9,7 @@ import {
   PRO_BLUE_STRIP,
   VideoSkeleton,
 } from './lessonPlayerUi'
+import { VideoPlayer } from './VideoPlayer'
 
 type LessonPlayerMobileViewProps = {
   courseId: string
@@ -18,12 +19,13 @@ type LessonPlayerMobileViewProps = {
   activeLessonTitle: string
   activeModuleLabel: string
   loading: boolean
-  src: string | null
+  playback: Playback | null
+  resumeTimeSec: number
   videoRef: RefObject<HTMLVideoElement | null>
-  onLoadedMetadata: () => void
-  onTimeUpdate: (e: SyntheticEvent<HTMLVideoElement>) => void
-  onEnded: () => void
-  onPause: () => void
+  onS3LoadedMetadata: () => void
+  onPlaybackProgress: (positionSec: number, durationSec: number) => void
+  onPlaybackEnded: () => void
+  onPlaybackPause: (positionSec: number) => void
   needsSignIn: boolean
   needsSubscription: boolean
   subscribing: boolean
@@ -49,12 +51,13 @@ export function LessonPlayerMobileView({
   activeLessonTitle,
   activeModuleLabel,
   loading,
-  src,
+  playback,
+  resumeTimeSec,
   videoRef,
-  onLoadedMetadata,
-  onTimeUpdate,
-  onEnded,
-  onPause,
+  onS3LoadedMetadata,
+  onPlaybackProgress,
+  onPlaybackEnded,
+  onPlaybackPause,
   needsSignIn,
   needsSubscription,
   subscribing,
@@ -136,18 +139,15 @@ export function LessonPlayerMobileView({
         {loading ? (
           <VideoSkeleton edgeToEdge />
         ) : (
-          <video
-            ref={videoRef}
-            controls
-            playsInline
-            preload="metadata"
-            crossOrigin="anonymous"
+          <VideoPlayer
+            playback={playback}
+            resumeTimeSec={resumeTimeSec}
+            videoRef={videoRef}
+            onS3LoadedMetadata={onS3LoadedMetadata}
+            onPlaybackProgress={onPlaybackProgress}
+            onPlaybackEnded={onPlaybackEnded}
+            onPlaybackPause={onPlaybackPause}
             className="aspect-video w-full"
-            src={src || undefined}
-            onLoadedMetadata={onLoadedMetadata}
-            onTimeUpdate={onTimeUpdate}
-            onEnded={onEnded}
-            onPause={onPause}
           />
         )}
       </div>

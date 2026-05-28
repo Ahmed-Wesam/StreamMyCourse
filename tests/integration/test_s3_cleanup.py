@@ -9,6 +9,14 @@ import pytest
 
 from helpers.api import ApiClient
 from helpers.cleanup import s3_object_exists
+from helpers.video_provider import expects_s3_presigned_upload
+
+pytestmark = [
+    pytest.mark.skipif(
+        not expects_s3_presigned_upload(),
+        reason="S3 object cleanup tests require INTEGRATION_VIDEO_PROVIDER=s3",
+    ),
+]
 
 
 def _wait_until_object_absent(
@@ -40,6 +48,7 @@ def test_delete_course_removes_uploaded_lesson_video(
     assert upload.status_code == 200
     body = upload.json()
     video_key = body["videoKey"]
+    assert "/" in video_key, f"Expected S3 video key, got {video_key!r}"
     put = httpx.put(
         body["uploadUrl"],
         content=b"\x00" * 64,
@@ -71,6 +80,7 @@ def test_delete_lesson_removes_uploaded_video(
     assert upload.status_code == 200
     body = upload.json()
     video_key = body["videoKey"]
+    assert "/" in video_key, f"Expected S3 video key, got {video_key!r}"
     put = httpx.put(
         body["uploadUrl"],
         content=b"\x00" * 64,

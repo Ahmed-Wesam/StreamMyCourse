@@ -5,10 +5,13 @@ bucket — the session-end safety net cleans them up)."""
 from __future__ import annotations
 
 import base64
+import uuid
+
 import httpx
 import pytest
 
 from helpers.api import ApiClient
+from helpers.video_provider import expects_s3_presigned_upload
 
 # Tiny valid JPEG (1×1 px) for lesson-thumbnail PUT smoke test.
 _TINY_JPEG = base64.b64decode(
@@ -46,7 +49,7 @@ def test_playback_for_unknown_lesson_returns_404(api: ApiClient, course_factory)
 # --- Upload URL shape --------------------------------------------------------------
 
 
-def test_upload_url_returns_presigned_url_and_records_video_key(
+def test_upload_url_returns_upload_contract_and_records_video_key(
     api: ApiClient, course_factory, lesson_factory
 ):
     course = course_factory()
@@ -56,15 +59,19 @@ def test_upload_url_returns_presigned_url_and_records_video_key(
     assert resp.status_code == 200
     body = resp.json()
 
-    # Presigned URL signature: query string carries SigV4 parameters.
     assert body["uploadUrl"].startswith("https://")
-    assert "X-Amz-Signature" in body["uploadUrl"]
-
-    # Video key: {courseId}/lessons/{lessonId}/video/{uuid}.mp4
-    assert body["videoKey"].startswith(
-        f"{course.course_id}/lessons/{lesson.lesson_id}/video/"
-    )
-    assert body["videoKey"].endswith(".mp4")
+    assert body.get("provider") in ("s3", "kinescope")
+    if expects_s3_presigned_upload():
+        assert "X-Amz-Signature" in body["uploadUrl"]
+        assert body["videoKey"].startswith(
+            f"{course.course_id}/lessons/{lesson.lesson_id}/video/"
+        )
+        assert body["videoKey"].endswith(".mp4")
+    else:
+        assert "X-Amz-Signature" not in body["uploadUrl"]
+        assert body.get("uploadMethod") in ("post", "tus")
+        uuid.UUID(body["videoKey"])
+        assert "kinescope" in body["uploadUrl"].lower() or "uploader" in body["uploadUrl"].lower()
 
     # Lesson should now reflect the recorded videoKey + pending status.
     listing = api.list_lessons(course.course_id)
@@ -117,6 +124,10 @@ def test_lesson_thumbnail_upload_url_rejects_non_image_content_type(
 
 
 @pytest.mark.slow
+@pytest.mark.skipif(
+    not expects_s3_presigned_upload(),
+    reason="S3 presigned PUT round-trip requires INTEGRATION_VIDEO_PROVIDER=s3",
+)
 def test_full_upload_round_trip_to_s3_then_playback(
     api: ApiClient, course_factory, lesson_factory
 ):
@@ -144,7 +155,9 @@ def test_full_upload_round_trip_to_s3_then_playback(
 
     playback = api.get_playback(course.course_id, lesson.lesson_id)
     assert playback.status_code == 200
-    playback_url = playback.json()["url"]
+    playback_body = playback.json()
+    assert playback_body["provider"] == "s3"
+    playback_url = playback_body["playbackUrl"]
     assert playback_url.startswith("https://")
     assert "X-Amz-Signature" in playback_url
 
@@ -155,6 +168,10 @@ def test_full_upload_round_trip_to_s3_then_playback(
 
 
 @pytest.mark.slow
+@pytest.mark.skipif(
+    not expects_s3_presigned_upload(),
+    reason="S3 presigned PUT round-trip requires INTEGRATION_VIDEO_PROVIDER=s3",
+)
 def test_lesson_thumbnail_presigned_put_then_video_ready_lists_thumbnail_url(
     api: ApiClient, course_factory, lesson_factory
 ):

@@ -45,6 +45,7 @@
   },
   "dependencies": {
     "@aws-amplify/ui-react-core": "^3.6.3",
+    "@kinescope/react-kinescope-player": "^0.5.4",
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
     "aws-amplify": "^6.16.4",

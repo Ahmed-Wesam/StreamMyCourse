@@ -30,6 +30,8 @@ _CATALOG_BOTO3_ALLOWED = frozenset(
     {
         _p("infrastructure/lambda/catalog/bootstrap.py"),
         _p("infrastructure/lambda/catalog/services/course_management/storage.py"),
+        _p("infrastructure/lambda/catalog/services/course_management/image_storage.py"),
+        _p("infrastructure/lambda/catalog/services/course_management/s3_common.py"),
         _p("infrastructure/lambda/catalog/services/common/sqs_client.py"),
         _p("infrastructure/lambda/cognito_user_profile_sync/repo.py"),
     }
@@ -73,6 +75,14 @@ _BILLING_FULFILLMENT_PSYCOPG2_ALLOWED = frozenset(
 _BILLING_EDGE_HTTP_ALLOWED = frozenset(
     {
         _p("infrastructure/lambda/billing_edge/providers/paytabs_adapter.py"),
+    }
+)
+
+_CATALOG_HTTP_ALLOWED = frozenset(
+    {
+        _p(
+            "infrastructure/lambda/catalog/services/course_management/video_providers/kinescope_adapter.py"
+        ),
     }
 )
 
@@ -167,6 +177,18 @@ def _check_billing_edge_http(rel: str, norm: str, roots: Set[str]) -> List[Viola
     ]
 
 
+def _check_catalog_http(rel: str, norm: str, roots: Set[str]) -> List[Violation]:
+    bad = sorted(_HTTP_CLIENT_ROOTS & roots)
+    if not bad or norm in _CATALOG_HTTP_ALLOWED:
+        return []
+    return [
+        Violation(
+            rel,
+            f"HTTP client imports ({', '.join(bad)}) only allowed in kinescope_adapter.py",
+        )
+    ]
+
+
 def check_file(path: str) -> List[Violation]:
     rel = _module_path_from_file(path)
     norm = _norm_path(path)
@@ -186,6 +208,7 @@ def check_file(path: str) -> List[Violation]:
         violations.extend(
             _check_psycopg2(rel, norm, roots, _CATALOG_PSYCOPG2_ALLOWED, "catalog/cognito")
         )
+        violations.extend(_check_catalog_http(rel, norm, roots))
     elif package == "billing_edge":
         violations.extend(
             _check_boto3(rel, norm, roots, _BILLING_EDGE_BOTO3_ALLOWED, "billing_edge")
@@ -239,6 +262,7 @@ def check_file(path: str) -> List[Violation]:
 
     is_persistence_adapter = (
         rel.endswith("/services/course_management/storage.py")
+        or rel.endswith("/services/course_management/image_storage.py")
         or rel.endswith("/services/course_management/rds_repo.py")
         or rel.endswith("/services/auth/rds_repo.py")
         or rel.endswith("/services/enrollment/rds_repo.py")
