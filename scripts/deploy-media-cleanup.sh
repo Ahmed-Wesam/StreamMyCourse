@@ -86,6 +86,10 @@ aws cloudformation validate-template \
   --region "$REGION"
 
 echo "Deploying media cleanup stack: $MEDIA_STACK"
+MC_KINESCOPE_OVERRIDES=()
+if [[ -n "${KINESCOPE_API_TOKEN:-}" ]]; then
+  MC_KINESCOPE_OVERRIDES=("KinescopeApiToken=${KINESCOPE_API_TOKEN}")
+fi
 aws cloudformation deploy \
   --template-file "$TEMPLATE_DIR/media-cleanup-stack.yaml" \
   --stack-name "$MEDIA_STACK" \
@@ -96,4 +100,5 @@ aws cloudformation deploy \
   "Environment=${ENV}" \
   "VideoBucketName=${VIDEO_BUCKET}" \
   "LambdaCodeS3Bucket=${ARTIFACT_BUCKET}" \
-  "LambdaCodeS3Key=${ZIP_KEY}"
+  "LambdaCodeS3Key=${ZIP_KEY}" \
+  "${MC_KINESCOPE_OVERRIDES[@]}"

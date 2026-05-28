@@ -13,6 +13,7 @@ from __future__ import annotations
 
 from helpers.api import ApiClient
 from helpers.billing_access import ensure_student_subscription, skip_if_student_has_subscription
+from helpers.playback_contract import assert_playback_contract
 
 
 def test_subscribed_student_gets_playback_url(
@@ -45,9 +46,7 @@ def test_subscribed_student_gets_playback_url(
         f"Expected 200, got {playback_resp.status_code}: {playback_resp.text}"
     )
     body = playback_resp.json()
-    assert "url" in body, f"Expected 'url' in response body: {body}"
-    assert isinstance(body["url"], str), f"Expected url to be a string: {body}"
-    assert len(body["url"]) > 0, "Expected non-empty presigned URL"
+    assert_playback_contract(body)
 
     api.delete_course(course_id)
 
@@ -112,9 +111,7 @@ def test_course_owner_gets_playback_url(
         f"Expected 200, got {playback_resp.status_code}: {playback_resp.text}"
     )
     body = playback_resp.json()
-    assert "url" in body, f"Expected 'url' in response body: {body}"
-    assert isinstance(body["url"], str), f"Expected url to be a string: {body}"
-    assert len(body["url"]) > 0, "Expected non-empty presigned URL"
+    assert_playback_contract(body)
 
     api.delete_course(course_id)
 
@@ -147,7 +144,7 @@ def test_draft_lesson_playback_returns_404(
         f"Owner should get 200 for DRAFT course, got {owner_playback.status_code}: {owner_playback.text}"
     )
     owner_body = owner_playback.json()
-    assert "url" in owner_body, f"Expected presigned URL in response: {owner_body}"
+    assert_playback_contract(owner_body)
 
     alt_playback = alt_api.get_playback(course_id, lesson_id)
     assert alt_playback.status_code in (403, 404), (

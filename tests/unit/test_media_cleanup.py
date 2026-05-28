@@ -84,3 +84,57 @@ def test_handler_logs_success_metrics(caplog, monkeypatch) -> None:
     with caplog.at_level(logging.INFO):
         media_cleanup_worker.lambda_handler(event, None)
     assert "Media cleanup completed" in caplog.text
+
+
+def test_handler_deletes_kinescope_video_ids(monkeypatch) -> None:
+    monkeypatch.setenv("VIDEO_BUCKET", "my-bucket")
+    mock_s3 = MagicMock()
+    mock_adapter = MagicMock()
+    adapter_cls = MagicMock(return_value=mock_adapter)
+    monkeypatch.setattr(media_cleanup_worker, "_s3", mock_s3)
+    monkeypatch.setattr(media_cleanup_worker, "KinescopeDeleteAdapter", adapter_cls)
+
+    event = {
+        "Records": [
+            {
+                "messageId": "m-k",
+                "body": json.dumps(
+                    {
+                        "courseId": "c1",
+                        "provider": "kinescope",
+                        "kinescopeVideoIds": ["vid-1", "vid-2", "vid-1"],
+                    }
+                ),
+            }
+        ]
+    }
+    out = media_cleanup_worker.lambda_handler(event, None)
+    assert out["batchItemFailures"] == []
+    adapter_cls.assert_called_once()
+    assert mock_adapter.delete_video.call_count == 2
+    mock_s3.delete_objects.assert_not_called()
+
+
+def test_handler_legacy_or_s3_provider_still_deletes_s3_keys(monkeypatch) -> None:
+    monkeypatch.setenv("VIDEO_BUCKET", "my-bucket")
+    mock_s3 = MagicMock()
+    mock_s3.delete_objects.return_value = {"Errors": []}
+    monkeypatch.setattr(media_cleanup_worker, "_s3", mock_s3)
+
+    event = {
+        "Records": [
+            {
+                "messageId": "m-s3",
+                "body": json.dumps(
+                    {
+                        "courseId": "c1",
+                        "provider": "s3",
+                        "s3Keys": ["a/b/1", "a/b/2"],
+                    }
+                ),
+            }
+        ]
+    }
+    out = media_cleanup_worker.lambda_handler(event, None)
+    assert out["batchItemFailures"] == []
+    mock_s3.delete_objects.assert_called_once()

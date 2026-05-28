@@ -39,6 +39,7 @@ class CourseCatalogRepositoryPort(Protocol):
     def set_course_thumbnail(self, course_id: str, thumbnail_key: str) -> None: ...
     def set_lesson_thumbnail(self, course_id: str, lesson_id: str, thumbnail_key: str) -> None: ...
     def set_lesson_duration(self, course_id: str, lesson_id: str, duration: int) -> None: ...
+    def find_lesson_by_video_key(self, video_key: str) -> Optional[tuple[str, str]]: ...
 
 
 class ModuleQuizVisibilityPort(Protocol):
@@ -52,16 +53,7 @@ class ModuleQuizVisibilityPort(Protocol):
     ) -> Dict[str, Dict[str, Any]]: ...
 
 
-class CourseMediaStoragePort(Protocol):
-    def presign_put(
-        self,
-        *,
-        course_id: str,
-        lesson_id: str,
-        filename: str,
-        content_type: str,
-        expires_seconds: int = 300,
-    ) -> PresignResult: ...
+class ImageMediaStoragePort(Protocol):
     def presign_thumbnail_put(
         self,
         *,
@@ -82,4 +74,8 @@ class CourseMediaStoragePort(Protocol):
     def presign_get(self, *, key: str, expires_seconds: int = 3600) -> str: ...
     def delete_object(self, key: str) -> None: ...
     def delete_objects(self, keys: Sequence[str]) -> List[str]: ...
+
+
+# Deprecated alias — remove after downstream imports migrate.
+CourseMediaStoragePort = ImageMediaStoragePort
 

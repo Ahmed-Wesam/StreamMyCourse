@@ -44,6 +44,27 @@ vi.mock('../lib/api/billing', async (importOriginal) => {
   }
 })
 
+vi.mock('@kinescope/react-kinescope-player', () => ({
+  default: (props: {
+    videoId: string
+    drmAuthToken: string
+    query?: { seek?: number }
+    onTimeUpdate?: (data: { currentTime: number; duration: number }) => void
+    onEnded?: () => void
+    onPause?: () => void
+  }) => (
+    <div
+      data-testid="kinescope-player"
+      data-video-id={props.videoId}
+      data-drm-auth-token={props.drmAuthToken}
+      data-seek={props.query?.seek ?? ''}
+      onClick={() => props.onTimeUpdate?.({ currentTime: 10, duration: 400 })}
+      onDoubleClick={() => props.onEnded?.()}
+      onMouseDown={() => props.onPause?.()}
+    />
+  ),
+}))
+
 function renderLessonPlayer(path = '/courses/c1/lessons/l1') {
   return render(
     <MemoryRouter initialEntries={[path]}>
@@ -147,7 +168,10 @@ describe('LessonPlayerPage', () => {
       { id: 'm1', title: 'Section 1', description: '', order: 0 },
       { id: 'm2', title: 'Section 2', description: '', order: 1 },
     ])
-    api.getPlaybackUrl.mockResolvedValue({ url: 'https://example.com/lesson.mp4' })
+    api.getPlaybackUrl.mockResolvedValue({
+      provider: 's3',
+      playbackUrl: 'https://example.com/lesson.mp4',
+    })
     api.getCourseProgress.mockResolvedValue({
       courseId: 'c1',
       totalReadyLessons: 3,
@@ -177,6 +201,58 @@ describe('LessonPlayerPage', () => {
     })
 
     expect(video.playsInline).toBe(true)
+  })
+
+  it('renders Kinescope player for provider playback payloads', async () => {
+    api.getPlaybackUrl.mockResolvedValue({
+      provider: 'kinescope',
+      videoId: 'ks-video-1',
+      drmAuthToken: 'drm-token-1',
+    })
+
+    renderLessonPlayer()
+
+    const player = await screen.findByTestId('kinescope-player')
+    expect(player.getAttribute('data-video-id')).toBe('ks-video-1')
+    expect(player.getAttribute('data-drm-auth-token')).toBe('drm-token-1')
+    expect(document.querySelector('video')).toBeNull()
+  })
+
+  it('posts lesson progress when Kinescope player emits time updates', async () => {
+    api.getPlaybackUrl.mockResolvedValue({
+      provider: 'kinescope',
+      videoId: 'ks-video-1',
+      drmAuthToken: 'drm-token-1',
+    })
+
+    renderLessonPlayer()
+
+    const player = await screen.findByTestId('kinescope-player')
+    fireEvent.click(player)
+
+    await waitFor(() => {
+      expect(api.updateLessonProgress).toHaveBeenCalledWith('c1', 'l1', {
+        lastPositionSec: 10,
+        durationSec: 400,
+      })
+    })
+  })
+
+  it('renders html5 video for s3 provider playback payloads', async () => {
+    api.getPlaybackUrl.mockResolvedValue({
+      provider: 's3',
+      playbackUrl: 'https://example.com/s3-lesson.mp4',
+    })
+
+    renderLessonPlayer()
+
+    const video = await waitFor(() => {
+      const el = document.querySelector('video')
+      expect(el).not.toBeNull()
+      return el as HTMLVideoElement
+    })
+
+    expect(video.getAttribute('src')).toContain('s3-lesson.mp4')
   })
 
   it('shows course not found when getCourse returns null', async () => {
@@ -1064,7 +1140,7 @@ describe('LessonPlayerPage', () => {
 
     const videoAfter = document.querySelector('video')
     const srcAfter = videoAfter?.getAttribute('src')
-    expect(srcAfter === null || srcAfter === '').toBe(true)
+    expect(videoAfter === null || srcAfter === null || srcAfter === '').toBe(true)
   })
 
   it('does not render an empty course description paragraph on desktop', async () => {

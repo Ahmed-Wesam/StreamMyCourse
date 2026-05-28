@@ -464,6 +464,20 @@ class CourseCatalogRdsRepository:
             commit=True,
         )
 
+    def find_lesson_by_video_key(self, video_key: str) -> Optional[tuple[str, str]]:
+        key = (video_key or "").strip()
+        if not key:
+            return None
+        cur = self._execute(
+            "SELECT course_id, id FROM lessons WHERE video_key = %s LIMIT 1",
+            (key,),
+            commit=False,
+        )
+        row = cur.fetchone()
+        if not row:
+            return None
+        return str(row[0]), str(row[1])
+
     def set_lesson_thumbnail(
         self, course_id: str, lesson_id: str, thumbnail_key: str
     ) -> None:

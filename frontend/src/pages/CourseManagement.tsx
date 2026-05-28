@@ -160,12 +160,15 @@ export default function CourseManagement() {
       const lessonInput = selectedModuleId
         ? { title: newLessonTitle, moduleId: selectedModuleId }
         : { title: newLessonTitle }
-      await createAndUploadDraftLesson({
+      const uploadResult = await createAndUploadDraftLesson({
         courseId,
         lessonInput,
         videoFile: selectedFile,
         onUploadProgress: setUploadProgress,
       })
+      if (uploadResult.videoStatus === 'pending') {
+        setInfo('Video uploaded. Processing in progress; publishing unlocks once a lesson is ready.')
+      }
       setShowAddLesson(false)
       setNewLessonTitle('')
       setSelectedFile(null)

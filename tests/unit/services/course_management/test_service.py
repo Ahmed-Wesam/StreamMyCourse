@@ -7,6 +7,7 @@ ports are the only seam we need.
 
 from __future__ import annotations
 
+import uuid
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -14,6 +15,7 @@ import pytest
 from services.common.errors import BadRequest, Conflict, Forbidden, NotFound, ServiceUnavailable
 from services.course_management.models import Course, CourseModule, Lesson, PresignResult
 from services.course_management.service import CourseManagementService
+from services.course_management.video_providers.port import KinescopePlayback, S3Playback, VideoUploadInit
 
 
 _MID_DEFAULT = "99999999-9999-4999-8999-999999999999"
@@ -73,6 +75,9 @@ def _course(
 
 
 _VID = "11111111-1111-4111-8111-111111111111"
+_KINESCope_VID = "dddddddd-dddd-4ddd-8ddd-dddddddddddd"
+_KINESCope_VID_2 = "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee"
+_KINESCope_VID_3 = "ffffffff-ffff-4fff-8fff-ffffffffffff"
 _TH1 = "22222222-2222-4222-8222-222222222222"
 _TH2 = "33333333-3333-4333-8333-333333333333"
 _TH3 = "44444444-4444-4444-8444-444444444444"
@@ -102,6 +107,14 @@ def storage() -> MagicMock:
 
 
 @pytest.fixture
+def video_provider() -> MagicMock:
+    m = MagicMock()
+    m.provider_id = "s3"
+    m.marks_ready_on_upload_complete = True
+    return m
+
+
+@pytest.fixture
 def enrollments() -> MagicMock:
     m = MagicMock()
     m.has_enrollment.return_value = False
@@ -119,10 +132,16 @@ def course_access() -> MagicMock:
 def service(
     repo: MagicMock,
     storage: MagicMock,
+    video_provider: MagicMock,
     enrollments: MagicMock,
     course_access: MagicMock,
 ) -> CourseManagementService:
-    return CourseManagementService(repo, storage, course_access=course_access)
+    return CourseManagementService(
+        repo,
+        storage,
+        course_access=course_access,
+        video_provider=video_provider,
+    )
 
 
 @pytest.fixture
@@ -136,6 +155,7 @@ def service_no_storage(
 def service_with_queue(
     repo: MagicMock,
     storage: MagicMock,
+    video_provider: MagicMock,
     enrollments: MagicMock,
     course_access: MagicMock,
 ) -> CourseManagementService:
@@ -143,6 +163,7 @@ def service_with_queue(
         repo,
         storage,
         course_access=course_access,
+        video_provider=video_provider,
         media_cleanup_queue_url="https://sqs.example/queue",
     )
 
@@ -430,6 +451,38 @@ class TestDeleteCourse:
             _video_key(_VID, _L1),
             _lesson_thumb_key(_VID, _L1, _TH4),
         }
+        assert send_job.call_args.kwargs["s3_keys"] == [
+            _course_thumb_key(_VID, _TH3),
+            _video_key(_VID, _L1),
+            _lesson_thumb_key(_VID, _L1, _TH4),
+        ]
+        assert send_job.call_args.kwargs["kinescope_video_ids"] == []
+
+    @patch("services.course_management.service.send_media_cleanup_job")
+    def test_course_delete_enqueues_kinescope_video_ids_separately(
+        self,
+        send_job: MagicMock,
+        service_with_queue: CourseManagementService,
+        repo: MagicMock,
+    ) -> None:
+        _L1 = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"
+        repo.get_course.return_value = _course(id_=_VID, thumbnail_key=_course_thumb_key(_VID, _TH3))
+        repo.list_lessons.return_value = [
+            _lesson(
+                id_=_L1,
+                video_key=_KINESCope_VID,
+                thumbnail_key=_lesson_thumb_key(_VID, _L1, _TH4),
+            ),
+        ]
+
+        service_with_queue.delete_course(_VID)
+        send_job.assert_called_once()
+        kwargs = send_job.call_args.kwargs
+        assert kwargs["kinescope_video_ids"] == [_KINESCope_VID]
+        assert set(kwargs["s3_keys"]) == {
+            _course_thumb_key(_VID, _TH3),
+            _lesson_thumb_key(_VID, _L1, _TH4),
+        }
 
     @patch("services.course_management.service.send_media_cleanup_job")
     def test_enqueue_runs_without_storage_when_queue_configured(
@@ -536,6 +589,32 @@ class TestDeleteLessonOrderCompaction:
             _video_key(_VID, self._LID2, "66666666-6666-4666-8666-666666666666"),
             _lesson_thumb_key(_VID, self._LID2),
         }
+        assert set(send_job.call_args.kwargs["s3_keys"]) == {
+            _video_key(_VID, self._LID2, "66666666-6666-4666-8666-666666666666"),
+            _lesson_thumb_key(_VID, self._LID2),
+        }
+        assert send_job.call_args.kwargs["kinescope_video_ids"] == []
+
+    @patch("services.course_management.service.send_media_cleanup_job")
+    def test_delete_lesson_enqueues_kinescope_video_and_thumbnail(
+        self,
+        send_job: MagicMock,
+        service_with_queue: CourseManagementService,
+        repo: MagicMock,
+    ) -> None:
+        repo.get_lesson_by_id.return_value = _lesson(
+            id_=self._LID2,
+            order=2,
+            video_key=_KINESCope_VID_2,
+            thumbnail_key=_lesson_thumb_key(_VID, self._LID2),
+        )
+        repo.list_lessons.return_value = []
+
+        service_with_queue.delete_lesson(_VID, self._LID2)
+        send_job.assert_called_once()
+        kwargs = send_job.call_args.kwargs
+        assert kwargs["kinescope_video_ids"] == [_KINESCope_VID_2]
+        assert kwargs["s3_keys"] == [_lesson_thumb_key(_VID, self._LID2)]
 
     def test_compacts_remaining_orders_to_one_through_n(
         self, service: CourseManagementService, repo: MagicMock, storage: MagicMock
@@ -700,6 +779,94 @@ class TestMarkLessonVideoReady:
         repo.set_lesson_thumbnail.assert_not_called()
 
 
+class TestMarkLessonVideoReadyKinescope:
+    _LID = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
+    _KIN_ID = "dddddddd-dddd-4ddd-8ddd-dddddddddddd"
+
+    @pytest.fixture
+    def kinescope_provider(self) -> MagicMock:
+        m = MagicMock()
+        m.provider_id = "kinescope"
+        m.marks_ready_on_upload_complete = False
+        return m
+
+    @pytest.fixture
+    def kinescope_service(
+        self,
+        repo: MagicMock,
+        storage: MagicMock,
+        kinescope_provider: MagicMock,
+        course_access: MagicMock,
+    ) -> CourseManagementService:
+        return CourseManagementService(
+            repo,
+            storage,
+            course_access=course_access,
+            video_provider=kinescope_provider,
+            kinescope_api_token="test-token",
+            deployment_environment="prod",
+        )
+
+    def test_prod_rejects_when_provider_not_done(
+        self, kinescope_service: CourseManagementService, repo: MagicMock
+    ) -> None:
+        repo.get_lesson_by_id.return_value = _lesson(
+            id_=self._LID, video_key=self._KIN_ID
+        )
+        with patch(
+            "services.course_management.service.fetch_kinescope_video_metadata",
+            return_value=MagicMock(status="pending", duration_seconds=None),
+        ):
+            with pytest.raises(BadRequest, match="still processing"):
+                kinescope_service.mark_lesson_video_ready(_VID, self._LID)
+        repo.set_lesson_video_status.assert_not_called()
+
+    def test_prod_accepts_when_provider_confirms_done(
+        self, kinescope_service: CourseManagementService, repo: MagicMock
+    ) -> None:
+        repo.get_lesson_by_id.return_value = _lesson(
+            id_=self._LID, video_key=self._KIN_ID
+        )
+        with patch(
+            "services.course_management.service.fetch_kinescope_video_metadata",
+            return_value=MagicMock(status="done", duration_seconds=120),
+        ):
+            out = kinescope_service.mark_lesson_video_ready(_VID, self._LID)
+        repo.set_lesson_video_status.assert_called_once_with(
+            course_id=_VID, lesson_id=self._LID, status="ready"
+        )
+        repo.set_lesson_duration.assert_called_once_with(_VID, self._LID, 120)
+        assert out == {"lessonId": self._LID, "videoStatus": "ready", "duration": 120}
+
+    def test_dev_allows_bypass_when_provider_not_done(
+        self,
+        repo: MagicMock,
+        storage: MagicMock,
+        kinescope_provider: MagicMock,
+        course_access: MagicMock,
+    ) -> None:
+        svc = CourseManagementService(
+            repo,
+            storage,
+            course_access=course_access,
+            video_provider=kinescope_provider,
+            kinescope_api_token="test-token",
+            deployment_environment="dev",
+        )
+        repo.get_lesson_by_id.return_value = _lesson(
+            id_=self._LID, video_key=self._KIN_ID
+        )
+        with patch(
+            "services.course_management.service.fetch_kinescope_video_metadata",
+            return_value=None,
+        ):
+            out = svc.mark_lesson_video_ready(_VID, self._LID)
+        repo.set_lesson_video_status.assert_called_once_with(
+            course_id=_VID, lesson_id=self._LID, status="ready"
+        )
+        assert out == {"lessonId": self._LID, "videoStatus": "ready"}
+
+
 # --- get_playback_url ---------------------------------------------------------
 
 
@@ -711,7 +878,7 @@ class TestGetPlaybackUrl:
     ) -> None:
         repo.get_lesson_by_id.return_value = None
         with pytest.raises(NotFound):
-            service.get_playback_url(_VID, self._LID, video_bucket="bucket")
+            service.get_playback_url(_VID, self._LID)
 
     def test_not_ready_raises_bad_request(
         self, service: CourseManagementService, repo: MagicMock
@@ -720,7 +887,7 @@ class TestGetPlaybackUrl:
             id_=self._LID, video_key=_video_key(_VID, self._LID), video_status="pending"
         )
         with pytest.raises(BadRequest, match="not ready"):
-            service.get_playback_url(_VID, self._LID, video_bucket="bucket")
+            service.get_playback_url(_VID, self._LID)
 
     def test_ready_but_no_video_key_raises_not_found(
         self, service: CourseManagementService, repo: MagicMock
@@ -729,36 +896,56 @@ class TestGetPlaybackUrl:
             id_=self._LID, video_key="", video_status="ready"
         )
         with pytest.raises(NotFound):
-            service.get_playback_url(_VID, self._LID, video_bucket="bucket")
+            service.get_playback_url(_VID, self._LID)
 
     def test_storage_configured_returns_presigned_get(
-        self, service: CourseManagementService, repo: MagicMock, storage: MagicMock
+        self, service: CourseManagementService, repo: MagicMock, video_provider: MagicMock
     ) -> None:
         repo.get_lesson_by_id.return_value = _lesson(
             id_=self._LID, video_key=_video_key(_VID, self._LID), video_status="ready"
         )
-        storage.presign_get.return_value = "https://signed.example/get?sig=def"
-
-        out = service.get_playback_url(_VID, self._LID, video_bucket="bucket")
-
-        storage.presign_get.assert_called_once_with(
-            key=_video_key(_VID, self._LID), expires_seconds=3600
+        video_provider.resolve_playback.return_value = S3Playback(
+            provider="s3",
+            playback_url="https://signed.example/get?sig=def",
         )
-        assert out == {"url": "https://signed.example/get?sig=def"}
 
-    def test_no_storage_returns_public_s3_fallback_url(
+        out = service.get_playback_url(_VID, self._LID)
+
+        video_provider.resolve_playback.assert_called_once_with(
+            video_key=_video_key(_VID, self._LID), expires_seconds=3600
+        )
+        assert out == {
+            "provider": "s3",
+            "playbackUrl": "https://signed.example/get?sig=def",
+        }
+
+    def test_no_video_provider_raises_bad_request(
         self, service_no_storage: CourseManagementService, repo: MagicMock
     ) -> None:
         repo.get_lesson_by_id.return_value = _lesson(
             id_=self._LID, video_key=_video_key(_VID, self._LID), video_status="ready"
         )
-        out = service_no_storage.get_playback_url(
-            _VID, self._LID, video_bucket="my-bucket"
+        with pytest.raises(BadRequest, match="not configured"):
+            service_no_storage.get_playback_url(_VID, self._LID)
+
+    def test_kinescope_playback_returns_provider_payload(
+        self, service: CourseManagementService, repo: MagicMock, video_provider: MagicMock
+    ) -> None:
+        repo.get_lesson_by_id.return_value = _lesson(
+            id_=self._LID, video_key=_video_key(_VID, self._LID), video_status="ready"
         )
-        # Fallback URL shape pinned: virtual-host style on the legacy SigV2
-        # endpoint. If storage is wired, the presigned variant takes over.
+        video_provider.resolve_playback.return_value = KinescopePlayback(
+            provider="kinescope",
+            video_id="kinescope-video-id",
+            drm_auth_token="signed.jwt.token",
+        )
+
+        out = service.get_playback_url(_VID, self._LID)
+
         assert out == {
-            "url": f"https://my-bucket.s3.amazonaws.com/{_video_key(_VID, self._LID)}"
+            "provider": "kinescope",
+            "videoId": "kinescope-video-id",
+            "drmAuthToken": "signed.jwt.token",
         }
 
 
@@ -791,13 +978,15 @@ class TestGetUploadUrl:
                 content_type="video/mp4",
             )
 
-    def test_happy_path_calls_presign_then_records_video_key_pending(
-        self, service: CourseManagementService, repo: MagicMock, storage: MagicMock
+    def test_happy_path_calls_provider_then_records_external_video_key_pending(
+        self, service: CourseManagementService, repo: MagicMock, video_provider: MagicMock
     ) -> None:
         repo.get_lesson_by_id.return_value = _lesson(id_=self._LID)
-        storage.presign_put.return_value = PresignResult(
-            uploadUrl="https://signed.example/put?sig=abc",
-            videoKey=_video_key(_VID, self._LID, "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"),
+        video_provider.provider_id = "kinescope"
+        video_provider.init_lesson_upload.return_value = VideoUploadInit(
+            upload_url="https://uploader.kinescope.io/upload/abc123",
+            video_key=_KINESCope_VID,
+            upload_method="post",
         )
 
         out = service.get_upload_url(
@@ -807,39 +996,44 @@ class TestGetUploadUrl:
             content_type="video/mp4",
         )
 
-        storage.delete_objects.assert_not_called()
-        storage.presign_put.assert_called_once_with(
+        video_provider.delete_videos.assert_not_called()
+        video_provider.init_lesson_upload.assert_called_once_with(
             course_id=_VID,
             lesson_id=self._LID,
             filename="x.mp4",
             content_type="video/mp4",
+            filesize=None,
         )
         repo.set_lesson_video_if_video_key_matches.assert_called_once_with(
             course_id=_VID,
             lesson_id=self._LID,
-            video_key=_video_key(_VID, self._LID, "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"),
+            video_key=_KINESCope_VID,
             status="pending",
             expected_video_key="",
         )
         assert out == {
-            "uploadUrl": "https://signed.example/put?sig=abc",
-            "videoKey": _video_key(_VID, self._LID, "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"),
+            "uploadUrl": "https://uploader.kinescope.io/upload/abc123",
+            "videoKey": _KINESCope_VID,
+            "uploadMethod": "post",
+            "provider": "kinescope",
         }
+        uuid.UUID(out["videoKey"])
 
-    def test_second_presign_does_not_delete_previous_video_key_in_s3(
-        self, service: CourseManagementService, repo: MagicMock, storage: MagicMock
+    def test_second_upload_init_does_not_delete_previous_video_key(
+        self, service: CourseManagementService, repo: MagicMock, video_provider: MagicMock
     ) -> None:
-        """Regression: a second lesson-video presign must not remove the prior object.
+        """Regression: a second upload init must not remove the prior external id.
 
-        The client may still PUT to the first URL; deleting `prev` on presign caused
-        DB to point at a new key while S3 lost the first upload.
+        The client may still upload to the first URL; deleting `prev` on re-init caused
+        DB to point at a new key while the first upload was lost.
         """
-        prev = _video_key(_VID, self._LID, "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb")
+        prev = _KINESCope_VID_2
         repo.get_lesson_by_id.return_value = _lesson(id_=self._LID, video_key=prev)
-        new_key = _video_key(_VID, self._LID, "cccccccc-cccc-4ccc-8ccc-cccccccccccc")
-        storage.presign_put.return_value = PresignResult(
-            uploadUrl="https://signed.example/put?sig=abc",
-            videoKey=new_key,
+        new_key = _KINESCope_VID_3
+        video_provider.init_lesson_upload.return_value = VideoUploadInit(
+            upload_url="https://uploader.kinescope.io/upload/def456",
+            video_key=new_key,
+            upload_method="post",
         )
         service.get_upload_url(
             course_id=_VID,
@@ -847,17 +1041,18 @@ class TestGetUploadUrl:
             filename="x.mp4",
             content_type="video/mp4",
         )
-        storage.delete_objects.assert_not_called()
+        video_provider.delete_videos.assert_not_called()
 
-    def test_conflict_deletes_only_new_presigned_key_not_previous(
-        self, service: CourseManagementService, repo: MagicMock, storage: MagicMock
+    def test_conflict_deletes_only_new_external_id_not_previous(
+        self, service: CourseManagementService, repo: MagicMock, video_provider: MagicMock
     ) -> None:
-        prev = _video_key(_VID, self._LID, "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb")
+        prev = _KINESCope_VID_2
         repo.get_lesson_by_id.return_value = _lesson(id_=self._LID, video_key=prev)
-        new_key = _video_key(_VID, self._LID, "cccccccc-cccc-4ccc-8ccc-cccccccccccc")
-        storage.presign_put.return_value = PresignResult(
-            uploadUrl="https://signed.example/put?sig=abc",
-            videoKey=new_key,
+        new_key = _KINESCope_VID_3
+        video_provider.init_lesson_upload.return_value = VideoUploadInit(
+            upload_url="https://uploader.kinescope.io/upload/def456",
+            video_key=new_key,
+            upload_method="post",
         )
         repo.set_lesson_video_if_video_key_matches.side_effect = Conflict(
             "Another upload started for this lesson; retry."
@@ -869,7 +1064,7 @@ class TestGetUploadUrl:
                 filename="x.mp4",
                 content_type="video/mp4",
             )
-        storage.delete_objects.assert_called_once_with([new_key])
+        video_provider.delete_videos.assert_called_once_with([new_key])
 
 
 # --- get_thumbnail_upload_url / mark_course_thumbnail_ready -------------------
@@ -1654,11 +1849,11 @@ class TestUuidValidation:
 
     def test_get_playback_url_invalid_course_uuid_raises_not_found(self, service: CourseManagementService) -> None:
         with pytest.raises(NotFound):
-            service.get_playback_url("bad-course", lesson_id=_VID, video_bucket="bucket")
+            service.get_playback_url("bad-course", lesson_id=_VID)
 
     def test_get_playback_url_invalid_lesson_uuid_raises_not_found(self, service: CourseManagementService) -> None:
         with pytest.raises(NotFound):
-            service.get_playback_url(course_id=_VID, lesson_id="bad-lesson", video_bucket="bucket")
+            service.get_playback_url(course_id=_VID, lesson_id="bad-lesson")
 
     def test_get_upload_url_invalid_course_uuid_raises_not_found(self, service: CourseManagementService) -> None:
         with pytest.raises(NotFound):

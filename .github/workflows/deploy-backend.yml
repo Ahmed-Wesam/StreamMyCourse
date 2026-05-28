@@ -154,9 +154,22 @@ jobs:
             echo "INTEGRATION_VIDEO_BUCKET=$VIDEO_BUCKET"
             echo "INTEGRATION_AWS_REGION=$REGION"
             echo "INTEGRATION_EXPECTED_CORS_ORIGIN=$FIRST_CORS_ORIGIN"
+            echo "INTEGRATION_VIDEO_PROVIDER=kinescope"
           } >> "$GITHUB_ENV"
           echo "Resolved dev API: $API_BASE_URL"
           echo "Resolved dev bucket: $VIDEO_BUCKET"
+
+      - name: Require Kinescope webhook secret for integration tests (dev)
+        env:
+          KINESCOPE_WEBHOOK_SECRET: ${{ secrets.KINESCOPE_WEBHOOK_SECRET }}
+        run: |
+          set -euo pipefail
+          if [[ -z "${KINESCOPE_WEBHOOK_SECRET:-}" ]]; then
+            echo "::error::GitHub Environment \"dev\" must set KINESCOPE_WEBHOOK_SECRET for Kinescope integration tests."
+            exit 1
+          fi
+          echo "::add-mask::$KINESCOPE_WEBHOOK_SECRET"
+          echo "INTEGRATION_KINESCOPE_WEBHOOK_SECRET=$KINESCOPE_WEBHOOK_SECRET" >> "$GITHUB_ENV"
 
       - name: Require Cognito credentials for integration HTTP tests
         env:
@@ -790,6 +803,22 @@ jobs:
             --description "PayTabs credentials placeholder (WS3); replace with live keys before go-live" \
             --secret-string '{"server_key":"placeholder-dev-paytabs-server-key","profile_id":"placeholder-dev-paytabs-profile-id","api_domain":"secure-jordan.paytabs.com"}'
 
+      - name: Require Kinescope credentials (dev)
+        env:
+          KINESCOPE_API_TOKEN: ${{ secrets.KINESCOPE_API_TOKEN }}
+          KINESCOPE_PARENT_ID: ${{ secrets.KINESCOPE_PARENT_ID }}
+          KINESCOPE_DRM_JWT_SECRET: ${{ secrets.KINESCOPE_DRM_JWT_SECRET }}
+        run: |
+          set -euo pipefail
+          if [[ -z "${KINESCOPE_API_TOKEN:-}" || -z "${KINESCOPE_PARENT_ID:-}" ]]; then
+            echo "::error::GitHub Environment \"dev\" must set secrets KINESCOPE_API_TOKEN and KINESCOPE_PARENT_ID for Kinescope rollout."
+            exit 1
+          fi
+          if [[ -z "${KINESCOPE_DRM_JWT_SECRET:-}" ]]; then
+            echo "::error::GitHub Environment \"dev\" must set secret KINESCOPE_DRM_JWT_SECRET (playback DRM JWT signing)."
+            exit 1
+          fi
+
       - name: Deploy dev
         env:
           PAYTABS_SERVER_KEY: ${{ secrets.PAYTABS_SERVER_KEY }}
@@ -799,6 +828,11 @@ jobs:
           PAYTABS_USE_MOCK: ${{ vars.PAYTABS_USE_MOCK }}
           BILLING_FULFILLMENT_ALERT_EMAIL: ${{ vars.BILLING_FULFILLMENT_ALERT_EMAIL }}
           BILLING_TEACHER_SUB: ${{ vars.BILLING_TEACHER_SUB }}
+          VIDEO_PROVIDER: kinescope
+          KINESCOPE_API_TOKEN: ${{ secrets.KINESCOPE_API_TOKEN }}
+          KINESCOPE_PARENT_ID: ${{ secrets.KINESCOPE_PARENT_ID }}
+          KINESCOPE_DRM_JWT_SECRET: ${{ secrets.KINESCOPE_DRM_JWT_SECRET }}
+          KINESCOPE_WEBHOOK_SECRET: ${{ secrets.KINESCOPE_WEBHOOK_SECRET }}
         run: |
           chmod +x scripts/deploy-backend.sh
           ./scripts/deploy-backend.sh dev
@@ -1290,6 +1324,7 @@ jobs:
           PAYTABS_USE_MOCK: ${{ vars.PAYTABS_USE_MOCK }}
           BILLING_FULFILLMENT_ALERT_EMAIL: ${{ vars.BILLING_FULFILLMENT_ALERT_EMAIL }}
           BILLING_TEACHER_SUB: ${{ vars.BILLING_TEACHER_SUB }}
+          VIDEO_PROVIDER: s3
         run: |
           set -euo pipefail
           if [[ -z "${PAYTABS_SECRET_ARN:-}" ]]; then

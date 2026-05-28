@@ -26,9 +26,14 @@ from services.auth.service import UserProfileService
 from services.billing_merchant.repo import MerchantAccountRdsRepository
 from services.billing_merchant.service import MerchantStatusService
 from services.course_management.models import Course
+from services.course_management.image_storage import CourseImageStorage
 from services.course_management.rds_repo import CourseCatalogRdsRepository
 from services.course_management.service import CourseManagementService
 from services.course_management.storage import CourseMediaStorage
+from services.course_management.video_providers.kinescope_adapter import KinescopeVideoAdapter
+from services.course_management.video_providers.port import VideoProviderPort
+from services.course_management.video_providers.s3_video_provider import S3VideoProvider
+from services.course_management.video_providers.vdocipher_adapter import VdocipherVideoAdapter
 from services.progress.rds_repo import LessonProgressRdsRepository
 from services.progress.service import LessonProgressService
 from services.subscription.checkout_service import BillingCheckoutService
@@ -226,6 +231,20 @@ def _build_rds_connection_factory(cfg: AppConfig) -> ConnectionFactory:
     return factory
 
 
+def _build_video_provider(cfg: AppConfig, video_storage: CourseMediaStorage) -> VideoProviderPort:
+    provider = (cfg.video_provider or "kinescope").strip().lower()
+    if provider == "s3":
+        return S3VideoProvider(video_storage)
+    if provider == "kinescope":
+        return KinescopeVideoAdapter(
+            api_token=cfg.kinescope_api_token,
+            parent_id=cfg.kinescope_parent_id,
+        )
+    if provider == "vdocipher":
+        return VdocipherVideoAdapter()
+    raise RuntimeError(f"Unsupported VIDEO_PROVIDER: {cfg.video_provider!r}")
+
+
 def get_cached_aws_deps() -> Optional[AwsDeps]:
     dep = _cached.get("aws")
     return dep if isinstance(dep, AwsDeps) else None
@@ -248,14 +267,22 @@ def build_aws_deps(cfg: AppConfig) -> AwsDeps:
     progress_repo = LessonProgressRdsRepository(conn_factory)
 
     storage = CourseMediaStorage(cfg.video_bucket) if cfg.video_bucket else None
+    image_storage = CourseImageStorage(cfg.video_bucket) if cfg.video_bucket else None
+    video_provider = _build_video_provider(cfg, storage) if storage is not None else None
     qb_repo = QuestionBankRdsRepository(conn_factory)
     module_quiz_visibility = _ModuleQuizVisibilityAdapter(qb_repo)
     service = CourseManagementService(
         course_repo,
-        storage,
+        image_storage,
         course_access=course_access,
+        video_provider=video_provider,
         media_cleanup_queue_url=cfg.media_cleanup_queue_url,
         module_quiz_visibility=module_quiz_visibility,
+        kinescope_drm_jwt_secret=cfg.kinescope_drm_jwt_secret,
+        kinescope_drm_jwt_issuer=cfg.kinescope_drm_jwt_issuer,
+        kinescope_drm_jwt_audience=cfg.kinescope_drm_jwt_audience,
+        kinescope_api_token=cfg.kinescope_api_token,
+        deployment_environment=cfg.deployment_environment,
     )
     auth_service = UserProfileService(auth_repo)
     progress_service = LessonProgressService(

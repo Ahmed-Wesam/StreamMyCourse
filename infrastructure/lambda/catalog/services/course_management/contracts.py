@@ -21,7 +21,7 @@ class LessonDto(TypedDict):
     order: int
     moduleId: str
     moduleOrder: int
-    videoStatus: Literal["pending", "ready"]
+    videoStatus: Literal["pending", "ready", "failed"]
     duration: NotRequired[int]
     thumbnailUrl: NotRequired[str]
 
@@ -93,14 +93,26 @@ class MarkVideoReadyResponse(TypedDict):
     videoStatus: str
 
 
-class PlaybackResponse(TypedDict):
-    url: str
+class S3PlaybackResponse(TypedDict):
+    provider: Literal["s3"]
+    playbackUrl: str
+
+
+class KinescopePlaybackResponse(TypedDict):
+    provider: Literal["kinescope"]
+    videoId: str
+    drmAuthToken: str
+
+
+PlaybackResponse = S3PlaybackResponse | KinescopePlaybackResponse
 
 
 class UploadUrlResponse(TypedDict):
     uploadUrl: str
+    uploadMethod: NotRequired[Literal["post", "tus"]]
     videoKey: NotRequired[str]
     thumbnailKey: NotRequired[str]
+    provider: NotRequired[Literal["s3", "kinescope"]]
 
 
 class MarkThumbnailReadyResponse(TypedDict):
@@ -140,7 +152,7 @@ def as_lesson_dto(obj: Dict[str, Any]) -> LessonDto:
         raise ValueError("lesson DTO requires moduleOrder")
 
     vs = obj.get("videoStatus", "pending")
-    if vs not in ("pending", "ready"):
+    if vs not in ("pending", "ready", "failed"):
         vs = "pending"
     dto: LessonDto = {
         "id": str(obj.get("id", "")),

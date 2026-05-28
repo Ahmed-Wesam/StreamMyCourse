@@ -3,7 +3,7 @@ from __future__ import annotations
 import logging
 from typing import Any, Dict, Optional, Tuple
 
-from services.common.errors import HttpError, NotFound, Unauthorized
+from services.common.errors import BadRequest, HttpError, NotFound, Unauthorized
 from services.common.http import (
     apigw_cognito_claims,
     apigw_routing_path,
@@ -11,7 +11,7 @@ from services.common.http import (
     options_response,
 )
 from services.common.runtime_context import set_upload_kind, update_action
-from services.common.validation import optional_str, parse_json_body, require_str
+from services.common.validation import optional_str, parse_json_body, require_int, require_str
 from services.course_management import contracts as dto
 from services.course_management.ports import UserProfileProvisioner
 from services.course_management.service import CourseManagementService
@@ -316,7 +316,10 @@ def handle(
                 role=_actor_role(claims),
             )
             playback: dto.PlaybackResponse = svc.get_playback_url(  # type: ignore[assignment]
-                params["courseId"], params["lessonId"], video_bucket=video_bucket
+                params["courseId"],
+                params["lessonId"],
+                cognito_sub=_actor_sub(claims),
+                role=_actor_role(claims),
             )
             return json_response(200, playback, origin)
         if action == "get_upload_url":
@@ -348,8 +351,17 @@ def handle(
                 return json_response(200, lesson_thumb, origin)
             set_upload_kind("lessonVideo")
             lesson_id = require_str(body, "lessonId")
+            filesize: int | None = None
+            if "filesize" in body:
+                filesize = require_int(body, "filesize")
+                if filesize <= 0:
+                    raise BadRequest("'filesize' must be positive")
             upload: dto.UploadUrlResponse = svc.get_upload_url(  # type: ignore[assignment]
-                course_id=course_id, lesson_id=lesson_id, filename=filename, content_type=content_type
+                course_id=course_id,
+                lesson_id=lesson_id,
+                filename=filename,
+                content_type=content_type,
+                filesize=filesize,
             )
             return json_response(200, upload, origin)
 

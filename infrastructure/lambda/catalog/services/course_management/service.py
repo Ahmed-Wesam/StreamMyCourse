@@ -1,6 +1,11 @@
 from __future__ import annotations
 
+import base64
+import hashlib
+import hmac
+import json
 import logging
+import time
 from collections import defaultdict
 from dataclasses import asdict
 from typing import Any, Dict, List
@@ -17,9 +22,20 @@ from services.common.sqs_client import send_media_cleanup_job
 from services.course_management.models import Course, CourseModule, Lesson
 from services.course_management.ports import (
     CourseCatalogRepositoryPort,
-    CourseMediaStoragePort,
+    ImageMediaStoragePort,
     ModuleQuizVisibilityPort,
     UserProfileProvisioner,
+)
+from services.course_management.video_providers.kinescope_adapter import (
+    KinescopeVideoMetadata,
+    fetch_kinescope_video_metadata,
+    webhook_status_confirmed_by_api,
+)
+from services.course_management.video_providers.port import (
+    KinescopePlayback,
+    S3Playback,
+    VideoPlayback,
+    VideoProviderPort,
 )
 from services.subscription.ports import CourseAccessPort
 
@@ -39,28 +55,136 @@ class CourseManagementService:
     def __init__(
         self,
         repo: CourseCatalogRepositoryPort,
-        storage: CourseMediaStoragePort | None,
+        image_storage: ImageMediaStoragePort | None,
         *,
+        video_provider: VideoProviderPort | None = None,
         course_access: CourseAccessPort,
         media_cleanup_queue_url: str = "",
         module_quiz_visibility: ModuleQuizVisibilityPort | None = None,
+        kinescope_drm_jwt_secret: str = "",
+        kinescope_drm_jwt_issuer: str = "streammycourse",
+        kinescope_drm_jwt_audience: str = "kinescope",
+        kinescope_api_token: str = "",
+        deployment_environment: str = "dev",
     ):
         self._repo = repo
-        self._storage = storage
+        self._image_storage = image_storage
+        self._video_provider = video_provider
         self._course_access = course_access
         self._media_cleanup_queue_url = (media_cleanup_queue_url or "").strip()
         self._module_quiz_visibility = module_quiz_visibility
+        self._kinescope_drm_jwt_secret = (kinescope_drm_jwt_secret or "").strip()
+        self._kinescope_drm_jwt_issuer = (kinescope_drm_jwt_issuer or "").strip()
+        self._kinescope_drm_jwt_audience = (kinescope_drm_jwt_audience or "").strip()
+        self._kinescope_api_token = (kinescope_api_token or "").strip()
+        self._deployment_environment = (deployment_environment or "dev").strip().lower()
+
+    @staticmethod
+    def _b64url_encode(data: bytes) -> str:
+        return base64.urlsafe_b64encode(data).rstrip(b"=").decode("ascii")
+
+    @staticmethod
+    def _b64url_decode(data: str) -> bytes:
+        padding = "=" * ((4 - len(data) % 4) % 4)
+        return base64.urlsafe_b64decode(f"{data}{padding}")
+
+    def mint_kinescope_drm_jwt(
+        self,
+        *,
+        sub: str,
+        video_id: str,
+        role: str = "student",
+        expires_in_seconds: int = 300,
+    ) -> str:
+        if not self._kinescope_drm_jwt_secret:
+            raise BadRequest("Kinescope DRM JWT secret is not configured")
+        now = int(time.time())
+        normalized_role = (role or "student").strip().lower() or "student"
+        payload = {
+            "sub": sub,
+            "video_id": video_id,
+            "role": normalized_role,
+            "iss": self._kinescope_drm_jwt_issuer,
+            "aud": self._kinescope_drm_jwt_audience,
+            "iat": now,
+            "exp": now + max(1, int(expires_in_seconds)),
+        }
+        header = {"alg": "HS256", "typ": "JWT"}
+        signing_input = (
+            f"{self._b64url_encode(json.dumps(header, separators=(',', ':')).encode('utf-8'))}."
+            f"{self._b64url_encode(json.dumps(payload, separators=(',', ':')).encode('utf-8'))}"
+        )
+        signature = hmac.new(
+            self._kinescope_drm_jwt_secret.encode("utf-8"),
+            signing_input.encode("ascii"),
+            hashlib.sha256,
+        ).digest()
+        return f"{signing_input}.{self._b64url_encode(signature)}"
+
+    def _verify_kinescope_drm_jwt(self, token: str) -> Dict[str, Any] | None:
+        if not self._kinescope_drm_jwt_secret:
+            return None
+        parts = (token or "").split(".")
+        if len(parts) != 3:
+            return None
+        header_b64, payload_b64, signature_b64 = parts
+        try:
+            signing_input = f"{header_b64}.{payload_b64}"
+            expected_signature = hmac.new(
+                self._kinescope_drm_jwt_secret.encode("utf-8"),
+                signing_input.encode("ascii"),
+                hashlib.sha256,
+            ).digest()
+            actual_signature = self._b64url_decode(signature_b64)
+            if not hmac.compare_digest(actual_signature, expected_signature):
+                return None
+            payload = json.loads(self._b64url_decode(payload_b64).decode("utf-8"))
+        except (ValueError, json.JSONDecodeError):
+            return None
+        if not isinstance(payload, dict):
+            return None
+        now = int(time.time())
+        exp = int(payload.get("exp", 0) or 0)
+        if exp <= now:
+            return None
+        if payload.get("iss") != self._kinescope_drm_jwt_issuer:
+            return None
+        if payload.get("aud") != self._kinescope_drm_jwt_audience:
+            return None
+        if not str(payload.get("sub") or "").strip():
+            return None
+        if not str(payload.get("video_id") or "").strip():
+            return None
+        return payload
 
     def _delete_media_keys(self, keys: List[str]) -> None:
-        if self._storage is None:
+        if self._image_storage is None:
             return
         deduped = list(dict.fromkeys(k.strip() for k in keys if k and k.strip()))
         if not deduped:
             return
         try:
-            self._storage.delete_objects(deduped)
+            self._image_storage.delete_objects(deduped)
         except Exception as exc:
             logger.warning("S3 delete_objects failed (continuing): %s", exc)
+
+    @staticmethod
+    def _split_cleanup_targets(course_id: str, keys: List[str]) -> tuple[List[str], List[str]]:
+        s3_keys: List[str] = []
+        kinescope_video_ids: List[str] = []
+        prefix = f"{course_id}/"
+        for raw in keys:
+            key = (raw or "").strip()
+            if not key:
+                continue
+            if key.startswith(prefix):
+                s3_keys.append(key)
+            else:
+                kinescope_video_ids.append(key)
+        return (
+            list(dict.fromkeys(s3_keys)),
+            list(dict.fromkeys(kinescope_video_ids)),
+        )
 
     def _safe_presign_get(self, key: str, *, media: str) -> str | None:
         """Presign GET for display URLs, or None if the key cannot be signed.
@@ -68,13 +192,13 @@ class CourseManagementService:
         One bad or legacy S3 key must not fail entire list endpoints (for example
         ``GET /courses/{id}/lessons``) for every lesson in the course.
         """
-        if self._storage is None:
+        if self._image_storage is None:
             return None
         k = (key or "").strip()
         if not k:
             return None
         try:
-            return self._storage.presign_get(key=k, expires_seconds=3600)
+            return self._image_storage.presign_get(key=k, expires_seconds=3600)
         except BadRequest:
             logger.warning("presign_get rejected key for %s", media, extra={"key_prefix": k[:96]})
             return None
@@ -85,7 +209,7 @@ class CourseManagementService:
     def _public_course_dict(self, course: Course) -> Dict[str, Any]:
         data = asdict(course)
         thumb_key = (data.pop("thumbnailKey", None) or "").strip()
-        if thumb_key and self._storage is not None:
+        if thumb_key and self._image_storage is not None:
             url = self._safe_presign_get(thumb_key, media="course_thumbnail")
             if url:
                 data["thumbnailUrl"] = url
@@ -93,7 +217,7 @@ class CourseManagementService:
 
     def _apply_course_cover_fallback(self, course_id: str, public: Dict[str, Any]) -> None:
         """When no course cover is set, use the first lesson thumbnail (by order) for catalog/hero."""
-        if public.get("thumbnailUrl") or self._storage is None:
+        if public.get("thumbnailUrl") or self._image_storage is None:
             return
         lessons = self._repo.list_lessons(course_id)
         for lesson in sorted(lessons, key=lambda l: (l.moduleOrder, l.order)):
@@ -120,7 +244,7 @@ class CourseManagementService:
         data = asdict(lesson)
         data.pop("videoKey", None)
         thumb_key = (data.pop("thumbnailKey", None) or "").strip()
-        if thumb_key and self._storage is not None:
+        if thumb_key and self._image_storage is not None:
             url = self._safe_presign_get(thumb_key, media="lesson_thumbnail")
             if url:
                 data["thumbnailUrl"] = url
@@ -359,7 +483,14 @@ class CourseManagementService:
         # Remove DB rows first so catalog reflects the delete even if S3 cleanup lags (async worker).
         self._repo.delete_course_and_lessons(course_id)
         if deduped:
-            send_media_cleanup_job(self._media_cleanup_queue_url, course_id, deduped)
+            s3_keys, kinescope_video_ids = self._split_cleanup_targets(course_id, deduped)
+            send_media_cleanup_job(
+                self._media_cleanup_queue_url,
+                course_id,
+                deduped,
+                s3_keys=s3_keys,
+                kinescope_video_ids=kinescope_video_ids,
+            )
         return {"id": course_id, "deleted": True}
 
     def list_lessons(self, course_id: str) -> List[Dict[str, Any]]:
@@ -494,7 +625,14 @@ class CourseManagementService:
             )
         self._repo.delete_course_module(course_id, module_id)
         if deduped:
-            send_media_cleanup_job(self._media_cleanup_queue_url, course_id, deduped)
+            s3_keys, kinescope_video_ids = self._split_cleanup_targets(course_id, deduped)
+            send_media_cleanup_job(
+                self._media_cleanup_queue_url,
+                course_id,
+                deduped,
+                s3_keys=s3_keys,
+                kinescope_video_ids=kinescope_video_ids,
+            )
         return {"moduleId": module_id, "deleted": True}
 
     def create_lesson(
@@ -539,7 +677,14 @@ class CourseManagementService:
             )
         self._repo.delete_lesson(course_id=course_id, lesson_id=lesson_id)
         if deduped:
-            send_media_cleanup_job(self._media_cleanup_queue_url, course_id, deduped)
+            s3_keys, kinescope_video_ids = self._split_cleanup_targets(course_id, deduped)
+            send_media_cleanup_job(
+                self._media_cleanup_queue_url,
+                course_id,
+                deduped,
+                s3_keys=s3_keys,
+                kinescope_video_ids=kinescope_video_ids,
+            )
         # Compact remaining orders to 1..N within each module.
         remaining = self._repo.list_lessons(course_id)
         by_module: defaultdict[str, List[Lesson]] = defaultdict(list)
@@ -586,10 +731,78 @@ class CourseManagementService:
             if old_thumb and old_thumb != thumbnail_key.strip():
                 self._delete_media_keys([old_thumb])
             self._repo.set_lesson_thumbnail(course_id, lesson_id, thumbnail_key)
+        if (
+            self._video_provider is not None
+            and not self._video_provider.marks_ready_on_upload_complete
+        ):
+            return self._mark_async_provider_lesson_ready(
+                course_id,
+                lesson_id,
+                video_key=lesson.videoKey,
+            )
         self._repo.set_lesson_video_status(course_id=course_id, lesson_id=lesson_id, status="ready")
         return {"lessonId": lesson_id, "videoStatus": "ready"}
 
-    def get_playback_url(self, course_id: str, lesson_id: str, *, video_bucket: str) -> Dict[str, Any]:
+    def _apply_kinescope_ready_metadata(
+        self,
+        course_id: str,
+        lesson_id: str,
+        metadata: KinescopeVideoMetadata,
+    ) -> Dict[str, Any]:
+        self._repo.set_lesson_video_status(course_id=course_id, lesson_id=lesson_id, status="ready")
+        response: Dict[str, Any] = {"lessonId": lesson_id, "videoStatus": "ready"}
+        duration = metadata.duration_seconds
+        if duration is not None:
+            try:
+                self._repo.set_lesson_duration(course_id, lesson_id, duration)
+            except Exception:
+                logger.warning(
+                    "kinescope ready failed to persist duration course=%s lesson=%s",
+                    course_id,
+                    lesson_id,
+                    exc_info=True,
+                )
+            response["duration"] = duration
+        return response
+
+    def _mark_async_provider_lesson_ready(
+        self,
+        course_id: str,
+        lesson_id: str,
+        *,
+        video_key: str,
+    ) -> Dict[str, Any]:
+        """Kinescope (async transcode): require provider done in prod; dev allows fixture bypass."""
+        metadata: KinescopeVideoMetadata | None = None
+        if self._kinescope_api_token:
+            metadata = fetch_kinescope_video_metadata(
+                api_token=self._kinescope_api_token,
+                video_id=video_key,
+            )
+        if metadata is not None and webhook_status_confirmed_by_api(
+            "done", metadata.status
+        ):
+            return self._apply_kinescope_ready_metadata(course_id, lesson_id, metadata)
+        if self._deployment_environment == "prod":
+            raise BadRequest("Video is still processing")
+        logger.warning(
+            "mark_lesson_video_ready dev bypass without Kinescope done confirmation "
+            "course=%s lesson=%s video_key=%s",
+            course_id,
+            lesson_id,
+            video_key,
+        )
+        self._repo.set_lesson_video_status(course_id=course_id, lesson_id=lesson_id, status="ready")
+        return {"lessonId": lesson_id, "videoStatus": "ready"}
+
+    def get_playback_url(
+        self,
+        course_id: str,
+        lesson_id: str,
+        *,
+        cognito_sub: str = "",
+        role: str = "student",
+    ) -> Dict[str, Any]:
         if not _is_valid_uuid(course_id):
             raise NotFound("Course not found")
         if not _is_valid_uuid(lesson_id):
@@ -601,9 +814,67 @@ class CourseManagementService:
             raise BadRequest("Video not ready")
         if not lesson.videoKey:
             raise NotFound("No video uploaded")
-        if self._storage is None:
-            return {"url": f"https://{video_bucket}.s3.amazonaws.com/{lesson.videoKey}"}
-        return {"url": self._storage.presign_get(key=lesson.videoKey, expires_seconds=3600)}
+        if self._video_provider is None:
+            raise BadRequest("Playback is not configured")
+        playback = self._video_provider.resolve_playback(
+            video_key=lesson.videoKey, expires_seconds=3600
+        )
+        return self._playback_to_api(
+            playback,
+            cognito_sub=(cognito_sub or "").strip(),
+            role=(role or "student").strip().lower() or "student",
+        )
+
+    def _playback_to_api(
+        self,
+        playback: VideoPlayback,
+        *,
+        cognito_sub: str,
+        role: str = "student",
+    ) -> Dict[str, Any]:
+        if isinstance(playback, S3Playback):
+            return {"provider": "s3", "playbackUrl": playback.playback_url}
+        if isinstance(playback, KinescopePlayback):
+            drm_token = (playback.drm_auth_token or "").strip()
+            if not drm_token:
+                drm_token = self.mint_kinescope_drm_jwt(
+                    sub=cognito_sub,
+                    video_id=playback.video_id,
+                    role=role,
+                )
+            return {
+                "provider": "kinescope",
+                "videoId": playback.video_id,
+                "drmAuthToken": drm_token,
+            }
+        raise BadRequest("Unsupported playback response from video provider")
+
+    def authorize_kinescope_drm(self, payload: Dict[str, Any]) -> bool:
+        token = str(payload.get("token") or "").strip()
+        requested_video_id = str(
+            payload.get("videoId") or payload.get("video_id") or ""
+        ).strip()
+        claims = self._verify_kinescope_drm_jwt(token)
+        if claims is None:
+            return False
+        token_video_id = str(claims.get("video_id") or "").strip()
+        if not requested_video_id or token_video_id != requested_video_id:
+            return False
+        loc = self._repo.find_lesson_by_video_key(token_video_id)
+        if loc is None:
+            return False
+        course_id, _lesson_id = loc
+        course = self._repo.get_course(course_id)
+        if course is None:
+            return False
+        sub = str(claims.get("sub") or "").strip()
+        role = str(claims.get("role") or "student").strip().lower() or "student"
+        return self.viewer_has_lesson_access(
+            course,
+            course_id=course_id,
+            cognito_sub=sub,
+            role=role,
+        )
 
     def get_upload_url(
         self,
@@ -612,38 +883,45 @@ class CourseManagementService:
         lesson_id: str,
         filename: str,
         content_type: str,
+        filesize: int | None = None,
     ) -> Dict[str, Any]:
         if not _is_valid_uuid(course_id):
             raise NotFound("Course not found")
         if not _is_valid_uuid(lesson_id):
             raise NotFound("Lesson not found")
-        if self._storage is None:
+        if self._video_provider is None:
             raise BadRequest("Uploads are not configured")
         lesson = self._repo.get_lesson_by_id(course_id, lesson_id)
         if not lesson:
             raise NotFound("Lesson not found")
         expected_key = (lesson.videoKey or "").strip()
-        presign = self._storage.presign_put(
+        init = self._video_provider.init_lesson_upload(
             course_id=course_id,
             lesson_id=lesson_id,
             filename=filename,
             content_type=content_type,
+            filesize=filesize,
         )
         try:
             self._repo.set_lesson_video_if_video_key_matches(
                 course_id=course_id,
                 lesson_id=lesson_id,
-                video_key=presign.videoKey,
+                video_key=init.video_key,
                 status="pending",
                 expected_video_key=expected_key,
             )
         except Conflict:
-            self._storage.delete_objects([presign.videoKey])
+            self._video_provider.delete_videos([init.video_key])
             raise
         # Do not delete `expected_key` here: a second presign can race with a client
         # still uploading to the first URL. Orphan prior objects are acceptable for MVP;
         # cleanup can be lifecycle or a later sweeper keyed off DB.
-        return {"uploadUrl": presign.uploadUrl, "videoKey": presign.videoKey}
+        return {
+            "uploadUrl": init.upload_url,
+            "videoKey": init.video_key,
+            "uploadMethod": init.upload_method,
+            "provider": self._video_provider.provider_id,
+        }
 
     def get_thumbnail_upload_url(
         self,
@@ -654,7 +932,7 @@ class CourseManagementService:
     ) -> Dict[str, Any]:
         if not _is_valid_uuid(course_id):
             raise NotFound("Course not found")
-        if self._storage is None:
+        if self._image_storage is None:
             raise BadRequest("Uploads are not configured")
         course = self._repo.get_course(course_id)
         if not course:
@@ -662,7 +940,7 @@ class CourseManagementService:
         # Do not delete the existing S3 object here: the DB still points at it until
         # mark_course_thumbnail_ready runs. Deleting early breaks thumbnails if the
         # PUT fails or the client never calls thumbnail-ready.
-        presign = self._storage.presign_thumbnail_put(
+        presign = self._image_storage.presign_thumbnail_put(
             course_id=course_id,
             filename=filename,
             content_type=content_type,
@@ -681,14 +959,14 @@ class CourseManagementService:
             raise NotFound("Course not found")
         if not _is_valid_uuid(lesson_id):
             raise NotFound("Lesson not found")
-        if self._storage is None:
+        if self._image_storage is None:
             raise BadRequest("Uploads are not configured")
         lesson = self._repo.get_lesson_by_id(course_id, lesson_id)
         if not lesson:
             raise NotFound("Lesson not found")
         # Same as course thumbnails: keep the old object until mark_lesson_video_ready
         # persists the new key (that path deletes the previous key from S3).
-        presign = self._storage.presign_lesson_thumbnail_put(
+        presign = self._image_storage.presign_lesson_thumbnail_put(
             course_id=course_id,
             lesson_id=lesson_id,
             filename=filename,
@@ -708,4 +986,87 @@ class CourseManagementService:
             self._delete_media_keys([old_thumb])
         self._repo.set_course_thumbnail(course_id, thumbnail_key)
         return {"id": course_id, "thumbnailReady": True}
+
+    def handle_kinescope_media_status(self, payload: Dict[str, Any]) -> Dict[str, Any]:
+        event_type = str(payload.get("event") or "").strip()
+        if event_type != "media.update.status":
+            raise BadRequest("Unsupported Kinescope webhook event")
+
+        data = payload.get("data")
+        if not isinstance(data, dict):
+            raise BadRequest("Invalid Kinescope webhook payload")
+
+        video_id = str(data.get("id") or "").strip()
+        if not video_id:
+            raise BadRequest("Missing Kinescope video id")
+
+        status = str(data.get("status") or "").strip().lower()
+        loc = self._repo.find_lesson_by_video_key(video_id)
+        if loc is None:
+            logger.info(
+                "kinescope webhook ignored unknown video_id=%s status=%s",
+                video_id,
+                status,
+            )
+            return {"ignored": True}
+
+        course_id, lesson_id = loc
+        verified_metadata: KinescopeVideoMetadata | None = None
+        if status in ("done", "error", "aborted"):
+            if not self._kinescope_api_token:
+                logger.warning(
+                    "kinescope webhook rejected mutating event without API token video_id=%s status=%s",
+                    video_id,
+                    status,
+                )
+                return {"ignored": True, "reason": "verification_unconfigured"}
+            verified_metadata = fetch_kinescope_video_metadata(
+                api_token=self._kinescope_api_token,
+                video_id=video_id,
+            )
+            if verified_metadata is None:
+                logger.warning(
+                    "kinescope webhook could not verify video_id=%s status=%s",
+                    video_id,
+                    status,
+                )
+                return {"ignored": True, "reason": "verification_failed"}
+            if not webhook_status_confirmed_by_api(status, verified_metadata.status):
+                logger.warning(
+                    "kinescope webhook status mismatch video_id=%s webhook=%s api=%s",
+                    video_id,
+                    status,
+                    verified_metadata.status,
+                )
+                return {"ignored": True, "reason": "status_mismatch"}
+
+        if status == "done":
+            assert verified_metadata is not None
+            return {
+                "courseId": course_id,
+                "lessonId": lesson_id,
+                **self._apply_kinescope_ready_metadata(
+                    course_id, lesson_id, verified_metadata
+                ),
+            }
+        if status in ("error", "aborted"):
+            self._repo.set_lesson_video_status(course_id, lesson_id, "failed")
+            return {
+                "courseId": course_id,
+                "lessonId": lesson_id,
+                "videoStatus": "failed",
+            }
+
+        logger.info(
+            "kinescope webhook no-op course=%s lesson=%s video_id=%s status=%s",
+            course_id,
+            lesson_id,
+            video_id,
+            status,
+        )
+        return {
+            "courseId": course_id,
+            "lessonId": lesson_id,
+            "videoStatus": status or "pending",
+        }
 

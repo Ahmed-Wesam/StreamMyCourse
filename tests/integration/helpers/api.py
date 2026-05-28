@@ -234,15 +234,19 @@ class ApiClient:
         lesson_id: str,
         filename: str = "video.mp4",
         content_type: str = "video/mp4",
+        filesize: int | None = None,
     ) -> httpx.Response:
+        body: dict[str, object] = {
+            "courseId": course_id,
+            "lessonId": lesson_id,
+            "filename": filename,
+            "contentType": content_type,
+        }
+        if filesize is not None:
+            body["filesize"] = filesize
         return self._client.post(
             "/upload-url",
-            json={
-                "courseId": course_id,
-                "lessonId": lesson_id,
-                "filename": filename,
-                "contentType": content_type,
-            },
+            json=body,
         )
 
     def get_lesson_thumbnail_upload_url(

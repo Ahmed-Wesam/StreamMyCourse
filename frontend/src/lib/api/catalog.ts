@@ -4,6 +4,7 @@ import type {
   CourseModule,
   CourseProgress,
   Lesson,
+  Playback,
   UpdateLessonProgressBody,
   UpdateProgressResponse,
 } from './types'
@@ -22,10 +23,6 @@ type CreateLessonInput = {
 type CreateCourseModuleInput = {
   title: string
   description?: string
-}
-
-type Playback = {
-  url: string
 }
 
 /** Presigned PUT target: lesson video, course thumbnail, or lesson thumbnail image. */
@@ -164,17 +161,22 @@ export async function updateLessonProgress(
   return httpPut<UpdateProgressResponse>(`/courses/${courseId}/lessons/${lessonId}/progress`, payload)
 }
 
-/**
- * Presigned upload: lesson video, course thumbnail (`uploadKind: 'thumbnail'`),
+/** Presigned upload: lesson video, course thumbnail (`uploadKind: 'thumbnail'`),
  * or lesson thumbnail JPEG (`uploadKind: 'lessonThumbnail'` + `lessonId`).
  */
 export async function getUploadUrl(
   filename: string,
   contentType: string,
-  target: UploadUrlTarget,
-): Promise<{ uploadUrl: string; videoKey?: string; thumbnailKey?: string }> {
+  target: UploadUrlTarget & { filesize?: number },
+): Promise<{
+  uploadUrl: string
+  videoKey?: string
+  thumbnailKey?: string
+  provider: 'kinescope' | 's3'
+  uploadMethod?: 'post' | 'tus'
+}> {
   const API_BASE_URL = requireApiBaseUrl()
-  const body: Record<string, string> = {
+  const body: Record<string, string | number> = {
     filename,
     contentType,
     courseId: target.courseId,
@@ -186,6 +188,9 @@ export async function getUploadUrl(
     body.lessonId = target.lessonId
   } else if ('lessonId' in target) {
     body.lessonId = target.lessonId
+    if (typeof target.filesize === 'number' && target.filesize > 0) {
+      body.filesize = target.filesize
+    }
   }
 
   const headers = await mergeHeaders({ 'Content-Type': 'application/json' })
@@ -200,5 +205,11 @@ export async function getUploadUrl(
     throw await failedResponseError(res)
   }
 
-  return res.json() as Promise<{ uploadUrl: string; videoKey?: string; thumbnailKey?: string }>
+  return res.json() as Promise<{
+    uploadUrl: string
+    videoKey?: string
+    thumbnailKey?: string
+    provider: 'kinescope' | 's3'
+    uploadMethod?: 'post' | 'tus'
+  }>
 }

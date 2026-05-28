@@ -28,6 +28,13 @@ class AppConfig:
     billing_teacher_sub: str = ""
     deployment_environment: str = "dev"
     student_cognito_client_id: str = ""
+    video_provider: str = "kinescope"
+    kinescope_api_token: str = ""
+    kinescope_parent_id: str = ""
+    kinescope_drm_jwt_secret: str = ""
+    kinescope_drm_jwt_issuer: str = "streammycourse"
+    kinescope_drm_jwt_audience: str = "kinescope"
+    kinescope_webhook_secret: str = ""
 
 _DEFAULT_DB_PORT = 5432
 
@@ -78,6 +85,19 @@ def _parse_int(val: str, default: int) -> int:
 
 def load_config() -> AppConfig:
     video_bucket = os.environ.get("VIDEO_BUCKET", "").strip()
+    video_provider = (os.environ.get("VIDEO_PROVIDER", "kinescope") or "kinescope").strip().lower()
+    kinescope_api_token = os.environ.get("KINESCOPE_API_TOKEN", "").strip()
+    kinescope_parent_id = os.environ.get("KINESCOPE_PARENT_ID", "").strip()
+    kinescope_drm_jwt_secret = os.environ.get("KINESCOPE_DRM_JWT_SECRET", "").strip()
+    kinescope_drm_jwt_issuer = (
+        os.environ.get("KINESCOPE_DRM_JWT_ISSUER", "streammycourse").strip()
+        or "streammycourse"
+    )
+    kinescope_drm_jwt_audience = (
+        os.environ.get("KINESCOPE_DRM_JWT_AUDIENCE", "kinescope").strip()
+        or "kinescope"
+    )
+    kinescope_webhook_secret = os.environ.get("KINESCOPE_WEBHOOK_SECRET", "").strip()
     default_mp4_url = os.environ.get(
         "DEFAULT_MP4_URL",
         "https://interactive-examples.mdn.mozilla.net/media/cc0-videos/flower.mp4",
@@ -114,6 +134,7 @@ def load_config() -> AppConfig:
 
     return AppConfig(
         video_bucket=video_bucket,
+        video_provider=video_provider,
         default_mp4_url=default_mp4_url,
         video_url=video_url,
         allowed_origins=allowed_origins,
@@ -128,4 +149,10 @@ def load_config() -> AppConfig:
         billing_teacher_sub=billing_teacher_sub,
         deployment_environment=deployment_environment,
         student_cognito_client_id=student_cognito_client_id,
+        kinescope_api_token=kinescope_api_token,
+        kinescope_parent_id=kinescope_parent_id,
+        kinescope_drm_jwt_secret=kinescope_drm_jwt_secret,
+        kinescope_drm_jwt_issuer=kinescope_drm_jwt_issuer,
+        kinescope_drm_jwt_audience=kinescope_drm_jwt_audience,
+        kinescope_webhook_secret=kinescope_webhook_secret,
     )

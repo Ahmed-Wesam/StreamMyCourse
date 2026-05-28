@@ -7,6 +7,7 @@ from unittest.mock import MagicMock
 import pytest
 
 import bootstrap as bootstrap_mod
+import services.course_management.image_storage as image_storage_mod
 import services.course_management.storage as storage_mod
 from config import AppConfig
 
@@ -37,8 +38,10 @@ def _clear_env(monkeypatch: pytest.MonkeyPatch) -> None:
 
 @pytest.fixture
 def mocked_storage(monkeypatch: pytest.MonkeyPatch):
-    """Patch S3 client factory so `CourseMediaStorage` construction stays hermetic."""
-    monkeypatch.setattr(storage_mod, "_s3_client", lambda: MagicMock())
+    """Patch S3 client factory so media storage construction stays hermetic."""
+    mock_s3 = MagicMock()
+    monkeypatch.setattr(storage_mod, "_s3_client", lambda: mock_s3)
+    monkeypatch.setattr(image_storage_mod, "_s3_client", lambda: mock_s3)
 
 
 def _rds_cfg(

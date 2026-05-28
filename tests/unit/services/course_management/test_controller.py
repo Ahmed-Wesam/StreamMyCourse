@@ -582,10 +582,13 @@ class TestHandleDispatchPerAction:
         assert resp["statusCode"] == 200
         svc.mark_lesson_video_ready.assert_called_once_with("c1", "lid", thumbnail_key=tk)
 
-    def test_get_playback_passes_video_bucket(
+    def test_get_playback_passes_cognito_sub(
         self, svc: MagicMock, make_lambda_event
     ) -> None:
-        svc.get_playback_url.return_value = {"url": "https://signed/x"}
+        svc.get_playback_url.return_value = {
+            "provider": "s3",
+            "playbackUrl": "https://signed/x",
+        }
         evt = make_lambda_event(method="GET", path="/playback/c1/lid")
         evt["requestContext"]["authorizer"] = {"claims": {"sub": "s1", "custom:role": "student"}}
         resp = handle(evt, origin="*", svc=svc, video_bucket="my-bucket", auth_svc=MagicMock())
@@ -596,8 +599,27 @@ class TestHandleDispatchPerAction:
             role="student",
         )
         svc.get_playback_url.assert_called_once_with(
-            "c1", "lid", video_bucket="my-bucket"
+            "c1", "lid", cognito_sub="s1", role="student"
         )
+
+    def test_get_playback_returns_kinescope_union_payload(
+        self, svc: MagicMock, make_lambda_event
+    ) -> None:
+        svc.get_playback_url.return_value = {
+            "provider": "kinescope",
+            "videoId": "video-123",
+            "drmAuthToken": "jwt-token",
+        }
+        evt = make_lambda_event(method="GET", path="/playback/c1/lid")
+        evt["requestContext"]["authorizer"] = {"claims": {"sub": "s1", "custom:role": "student"}}
+        resp = handle(evt, origin="*", svc=svc, video_bucket="my-bucket", auth_svc=MagicMock())
+        assert resp["statusCode"] == 200
+        body = json.loads(resp["body"])
+        assert body == {
+            "provider": "kinescope",
+            "videoId": "video-123",
+            "drmAuthToken": "jwt-token",
+        }
 
     def test_get_course_200_auth_enforced_without_claims(
         self, svc: MagicMock, make_lambda_event
@@ -742,6 +764,7 @@ class TestHandleDispatchPerAction:
             lesson_id="lid",
             filename="intro.mp4",
             content_type="video/mp4",
+            filesize=None,
         )
 
     def test_mark_thumbnail_ready_200(self, svc: MagicMock, make_lambda_event) -> None:
