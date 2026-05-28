@@ -235,6 +235,8 @@ Resources:
                   - HasVideoBucket
                   - - !Sub 'arn:aws:s3:::${VideoBucketName}/*/thumbnail/*'
                     - !Sub 'arn:aws:s3:::${VideoBucketName}/*/lessons/*/thumbnail/*'
+                    # Presigned playback GET: signer (catalog role) must be allowed GetObject on video keys.
+                    - !Sub 'arn:aws:s3:::${VideoBucketName}/*/lessons/*/video/*'
                   - - 'arn:aws:s3:::streammycourse-no-bucket-configured/NEVER_MATCH/*'
         - !If
           - HasMediaCleanupQueueArn
