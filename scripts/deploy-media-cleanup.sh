@@ -34,21 +34,25 @@ if [[ -z "$VIDEO_BUCKET" || "$VIDEO_BUCKET" == "None" ]]; then
   exit 1
 fi
 
-if [[ ! -f "${LAMBDA_DIR}/worker.py" ]]; then
+[[ -f "${LAMBDA_DIR}/worker.py" ]] || {
   echo "Missing media cleanup Lambda: ${LAMBDA_DIR}/worker.py" >&2
   exit 1
-fi
+}
+[[ -f "${LAMBDA_DIR}/kinescope_adapter.py" ]] || {
+  echo "Missing media cleanup Kinescope adapter: ${LAMBDA_DIR}/kinescope_adapter.py" >&2
+  exit 1
+}
 
 ZIP="/tmp/media-cleanup-${ENV}-$$.zip"
+MC_BUILD="/tmp/media-cleanup-build-${ENV}-$$"
 ZIP_KEY="media-cleanup-${ENV}-${SUFFIX}.zip"
-trap 'rm -f "$ZIP"' EXIT
+trap 'rm -f "$ZIP"; rm -rf "$MC_BUILD"' EXIT
 
-_zip_one_file() {
-  local dir="$1"
-  local file="$2"
-  local out="$3"
+_zip_dir_recursive() {
+  local src="$1"
+  local out="$2"
   if command -v zip >/dev/null 2>&1; then
-    ( cd "$dir" && zip -jq "$out" "$file" )
+    ( cd "$src" && zip -rq "$out" . )
     return
   fi
   local py=""
@@ -60,16 +64,25 @@ _zip_one_file() {
     echo "Neither zip(1) nor python3/python found; install Info-ZIP zip or Python." >&2
     exit 1
   fi
-  "$py" - "$dir" "$file" "$out" <<'PY'
+  "$py" - "$src" "$out" <<'PY'
 import os, sys, zipfile
-d, fn, out = sys.argv[1], sys.argv[2], sys.argv[3]
-path = os.path.join(d, fn)
+src, out = sys.argv[1], sys.argv[2]
 with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as zf:
-    zf.write(path, fn)
+    for root, _, files in os.walk(src):
+        for name in files:
+            path = os.path.join(root, name)
+            if os.path.isfile(path):
+                zf.write(path, os.path.relpath(path, src))
 PY
 }
 
-_zip_one_file "$LAMBDA_DIR" "worker.py" "$ZIP"
+rm -rf "$MC_BUILD"
+mkdir -p "$MC_BUILD"
+( cd "$LAMBDA_DIR" && \
+  find . -type f ! -path './_vendor/*' ! -path '*/__pycache__/*' ! -name '*.pyc' -print0 \
+    | xargs -0 -I{} cp --parents '{}' "$MC_BUILD" )
+
+_zip_dir_recursive "$MC_BUILD" "$ZIP"
 
 echo "Uploading media cleanup Lambda s3://${ARTIFACT_BUCKET}/${ZIP_KEY}"
 aws s3 cp "$ZIP" "s3://${ARTIFACT_BUCKET}/${ZIP_KEY}" --region "$REGION"

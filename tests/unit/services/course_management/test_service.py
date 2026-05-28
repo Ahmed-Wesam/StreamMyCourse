@@ -813,25 +813,30 @@ class TestMarkLessonVideoReadyKinescope:
         repo.get_lesson_by_id.return_value = _lesson(
             id_=self._LID, video_key=self._KIN_ID
         )
-        with patch(
-            "services.course_management.service.fetch_kinescope_video_metadata",
-            return_value=MagicMock(status="pending", duration_seconds=None),
-        ):
-            with pytest.raises(BadRequest, match="still processing"):
-                kinescope_service.mark_lesson_video_ready(_VID, self._LID)
+        with pytest.raises(BadRequest, match="still processing"):
+            kinescope_service.mark_lesson_video_ready(_VID, self._LID)
         repo.set_lesson_video_status.assert_not_called()
 
-    def test_prod_accepts_when_provider_confirms_done(
+    def test_prod_accepts_when_edge_supplies_verified_metadata(
         self, kinescope_service: CourseManagementService, repo: MagicMock
     ) -> None:
+        from services.course_management.video_providers.kinescope_adapter import (
+            KinescopeVideoMetadata,
+        )
+
+        repo.get_course.return_value = _course(created_by="owner-sub")
         repo.get_lesson_by_id.return_value = _lesson(
             id_=self._LID, video_key=self._KIN_ID
         )
-        with patch(
-            "services.course_management.service.fetch_kinescope_video_metadata",
-            return_value=MagicMock(status="done", duration_seconds=120),
-        ):
-            out = kinescope_service.mark_lesson_video_ready(_VID, self._LID)
+        out = kinescope_service.apply_lesson_video_mark_ready(
+            course_id=_VID,
+            lesson_id=self._LID,
+            video_key=self._KIN_ID,
+            cognito_sub="owner-sub",
+            role="teacher",
+            provider_metadata=KinescopeVideoMetadata(status="done", duration_seconds=120),
+            provider_metadata_supplied=True,
+        )
         repo.set_lesson_video_status.assert_called_once_with(
             course_id=_VID, lesson_id=self._LID, status="ready"
         )
@@ -856,11 +861,7 @@ class TestMarkLessonVideoReadyKinescope:
         repo.get_lesson_by_id.return_value = _lesson(
             id_=self._LID, video_key=self._KIN_ID
         )
-        with patch(
-            "services.course_management.service.fetch_kinescope_video_metadata",
-            return_value=None,
-        ):
-            out = svc.mark_lesson_video_ready(_VID, self._LID)
+        out = svc.mark_lesson_video_ready(_VID, self._LID)
         repo.set_lesson_video_status.assert_called_once_with(
             course_id=_VID, lesson_id=self._LID, status="ready"
         )

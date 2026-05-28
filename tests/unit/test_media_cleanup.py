@@ -14,6 +14,21 @@ sys.path.insert(0, str(_REPO_ROOT / "infrastructure" / "lambda" / "media_cleanup
 import worker as media_cleanup_worker  # noqa: E402
 
 
+def test_deploy_media_cleanup_script_zips_worker_and_kinescope_adapter() -> None:
+    script = _REPO_ROOT / "scripts" / "deploy-media-cleanup.sh"
+    assert script.is_file(), f"missing {script}"
+    text = script.read_text(encoding="utf-8")
+    assert "kinescope_adapter.py" in text
+    assert "_zip_dir_recursive" in text
+    assert "_zip_one_file" not in text
+
+
+def test_worker_imports_kinescope_adapter() -> None:
+    from kinescope_adapter import KinescopeDeleteAdapter  # noqa: E402
+
+    assert media_cleanup_worker.KinescopeDeleteAdapter is KinescopeDeleteAdapter
+
+
 def test_handler_deletes_s3_objects_in_batch(monkeypatch) -> None:
     monkeypatch.setenv("VIDEO_BUCKET", "my-bucket")
     mock_s3 = MagicMock()

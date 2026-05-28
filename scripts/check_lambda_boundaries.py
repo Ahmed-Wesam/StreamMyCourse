@@ -14,6 +14,9 @@ COGNITO_SYNC_GLOB = os.path.join(
     ROOT, "infrastructure", "lambda", "cognito_user_profile_sync", "**", "*.py"
 )
 BILLING_EDGE_GLOB = os.path.join(ROOT, "infrastructure", "lambda", "billing_edge", "**", "*.py")
+VIDEO_PROVIDER_EDGE_GLOB = os.path.join(
+    ROOT, "infrastructure", "lambda", "video_provider_edge", "**", "*.py"
+)
 BILLING_FULFILLMENT_GLOB = os.path.join(
     ROOT, "infrastructure", "lambda", "billing_fulfillment", "**", "*.py"
 )
@@ -78,11 +81,15 @@ _BILLING_EDGE_HTTP_ALLOWED = frozenset(
     }
 )
 
-_CATALOG_HTTP_ALLOWED = frozenset(
+_VIDEO_PROVIDER_EDGE_BOTO3_ALLOWED = frozenset(
     {
-        _p(
-            "infrastructure/lambda/catalog/services/course_management/video_providers/kinescope_adapter.py"
-        ),
+        _p("infrastructure/lambda/video_provider_edge/video_catalog_invoke.py"),
+    }
+)
+
+_VIDEO_PROVIDER_EDGE_HTTP_ALLOWED = frozenset(
+    {
+        _p("infrastructure/lambda/video_provider_edge/kinescope_http.py"),
     }
 )
 
@@ -111,6 +118,8 @@ def _lambda_package(rel: str) -> str:
         return "billing_edge"
     if rel.startswith("infrastructure/lambda/billing_fulfillment/"):
         return "billing_fulfillment"
+    if rel.startswith("infrastructure/lambda/video_provider_edge/"):
+        return "video_provider_edge"
     return "unknown"
 
 
@@ -179,12 +188,24 @@ def _check_billing_edge_http(rel: str, norm: str, roots: Set[str]) -> List[Viola
 
 def _check_catalog_http(rel: str, norm: str, roots: Set[str]) -> List[Violation]:
     bad = sorted(_HTTP_CLIENT_ROOTS & roots)
-    if not bad or norm in _CATALOG_HTTP_ALLOWED:
+    if not bad:
         return []
     return [
         Violation(
             rel,
-            f"HTTP client imports ({', '.join(bad)}) only allowed in kinescope_adapter.py",
+            f"HTTP client imports ({', '.join(bad)}) not allowed in catalog Lambda",
+        )
+    ]
+
+
+def _check_video_provider_edge_http(rel: str, norm: str, roots: Set[str]) -> List[Violation]:
+    bad = sorted(_HTTP_CLIENT_ROOTS & roots)
+    if not bad or norm in _VIDEO_PROVIDER_EDGE_HTTP_ALLOWED:
+        return []
+    return [
+        Violation(
+            rel,
+            f"HTTP client imports ({', '.join(bad)}) only allowed in kinescope_http.py",
         )
     ]
 
@@ -226,6 +247,14 @@ def check_file(path: str) -> List[Violation]:
                 rel, norm, roots, _BILLING_FULFILLMENT_PSYCOPG2_ALLOWED, "billing_fulfillment"
             )
         )
+    elif package == "video_provider_edge":
+        violations.extend(
+            _check_boto3(rel, norm, roots, _VIDEO_PROVIDER_EDGE_BOTO3_ALLOWED, "video_provider_edge")
+        )
+        violations.extend(
+            _check_psycopg2(rel, norm, roots, frozenset(), "video_provider_edge")
+        )
+        violations.extend(_check_video_provider_edge_http(rel, norm, roots))
 
     if package != "catalog":
         return violations
@@ -279,8 +308,9 @@ def main() -> int:
         set(
             glob.glob(LAMBDA_GLOB, recursive=True)
             + glob.glob(COGNITO_SYNC_GLOB, recursive=True)
-            + glob.glob(BILLING_EDGE_GLOB, recursive=True)
+            +             glob.glob(BILLING_EDGE_GLOB, recursive=True)
             + glob.glob(BILLING_FULFILLMENT_GLOB, recursive=True)
+            + glob.glob(VIDEO_PROVIDER_EDGE_GLOB, recursive=True)
         )
     )
     all_violations: List[Violation] = []

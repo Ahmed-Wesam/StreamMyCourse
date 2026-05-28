@@ -1,0 +1,137 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'StreamMyCourse - Video provider edge (no VPC) for Kinescope upload/webhook routes'
+
+Parameters:
+  Environment:
+    Type: String
+    Default: dev
+    AllowedValues:
+      - dev
+      - prod
+    Description: Deployment environment
+
+  LambdaCodeS3Bucket:
+    Type: String
+    Description: Artifacts bucket containing the video provider edge Lambda deployment zip
+
+  LambdaCodeS3Key:
+    Type: String
+    Description: S3 key for the video provider edge Lambda deployment package
+
+  CatalogLambdaArn:
+    Type: String
+    Default: ''
+    Description: >-
+      ARN of the catalog Lambda (internal video events invoke). Empty skips invoke IAM
+      and leaves CATALOG_LAMBDA_ARN unset until a follow-up deploy.
+
+  KinescopeApiToken:
+    Type: String
+    Default: ''
+    NoEcho: true
+    Description: Kinescope API token for upload init + provider integration
+
+  KinescopeParentId:
+    Type: String
+    Default: ''
+    Description: Kinescope parent/container id used during upload init
+
+  KinescopeWebhookSecret:
+    Type: String
+    Default: ''
+    NoEcho: true
+    Description: >-
+      Shared secret for POST /webhooks/kinescope (query ?token= or header
+      X-Kinescope-Webhook-Secret). Empty disables secret check.
+
+  CorsAllowOrigin:
+    Type: String
+    Default: ''
+    Description: >-
+      Optional CORS allow origin for edge Lambda responses (CSV supported).
+      Empty leaves CORS_ALLOW_ORIGIN unset on the function.
+
+Conditions:
+  HasCatalogLambdaArn: !Not [!Equals [!Ref CatalogLambdaArn, '']]
+  HasCorsAllowOrigin: !Not [!Equals [!Ref CorsAllowOrigin, '']]
+
+Resources:
+  VideoProviderEdgeRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub 'StreamMyCourse-VideoProviderEdgeRole-${Environment}'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: CloudWatchLogs
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource: !Sub 'arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/StreamMyCourse-VideoProviderEdge-${Environment}:*'
+      Tags:
+        - Key: Project
+          Value: StreamMyCourse
+        - Key: Environment
+          Value: !Ref Environment
+
+  VideoProviderEdgeCatalogInvokePolicy:
+    Type: AWS::IAM::Policy
+    Condition: HasCatalogLambdaArn
+    Properties:
+      PolicyName: InvokeCatalogInternalVideo
+      Roles:
+        - !Ref VideoProviderEdgeRole
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Action:
+              - lambda:InvokeFunction
+            Resource: !Ref CatalogLambdaArn
+
+  VideoProviderEdge:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub 'StreamMyCourse-VideoProviderEdge-${Environment}'
+      Runtime: python3.11
+      Handler: handler.lambda_handler
+      Timeout: 30
+      MemorySize: 256
+      Role: !GetAtt VideoProviderEdgeRole.Arn
+      Code:
+        S3Bucket: !Ref LambdaCodeS3Bucket
+        S3Key: !Ref LambdaCodeS3Key
+      Environment:
+        Variables:
+          DEPLOYMENT_ENVIRONMENT: !Ref Environment
+          CATALOG_LAMBDA_ARN: !Ref CatalogLambdaArn
+          KINESCOPE_API_TOKEN: !Ref KinescopeApiToken
+          KINESCOPE_PARENT_ID: !Ref KinescopeParentId
+          KINESCOPE_WEBHOOK_SECRET: !Ref KinescopeWebhookSecret
+          CORS_ALLOW_ORIGIN: !If
+            - HasCorsAllowOrigin
+            - !Ref CorsAllowOrigin
+            - ''
+          LOG_LEVEL: INFO
+      Tags:
+        - Key: Project
+          Value: StreamMyCourse
+        - Key: Environment
+          Value: !Ref Environment
+
+Outputs:
+  VideoProviderEdgeLambdaArn:
+    Description: ARN of the video provider edge Lambda (api-stack integration target)
+    Value: !GetAtt VideoProviderEdge.Arn
+    Export:
+      Name: !Sub '${AWS::StackName}-VideoProviderEdgeLambdaArn'
