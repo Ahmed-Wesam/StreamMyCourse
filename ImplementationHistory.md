@@ -4,6 +4,41 @@
 
 ---
 
+## 2026-05-28 — Video provider edge (docs + verification)
+
+### Goal
+
+Document the **Video Provider Edge** Lambda (no-VPC Kinescope HTTP egress), api-stack route split, catalog
+internal invoke events, and deploy phases; run CI-parity lambda/unit checks for the edge slice.
+
+### Changes (documentation + architecture records)
+
+- [x] **ADR amended** — [`adr-0011-video-provider-port-kinescope-cutover.md`](plans/architecture/adr-0011-video-provider-port-kinescope-cutover.md): new section on Video Provider Edge Lambda (distinct from rejected per-provider Lambda); route split, internal invoke contract, deploy phases A/C/D.
+- [x] **Design contract updated** — [`design.md`](design.md) §10 Backend: video provider edge stack, no-NAT egress model, Kinescope env split (upload/webhook tokens on edge; DRM JWT on catalog), route targets, deploy phases.
+- [x] **Module map refreshed** — [`module-map.md`](plans/architecture/module-map.md): `video_provider_edge` package table, `internal_video.py`, catalog `internal` event map.
+
+### Implemented code anchors reflected by this closeout
+
+- Edge Lambda: [`infrastructure/lambda/video_provider_edge/`](infrastructure/lambda/video_provider_edge/)
+- Edge stack: [`infrastructure/templates/video-provider-edge-stack.yaml`](infrastructure/templates/video-provider-edge-stack.yaml)
+- Catalog internal handlers: [`internal_video.py`](infrastructure/lambda/catalog/services/course_management/internal_video.py), [`index.py`](infrastructure/lambda/catalog/index.py)
+- Api route conditions: [`api-stack.yaml`](infrastructure/templates/api-stack.yaml) (`UseKinescopeVideoEdge`)
+- Deploy: [`scripts/deploy-video-provider-edge.sh`](scripts/deploy-video-provider-edge.sh), phases in [`scripts/deploy-backend.sh`](scripts/deploy-backend.sh)
+
+### Deploy / integration note
+
+HTTPS integration pytest against **dev** (e.g. [`scripts/run-local-integration-tests.sh`](scripts/run-local-integration-tests.sh))
+requires a deployed environment with **`VIDEO_PROVIDER=kinescope`**, the **video provider edge stack**
+(`StreamMyCourse-VideoProviderEdge-dev`), and **phase D** api-stack wiring (`VideoProviderEdgeLambdaArn`) —
+typically via [`scripts/deploy-backend.sh`](scripts/deploy-backend.sh) dev or the Deploy workflow on `main`.
+
+### Verification
+
+- `python scripts/check_lambda_boundaries.py`
+- `python -m pytest tests/unit/video_provider_edge/ tests/unit/test_video_provider_edge_stack.py tests/unit/test_api_stack_video_edge_routes.py tests/unit/test_deploy_backend_video_edge_order.py tests/unit/services/course_management/test_internal_video.py tests/unit/test_media_cleanup.py -q`
+
+---
+
 ## 2026-05-27 — Kinescope provider cutover docs closeout
 
 ### Goal
