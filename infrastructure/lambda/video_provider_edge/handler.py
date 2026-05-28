@@ -34,6 +34,7 @@ from video_catalog_invoke import (
 
 )
 
+from apigw_path import apigw_routing_path as _apigw_routing_path
 from video_edge_config import VideoProviderEdgeConfig, load_video_provider_edge_config
 
 from kinescope_http import (
@@ -179,34 +180,6 @@ def _options_response(
         "body": "",
 
     }
-
-
-
-
-
-def _apigw_routing_path(event: Dict[str, Any]) -> str:
-
-    rc = event.get("requestContext") or {}
-
-    resource_path = rc.get("resourcePath")
-
-    if isinstance(resource_path, str) and resource_path.startswith("/"):
-
-        return resource_path
-
-    path = event.get("path")
-
-    if isinstance(path, str) and path.startswith("/"):
-
-        return path
-
-    raw = event.get("rawPath")
-
-    if isinstance(raw, str) and raw.startswith("/"):
-
-        return raw
-
-    return "/"
 
 
 
