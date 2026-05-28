@@ -37,20 +37,28 @@ export function VideoPlayer({
   if (playback.provider === 'kinescope') {
     const seek = resumeTimeSec > 0 ? resumeTimeSec : undefined
     return (
-      <Suspense fallback={<div className={className} />}>
-        <KinescopePlayer
-          videoId={playback.videoId}
-          drmAuthToken={playback.drmAuthToken}
-          className={className}
-          query={seek != null ? { seek } : undefined}
-          onTimeUpdate={(data: EventTimeUpdateTypes) => {
-            const { positionSec, durationSec } = parseKinescopeTimePayload(data)
-            lastKinescopePositionRef.current = positionSec
-            onPlaybackProgress(positionSec, durationSec)
-          }}
-          onEnded={onPlaybackEnded}
-          onPause={() => onPlaybackPause(lastKinescopePositionRef.current)}
-        />
+      <Suspense
+        fallback={
+          <div className={className} aria-busy="true" aria-label="Loading video player" />
+        }
+      >
+        <div className={className}>
+          <KinescopePlayer
+            videoId={playback.videoId}
+            drmAuthToken={playback.drmAuthToken}
+            width="100%"
+            height="100%"
+            className="h-full w-full"
+            query={seek != null ? { seek } : undefined}
+            onTimeUpdate={(data: EventTimeUpdateTypes) => {
+              const { positionSec, durationSec } = parseKinescopeTimePayload(data)
+              lastKinescopePositionRef.current = positionSec
+              onPlaybackProgress(positionSec, durationSec)
+            }}
+            onEnded={onPlaybackEnded}
+            onPause={() => onPlaybackPause(lastKinescopePositionRef.current)}
+          />
+        </div>
       </Suspense>
     )
   }
