@@ -12,5 +12,6 @@ def assert_playback_contract(body: dict) -> None:
     if provider == "kinescope":
         assert isinstance(body.get("videoId"), str) and body["videoId"]
         assert isinstance(body.get("drmAuthToken"), str) and body["drmAuthToken"]
+        assert isinstance(body.get("watermarkText"), str) and body["watermarkText"]
         return
     raise AssertionError(f"Unexpected playback provider payload: {body}")

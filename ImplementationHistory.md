@@ -4,6 +4,32 @@
 
 ---
 
+## 2026-05-28 — Kinescope playback watermark
+
+### Goal
+
+Surface per-viewer watermark text on Kinescope lesson playback from Cognito JWT claims (`given_name`, `family_name`, `email`) so the student player can pass it to the Kinescope embed; provider template must have watermark enabled in the dashboard.
+
+### Changes
+
+- [x] **Watermark builder** — [`playback_watermark.py`](infrastructure/lambda/catalog/services/common/playback_watermark.py): `playback_watermark_from_claims` composes `given_name` + `family_name` + `email` (newline-separated; truncated at 120 chars while preserving a non-empty name line). Returns `None` when any required claim is missing or capping would drop the name line.
+- [x] **Playback API** — [`service.py`](infrastructure/lambda/catalog/services/course_management/service.py): Kinescope `GET /playback/{courseId}/{lessonId}` requires complete profile claims; returns **403** `watermark_profile_incomplete` when `watermarkText` cannot be built. S3 playback omits the field. Contract in [`contracts.py`](infrastructure/lambda/catalog/services/course_management/contracts.py).
+- [x] **Frontend** — [`VideoPlayer.tsx`](frontend/src/pages/lesson-player/VideoPlayer.tsx): passes `watermark={{ text, mode: 'random' }}` to `@kinescope/react-kinescope-player`; blocks embed when `watermarkText` is missing/blank; user message in [`apiUserMessages.ts`](frontend/src/lib/apiUserMessages.ts).
+- [x] **CI users** — [`ensure-ci-rds-verify-cognito-user.sh`](scripts/ensure-ci-rds-verify-cognito-user.sh): sets `given_name`, `family_name`, and `email` on integration/verify pool users so Kinescope playback integration tests receive `watermarkText`.
+- [x] **Tests** — [`test_playback_watermark.py`](tests/unit/services/common/test_playback_watermark.py); Kinescope playback service cases in [`test_service.py`](tests/unit/services/course_management/test_service.py); [`VideoPlayer.dom.test.tsx`](frontend/src/pages/lesson-player/VideoPlayer.dom.test.tsx); [`api.test.ts`](frontend/src/lib/api.test.ts); integration contract helper [`playback_contract.py`](tests/integration/helpers/playback_contract.py).
+
+### Manual (Kinescope)
+
+Enable watermark on the project **player template** in the Kinescope dashboard so the embed honors the `watermark` prop.
+
+### Verification
+
+- `python scripts/check_lambda_boundaries.py`
+- `python -m pytest tests/unit/services/common/test_playback_watermark.py tests/unit/services/course_management/test_service.py -q -k watermark`
+- From `frontend/`: `npm run test` (includes `VideoPlayer.dom.test.tsx`, `api.test.ts`)
+
+---
+
 ## 2026-05-28 — Student session supersede client UX and hardening
 
 ### Goal

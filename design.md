@@ -85,14 +85,14 @@ Teacher upload init → `POST /upload-url` → active provider (`VIDEO_PROVIDER`
 Kinescope upload + transcode status webhooks (`POST /webhooks/kinescope`)
                     ↓
 Student playback contract (`GET /playback/{courseId}/{lessonId}`):
-  - Kinescope: `{ provider: "kinescope", videoId, drmAuthToken }`
+  - Kinescope: `{ provider: "kinescope", videoId, drmAuthToken, watermarkText }` — required `watermarkText` (viewer `given_name` + `family_name` + `email` from Cognito authorizer claims, newline-separated; max 120 chars). Returns **403** `watermark_profile_incomplete` when any of those claims is missing.
   - S3: `{ provider: "s3", playbackUrl }`
 ```
 
 - **Provider abstraction:** `services/course_management/video_providers/port.py` isolates provider-specific upload/playback/delete operations from domain flow.
 - **Upload:** `POST /upload-url` initializes provider upload (optional `filesize` for Kinescope init) and persists the returned `videoKey` in lesson metadata (`pending`). Client upload: S3 presigned **PUT**; Kinescope **POST** binary to init `endpoint` (`uploadMethod`: `post` or `tus` for very large files).
 - **Processing status:** webhook `POST /webhooks/kinescope` accepts `media.update.status`; `done` marks lesson `ready` (after Kinescope API status check when token configured), `error`/`aborted` marks `failed`.
-- **Playback:** lesson playback route returns provider-discriminated payloads — Kinescope (`provider`, `videoId`, `drmAuthToken`) or S3 (`provider`, `playbackUrl`).
+- **Playback:** lesson playback route returns provider-discriminated payloads — Kinescope (`provider`, `videoId`, `drmAuthToken`, required `watermarkText` from authorizer claims via [`playback_watermark_from_claims`](infrastructure/lambda/catalog/services/common/playback_watermark.py); **403** when profile incomplete) or S3 (`provider`, `playbackUrl`).
 - **DRM callback:** `POST /webhooks/kinescope/drm-auth` validates a signed token and current lesson access before returning `{ "allow": true|false }`.
 
 ---
@@ -150,7 +150,7 @@ PUT    /courses/{id}/lessons/{lid}/video-ready   // Mark uploaded video ready (M
 
 ### Playback
 ```
-GET  /playback/{courseId}/{lessonId}   // Provider playback contract; Kinescope `{ provider, videoId, drmAuthToken }`, S3 `{ provider, playbackUrl }`; Cognito + enrollment (or owner/admin) when auth enforced
+GET  /playback/{courseId}/{lessonId}   // Provider playback contract; Kinescope `{ provider, videoId, drmAuthToken, watermarkText }` (required given_name+family_name+email watermark from authorizer claims; 403 watermark_profile_incomplete when any missing), S3 `{ provider, playbackUrl }`; Cognito + enrollment (or owner/admin) when auth enforced
 ```
 
 ### Upload (Instructor)

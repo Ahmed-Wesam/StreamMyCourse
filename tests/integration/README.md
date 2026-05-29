@@ -101,10 +101,20 @@ If the dev stacks are already deployed and you want to run tests without redeplo
 You need a dedicated test user in the Cognito pool with a known password:
 
 ```bash
-# Set a strong password for the CI test user
+# Set a strong password for the CI test user(s)
 export CI_RDS_VERIFY_PASSWORD='YourStrongPassword123!'
+
+# Primary teacher (default)
 ./scripts/ensure-ci-rds-verify-cognito-user.sh
+
+# Alternate teacher (when using INTEGRATION_COGNITO_JWT_ALT / LOCAL_COGNITO_PASSWORD_ALT)
+./scripts/ensure-ci-rds-verify-cognito-user.sh --username ci-rds-verify-2@noreply.local
+
+# Student (when using INTEGRATION_COGNITO_JWT_STUDENT / LOCAL_COGNITO_PASSWORD_STUDENT)
+./scripts/ensure-ci-rds-verify-cognito-user.sh --role student --username ci-student@noreply.local
 ```
+
+Each run sets **`given_name`**, **`family_name`**, and **`email`** so Kinescope playback can mint **`watermarkText`**.
 
 Store the same password in GitHub secret `COGNITO_RDS_VERIFY_TEST_PASSWORD` on the `dev` environment if you want CI to use the same credentials.
 
@@ -198,7 +208,7 @@ Focused checks for catalog round-trips (create/read/update, lesson FK). Same fix
 
 **GitHub Actions variable:** Set **`AWS_DEPLOY_ROLE_ARN`** at repo scope (IAM role ARN from **`github-deploy-role-stack.yaml`** output **`GitHubDeployRoleArn`**).
 
-**Bootstrap the CI Cognito user** (operator workstation): see **`scripts/ensure-ci-rds-verify-cognito-user.sh`** and **`COGNITO_RDS_VERIFY_TEST_PASSWORD`** on **`dev`** (and **`prod`** for prod verify).
+**Bootstrap the CI Cognito user** (operator workstation): see **`scripts/ensure-ci-rds-verify-cognito-user.sh`** and **`COGNITO_RDS_VERIFY_TEST_PASSWORD`** on **`dev`** (and **`prod`** for prod verify). The script sets **`given_name`**, **`family_name`**, and **`email`** (required for Kinescope **`watermarkText`** on playback). Re-run it after deploying the watermark gate if existing CI users were created before those attributes were added.
 
 **Local RDS** (advanced): [`scripts/deploy-rds-stack.sh`](../../scripts/deploy-rds-stack.sh) targets **`dev`** or **`prod`**; integration tests normally follow **`dev`** in CI.
 
