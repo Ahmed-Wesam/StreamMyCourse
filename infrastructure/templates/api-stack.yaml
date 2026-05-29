@@ -1841,7 +1841,7 @@ Resources:
   # Bump logical id when API methods/resources change so CloudFormation always
   # creates a new deployment; otherwise the stage can keep serving an old snapshot
   # (symptom: GET /courses/{id}/lessons returns API GW 403 Missing Authentication Token).
-  CatalogApiDeploymentV35:
+  CatalogApiDeploymentV36:
     Type: AWS::ApiGateway::Deployment
     DependsOn:
       - CatalogLambdaApiPermission
@@ -1919,12 +1919,22 @@ Resources:
     Type: AWS::ApiGateway::Stage
     Properties:
       RestApiId: !Ref CatalogApi
-      DeploymentId: !Ref CatalogApiDeploymentV35
+      DeploymentId: !Ref CatalogApiDeploymentV36
       StageName: !Ref Environment
       Description: !Sub '${Environment} stage for Catalog API'
       MethodSettings:
-        - ResourcePath: '/webhooks/*'
-          HttpMethod: '*'
+        # API Gateway rejects ResourcePath + HttpMethod '*' when the path ends with '/*'
+        # (becomes an invalid webhooks/*/* key). List each public webhook POST explicitly.
+        - ResourcePath: '/webhooks/kinescope'
+          HttpMethod: 'POST'
+          ThrottlingRateLimit: 50
+          ThrottlingBurstLimit: 100
+        - ResourcePath: '/webhooks/kinescope/drm-auth'
+          HttpMethod: 'POST'
+          ThrottlingRateLimit: 50
+          ThrottlingBurstLimit: 100
+        - ResourcePath: '/webhooks/payments/paytabs'
+          HttpMethod: 'POST'
           ThrottlingRateLimit: 50
           ThrottlingBurstLimit: 100
         - ResourcePath: '/courses/*/lessons/*/progress'
