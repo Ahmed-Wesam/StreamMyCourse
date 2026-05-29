@@ -293,7 +293,7 @@ export function StudentHeader() {
 
     }
 
-  }, [location, runSessionProbe])
+  }, [location.pathname, location.search, location.hash, runSessionProbe])
 
 
 

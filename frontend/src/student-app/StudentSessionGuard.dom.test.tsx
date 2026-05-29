@@ -6,7 +6,11 @@ import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { sessionSupersededUserMessage } from '../lib/apiUserMessages'
-import { notifySessionSuperseded, resetSessionSupersededListenersForTests } from '../lib/handleSessionSuperseded'
+import {
+  notifySessionSuperseded,
+  resetSessionSupersededListenersForTests,
+  resetSessionSupersededNotifyCooldownForTests,
+} from '../lib/handleSessionSuperseded'
 import { SESSION_SUPERSEDED_BANNER_KEY } from '../lib/session-superseded-banner'
 
 const lazySignOutMock = vi.hoisted(() =>
@@ -151,6 +155,7 @@ describe('StudentSessionGuard', () => {
     })
 
     lazySignOutMock.mockClear()
+    resetSessionSupersededNotifyCooldownForTests()
     notifySessionSuperseded()
     await waitFor(() => expect(lazySignOutMock).toHaveBeenCalledTimes(1))
   })
