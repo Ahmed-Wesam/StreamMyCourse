@@ -1,7 +1,7 @@
 /**
  * @vitest-environment jsdom
  */
-import { cleanup, render, screen, waitFor } from '@testing-library/react'
+import { act, cleanup, render, screen, waitFor } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
@@ -111,15 +111,16 @@ describe('StudentSessionGuard', () => {
     })
 
     notifySessionSuperseded()
-    await waitFor(() => expect(lazySignOutMock).toHaveBeenCalledTimes(1))
-
     hubCallback!({ payload: { event: 'signedIn' } })
 
     await waitFor(() => {
+      expect(lazySignOutMock).toHaveBeenCalledTimes(1)
       expect(screen.queryByTestId('session-superseded-banner')).toBeNull()
     })
 
-    await new Promise((resolve) => setTimeout(resolve, 50))
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 100))
+    })
     expect(screen.queryByTestId('login-page')).toBeNull()
     expect(screen.getByTestId('child')).toBeTruthy()
   })
