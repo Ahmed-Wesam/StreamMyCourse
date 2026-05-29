@@ -1,0 +1,106 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: >-
+  StreamMyCourse - CLOUDFRONT-scoped WAFv2 Web ACL (us-east-1) for the student CloudFront distribution.
+  High-threshold static asset flood protection; deploy after edge-hosting-stack.
+
+Parameters:
+  Environment:
+    Type: String
+    Default: dev
+    AllowedValues:
+      - dev
+      - prod
+    Description: Deployment environment
+
+  StudentDistributionId:
+    Type: String
+    Default: ''
+    Description: CloudFront distribution id from edge-hosting StudentDistributionId output
+
+  EnableWafEdge:
+    Type: String
+    Default: 'true'
+    AllowedValues:
+      - 'true'
+      - 'false'
+    Description: When false, no WAF resources are created
+
+  EdgeStaticRateLimit:
+    Type: Number
+    Default: 5000
+    MinValue: 100
+    MaxValue: 20000000
+    Description: Max requests per IP per 5-minute window on the student distribution (static flood)
+
+Conditions:
+  WafEnabled: !Equals [!Ref EnableWafEdge, 'true']
+  WafDisabled: !Not [!Condition WafEnabled]
+  HasStudentDistributionId: !Not [!Equals [!Ref StudentDistributionId, '']]
+  DeployWaf: !And
+    - !Condition WafEnabled
+    - !Condition HasStudentDistributionId
+
+Resources:
+  WafDisabledPlaceholder:
+    Type: AWS::CloudFormation::WaitConditionHandle
+    Condition: WafDisabled
+
+  StudentEdgeWebAcl:
+    Type: AWS::WAFv2::WebACL
+    Condition: DeployWaf
+    Properties:
+      Name: !Sub 'StreamMyCourse-EdgeWaf-${Environment}'
+      Description: !Sub 'Student CloudFront WAF for ${Environment} - static flood rate limit'
+      Scope: CLOUDFRONT
+      DefaultAction:
+        Allow: {}
+      VisibilityConfig:
+        SampledRequestsEnabled: true
+        CloudWatchMetricsEnabled: true
+        MetricName: !Sub 'StreamMyCourseEdgeWaf-${Environment}'
+      Rules:
+        - Name: StudentStaticFloodRateLimit
+          Priority: 1
+          Action:
+            Block: {}
+          Statement:
+            RateBasedStatement:
+              Limit: !Ref EdgeStaticRateLimit
+              AggregateKeyType: IP
+              EvaluationWindowSec: 300
+          VisibilityConfig:
+            SampledRequestsEnabled: true
+            CloudWatchMetricsEnabled: true
+            MetricName: !Sub 'EdgeWafStaticRate-${Environment}'
+      Tags:
+        - Key: Project
+          Value: StreamMyCourse
+        - Key: Environment
+          Value: !Ref Environment
+
+  StudentEdgeWebAclAssociation:
+    Type: AWS::WAFv2::WebACLAssociation
+    Condition: DeployWaf
+    Properties:
+      WebACLArn: !GetAtt StudentEdgeWebAcl.Arn
+      ResourceArn: !Sub 'arn:aws:cloudfront::${AWS::AccountId}:distribution/${StudentDistributionId}'
+
+Outputs:
+  StudentWebAclArn:
+    Condition: DeployWaf
+    Description: CLOUDFRONT Web ACL ARN (us-east-1) for the student distribution
+    Value: !GetAtt StudentEdgeWebAcl.Arn
+    Export:
+      Name: !Sub '${AWS::StackName}-StudentWebAclArn'
+
+  StudentWebAclId:
+    Condition: DeployWaf
+    Description: CLOUDFRONT Web ACL id
+    Value: !GetAtt StudentEdgeWebAcl.Id
+    Export:
+      Name: !Sub '${AWS::StackName}-StudentWebAclId'
+
+  StudentWebAclAssociationResourceArn:
+    Condition: DeployWaf
+    Description: CloudFront distribution ARN protected by the Web ACL
+    Value: !Sub 'arn:aws:cloudfront::${AWS::AccountId}:distribution/${StudentDistributionId}'

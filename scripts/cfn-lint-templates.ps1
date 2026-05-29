@@ -38,7 +38,9 @@ $templates = @(
     'infrastructure/templates/rds-stack.yaml',
     'infrastructure/templates/media-cleanup-stack.yaml',
     'infrastructure/templates/payments-stack.yaml',
-    'infrastructure/templates/video-provider-edge-stack.yaml'
+    'infrastructure/templates/video-provider-edge-stack.yaml',
+    'infrastructure/templates/api-waf-stack.yaml',
+    'infrastructure/templates/edge-waf-stack.yaml'
 )
 
 Push-Location $repoRoot

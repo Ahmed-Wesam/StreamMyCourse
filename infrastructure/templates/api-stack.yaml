@@ -136,6 +136,21 @@ Parameters:
     MinValue: 0
     Description: Seconds past video end to allow position reporting
 
+  RateLimitMaxOverrides:
+    Type: String
+    Default: ''
+    Description: >-
+      Optional CSV of policy_id:max_count overrides (e.g. progress.lesson:10).
+      Empty uses built-in policy defaults.
+
+  CatalogApi4xxAlarmThreshold:
+    Type: Number
+    Default: 500
+    MinValue: 1
+    Description: >-
+      Sum of API Gateway 4XXError on the catalog stage per 5-minute period before
+      CloudWatch alarm (tune per env at deploy; dev may use a lower value).
+
   KinescopeDrmJwtSecret:
     Type: String
     Default: ''
@@ -322,6 +337,7 @@ Resources:
           DEPLOYMENT_ENVIRONMENT: !Ref Environment
           PROGRESS_COMPLETE_RATIO: !Ref ProgressCompleteRatio
           PROGRESS_POSITION_SLACK_SEC: !Ref ProgressPositionSlackSec
+          RATE_LIMIT_MAX_OVERRIDES: !Ref RateLimitMaxOverrides
           STUDENT_COGNITO_CLIENT_ID: !Ref StudentCognitoClientId
           VIDEO_PROVIDER: !Ref VideoProvider
           KINESCOPE_API_TOKEN: !If
@@ -1825,7 +1841,7 @@ Resources:
   # Bump logical id when API methods/resources change so CloudFormation always
   # creates a new deployment; otherwise the stage can keep serving an old snapshot
   # (symptom: GET /courses/{id}/lessons returns API GW 403 Missing Authentication Token).
-  CatalogApiDeploymentV34:
+  CatalogApiDeploymentV35:
     Type: AWS::ApiGateway::Deployment
     DependsOn:
       - CatalogLambdaApiPermission
@@ -1903,15 +1919,62 @@ Resources:
     Type: AWS::ApiGateway::Stage
     Properties:
       RestApiId: !Ref CatalogApi
-      DeploymentId: !Ref CatalogApiDeploymentV34
+      DeploymentId: !Ref CatalogApiDeploymentV35
       StageName: !Ref Environment
       Description: !Sub '${Environment} stage for Catalog API'
       MethodSettings:
+        - ResourcePath: '/webhooks/*'
+          HttpMethod: '*'
+          ThrottlingRateLimit: 50
+          ThrottlingBurstLimit: 100
+        - ResourcePath: '/courses/*/lessons/*/progress'
+          HttpMethod: 'PUT'
+          ThrottlingRateLimit: 30
+          ThrottlingBurstLimit: 60
+        - ResourcePath: '/playback/*'
+          HttpMethod: 'GET'
+          ThrottlingRateLimit: 40
+          ThrottlingBurstLimit: 80
+        - ResourcePath: '/courses'
+          HttpMethod: 'GET'
+          ThrottlingRateLimit: 40
+          ThrottlingBurstLimit: 80
+          MetricsEnabled: true
+        - ResourcePath: '/courses/*'
+          HttpMethod: 'GET'
+          ThrottlingRateLimit: 40
+          ThrottlingBurstLimit: 80
         - ResourcePath: '/*'
           HttpMethod: '*'
-          ThrottlingBurstLimit: 200
           ThrottlingRateLimit: 100
-          MetricsEnabled: false
+          ThrottlingBurstLimit: 200
+          MetricsEnabled: true
+
+  CatalogApi4xxAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub 'StreamMyCourse-CatalogApi-${Environment}-4XX'
+      AlarmDescription: >-
+        Catalog API stage 4XX spike (client errors, gateway throttles, WAF blocks).
+        Lambda rate-limit denials log rate_limit_denied; filter CloudWatch Logs on that key.
+      Namespace: AWS/ApiGateway
+      MetricName: 4XXError
+      Dimensions:
+        - Name: ApiName
+          Value: !Sub 'StreamMyCourse-Catalog-${Environment}'
+        - Name: Stage
+          Value: !Ref Environment
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 2
+      Threshold: !Ref CatalogApi4xxAlarmThreshold
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: notBreaching
+      Tags:
+        - Key: Project
+          Value: StreamMyCourse
+        - Key: Environment
+          Value: !Ref Environment
 
 Outputs:
   ApiEndpoint:
@@ -1925,3 +1988,7 @@ Outputs:
   TokenAuthorizerLambdaFunctionName:
     Description: Token authorizer Lambda function name
     Value: !Ref TokenAuthorizerLambda
+
+  CatalogApi4xxAlarmName:
+    Description: CloudWatch alarm name for catalog stage 4XXError spikes
+    Value: !Ref CatalogApi4xxAlarm
