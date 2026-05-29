@@ -134,17 +134,6 @@ aws cloudformation describe-stacks --stack-name streammycourse-api --region eu-w
 
 Optional **`deploy.ps1`** API parameters: `-VideoUrl`, `-DefaultMp4Url` (passed through to CloudFormation).
 
-### WAF (API + student CloudFront)
-
-Deployed automatically by **Deploy** workflow jobs `deploy-api-waf-{env}` and `deploy-edge-waf-{env}` (see [`.github/workflows/deploy-backend.yml`](../.github/workflows/deploy-backend.yml)), using [`scripts/deploy-api-waf.sh`](../scripts/deploy-api-waf.sh) and [`scripts/deploy-edge-waf.sh`](../scripts/deploy-edge-waf.sh).
-
-Manual re-deploy (same stacks):
-
-- **Order:** `api` → **`api-waf`** (`eu-west-1`) → `edge-hosting` (`us-east-1`) → **`edge-waf`** (`us-east-1`, student distribution only).
-- **API:** `./scripts/deploy-api-waf.sh dev` or `.\deploy.ps1 -Template api-waf ...`
-- **Edge:** `./scripts/deploy-edge-waf.sh dev` or `.\deploy.ps1 -Template edge-waf ...`
-- **IAM:** Sync [`iam-policy-github-deploy-backend.json`](iam-policy-github-deploy-backend.json) / [`github-deploy-role-stack.yaml`](templates/github-deploy-role-stack.yaml) if the OIDC role predates WAF permissions.
-
 ## GitHub Actions — automated deploys
 
 **Every push to `main`** runs **dev edge + RDS + `deploy-backend-dev`**, then **`integration-http-tests`**, then **student/teacher web** jobs and **`deploy-edge-prod`** / prod phases per each job’s **`needs`** in [`.github/workflows/deploy-backend.yml`](../.github/workflows/deploy-backend.yml) (see the workflow file for parallelism). **`cancel-in-progress: false`**: rapid commits **queue**. CloudFormation uses **`--no-fail-on-empty-changeset`**. Lambda code is uploaded as **`catalog-{env}-{gitSha12}.zip`** so **`LambdaCodeS3Key`** changes every commit.
@@ -232,9 +221,7 @@ The JSON policy files use the placeholder **`YOUR_AWS_ACCOUNT_ID`** in ARNs. [`s
 infrastructure/
 ├── templates/
 │   ├── api-stack.yaml        # API Gateway + Lambda + DynamoDB
-│   ├── api-waf-stack.yaml    # REGIONAL WAF for catalog API stage (eu-west-1)
 │   ├── edge-hosting-stack.yaml # Unified ACM + both SPAs (us-east-1); primary CI path
-│   ├── edge-waf-stack.yaml   # CLOUDFRONT WAF for student distribution (us-east-1)
 │   ├── github-deploy-role-stack.yaml # GitHub OIDC deploy role + policies (manual bootstrap only)
 │   ├── web-stack.yaml        # Legacy student hosting (eu-west-1)
 │   ├── teacher-web-stack.yaml # Legacy teacher hosting (eu-west-1)

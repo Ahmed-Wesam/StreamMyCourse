@@ -1,0 +1,49 @@
+---
+description: >-
+  On /review, flag new or materially changed AWS resources with significant recurring
+  cost (WAF, NAT Gateway, VPC endpoints, RDS scale-up, etc.). Evidence from diff only.
+alwaysApply: false
+---
+
+# /review — AWS cost impact alerts
+
+When the user runs **`/review`** (or **`/review_and_commit`** Phase 1), scan the **diff** for infrastructure and deploy changes. This is **separate** from severity-ranked code findings: use a dedicated section, not Critical/Medium/Low.
+
+## Output (required)
+
+After severity-ordered findings, add:
+
+```markdown
+## Cost impact
+```
+
+- If the diff adds or materially changes a **paid, always-on** resource listed below → one bullet per item: **resource type**, **file:line or template logical ID**, **why it matters ($/mo or per-hour)**, and whether it is **new** vs **changed** (e.g. instance class, Multi-AZ, extra endpoint).
+- If none apply: `## Cost impact` → **None identified in this diff.**
+
+Do **not** guess future spend. Only items **present in the diff** (or removed resources that **increase** cost elsewhere, e.g. replacing VPC endpoints with NAT—cite both sides).
+
+## High-signal triggers (non-exhaustive)
+
+| Area | CloudFormation / change patterns |
+|------|----------------------------------|
+| **NAT** | `AWS::EC2::NatGateway`, NAT instances, routes `0.0.0.0/0` → `nat-` |
+| **VPC endpoints** | `AWS::EC2::VPCEndpoint` (Interface endpoints ≈ hourly per AZ; Gateway S3/Dynamo often cheaper) |
+| **WAF** | `AWS::WAFv2::*`, WAF association on ALB/CloudFront/API |
+| **Load balancers** | `AWS::ElasticLoadBalancingV2::*`, classic ELB |
+| **RDS** | New/changed `AWS::RDS::DBInstance` (class, storage, Multi-AZ, PI, extra readers) |
+| **Cache / search** | ElastiCache, OpenSearch/Elasticsearch, MemoryDB |
+| **Private connectivity** | PrivateLink (`AWS::EC2::VPCEndpoint` service), Transit Gateway, VPN |
+| **Always-on compute** | EC2 (non-Lambda), ECS/Fargate services, EKS control plane |
+| **Messaging / streaming** | MSK, Amazon MQ, Kinesis **provisioned** shards |
+| **Edge / DNS** | Extra CloudFront distributions (minor vs NAT; still note **new** distros in diff) |
+
+**Lambda/API Gateway/Dynamo on-demand** — mention only when the diff **materially** raises steady cost (e.g. provisioned concurrency, large RCU/WCU bumps, new always-warm schedules).
+
+## Repo baseline (context only)
+
+- **`infrastructure/templates/rds-stack.yaml`** intentionally uses **VPC endpoints** and **no NAT Gateway** (see stack comments). Flag diffs that **add NAT** or **remove endpoints** in favor of NAT.
+- **`.cursor/skills/auth-no-cognito-in-vpc/SKILL.md`**: Cognito API calls from the catalog VPC imply **NAT or extra endpoints**—flag if the diff introduces that coupling.
+
+## Evidence bar
+
+Same spirit as **`.cursor/commands/review.md`**: no hypothetical “operators might add WAF later.” If the diff does not touch templates/IaC/workflows that provision AWS, **Cost impact: None identified** is correct.

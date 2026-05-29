@@ -22,6 +22,41 @@ def _verify_rds_reusable_text() -> str:
     return path.read_text(encoding="utf-8")
 
 
+def test_deploy_workflow_has_no_waf_jobs() -> None:
+    text = _workflow_text()
+    for forbidden in (
+        "deploy-api-waf-dev",
+        "deploy-edge-waf-dev",
+        "deploy-api-waf-prod",
+        "deploy-edge-waf-prod",
+        "deploy-api-waf.sh",
+        "deploy-edge-waf.sh",
+    ):
+        assert forbidden not in text, f"unexpected WAF reference {forbidden!r}"
+
+
+def test_waf_templates_and_deploy_scripts_removed() -> None:
+    root = _repo_root()
+    for rel in (
+        "infrastructure/templates/api-waf-stack.yaml",
+        "infrastructure/templates/edge-waf-stack.yaml",
+        "scripts/deploy-api-waf.sh",
+        "scripts/deploy-edge-waf.sh",
+    ):
+        assert not (root / rel).is_file(), f"WAF artifact should be removed: {rel}"
+
+
+def test_infrastructure_readme_does_not_list_waf_templates() -> None:
+    readme = (_repo_root() / "infrastructure" / "README.md").read_text(encoding="utf-8")
+    for forbidden in ("api-waf-stack.yaml", "edge-waf-stack.yaml"):
+        assert forbidden not in readme, f"infrastructure/README.md must not list {forbidden!r}"
+
+
+def test_delete_waf_stacks_cleanup_script_present() -> None:
+    path = _repo_root() / "scripts" / "delete-waf-stacks.sh"
+    assert path.is_file(), "missing scripts/delete-waf-stacks.sh (documented in ImplementationHistory.md)"
+
+
 def test_deploy_workflow_includes_prod_rds_job_ids() -> None:
     text = _workflow_text()
     for needle in (
@@ -30,50 +65,6 @@ def test_deploy_workflow_includes_prod_rds_job_ids() -> None:
         "  verify-prod-rds:",
     ):
         assert needle in text, f"missing job block {needle!r}"
-
-
-def test_deploy_workflow_includes_waf_job_ids() -> None:
-    text = _workflow_text()
-    for needle in (
-        "  deploy-api-waf-dev:",
-        "  deploy-edge-waf-dev:",
-        "  deploy-api-waf-prod:",
-        "  deploy-edge-waf-prod:",
-    ):
-        assert needle in text, f"missing job block {needle!r}"
-
-
-def test_deploy_api_waf_dev_depends_on_backend_dev() -> None:
-    text = _workflow_text()
-    block = _job_block(text, "deploy-api-waf-dev", "\n  deploy-web-dev:")
-    assert "deploy-backend-dev" in block
-    assert "needs.deploy-backend-dev.result == 'success'" in block
-    assert "deploy-api-waf.sh dev" in block
-
-
-def test_deploy_edge_waf_dev_depends_on_edge_dev() -> None:
-    text = _workflow_text()
-    block = _job_block(text, "deploy-edge-waf-dev", "\n  # Deploys the RDS PostgreSQL")
-    assert "deploy-edge-dev" in block
-    assert "needs.deploy-edge-dev.result == 'success'" in block
-    assert "deploy-edge-waf.sh dev" in block
-    assert "AWS_REGION: us-east-1" in block
-
-
-def test_deploy_api_waf_prod_depends_on_backend_prod() -> None:
-    text = _workflow_text()
-    block = _job_block(text, "deploy-api-waf-prod", "\n  # Prod-only CloudFormation")
-    assert "deploy-backend-prod" in block
-    assert "needs.deploy-backend-prod.result == 'success'" in block
-    assert "deploy-api-waf.sh prod" in block
-
-
-def test_deploy_edge_waf_prod_depends_on_edge_prod() -> None:
-    text = _workflow_text()
-    block = _job_block(text, "deploy-edge-waf-prod", "\n  deploy-rds-prod:")
-    assert "deploy-edge-prod" in block
-    assert "needs.deploy-edge-prod.result == 'success'" in block
-    assert "deploy-edge-waf.sh prod" in block
 
 
 def test_deploy_backend_uses_repository_variable_for_oidc_role_not_environment_secret() -> None:

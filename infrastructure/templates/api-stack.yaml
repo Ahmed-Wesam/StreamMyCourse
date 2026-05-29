@@ -1955,7 +1955,7 @@ Resources:
     Properties:
       AlarmName: !Sub 'StreamMyCourse-CatalogApi-${Environment}-4XX'
       AlarmDescription: >-
-        Catalog API stage 4XX spike (client errors, gateway throttles, WAF blocks).
+        Catalog API stage 4XX spike (client errors, gateway throttles).
         Lambda rate-limit denials log rate_limit_denied; filter CloudWatch Logs on that key.
       Namespace: AWS/ApiGateway
       MetricName: 4XXError
