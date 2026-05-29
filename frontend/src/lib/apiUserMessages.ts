@@ -38,7 +38,7 @@ export const courseNotFoundMessage =
   'That course was not found or you no longer have access to it.'
 
 /** Shown when Kinescope playback is blocked because profile claims lack a usable name or email. */
-export const watermarkProfileIncompletePlaybackMessage =
+const watermarkProfileIncompletePlaybackMessage =
   'Video playback requires your Google account name and email. Sign out and sign in again with Google, or contact support if this continues.'
 
 type ApiUserMessageContext =
