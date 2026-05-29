@@ -3,7 +3,7 @@
  */
 import { act, cleanup, render, screen, waitFor } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { sessionSupersededUserMessage } from '../lib/apiUserMessages'
 import {
@@ -57,6 +57,10 @@ function renderGuard(initialPath = '/') {
 }
 
 describe('StudentSessionGuard', () => {
+  beforeEach(() => {
+    resetSessionSupersededNotifyCooldownForTests()
+  })
+
   afterEach(() => {
     cleanup()
     vi.useRealTimers()
@@ -145,8 +149,10 @@ describe('StudentSessionGuard', () => {
     expect(hubCallback).toBeDefined()
 
     notifySessionSuperseded()
-    await waitFor(() => expect(lazySignOutMock).toHaveBeenCalledTimes(1))
-    expect(screen.getByTestId('session-superseded-banner')).toBeTruthy()
+    await waitFor(() => {
+      expect(lazySignOutMock).toHaveBeenCalledTimes(1)
+      expect(screen.getByTestId('session-superseded-banner')).toBeTruthy()
+    })
 
     hubCallback!({ payload: { event: 'signedIn' } })
 
