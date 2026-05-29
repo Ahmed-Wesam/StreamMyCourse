@@ -1,11 +1,13 @@
-import { lazy } from 'react'
+import { lazy, Suspense } from 'react'
 import { Navigate, Route, Routes, useLocation } from 'react-router-dom'
 import HomePage from '../pages/HomePage'
 import { AuthGate } from '../components/auth/AuthGate'
 import { StudentAccountAuth } from '../components/auth/StudentAccountAuth'
 import { AccountLayout } from '../pages/account/AccountLayout'
 import { StudentHeader } from './StudentHeader'
-import { StudentSessionGuard } from './StudentSessionGuard'
+const StudentSessionGuard = lazy(() =>
+  import('./StudentSessionGuard').then((m) => ({ default: m.StudentSessionGuard })),
+)
 import { Layout } from '../components/layout/Layout'
 import { LazyRoute } from '../components/layout/RouteChunkFallback'
 import { ScrollToTop } from './ScrollToTop'
@@ -36,7 +38,8 @@ function LegacyPathRedirect({ to }: { to: string }) {
 function StudentApp() {
   return (
     <AuthGate>
-      <StudentSessionGuard>
+      <Suspense fallback={null}>
+        <StudentSessionGuard>
         <Layout chromeHeader={<StudentHeader />}>
         <ScrollToTop />
         <Routes>
@@ -156,7 +159,8 @@ function StudentApp() {
         <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </Layout>
-      </StudentSessionGuard>
+        </StudentSessionGuard>
+      </Suspense>
     </AuthGate>
   )
 }
