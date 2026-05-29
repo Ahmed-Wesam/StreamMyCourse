@@ -2,19 +2,26 @@
  * @vitest-environment jsdom
  */
 import { cleanup, render, screen, waitFor } from '@testing-library/react'
+import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { sessionSupersededUserMessage } from '../lib/apiUserMessages'
 import { notifySessionSuperseded, resetSessionSupersededListenersForTests } from '../lib/handleSessionSuperseded'
+import { SESSION_SUPERSEDED_BANNER_KEY } from '../lib/session-superseded-banner'
 
-const lazySignOutMock = vi.hoisted(() => vi.fn().mockResolvedValue(undefined))
+const lazySignOutMock = vi.hoisted(() =>
+  vi.fn(async () => {
+    const { clearClientAuthState } = await import('../lib/clear-client-auth-state')
+    clearClientAuthState()
+  }),
+)
 const probeSignedInMock = vi.hoisted(() => vi.fn().mockResolvedValue(false))
 const registerStudentSessionRefreshMetadataMock = vi.hoisted(() => vi.fn())
 const hubListenMock = vi.hoisted(() => vi.fn().mockReturnValue(() => {}))
 
 vi.mock('../lib/auth-session-lazy', () => ({
-  lazySignOut: (...args: unknown[]) => lazySignOutMock(...args),
-  probeSignedIn: (...args: unknown[]) => probeSignedInMock(...args),
+  lazySignOut: () => lazySignOutMock(),
+  probeSignedIn: () => probeSignedInMock(),
 }))
 
 vi.mock('../lib/student-session-refresh', () => ({
@@ -25,11 +32,31 @@ vi.mock('aws-amplify/utils', () => ({
   Hub: { listen: hubListenMock },
 }))
 
+vi.mock('../lib/session-superseded-banner', async (importOriginal) => {
+  const mod = await importOriginal<typeof import('../lib/session-superseded-banner')>()
+  return { ...mod, SUPERSEDED_REDIRECT_DELAY_MS: 30 }
+})
+
 import { StudentSessionGuard } from './StudentSessionGuard'
+
+function renderGuard(initialPath = '/') {
+  return render(
+    <MemoryRouter initialEntries={[initialPath]}>
+      <StudentSessionGuard>
+        <Routes>
+          <Route path="/login" element={<div data-testid="login-page" />} />
+          <Route path="*" element={<div data-testid="child" />} />
+        </Routes>
+      </StudentSessionGuard>
+    </MemoryRouter>,
+  )
+}
 
 describe('StudentSessionGuard', () => {
   afterEach(() => {
     cleanup()
+    vi.useRealTimers()
+    sessionStorage.clear()
     resetSessionSupersededListenersForTests()
     lazySignOutMock.mockClear()
     probeSignedInMock.mockReset()
@@ -38,23 +65,15 @@ describe('StudentSessionGuard', () => {
   })
 
   it('registers student refresh metadata on mount without AuthenticatorProvider', async () => {
-    render(
-      <StudentSessionGuard>
-        <div data-testid="child" />
-      </StudentSessionGuard>,
-    )
+    renderGuard()
     expect(screen.getByTestId('child')).toBeTruthy()
     await waitFor(() => {
       expect(registerStudentSessionRefreshMetadataMock).toHaveBeenCalledTimes(1)
     })
   })
 
-  it('calls lazySignOut and shows banner on session_superseded', async () => {
-    render(
-      <StudentSessionGuard>
-        <div data-testid="child" />
-      </StudentSessionGuard>,
-    )
+  it('calls lazySignOut, shows banner, then navigates to /login after a delay', async () => {
+    renderGuard('/courses')
 
     await waitFor(() => {
       expect(registerStudentSessionRefreshMetadataMock).toHaveBeenCalledTimes(1)
@@ -64,8 +83,45 @@ describe('StudentSessionGuard', () => {
 
     await waitFor(() => {
       expect(lazySignOutMock).toHaveBeenCalledTimes(1)
+      const banner = screen.getByTestId('session-superseded-banner')
+      expect(banner.textContent).toContain(sessionSupersededUserMessage)
     })
-    expect(screen.getByTestId('session-superseded-banner').textContent).toContain(sessionSupersededUserMessage)
+    expect(sessionStorage.getItem(SESSION_SUPERSEDED_BANNER_KEY)).toBe(
+      sessionSupersededUserMessage,
+    )
+
+    await waitFor(() => {
+      expect(screen.getByTestId('login-page')).toBeTruthy()
+      expect(screen.getByTestId('session-superseded-banner')).toBeTruthy()
+    })
+  })
+
+  it('cancels delayed /login redirect when Hub signedIn clears the banner', async () => {
+    let hubCallback: ((data: { payload: { event: string } }) => void) | undefined
+    hubListenMock.mockImplementation((channel, cb) => {
+      void channel
+      hubCallback = cb
+      return () => {}
+    })
+
+    renderGuard('/courses')
+
+    await waitFor(() => {
+      expect(registerStudentSessionRefreshMetadataMock).toHaveBeenCalledTimes(1)
+    })
+
+    notifySessionSuperseded()
+    await waitFor(() => expect(lazySignOutMock).toHaveBeenCalledTimes(1))
+
+    hubCallback!({ payload: { event: 'signedIn' } })
+
+    await waitFor(() => {
+      expect(screen.queryByTestId('session-superseded-banner')).toBeNull()
+    })
+
+    await new Promise((resolve) => setTimeout(resolve, 50))
+    expect(screen.queryByTestId('login-page')).toBeNull()
+    expect(screen.getByTestId('child')).toBeTruthy()
   })
 
   it('clears banner and re-arms handler after Hub signedIn', async () => {
@@ -76,11 +132,7 @@ describe('StudentSessionGuard', () => {
       return () => {}
     })
 
-    render(
-      <StudentSessionGuard>
-        <div data-testid="child" />
-      </StudentSessionGuard>,
-    )
+    renderGuard()
 
     await waitFor(() => {
       expect(hubListenMock).toHaveBeenCalledWith('auth', expect.any(Function))
@@ -107,11 +159,7 @@ describe('StudentSessionGuard', () => {
       () => new Promise<void>((resolve) => setTimeout(resolve, 50)),
     )
 
-    render(
-      <StudentSessionGuard>
-        <div data-testid="child" />
-      </StudentSessionGuard>,
-    )
+    renderGuard()
 
     await waitFor(() => {
       expect(registerStudentSessionRefreshMetadataMock).toHaveBeenCalledTimes(1)
@@ -126,16 +174,37 @@ describe('StudentSessionGuard', () => {
   it('clears banner on mount when probeSignedIn is true', async () => {
     probeSignedInMock.mockResolvedValue(true)
 
-    render(
-      <StudentSessionGuard>
-        <div data-testid="child" />
-      </StudentSessionGuard>,
-    )
+    renderGuard()
 
     await waitFor(() => {
       expect(probeSignedInMock).toHaveBeenCalled()
     })
     expect(screen.queryByTestId('session-superseded-banner')).toBeNull()
+  })
+
+  it('still shows banner and schedules redirect when lazySignOut rejects', async () => {
+    lazySignOutMock.mockRejectedValueOnce(new Error('signOut failed'))
+
+    renderGuard('/courses')
+
+    await waitFor(() => {
+      expect(registerStudentSessionRefreshMetadataMock).toHaveBeenCalledTimes(1)
+    })
+
+    notifySessionSuperseded()
+
+    await waitFor(() => {
+      expect(lazySignOutMock).toHaveBeenCalledTimes(1)
+      expect(screen.getByTestId('session-superseded-banner')).toBeTruthy()
+      expect(sessionStorage.getItem(SESSION_SUPERSEDED_BANNER_KEY)).toBe(
+        sessionSupersededUserMessage,
+      )
+    })
+
+    await waitFor(() => {
+      expect(screen.getByTestId('login-page')).toBeTruthy()
+      expect(screen.getByTestId('session-superseded-banner')).toBeTruthy()
+    })
   })
 
   it('keeps superseded banner when probeSignedIn resolves during handling', async () => {
@@ -148,11 +217,7 @@ describe('StudentSessionGuard', () => {
     )
     lazySignOutMock.mockImplementation(() => new Promise(() => {}))
 
-    render(
-      <StudentSessionGuard>
-        <div data-testid="child" />
-      </StudentSessionGuard>,
-    )
+    renderGuard()
 
     await waitFor(() => {
       expect(registerStudentSessionRefreshMetadataMock).toHaveBeenCalledTimes(1)

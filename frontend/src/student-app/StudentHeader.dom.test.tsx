@@ -6,7 +6,7 @@
 
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 
-import { MemoryRouter, Route, Routes } from 'react-router-dom'
+import { MemoryRouter, Route, Routes, useNavigate } from 'react-router-dom'
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -47,6 +47,10 @@ const sessionLazy = vi.hoisted(() => ({
   warmUserProfileOnce: vi.fn(),
 
 }))
+
+
+
+const hubListenMock = vi.hoisted(() => vi.fn().mockReturnValue(() => {}))
 
 
 
@@ -116,6 +120,14 @@ vi.mock('aws-amplify/auth', () => ({
 
 
 
+vi.mock('aws-amplify/utils', () => ({
+
+  Hub: { listen: hubListenMock },
+
+}))
+
+
+
 function flushRequestIdleCallbacks() {
 
   const pending = [...idleCallbacks]
@@ -159,6 +171,10 @@ describe('StudentHeader', () => {
     sessionLazy.warmUserProfileOnce.mockResolvedValue(undefined)
 
     amplifyAuth.signOut.mockReset()
+
+    hubListenMock.mockClear()
+
+    hubListenMock.mockReturnValue(() => {})
 
   })
 
@@ -511,6 +527,122 @@ describe('StudentHeader', () => {
       await waitFor(() =>
         expect(sessionLazy.warmUserProfileOnce).toHaveBeenCalledWith(true),
       )
+
+    })
+
+
+
+    it('updates to Sign out when Hub fires signedIn', async () => {
+
+      let hubCallback: ((data: { payload: { event: string } }) => void) | undefined
+
+      hubListenMock.mockImplementation((channel, cb) => {
+
+        void channel
+
+        hubCallback = cb
+
+        return () => {}
+
+      })
+
+
+
+      auth.isAuthConfigured.mockReturnValue(true)
+
+      sessionLazy.probeSignedIn.mockResolvedValue(true)
+
+      api.hasSignedInIdToken.mockResolvedValue(false)
+
+
+
+      render(
+
+        <MemoryRouter initialEntries={['/']}>
+
+          <StudentHeader />
+
+        </MemoryRouter>,
+
+      )
+
+
+
+      expect(await screen.findByRole('link', { name: 'Sign in' })).toBeTruthy()
+
+      expect(hubCallback).toBeDefined()
+
+
+
+      await act(async () => {
+
+        hubCallback!({ payload: { event: 'signedIn' } })
+
+      })
+
+
+
+      expect(await screen.findByRole('button', { name: 'Sign out' })).toBeTruthy()
+
+    })
+
+
+
+    it('probes immediately when OAuth callback query params are cleared', async () => {
+
+      auth.isAuthConfigured.mockReturnValue(true)
+
+      sessionLazy.probeSignedIn.mockResolvedValue(true)
+
+
+
+      function Shell() {
+
+        const navigate = useNavigate()
+
+        return (
+
+          <>
+
+            <StudentHeader />
+
+            <button type="button" onClick={() => navigate('/')}>Leave OAuth</button>
+
+          </>
+
+        )
+
+      }
+
+
+
+      render(
+
+        <MemoryRouter initialEntries={['/?code=x&state=y']}>
+
+          <Routes>
+
+            <Route path="*" element={<Shell />} />
+
+          </Routes>
+
+        </MemoryRouter>,
+
+      )
+
+
+
+      expect(sessionLazy.probeSignedIn).not.toHaveBeenCalled()
+
+
+
+      fireEvent.click(screen.getByRole('button', { name: 'Leave OAuth' }))
+
+
+
+      await waitFor(() => expect(sessionLazy.probeSignedIn).toHaveBeenCalledTimes(1))
+
+      expect(await screen.findByRole('button', { name: 'Sign out' })).toBeTruthy()
 
     })
 
