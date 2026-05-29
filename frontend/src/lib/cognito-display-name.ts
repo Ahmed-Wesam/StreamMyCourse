@@ -1,7 +1,7 @@
 import { fetchAuthSession } from 'aws-amplify/auth'
 import { useEffect, useState } from 'react'
 
-import { isStudentSessionSuperseded } from './student-session-superseded'
+import { isStudentSessionSuperseded } from './student-session-superseded-state'
 
 const PROFILE_CLAIM_KEYS = ['email', 'given_name', 'name', 'nickname', 'preferred_username'] as const
 

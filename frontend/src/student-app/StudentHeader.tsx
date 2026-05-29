@@ -11,7 +11,7 @@ import { needsAuthBootstrap } from '../lib/auth-bootstrap'
 import { lazySignOut, probeSignedIn, warmUserProfileOnce } from '../lib/auth-session-lazy'
 
 import { clearClientAuthState } from '../lib/clear-client-auth-state'
-import { isStudentSessionSuperseded } from '../lib/student-session-superseded'
+import { isStudentSessionSuperseded } from '../lib/student-session-superseded-state'
 
 import { isAuthConfigured } from '../lib/auth'
 

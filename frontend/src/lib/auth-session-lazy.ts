@@ -4,7 +4,7 @@
  */
 
 import { clearClientAuthState } from './clear-client-auth-state'
-import { isStudentSessionSuperseded } from './student-session-superseded'
+import { isStudentSessionSuperseded } from './student-session-superseded-state'
 
 let profileWarmDone = false
 let amplifyConfigured = false
