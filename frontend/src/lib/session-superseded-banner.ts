@@ -1,8 +1,13 @@
+import { clearAmplifyAuthCaches } from './clear-amplify-auth-caches'
+import { clearSessionSupersedeHandling } from './session-supersede-handling'
+import { restoreStudentSessionRefreshMetadata } from './student-session-refresh'
+
 /** sessionStorage key — survives route change to /login so the supersede message stays visible. */
 export const SESSION_SUPERSEDED_BANNER_KEY = 'smc:sessionSupersededMessage'
 
-/** Delay before redirecting to /login so users can read the banner on the current page. */
-export const SUPERSEDED_REDIRECT_DELAY_MS = 5000
+type SessionSupersededDismissListener = () => void
+
+const dismissListeners = new Set<SessionSupersededDismissListener>()
 
 export function persistSessionSupersededBanner(message: string): void {
   try {
@@ -27,4 +32,28 @@ export function clearSessionSupersededBanner(): void {
   } catch {
     /* ignore */
   }
+}
+
+/** Subscribe to user dismiss of the global supersede banner (e.g. revoke lesson playback). */
+export function subscribeSessionSupersededDismiss(listener: SessionSupersededDismissListener): () => void {
+  dismissListeners.add(listener)
+  return () => {
+    dismissListeners.delete(listener)
+  }
+}
+
+/** User dismissed the banner: hide UI, release latch, and wipe stale Amplify caches. */
+export function dismissSessionSupersededBannerUi(): void {
+  clearSessionSupersededBanner()
+  clearSessionSupersedeHandling()
+  restoreStudentSessionRefreshMetadata()
+  clearAmplifyAuthCaches()
+  for (const listener of dismissListeners) {
+    listener()
+  }
+}
+
+/** Test helper only. */
+export function resetSessionSupersededDismissListenersForTests(): void {
+  dismissListeners.clear()
 }

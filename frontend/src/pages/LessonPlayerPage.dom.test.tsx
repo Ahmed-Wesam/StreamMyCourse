@@ -6,6 +6,11 @@ import { createMemoryRouter, MemoryRouter, Route, RouterProvider, Routes } from 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { ApiError } from '../lib/api/client'
+import {
+  notifySessionSuperseded,
+  resetSessionSupersededListenersForTests,
+} from '../lib/handleSessionSuperseded'
+import { SESSION_SUPERSEDED_BANNER_KEY } from '../lib/session-superseded-banner'
 import LessonPlayerPage from './LessonPlayerPage'
 
 const api = vi.hoisted(() => ({
@@ -188,6 +193,8 @@ describe('LessonPlayerPage', () => {
 
   afterEach(() => {
     cleanup()
+    sessionStorage.clear()
+    resetSessionSupersededListenersForTests()
     vi.restoreAllMocks()
   })
 
@@ -201,6 +208,22 @@ describe('LessonPlayerPage', () => {
     })
 
     expect(video.playsInline).toBe(true)
+  })
+
+  it('stops playback and shows sign-in when session superseded fires', async () => {
+    renderLessonPlayer()
+
+    await waitFor(() => {
+      expect(document.querySelector('video')).not.toBeNull()
+    })
+
+    sessionStorage.setItem(SESSION_SUPERSEDED_BANNER_KEY, 'Signed in elsewhere')
+    notifySessionSuperseded()
+
+    await waitFor(() => {
+      expect(document.querySelector('video')).toBeNull()
+      expect(screen.getByText('Sign in to watch')).toBeTruthy()
+    })
   })
 
   it('renders Kinescope player for provider playback payloads', async () => {

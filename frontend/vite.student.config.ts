@@ -49,6 +49,9 @@ export default defineConfig(({ mode, command }) => {
         },
       },
     },
+    optimizeDeps: {
+      include: ['@kinescope/react-kinescope-player'],
+    },
     server: {
       host: true,
       port: 5173,

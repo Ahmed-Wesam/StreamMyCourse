@@ -3,10 +3,16 @@ import { Hub } from 'aws-amplify/utils'
 
 import { sessionSupersededUserMessage } from '../lib/apiUserMessages'
 import { lazySignOut, probeSignedIn } from '../lib/auth-session-lazy'
-import { subscribeSessionSuperseded } from '../lib/handleSessionSuperseded'
+import {
+  reapplySessionSupersedeGuards,
+  subscribeSessionSuperseded,
+} from '../lib/handleSessionSuperseded'
+import { clearSessionSupersedeHandling } from '../lib/session-supersede-handling'
+import { restoreStudentSessionRefreshMetadata } from '../lib/student-session-refresh'
 import {
   clearSessionSupersededBanner,
   persistSessionSupersededBanner,
+  readSessionSupersededBanner,
 } from '../lib/session-superseded-banner'
 
 function clearSupersededUiState(
@@ -14,13 +20,32 @@ function clearSupersededUiState(
   setMessage: Dispatch<SetStateAction<string | null>>,
 ) {
   handlingRef.current = false
+  clearSessionSupersedeHandling()
+  restoreStudentSessionRefreshMetadata()
   clearSessionSupersededBanner()
   setMessage(null)
 }
 
+function showSupersededBanner(setMessage: Dispatch<SetStateAction<string | null>>): void {
+  persistSessionSupersededBanner(sessionSupersededUserMessage)
+  setMessage(sessionSupersededUserMessage)
+}
+
+function completeSupersededSignOut(
+  handlingRef: MutableRefObject<boolean>,
+  setMessage: Dispatch<SetStateAction<string | null>>,
+  onAfterSuperseded?: () => void,
+): void {
+  if (!handlingRef.current) return
+  showSupersededBanner(setMessage)
+  onAfterSuperseded?.()
+  // Allow Hub signedIn to verify a real new session; latch stays armed until then or dismiss.
+  handlingRef.current = false
+}
+
 type StudentSessionControllerProps = {
   onMessage: Dispatch<SetStateAction<string | null>>
-  /** Called after supersede sign-out completes (e.g. delayed redirect to /login). */
+  /** Called after supersede sign-out completes (e.g. re-sync banner from sessionStorage). */
   onAfterSuperseded?: () => void
 }
 
@@ -36,7 +61,17 @@ export function StudentSessionController({
     const hubStop = Hub.listen('auth', ({ payload }) => {
       const event = payload.event as string
       if (event === 'signedIn') {
-        clearSupersededUiState(handlingRef, onMessage)
+        if (handlingRef.current) return
+        void (async () => {
+          const signedIn = await probeSignedIn({ bypassSupersedeLatch: true })
+          if (cancelled || !signedIn) {
+            if (readSessionSupersededBanner()) {
+              reapplySessionSupersedeGuards()
+            }
+            return
+          }
+          clearSupersededUiState(handlingRef, onMessage)
+        })()
       }
       if (event === 'signedOut') {
         handlingRef.current = false
@@ -44,6 +79,12 @@ export function StudentSessionController({
     })
 
     void (async () => {
+      const persisted = readSessionSupersededBanner()
+      if (persisted) {
+        reapplySessionSupersedeGuards()
+        onMessage(persisted)
+        return
+      }
       const signedIn = await probeSignedIn()
       if (cancelled || !signedIn || handlingRef.current) return
       clearSupersededUiState(handlingRef, onMessage)
@@ -59,21 +100,10 @@ export function StudentSessionController({
     return subscribeSessionSuperseded(() => {
       if (handlingRef.current) return
       handlingRef.current = true
-      persistSessionSupersededBanner(sessionSupersededUserMessage)
-      onMessage(sessionSupersededUserMessage)
+      showSupersededBanner(onMessage)
       void lazySignOut()
-        .then(() => {
-          if (!handlingRef.current) return
-          // lazySignOut clears sessionStorage; restore banner for /login and remounts.
-          persistSessionSupersededBanner(sessionSupersededUserMessage)
-          onAfterSuperseded?.()
-        })
-        .catch(() => {
-          if (!handlingRef.current) return
-          handlingRef.current = false
-          persistSessionSupersededBanner(sessionSupersededUserMessage)
-          onAfterSuperseded?.()
-        })
+        .then(() => completeSupersededSignOut(handlingRef, onMessage, onAfterSuperseded))
+        .catch(() => completeSupersededSignOut(handlingRef, onMessage, onAfterSuperseded))
     })
   }, [onMessage, onAfterSuperseded])
 

@@ -17,13 +17,18 @@ import {
   listCourseModules,
   updateLessonProgress,
 } from '../lib/api/catalog'
-import { isCourseAccessDeniedError, isPlaybackAuthRequiredError } from '../lib/api/client'
+import {
+  isCourseAccessDeniedError,
+  isPlaybackAuthRequiredError,
+  isSessionSupersededError,
+} from '../lib/api/client'
 import type { Course, CourseModule, CourseProgress, Lesson, Playback } from '../lib/api/types'
 import {
   catalogApiUserMessage,
   courseNotFoundMessage,
   incompleteLessonPlayerLinkMessage,
 } from '../lib/apiUserMessages'
+import { useRevokeLessonPlaybackOnSessionSuperseded } from '../lib/use-revoke-lesson-playback-on-session-superseded'
 import { readMdUpMatch, useIsMdUp } from '../lib/useMediaQuery'
 import { LessonPlayerMobileView } from './lesson-player/LessonPlayerMobileView'
 import {
@@ -206,6 +211,21 @@ export default function LessonPlayerPage() {
   const lastPlaybackDurationRef = useRef(0)
 
   const playbackNavLocked = needsSubscription || needsSignIn
+  const guardedPlayback = playbackNavLocked ? null : playback
+
+  const revokePlaybackAccess = useCallback(() => {
+    setPlayback(null)
+    setNeedsSignIn(true)
+    setNeedsSubscription(false)
+    const video = videoRef.current
+    if (video) {
+      video.pause()
+      video.removeAttribute('src')
+      video.load()
+    }
+  }, [])
+
+  useRevokeLessonPlaybackOnSessionSuperseded(revokePlaybackAccess)
 
   useEffect(() => {
     return () => {
@@ -256,7 +276,7 @@ export default function LessonPlayerPage() {
             setPlayback(null)
             setError(null)
             setCourseProgress(null)
-          } else if (isPlaybackAuthRequiredError(inner)) {
+          } else if (isPlaybackAuthRequiredError(inner) || isSessionSupersededError(inner)) {
             setNeedsSignIn(true)
             setPlayback(null)
             setError(null)
@@ -762,7 +782,7 @@ export default function LessonPlayerPage() {
         activeLessonTitle={activeLessonTitle}
         activeModuleLabel={activeModuleLabel}
         loading={loading}
-        playback={playback}
+        playback={guardedPlayback}
         resumeTimeSec={playbackResumeTimeSec}
         videoRef={videoRef}
         onS3LoadedMetadata={handleS3LoadedMetadata}
@@ -894,7 +914,7 @@ export default function LessonPlayerPage() {
 
             <LessonPrimaryColumn
               loading={loading}
-              playback={playback}
+              playback={guardedPlayback}
               resumeTimeSec={playbackResumeTimeSec}
               videoRef={videoRef}
               onS3LoadedMetadata={handleS3LoadedMetadata}

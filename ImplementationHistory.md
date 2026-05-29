@@ -9,20 +9,22 @@
 ### Goal
 
 Fix stale student SPA state after OAuth sign-in and when another device supersedes the session:
-header shows correct signed-in chrome, supersede banner stays readable before `/login`, and
-Cognito refresh denies only trigger sign-out when RDS stale-session markers match.
+avoid tab freeze from Cognito refresh loops, show one global supersede banner (no auto-redirect),
+revoke lesson playback on supersede/dismiss, and keep header/API probes consistent after reload.
 
 ### Changes
 
 - [x] **Detection** — [`cognito-session-superseded.ts`](frontend/src/lib/cognito-session-superseded.ts): marker-only match aligned with [`session_sync.py`](infrastructure/lambda/cognito_user_profile_sync/session_sync.py); wired in [`api/client.ts`](frontend/src/lib/api/client.ts), [`api/session.ts`](frontend/src/lib/api/session.ts), and [`install-session-superseded-rejection-handler.ts`](frontend/src/lib/install-session-superseded-rejection-handler.ts) (student entry in [`student-main.tsx`](frontend/src/student-main.tsx)).
-- [x] **Sign-out** — [`clear-client-auth-state.ts`](frontend/src/lib/clear-client-auth-state.ts) shared wipe; [`lazySignOut`](frontend/src/lib/auth-session-lazy.ts) always clears in `finally`.
-- [x] **Banner + redirect** — [`session-superseded-banner.ts`](frontend/src/lib/session-superseded-banner.ts): `sessionStorage` persistence, 5s delay; [`StudentSessionGuard.tsx`](frontend/src/student-app/StudentSessionGuard.tsx) / [`StudentSessionController.tsx`](frontend/src/student-app/StudentSessionController.tsx) re-persist after `lazySignOut`, cancel redirect on `signedIn`.
-- [x] **Header** — [`StudentHeader.tsx`](frontend/src/student-app/StudentHeader.tsx): Hub `signedIn` + immediate probe after OAuth callback params clear.
-- [x] **Tests** — Vitest in `cognito-session-superseded.test.ts`, `session-superseded-banner.test.ts`, `StudentSessionGuard.dom.test.tsx`, `StudentHeader.dom.test.tsx`; `api.test.ts` refresh notify cases.
+- [x] **Latch + guards** — [`session-supersede-handling.ts`](frontend/src/lib/session-supersede-handling.ts) blocks Amplify fetches during supersede; [`reapplySessionSupersedeGuards()`](frontend/src/lib/handleSessionSuperseded.ts) arms latch, suspends refresh metadata, and clears Amplify caches on notify and on reload when the banner is persisted; [`restoreStudentSessionRefreshMetadata()`](frontend/src/lib/student-session-refresh.ts) on dismiss and verified re-login.
+- [x] **Sign-out / storage** — [`clear-amplify-auth-caches.ts`](frontend/src/lib/clear-amplify-auth-caches.ts); [`clear-client-auth-state.ts`](frontend/src/lib/clear-client-auth-state.ts) preserves banner/latch during supersede wipe; [`lazySignOut`](frontend/src/lib/auth-session-lazy.ts) skips Amplify `signOut` while latched; Hub `signedIn` uses `probeSignedIn({ bypassSupersedeLatch: true })`.
+- [x] **Global banner** — [`SessionSupersededBanner.tsx`](frontend/src/student-app/SessionSupersededBanner.tsx) under header via [`Layout`](frontend/src/components/layout/Layout.tsx) `chromeAlert`; dismiss (X) clears latch and caches; no timed redirect to `/login`; account pages suppress duplicate inline errors via [`session-superseded-inline.ts`](frontend/src/lib/session-superseded-inline.ts).
+- [x] **Lesson player** — [`use-revoke-lesson-playback-on-session-superseded.ts`](frontend/src/lib/use-revoke-lesson-playback-on-session-superseded.ts) nulls playback and pauses `<video>` on notify/dismiss/persisted banner; [`vite.student.config.ts`](frontend/vite.student.config.ts) pre-bundles Kinescope for dev.
+- [x] **Header** — [`StudentHeader.tsx`](frontend/src/student-app/StudentHeader.tsx): skip idle probe when latch or persisted banner; Hub `signedIn` + OAuth callback probe.
+- [x] **Tests** — Vitest: `StudentSessionGuard.dom.test.tsx`, `StudentHeader.dom.test.tsx`, `LessonPlayerPage.dom.test.tsx`, `clear-client-auth-state.test.ts`, `auth-session-lazy.test.ts`, `student-session-refresh.test.ts`, `session-superseded-banner.test.ts`.
 
 ### Verification
 
-- From `frontend/`: `npm run lint`, `npm run test -- --run`, `npm run build:all`
+- From `frontend/`: `npm run lint`, `npm run test`, `npm run knip`, `npm run build:all`
 
 ---
 

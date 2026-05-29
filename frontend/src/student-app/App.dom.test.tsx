@@ -76,6 +76,8 @@ const hubListenMock = vi.hoisted(() => vi.fn().mockReturnValue(() => {}))
 
 vi.mock('../lib/student-session-refresh', () => ({
   registerStudentSessionRefreshMetadata: registerStudentSessionRefreshMetadataMock,
+  restoreStudentSessionRefreshMetadata: vi.fn(),
+  suspendStudentSessionRefreshMetadata: vi.fn(),
 }))
 
 vi.mock('../lib/auth-session-lazy', () => ({

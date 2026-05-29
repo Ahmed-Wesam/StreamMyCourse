@@ -12,6 +12,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 
 
+import { SESSION_SUPERSEDED_BANNER_KEY } from '../lib/session-superseded-banner'
+
 import { StudentHeader } from './StudentHeader'
 
 
@@ -183,6 +185,8 @@ describe('StudentHeader', () => {
   afterEach(() => {
 
     cleanup()
+
+    sessionStorage.clear()
 
     vi.unstubAllGlobals()
 
@@ -444,7 +448,23 @@ describe('StudentHeader', () => {
 
     })
 
+    it('does not probe session while session-superseded banner is persisted', async () => {
+      auth.isAuthConfigured.mockReturnValue(true)
+      sessionStorage.setItem(SESSION_SUPERSEDED_BANNER_KEY, 'Signed in elsewhere')
+      sessionLazy.probeSignedIn.mockResolvedValue(true)
 
+      render(
+        <MemoryRouter initialEntries={['/']}>
+          <StudentHeader />
+        </MemoryRouter>,
+      )
+
+      await act(async () => {
+        flushRequestIdleCallbacks()
+      })
+
+      expect(sessionLazy.probeSignedIn).not.toHaveBeenCalled()
+    })
 
     it('does not probe session on OAuth callback URL before auth shell (sync render)', async () => {
 

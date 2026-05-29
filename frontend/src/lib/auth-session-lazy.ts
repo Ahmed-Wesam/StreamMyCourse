@@ -4,6 +4,7 @@
  */
 
 import { clearClientAuthState } from './clear-client-auth-state'
+import { isSessionSupersedeHandling } from './session-supersede-handling'
 
 let profileWarmDone = false
 let amplifyConfigured = false
@@ -29,8 +30,14 @@ async function ensureAmplifyConfigured(): Promise<boolean> {
   return true
 }
 
+type ProbeSignedInOptions = {
+  /** Allow token probe while supersede latch is armed (Hub re-login verification). */
+  bypassSupersedeLatch?: boolean
+}
+
 /** True when Cognito is configured and the user has an ID token (signed in). */
-export async function probeSignedIn(): Promise<boolean> {
+export async function probeSignedIn(options?: ProbeSignedInOptions): Promise<boolean> {
+  if (!options?.bypassSupersedeLatch && isSessionSupersedeHandling()) return false
   if (!(await ensureAmplifyConfigured())) return false
   const { hasSignedInIdToken } = await import('./api/session')
   return hasSignedInIdToken()
@@ -42,6 +49,7 @@ export async function probeSignedIn(): Promise<boolean> {
  * @param alreadySignedIn Skip probe when caller already verified session (e.g. header idle probe).
  */
 export async function warmUserProfileOnce(alreadySignedIn = false): Promise<void> {
+  if (isSessionSupersedeHandling()) return
   if (profileWarmDone) return
   if (!(await ensureAmplifyConfigured())) return
   if (!alreadySignedIn) {
@@ -59,11 +67,16 @@ export async function warmUserProfileOnce(alreadySignedIn = false): Promise<void
 
 export async function lazySignOut(): Promise<void> {
   resetProfileWarmState()
+  const skipAmplifySignOut = isSessionSupersedeHandling()
   try {
-    if (!(await ensureAmplifyConfigured())) return
+    if (skipAmplifySignOut || !(await ensureAmplifyConfigured())) return
     const { signOut } = await import('aws-amplify/auth')
     await signOut()
+  } catch {
+    /* Stale refresh deny can block signOut; storage wipe still runs in finally. */
   } finally {
+    const { releaseStudentSessionRefreshRegistration } = await import('./student-session-refresh')
+    releaseStudentSessionRefreshRegistration()
     clearClientAuthState()
   }
 }

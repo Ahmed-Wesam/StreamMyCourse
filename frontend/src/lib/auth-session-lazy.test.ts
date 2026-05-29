@@ -39,6 +39,29 @@ describe('auth-session-lazy', () => {
     expect(hasSignedInIdToken).toHaveBeenCalledTimes(1)
   })
 
+  it('probeSignedIn skips token read while supersede latch is armed', async () => {
+    const { armSessionSupersedeHandling, resetSessionSupersedeHandlingForTests } = await import(
+      './session-supersede-handling'
+    )
+    armSessionSupersedeHandling()
+    const { probeSignedIn } = await import('./auth-session-lazy')
+    await expect(probeSignedIn()).resolves.toBe(false)
+    expect(hasSignedInIdToken).not.toHaveBeenCalled()
+    resetSessionSupersedeHandlingForTests()
+  })
+
+  it('probeSignedIn bypassSupersedeLatch probes while latch is armed', async () => {
+    const { armSessionSupersedeHandling, resetSessionSupersedeHandlingForTests } = await import(
+      './session-supersede-handling'
+    )
+    hasSignedInIdToken.mockResolvedValue(true)
+    armSessionSupersedeHandling()
+    const { probeSignedIn } = await import('./auth-session-lazy')
+    await expect(probeSignedIn({ bypassSupersedeLatch: true })).resolves.toBe(true)
+    expect(hasSignedInIdToken).toHaveBeenCalledTimes(1)
+    resetSessionSupersedeHandlingForTests()
+  })
+
   it('warmUserProfileOnce calls fetchMe once when already signed in', async () => {
     fetchMe.mockResolvedValue({ id: 'u1', email: 'a@b.c' })
 
