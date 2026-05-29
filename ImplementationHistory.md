@@ -4,6 +4,28 @@
 
 ---
 
+## 2026-05-28 — Student session supersede client UX and hardening
+
+### Goal
+
+Fix stale student SPA state after OAuth sign-in and when another device supersedes the session:
+header shows correct signed-in chrome, supersede banner stays readable before `/login`, and
+Cognito refresh denies only trigger sign-out when RDS stale-session markers match.
+
+### Changes
+
+- [x] **Detection** — [`cognito-session-superseded.ts`](frontend/src/lib/cognito-session-superseded.ts): marker-only match aligned with [`session_sync.py`](infrastructure/lambda/cognito_user_profile_sync/session_sync.py); wired in [`api/client.ts`](frontend/src/lib/api/client.ts), [`api/session.ts`](frontend/src/lib/api/session.ts), and [`install-session-superseded-rejection-handler.ts`](frontend/src/lib/install-session-superseded-rejection-handler.ts) (student entry in [`student-main.tsx`](frontend/src/student-main.tsx)).
+- [x] **Sign-out** — [`clear-client-auth-state.ts`](frontend/src/lib/clear-client-auth-state.ts) shared wipe; [`lazySignOut`](frontend/src/lib/auth-session-lazy.ts) always clears in `finally`.
+- [x] **Banner + redirect** — [`session-superseded-banner.ts`](frontend/src/lib/session-superseded-banner.ts): `sessionStorage` persistence, 5s delay; [`StudentSessionGuard.tsx`](frontend/src/student-app/StudentSessionGuard.tsx) / [`StudentSessionController.tsx`](frontend/src/student-app/StudentSessionController.tsx) re-persist after `lazySignOut`, cancel redirect on `signedIn`.
+- [x] **Header** — [`StudentHeader.tsx`](frontend/src/student-app/StudentHeader.tsx): Hub `signedIn` + immediate probe after OAuth callback params clear.
+- [x] **Tests** — Vitest in `cognito-session-superseded.test.ts`, `session-superseded-banner.test.ts`, `StudentSessionGuard.dom.test.tsx`, `StudentHeader.dom.test.tsx`; `api.test.ts` refresh notify cases.
+
+### Verification
+
+- From `frontend/`: `npm run lint`, `npm run test -- --run`, `npm run build:all`
+
+---
+
 ## 2026-05-28 — Kinescope DRM auth wiring and player sizing
 
 ### Goal
