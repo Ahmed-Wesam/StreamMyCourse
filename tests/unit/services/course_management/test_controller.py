@@ -589,8 +589,9 @@ class TestHandleDispatchPerAction:
             "provider": "s3",
             "playbackUrl": "https://signed/x",
         }
+        claims = {"sub": "s1", "custom:role": "student"}
         evt = make_lambda_event(method="GET", path="/playback/c1/lid")
-        evt["requestContext"]["authorizer"] = {"claims": {"sub": "s1", "custom:role": "student"}}
+        evt["requestContext"]["authorizer"] = {"claims": claims}
         resp = handle(evt, origin="*", svc=svc, video_bucket="my-bucket", auth_svc=MagicMock())
         assert resp["statusCode"] == 200
         svc.ensure_can_view_lessons_and_playback.assert_called_once_with(
@@ -599,7 +600,7 @@ class TestHandleDispatchPerAction:
             role="student",
         )
         svc.get_playback_url.assert_called_once_with(
-            "c1", "lid", cognito_sub="s1", role="student"
+            "c1", "lid", cognito_sub="s1", role="student", viewer_claims=claims
         )
 
     def test_get_playback_returns_kinescope_union_payload(
@@ -609,6 +610,7 @@ class TestHandleDispatchPerAction:
             "provider": "kinescope",
             "videoId": "video-123",
             "drmAuthToken": "jwt-token",
+            "watermarkText": "Jane Doe\njane@gmail.com",
         }
         evt = make_lambda_event(method="GET", path="/playback/c1/lid")
         evt["requestContext"]["authorizer"] = {"claims": {"sub": "s1", "custom:role": "student"}}
@@ -619,6 +621,7 @@ class TestHandleDispatchPerAction:
             "provider": "kinescope",
             "videoId": "video-123",
             "drmAuthToken": "jwt-token",
+            "watermarkText": "Jane Doe\njane@gmail.com",
         }
 
     def test_get_course_200_auth_enforced_without_claims(
