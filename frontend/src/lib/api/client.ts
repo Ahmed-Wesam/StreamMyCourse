@@ -1,5 +1,6 @@
 import { fetchAuthSession } from 'aws-amplify/auth'
 
+import { isCognitoRefreshSessionSupersededError } from '../cognito-session-superseded'
 import { notifySessionSuperseded } from '../handleSessionSuperseded'
 
 const API_BASE_URL_RAW = import.meta.env.VITE_API_BASE_URL as string | undefined
@@ -202,12 +203,8 @@ async function authHeader(): Promise<Record<string, string>> {
       try {
         session = await refreshAuthSession()
         token = bearerFromSession(session)
-      } catch {
-        const { buildStudentRefreshClientMetadata, STUDENT_SESSION_METADATA_KEY } = await import(
-          '../student-session-refresh',
-        )
-        const meta = await buildStudentRefreshClientMetadata()
-        if (meta[STUDENT_SESSION_METADATA_KEY]) {
+      } catch (refreshError) {
+        if (isCognitoRefreshSessionSupersededError(refreshError)) {
           notifySessionSuperseded()
         }
       }
