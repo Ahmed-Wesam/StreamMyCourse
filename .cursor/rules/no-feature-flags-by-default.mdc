@@ -1,0 +1,32 @@
+---
+description: Ship features always-on; avoid disable toggles and soft-fallback flags
+alwaysApply: true
+---
+
+# No feature flags by default (StreamMyCourse)
+
+Do **not** add env vars, CloudFormation parameters, or config fields whose primary purpose is to **turn off shipped behavior** (e.g. `FEATURE_ENABLED=false`, `USE_X=true/false` rollout bypasses, “fail open when disabled” middleware skips).
+
+## Default stance
+
+- **Ship it on.** If the code path is part of the MVP or a merged feature, wire it in bootstrap and run it whenever its dependencies exist.
+- **Dependency gating is enough.** When RDS, a queue, or another resource is missing, return `catalog_unconfigured` / skip wiring — do not add a second “enabled” switch on top.
+- **Tune, don’t disable.** Numeric thresholds, allowlists, and CSV overrides (e.g. `RATE_LIMIT_MAX_OVERRIDES`) are fine when operators need to adjust limits without redeploying code.
+
+## When a toggle is acceptable
+
+Only add an explicit on/off control when **all** of these hold:
+
+1. There is a **documented, time-bounded** reason (incident kill switch, third-party sandbox vs live with different credentials — see existing billing mock pattern).
+2. The decision is recorded in an **ADR** or `design.md` with who flips it and when it comes out.
+3. Default in **deployed** stacks matches the intended production behavior (usually **on** / live).
+
+## Anti-patterns
+
+- `*_ENABLED` defaulting to `false` locally and `true` in CloudFormation — one behavior, one code path.
+- Middleware that no-ops when a flag is false while the service is wired.
+- “Just in case” fallbacks that hide misconfiguration instead of failing clearly.
+
+## Review checklist
+
+Before proposing a new env/param: *Can this be always-on with dependency checks only?* If yes, do that instead.
