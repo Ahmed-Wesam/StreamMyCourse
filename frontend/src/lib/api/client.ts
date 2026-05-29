@@ -159,6 +159,12 @@ export function isCannotCancelError(e: unknown): boolean {
   return e.status === 409 && e.code === 'cannot_cancel'
 }
 
+/** True when Kinescope playback is blocked because Cognito profile lacks first/last name or email for watermarking. */
+export function isWatermarkProfileIncompleteError(e: unknown): boolean {
+  if (!(e instanceof ApiError)) return false
+  return e.status === 403 && e.code === 'watermark_profile_incomplete'
+}
+
 /** True when catalog cancel succeeded but PayTabs cancel_agreement failed (WS8 manage contract). */
 export function isProviderCancelFailedError(e: unknown): boolean {
   if (!(e instanceof ApiError)) return false

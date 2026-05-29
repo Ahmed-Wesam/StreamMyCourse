@@ -158,7 +158,7 @@ export type Lesson = {
 
 export type Playback =
   | { provider: 's3'; playbackUrl: string }
-  | { provider: 'kinescope'; videoId: string; drmAuthToken: string }
+  | { provider: 'kinescope'; videoId: string; drmAuthToken: string; watermarkText: string }
 
 export type UserProfile = {
   userId: string

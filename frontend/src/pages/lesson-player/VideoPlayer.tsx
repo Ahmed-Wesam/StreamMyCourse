@@ -2,6 +2,7 @@ import { Suspense, lazy, useRef, type RefObject, type SyntheticEvent } from 'rea
 import type { EventTimeUpdateTypes } from '@kinescope/react-kinescope-player'
 
 import { parseKinescopeTimePayload } from '../../lib/kinescopePlayback'
+import { watermarkProfileIncompletePlaybackMessage } from '../../lib/apiUserMessages'
 import type { Playback } from '../../lib/api/types'
 
 const KinescopePlayer = lazy(() => import('@kinescope/react-kinescope-player'))
@@ -35,6 +36,15 @@ export function VideoPlayer({
   }
 
   if (playback.provider === 'kinescope') {
+    const watermarkText = playback.watermarkText?.trim()
+    if (!watermarkText) {
+      return (
+        <div className={className} role="alert">
+          {watermarkProfileIncompletePlaybackMessage}
+        </div>
+      )
+    }
+
     const seek = resumeTimeSec > 0 ? resumeTimeSec : undefined
     return (
       <Suspense
@@ -50,6 +60,7 @@ export function VideoPlayer({
             height="100%"
             className="h-full w-full"
             query={seek != null ? { seek } : undefined}
+            watermark={{ text: watermarkText, mode: 'random' }}
             onTimeUpdate={(data: EventTimeUpdateTypes) => {
               const { positionSec, durationSec } = parseKinescopeTimePayload(data)
               lastKinescopePositionRef.current = positionSec
