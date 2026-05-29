@@ -33,3 +33,7 @@ Otherwise omit entirely.
 ### Legacy shorthand (still in force)
 
 Do **not** list severity-ranked findings whose **only** rationale is a hypothetical future change—for example “if callers later switch tokens,” “if someone misconfigures X later,” unless the user explicitly asks for speculative or roadmap risk review.
+
+## Cost impact (required)
+
+After severity-ordered findings, follow **`.cursor/rules/review-aws-cost-alerts.mdc`**: add **`## Cost impact`** with evidence from the diff only (WAF, NAT Gateway, VPC endpoints, RDS scale-ups, new load balancers, etc.). Use **None identified in this diff.** when no paid always-on resources are added or materially changed.

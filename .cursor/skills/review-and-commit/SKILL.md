@@ -34,7 +34,7 @@ Combine **code review** and **`/commit`** in one workflow: review first, fix wha
    - Security issues must include: **what endpoint/path**, **what request**, and **what actual behavior** (or a minimal repro/test) that demonstrates the issue.
    - If after reading code you cannot prove the issue: **omit** or use **Out of scope (not counted as findings):** **without** a severity label—never **Medium/Low** “just in case.”
 
-4. **Output** — Report findings as the **primary** content, **ordered by severity** (critical first). Keep narrative minimal; findings matter most. Each bullet must include **file path(s)** and **what you read or ran** so the conclusion is checkable—not speculation.
+4. **Output** — Report findings as the **primary** content, **ordered by severity** (critical first). Keep narrative minimal; findings matter most. Each bullet must include **file path(s)** and **what you read or ran** so the conclusion is checkable—not speculation. After findings, add **`## Cost impact`** per **`.cursor/rules/review-aws-cost-alerts.mdc`** (diff-evidence only; not severity-ranked).
 
 5. **Fixes** — If there are issues worth fixing, **implement the fixes** in the repo (tests or code as appropriate). Do not stop at advice unless the issue truly needs a product decision.
 
