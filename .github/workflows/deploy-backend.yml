@@ -186,6 +186,23 @@ jobs:
             exit 1
           fi
 
+      - name: Ensure CI Cognito playback profile attributes (dev)
+        env:
+          COGNITO_TEST_PASSWORD: ${{ secrets.COGNITO_RDS_VERIFY_TEST_PASSWORD }}
+          COGNITO_TEST_USERNAME: ${{ vars.COGNITO_RDS_VERIFY_TEST_USERNAME }}
+          COGNITO_TEST_PASSWORD_ALT: ${{ secrets.COGNITO_RDS_VERIFY_TEST_PASSWORD_ALT }}
+          COGNITO_TEST_USERNAME_ALT: ${{ vars.COGNITO_RDS_VERIFY_TEST_USERNAME_ALT }}
+          COGNITO_TEST_PASSWORD_STUDENT: ${{ secrets.COGNITO_RDS_VERIFY_TEST_PASSWORD_STUDENT }}
+          COGNITO_TEST_USERNAME_STUDENT: ${{ vars.COGNITO_RDS_VERIFY_TEST_USERNAME_STUDENT }}
+        run: |
+          set -euo pipefail
+          if [[ -z "${COGNITO_TEST_PASSWORD:-}" ]]; then
+            echo "Skipping Cognito playback profile ensure (COGNITO_RDS_VERIFY_TEST_PASSWORD unset)"
+            exit 0
+          fi
+          export CI_RDS_VERIFY_AUTH_STACK=StreamMyCourse-Auth-dev
+          bash ./scripts/ensure-integration-cognito-playback-profiles.sh
+
       - name: Mint Cognito JWT (or static JWT fallback)
         env:
           COGNITO_TEST_PASSWORD: ${{ secrets.COGNITO_RDS_VERIFY_TEST_PASSWORD }}
