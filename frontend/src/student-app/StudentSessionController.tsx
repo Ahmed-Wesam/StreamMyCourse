@@ -4,27 +4,32 @@ import { Hub } from 'aws-amplify/utils'
 import { sessionSupersededUserMessage } from '../lib/apiUserMessages'
 import { lazySignOut, probeSignedIn } from '../lib/auth-session-lazy'
 import { subscribeSessionSuperseded } from '../lib/handleSessionSuperseded'
-import { registerStudentSessionRefreshMetadata } from '../lib/student-session-refresh'
+import {
+  clearSessionSupersededBanner,
+  persistSessionSupersededBanner,
+} from '../lib/session-superseded-banner'
 
 function clearSupersededUiState(
   handlingRef: MutableRefObject<boolean>,
   setMessage: Dispatch<SetStateAction<string | null>>,
 ) {
   handlingRef.current = false
+  clearSessionSupersededBanner()
   setMessage(null)
 }
 
 type StudentSessionControllerProps = {
   onMessage: Dispatch<SetStateAction<string | null>>
+  /** Called after supersede sign-out completes (e.g. delayed redirect to /login). */
+  onAfterSuperseded?: () => void
 }
 
-/** Lazy-loaded session wiring (Hub, refresh metadata, superseded sign-out). */
-export function StudentSessionController({ onMessage }: StudentSessionControllerProps) {
+/** Session wiring (Hub, superseded sign-out). Refresh metadata registers in StudentSessionGuard. */
+export function StudentSessionController({
+  onMessage,
+  onAfterSuperseded,
+}: StudentSessionControllerProps) {
   const handlingRef = useRef(false)
-
-  useEffect(() => {
-    registerStudentSessionRefreshMetadata()
-  }, [])
 
   useEffect(() => {
     let cancelled = false
@@ -54,12 +59,21 @@ export function StudentSessionController({ onMessage }: StudentSessionController
     return subscribeSessionSuperseded(() => {
       if (handlingRef.current) return
       handlingRef.current = true
+      persistSessionSupersededBanner(sessionSupersededUserMessage)
       onMessage(sessionSupersededUserMessage)
-      void lazySignOut().catch(() => {
-        handlingRef.current = false
-      })
+      void lazySignOut()
+        .then(() => {
+          // lazySignOut clears sessionStorage; restore banner for /login and remounts.
+          persistSessionSupersededBanner(sessionSupersededUserMessage)
+          onAfterSuperseded?.()
+        })
+        .catch(() => {
+          handlingRef.current = false
+          persistSessionSupersededBanner(sessionSupersededUserMessage)
+          onAfterSuperseded?.()
+        })
     })
-  }, [onMessage])
+  }, [onMessage, onAfterSuperseded])
 
   return null
 }
