@@ -21,27 +21,28 @@ def _normalize_name_part(value: str) -> str:
 
 
 def _name_line_from_claims(claims: dict[str, Any]) -> str | None:
-    given = _claim_str(claims, "given_name")
-    family = _claim_str(claims, "family_name")
-    if given is None or family is None:
-        return None
-    return f"{_normalize_name_part(given)} {_normalize_name_part(family)}"
+    parts: list[str] = []
+    for key in ("given_name", "family_name"):
+        raw = _claim_str(claims, key)
+        if raw is not None:
+            parts.append(_normalize_name_part(raw))
+    if parts:
+        return " ".join(parts)
+    return None
 
 
 def missing_watermark_profile_fields(claims: dict[str, Any]) -> tuple[str, ...]:
-    """Return missing profile field names required for Kinescope playback watermarking."""
+    """Return missing profile fields: email, and name when both given_name and family_name are absent."""
     missing: list[str] = []
-    if _claim_str(claims, "given_name") is None:
-        missing.append("given_name")
-    if _claim_str(claims, "family_name") is None:
-        missing.append("family_name")
+    if _name_line_from_claims(claims) is None:
+        missing.append("name")
     if _claim_str(claims, "email") is None:
         missing.append("email")
     return tuple(missing)
 
 
 def playback_watermark_from_claims(claims: dict[str, Any]) -> str | None:
-    """Return a two-line watermark (first + last name + email) when all are present."""
+    """Return a two-line watermark (name + email) when both are present."""
     if missing_watermark_profile_fields(claims):
         return None
 

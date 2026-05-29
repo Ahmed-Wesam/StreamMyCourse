@@ -956,12 +956,32 @@ class TestGetPlaybackUrl:
             "watermarkText": "Jane Doe\njane@gmail.com",
         }
 
+    def test_kinescope_playback_allows_given_name_only(
+        self, service: CourseManagementService, repo: MagicMock, video_provider: MagicMock
+    ) -> None:
+        repo.get_lesson_by_id.return_value = _lesson(
+            id_=self._LID, video_key=_video_key(_VID, self._LID), video_status="ready"
+        )
+        video_provider.resolve_playback.return_value = KinescopePlayback(
+            provider="kinescope",
+            video_id="kinescope-video-id",
+            drm_auth_token="signed.jwt.token",
+        )
+        viewer_claims = {
+            "given_name": "Jane",
+            "email": "jane@gmail.com",
+        }
+
+        out = service.get_playback_url(_VID, self._LID, viewer_claims=viewer_claims)
+
+        assert out["watermarkText"] == "Jane\njane@gmail.com"
+
     @pytest.mark.parametrize(
         "viewer_claims",
         [
             {},
             None,
-            {"given_name": "Jane", "email": "jane@gmail.com"},
+            {"email": "jane@gmail.com"},
             {"name": "Jane Doe", "email": "jane@gmail.com"},
         ],
     )

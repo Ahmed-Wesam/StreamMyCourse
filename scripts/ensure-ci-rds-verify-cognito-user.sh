@@ -18,7 +18,7 @@
 #   CI_RDS_VERIFY_USERNAME — default ci-rds-verify@noreply.local (can be overridden by --username)
 #   CI_RDS_VERIFY_PASSWORD — permanent password (required for new users; optional to only set role)
 #
-# Sets custom:role plus given_name, family_name, and email (required for Kinescope playback watermarkText).
+# Sets custom:role plus given_name, family_name, and email (CI users; playback needs at least one name part + email).
 
 set -euo pipefail
 
