@@ -1,6 +1,8 @@
 import { fetchAuthSession } from 'aws-amplify/auth'
 import { cognitoUserPoolsTokenProvider } from 'aws-amplify/auth/cognito'
 
+import { isCognitoRefreshSessionSupersededError } from './cognito-session-superseded'
+
 /** Cognito Pre Token claim and ClientMetadata key (see session_sync.py). */
 export const STUDENT_SESSION_METADATA_KEY = 'student_session_id'
 
@@ -20,11 +22,17 @@ export function studentSessionIdFromIdToken(idToken: IdTokenWithPayload | undefi
 }
 
 async function clientMetadataFromStoredTokens(): Promise<Record<string, string>> {
-  const session = await fetchAuthSession()
-  const sessionId = studentSessionIdFromIdToken(
-    session.tokens?.idToken as IdTokenWithPayload | undefined,
-  )
-  return sessionId ? { [STUDENT_SESSION_METADATA_KEY]: sessionId } : {}
+  try {
+    const session = await fetchAuthSession()
+    const sessionId = studentSessionIdFromIdToken(
+      session.tokens?.idToken as IdTokenWithPayload | undefined,
+    )
+    return sessionId ? { [STUDENT_SESSION_METADATA_KEY]: sessionId } : {}
+  } catch (error) {
+    // Avoid Amplify refresh metadata provider re-entering a stale-session deny loop.
+    if (isCognitoRefreshSessionSupersededError(error)) return {}
+    throw error
+  }
 }
 
 let providerRegistered = false
