@@ -102,7 +102,7 @@ describe('VideoPlayer', () => {
     })
   })
 
-  it('shows profile message when kinescope playback lacks watermarkText', async () => {
+  it('mounts Kinescope player without watermark prop when watermarkText is absent', async () => {
     const playback: Playback = {
       provider: 'kinescope',
       videoId: 'vid-123',
@@ -121,30 +121,7 @@ describe('VideoPlayer', () => {
       />,
     )
 
-    expect(await screen.findByRole('alert')).toBeTruthy()
-    expect(screen.queryByTestId('kinescope-player')).toBeNull()
-  })
-
-  it('shows profile message when playback watermarkText is whitespace only', async () => {
-    const playback: Playback = {
-      provider: 'kinescope',
-      videoId: 'vid-123',
-      drmAuthToken: 'jwt-token',
-      watermarkText: '   ',
-    }
-
-    render(
-      <VideoPlayer
-        playback={playback}
-        videoRef={{ current: null }}
-        onPlaybackProgress={() => {}}
-        onPlaybackEnded={() => {}}
-        onPlaybackPause={() => {}}
-        className="aspect-video w-full"
-      />,
-    )
-
-    expect(await screen.findByRole('alert')).toBeTruthy()
-    expect(screen.queryByTestId('kinescope-player')).toBeNull()
+    await screen.findByTestId('kinescope-player')
+    expect(kinescopePlayerLastProps.current?.watermark).toBeUndefined()
   })
 })
