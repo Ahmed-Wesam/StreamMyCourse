@@ -10,7 +10,7 @@ param(
     [string]$Region = "eu-west-1",
 
     [Parameter(Mandatory=$false)]
-    [ValidateSet("billing", "api", "auth", "video", "edge-hosting", "rds")]
+    [ValidateSet("billing", "api", "auth", "video", "edge-hosting", "edge-waf", "api-waf", "rds")]
     [string]$Template = "api",
 
     # api template: name of the rds-stack to import VPC/subnet/SG/secret from (required).
@@ -112,7 +112,42 @@ param(
 
     # rds template: PostgreSQL engine version (empty = template default for the region)
     [Parameter(Mandatory=$false)]
-    [string]$DbEngineVersion = ""
+    [string]$DbEngineVersion = "",
+
+    # api-waf: catalog REST API id (empty = resolve from ApiStackName via CloudFormation)
+    [Parameter(Mandatory=$false)]
+    [string]$CatalogApiRestApiId = "",
+
+    [Parameter(Mandatory=$false)]
+    [string]$CatalogApiStageName = "",
+
+    [Parameter(Mandatory=$false)]
+    [string]$ApiStackName = "",
+
+    [Parameter(Mandatory=$false)]
+    [ValidateSet("true", "false")]
+    [string]$EnableWafApi = "true",
+
+    [Parameter(Mandatory=$false)]
+    [ValidateSet("true", "false")]
+    [string]$EnableManagedRulesBlock = "false",
+
+    [Parameter(Mandatory=$false)]
+    [int]$ApiRateLimit = 2000,
+
+    # edge-waf: student CloudFront distribution id (empty = resolve from EdgeHostingStackName)
+    [Parameter(Mandatory=$false)]
+    [string]$StudentDistributionId = "",
+
+    [Parameter(Mandatory=$false)]
+    [string]$EdgeHostingStackName = "",
+
+    [Parameter(Mandatory=$false)]
+    [ValidateSet("true", "false")]
+    [string]$EnableWafEdge = "true",
+
+    [Parameter(Mandatory=$false)]
+    [int]$EdgeStaticRateLimit = 5000
 )
 
 $ErrorActionPreference = "Stop"
@@ -127,7 +162,7 @@ if (Test-Path (Join-Path $awsInstallDir 'aws.exe')) {
 
 # Web cert and unified edge hosting must be in us-east-1 for CloudFront ACM
 $effectiveRegion = $Region
-if ($Template -eq "edge-hosting") {
+if ($Template -eq "edge-hosting" -or $Template -eq "edge-waf") {
     $effectiveRegion = "us-east-1"
     Write-Host "Note: $Template template requires us-east-1; overriding region" -ForegroundColor Yellow
 }
@@ -595,6 +630,63 @@ if ($Template -eq "edge-hosting") {
     )
     $cfDeployArgs += '--parameter-overrides'
     $cfDeployArgs += $videoOverrides
+} elseif ($Template -eq "api-waf") {
+    if ($ApiStackName -eq "") {
+        $ApiStackName = "StreamMyCourse-Api-$Environment"
+    }
+    if ($CatalogApiRestApiId -eq "" -and $EnableWafApi -eq "true") {
+        Write-Host "Resolving CatalogApi REST API id from stack $ApiStackName..." -ForegroundColor Yellow
+        $CatalogApiRestApiId = aws cloudformation describe-stack-resources `
+            --stack-name $ApiStackName `
+            --region $Region `
+            --logical-resource-id CatalogApi `
+            --query 'StackResources[0].PhysicalResourceId' `
+            --output text 2>&1
+        if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($CatalogApiRestApiId) -or $CatalogApiRestApiId -eq 'None') {
+            Write-Host "[X] Could not resolve CatalogApi from $ApiStackName. Pass -CatalogApiRestApiId explicitly." -ForegroundColor Red
+            exit 1
+        }
+        $CatalogApiRestApiId = $CatalogApiRestApiId.Trim()
+        Write-Host "  CatalogApiRestApiId=$CatalogApiRestApiId" -ForegroundColor Gray
+    }
+    $apiWafOverrides = @(
+        "Environment=$Environment",
+        "CatalogApiRestApiId=$CatalogApiRestApiId",
+        "EnableWafApi=$EnableWafApi",
+        "EnableManagedRulesBlock=$EnableManagedRulesBlock",
+        "ApiRateLimit=$ApiRateLimit"
+    )
+    if ($CatalogApiStageName -ne "") {
+        $apiWafOverrides += "CatalogApiStageName=$CatalogApiStageName"
+    }
+    $cfDeployArgs += '--parameter-overrides'
+    $cfDeployArgs += $apiWafOverrides
+} elseif ($Template -eq "edge-waf") {
+    if ($EdgeHostingStackName -eq "") {
+        $EdgeHostingStackName = "StreamMyCourse-EdgeHosting-$Environment"
+    }
+    if ($StudentDistributionId -eq "" -and $EnableWafEdge -eq "true") {
+        Write-Host "Resolving StudentDistributionId from stack $EdgeHostingStackName (us-east-1)..." -ForegroundColor Yellow
+        $StudentDistributionId = aws cloudformation describe-stacks `
+            --stack-name $EdgeHostingStackName `
+            --region us-east-1 `
+            --query "Stacks[0].Outputs[?OutputKey=='StudentDistributionId'].OutputValue | [0]" `
+            --output text 2>&1
+        if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($StudentDistributionId) -or $StudentDistributionId -eq 'None') {
+            Write-Host "[X] Could not resolve StudentDistributionId from $EdgeHostingStackName. Pass -StudentDistributionId explicitly." -ForegroundColor Red
+            exit 1
+        }
+        $StudentDistributionId = $StudentDistributionId.Trim()
+        Write-Host "  StudentDistributionId=$StudentDistributionId" -ForegroundColor Gray
+    }
+    $edgeWafOverrides = @(
+        "Environment=$Environment",
+        "StudentDistributionId=$StudentDistributionId",
+        "EnableWafEdge=$EnableWafEdge",
+        "EdgeStaticRateLimit=$EdgeStaticRateLimit"
+    )
+    $cfDeployArgs += '--parameter-overrides'
+    $cfDeployArgs += $edgeWafOverrides
 } else {
     $cfDeployArgs += '--parameter-overrides', $paramOverrides
 }

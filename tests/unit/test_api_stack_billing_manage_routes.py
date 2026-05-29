@@ -59,9 +59,9 @@ def test_api_stack_billing_cancel_on_edge_no_reactivate() -> None:
 
 def test_api_stack_billing_manage_deployment_v33() -> None:
     text = _api_stack_text()
-    assert "CatalogApiDeploymentV34:" in text
+    assert "CatalogApiDeploymentV35:" in text
     assert "CatalogApiDeploymentV33:" not in text
-    deployment_block = text.split("CatalogApiDeploymentV34:")[1].split("CatalogApiStage:")[0]
+    deployment_block = text.split("CatalogApiDeploymentV35:")[1].split("CatalogApiStage:")[0]
     # Conditional billing methods must not be in DependsOn (cfn-lint E3005).
     for name in (
         "BillingSubscriptionGetMethod",
@@ -70,4 +70,4 @@ def test_api_stack_billing_manage_deployment_v33() -> None:
         "BillingCancelSubscriptionOptionsMethod",
     ):
         assert name not in deployment_block
-    assert "DeploymentId: !Ref CatalogApiDeploymentV34" in text
+    assert "DeploymentId: !Ref CatalogApiDeploymentV35" in text
