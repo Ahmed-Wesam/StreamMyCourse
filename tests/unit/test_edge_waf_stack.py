@@ -40,3 +40,4 @@ def test_edge_waf_stack_static_flood_rate_rule() -> None:
     assert "StudentStaticFloodRateLimit" in text
     assert "EdgeStaticRateLimit" in text
     assert "EvaluationWindowSec: 300" in text
+    assert "AWSManagedRulesKnownBadInputsRuleSet" in text
