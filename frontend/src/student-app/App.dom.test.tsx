@@ -107,9 +107,9 @@ describe('StudentApp', () => {
     vi.clearAllMocks()
   })
 
-  it('mounts the home route at /', () => {
+  it('mounts the home route at /', async () => {
     renderAt('/')
-    expect(screen.getByTestId('student-page-home')).toBeTruthy()
+    expect(await screen.findByTestId('student-page-home')).toBeTruthy()
   })
 
   it('mounts StudentSessionGuard and registers refresh metadata at /', async () => {
