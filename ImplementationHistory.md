@@ -36,7 +36,7 @@ Close **Slice 6** of layered API abuse protection: observability, ADR, and doc s
 ### Changes
 
 - [x] **RDS rate limits** — [`services/rate_limit/`](infrastructure/lambda/catalog/services/rate_limit/): policies, service, RDS repo, middleware in [`index.py`](infrastructure/lambda/catalog/index.py); migration [`014_rate_limit_counters.sql`](infrastructure/database/migrations/014_rate_limit_counters.sql); optional [`RATE_LIMIT_MAX_OVERRIDES`](infrastructure/lambda/catalog/config.py) for policy tuning.
-- [x] **API Gateway throttles** — [`api-stack.yaml`](infrastructure/templates/api-stack.yaml) `CatalogApiStage.MethodSettings` (deployment V35).
+- [x] **API Gateway throttles** — [`api-stack.yaml`](infrastructure/templates/api-stack.yaml) `CatalogApiStage.MethodSettings` (deployment V36).
 - [x] **Observability** — `CatalogApi4xxAlarm` CloudWatch alarm on API Gateway `4XXError` for catalog stage (`CatalogApi4xxAlarmThreshold` parameter); Lambda middleware logs **`rate_limit_denied`** ([`services/rate_limit/http.py`](infrastructure/lambda/catalog/services/rate_limit/http.py)).
 - [x] **ADR** — [`adr-0012-api-abuse-protection.md`](plans/architecture/adr-0012-api-abuse-protection.md): layered model, limits table, fail-closed 503 / 429 behavior.
 - [x] **Docs** — [`design.md`](design.md) §9; [`module-map.md`](plans/architecture/module-map.md) `services/rate_limit/` row.

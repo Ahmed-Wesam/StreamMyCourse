@@ -36,9 +36,9 @@ def test_api_stack_billing_merchant_status_route_on_catalog() -> None:
     assert "DEPLOYMENT_ENVIRONMENT: !Ref Environment" in text
     assert "BillingTeacherSub:" in text
 
-    assert "CatalogApiDeploymentV35:" in text
-    deployment_block = text.split("CatalogApiDeploymentV35:")[1].split("CatalogApiStage:")[0]
+    assert "CatalogApiDeploymentV36:" in text
+    deployment_block = text.split("CatalogApiDeploymentV36:")[1].split("CatalogApiStage:")[0]
     # Conditional billing methods must not be in DependsOn (cfn-lint E3005).
     assert "BillingMerchantStatusGetMethod" not in deployment_block
     assert "BillingMerchantStatusOptionsMethod" not in deployment_block
-    assert "DeploymentId: !Ref CatalogApiDeploymentV35" in text
+    assert "DeploymentId: !Ref CatalogApiDeploymentV36" in text
