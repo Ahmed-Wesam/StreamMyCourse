@@ -20,16 +20,18 @@ class TestMissingWatermarkProfileFields:
         }
         assert missing_watermark_profile_fields(claims) == ()
 
-    def test_missing_first_and_last(self) -> None:
-        assert missing_watermark_profile_fields({"email": "jane@gmail.com"}) == (
-            "given_name",
-            "family_name",
-        )
+    def test_missing_name(self) -> None:
+        assert missing_watermark_profile_fields({"email": "jane@gmail.com"}) == ("name",)
 
-    def test_missing_last_name(self) -> None:
+    def test_given_only_with_email_is_complete(self) -> None:
         assert missing_watermark_profile_fields(
             {"given_name": "Jane", "email": "jane@gmail.com"}
-        ) == ("family_name",)
+        ) == ()
+
+    def test_family_only_with_email_is_complete(self) -> None:
+        assert missing_watermark_profile_fields(
+            {"family_name": "Doe", "email": "jane@gmail.com"}
+        ) == ()
 
     def test_missing_email(self) -> None:
         assert missing_watermark_profile_fields(
@@ -37,11 +39,7 @@ class TestMissingWatermarkProfileFields:
         ) == ("email",)
 
     def test_missing_all(self) -> None:
-        assert missing_watermark_profile_fields({}) == (
-            "given_name",
-            "family_name",
-            "email",
-        )
+        assert missing_watermark_profile_fields({}) == ("name", "email")
 
 
 class TestPlaybackWatermarkFromClaims:
@@ -53,9 +51,13 @@ class TestPlaybackWatermarkFromClaims:
         }
         assert playback_watermark_from_claims(claims) == "Jane Doe\njane@gmail.com"
 
-    def test_given_only_and_email_returns_none(self) -> None:
+    def test_given_only_and_email(self) -> None:
         claims = {"given_name": "Jane", "email": "jane@gmail.com"}
-        assert playback_watermark_from_claims(claims) is None
+        assert playback_watermark_from_claims(claims) == "Jane\njane@gmail.com"
+
+    def test_family_only_and_email(self) -> None:
+        claims = {"family_name": "Doe", "email": "jane@gmail.com"}
+        assert playback_watermark_from_claims(claims) == "Doe\njane@gmail.com"
 
     def test_email_only_returns_none(self) -> None:
         assert playback_watermark_from_claims({"email": "jane@gmail.com"}) is None

@@ -85,7 +85,7 @@ Teacher upload init → `POST /upload-url` → active provider (`VIDEO_PROVIDER`
 Kinescope upload + transcode status webhooks (`POST /webhooks/kinescope`)
                     ↓
 Student playback contract (`GET /playback/{courseId}/{lessonId}`):
-  - Kinescope: `{ provider: "kinescope", videoId, drmAuthToken, watermarkText }` — required `watermarkText` (viewer `given_name` + `family_name` + `email` from Cognito authorizer claims, newline-separated; max 120 chars). Returns **403** `watermark_profile_incomplete` when any of those claims is missing.
+  - Kinescope: `{ provider: "kinescope", videoId, drmAuthToken, watermarkText }` — required `watermarkText` (viewer name from at least one of `given_name` or `family_name`, plus `email`, from Cognito authorizer claims; newline-separated; max 120 chars). Returns **403** `watermark_profile_incomplete` when `email` is missing or when **both** `given_name` and `family_name` are absent/blank.
   - S3: `{ provider: "s3", playbackUrl }`
 ```
 
@@ -150,7 +150,7 @@ PUT    /courses/{id}/lessons/{lid}/video-ready   // Mark uploaded video ready (M
 
 ### Playback
 ```
-GET  /playback/{courseId}/{lessonId}   // Provider playback contract; Kinescope `{ provider, videoId, drmAuthToken, watermarkText }` (required given_name+family_name+email watermark from authorizer claims; 403 watermark_profile_incomplete when any missing), S3 `{ provider, playbackUrl }`; Cognito + enrollment (or owner/admin) when auth enforced
+GET  /playback/{courseId}/{lessonId}   // Provider playback contract; Kinescope `{ provider, videoId, drmAuthToken, watermarkText }` (name from given_name and/or family_name + email; 403 when email missing or both name claims blank), S3 `{ provider, playbackUrl }`; Cognito + enrollment (or owner/admin) when auth enforced
 ```
 
 ### Upload (Instructor)

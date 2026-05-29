@@ -159,7 +159,7 @@ export function isCannotCancelError(e: unknown): boolean {
   return e.status === 409 && e.code === 'cannot_cancel'
 }
 
-/** True when Kinescope playback is blocked because Cognito profile lacks first/last name or email for watermarking. */
+/** True when Kinescope playback is blocked because Cognito profile lacks name or email for watermarking. */
 export function isWatermarkProfileIncompleteError(e: unknown): boolean {
   if (!(e instanceof ApiError)) return false
   return e.status === 403 && e.code === 'watermark_profile_incomplete'

@@ -35,11 +35,11 @@ Close **Slice 6** of layered API abuse protection: observability, ADR, and doc s
 
 ### Goal
 
-Surface per-viewer watermark text on Kinescope lesson playback from Cognito JWT claims (`given_name`, `family_name`, `email`) so the student player can pass it to the Kinescope embed; provider template must have watermark enabled in the dashboard.
+Surface per-viewer watermark text on Kinescope lesson playback from Cognito JWT claims (at least one of `given_name` / `family_name`, plus `email`) so the student player can pass it to the Kinescope embed; provider template must have watermark enabled in the dashboard.
 
 ### Changes
 
-- [x] **Watermark builder** — [`playback_watermark.py`](infrastructure/lambda/catalog/services/common/playback_watermark.py): `playback_watermark_from_claims` composes `given_name` + `family_name` + `email` (newline-separated; truncated at 120 chars while preserving a non-empty name line). Returns `None` when any required claim is missing or capping would drop the name line.
+- [x] **Watermark builder** — [`playback_watermark.py`](infrastructure/lambda/catalog/services/common/playback_watermark.py): `playback_watermark_from_claims` composes available `given_name` / `family_name` parts plus `email` (newline-separated; truncated at 120 chars while preserving a non-empty name line). Returns `None` when `email` is missing, when **both** name claims are blank, or when capping would drop the name line.
 - [x] **Playback API** — [`service.py`](infrastructure/lambda/catalog/services/course_management/service.py): Kinescope `GET /playback/{courseId}/{lessonId}` requires complete profile claims; returns **403** `watermark_profile_incomplete` when `watermarkText` cannot be built. S3 playback omits the field. Contract in [`contracts.py`](infrastructure/lambda/catalog/services/course_management/contracts.py).
 - [x] **Frontend** — [`VideoPlayer.tsx`](frontend/src/pages/lesson-player/VideoPlayer.tsx): passes `watermark={{ text, mode: 'random' }}` to `@kinescope/react-kinescope-player`; blocks embed when `watermarkText` is missing/blank; user message in [`apiUserMessages.ts`](frontend/src/lib/apiUserMessages.ts).
 - [x] **CI users** — [`ensure-ci-rds-verify-cognito-user.sh`](scripts/ensure-ci-rds-verify-cognito-user.sh): sets `given_name`, `family_name`, and `email` on integration/verify pool users so Kinescope playback integration tests receive `watermarkText`.
