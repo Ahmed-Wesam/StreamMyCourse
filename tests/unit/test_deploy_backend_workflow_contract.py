@@ -32,6 +32,50 @@ def test_deploy_workflow_includes_prod_rds_job_ids() -> None:
         assert needle in text, f"missing job block {needle!r}"
 
 
+def test_deploy_workflow_includes_waf_job_ids() -> None:
+    text = _workflow_text()
+    for needle in (
+        "  deploy-api-waf-dev:",
+        "  deploy-edge-waf-dev:",
+        "  deploy-api-waf-prod:",
+        "  deploy-edge-waf-prod:",
+    ):
+        assert needle in text, f"missing job block {needle!r}"
+
+
+def test_deploy_api_waf_dev_depends_on_backend_dev() -> None:
+    text = _workflow_text()
+    block = _job_block(text, "deploy-api-waf-dev", "\n  deploy-web-dev:")
+    assert "deploy-backend-dev" in block
+    assert "needs.deploy-backend-dev.result == 'success'" in block
+    assert "deploy-api-waf.sh dev" in block
+
+
+def test_deploy_edge_waf_dev_depends_on_edge_dev() -> None:
+    text = _workflow_text()
+    block = _job_block(text, "deploy-edge-waf-dev", "\n  # Deploys the RDS PostgreSQL")
+    assert "deploy-edge-dev" in block
+    assert "needs.deploy-edge-dev.result == 'success'" in block
+    assert "deploy-edge-waf.sh dev" in block
+    assert "AWS_REGION: us-east-1" in block
+
+
+def test_deploy_api_waf_prod_depends_on_backend_prod() -> None:
+    text = _workflow_text()
+    block = _job_block(text, "deploy-api-waf-prod", "\n  # Prod-only CloudFormation")
+    assert "deploy-backend-prod" in block
+    assert "needs.deploy-backend-prod.result == 'success'" in block
+    assert "deploy-api-waf.sh prod" in block
+
+
+def test_deploy_edge_waf_prod_depends_on_edge_prod() -> None:
+    text = _workflow_text()
+    block = _job_block(text, "deploy-edge-waf-prod", "\n  deploy-rds-prod:")
+    assert "deploy-edge-prod" in block
+    assert "needs.deploy-edge-prod.result == 'success'" in block
+    assert "deploy-edge-waf.sh prod" in block
+
+
 def test_deploy_backend_uses_repository_variable_for_oidc_role_not_environment_secret() -> None:
     """Backend/media/SQS deploys must not pick up a wrong per-env secret (e.g. web-only role ARN)."""
     text = _workflow_text()
