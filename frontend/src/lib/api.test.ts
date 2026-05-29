@@ -1158,7 +1158,7 @@ describe('authHeader swallows fetchAuthSession errors', () => {
   })
 })
 
-describe('authHeader refresh failure with student session metadata', () => {
+describe('authHeader refresh failure', () => {
   const originalEnv = import.meta.env.VITE_API_BASE_URL
   beforeEach(() => {
     vi.stubGlobal(
@@ -1173,9 +1173,6 @@ describe('authHeader refresh failure with student session metadata', () => {
     fetchAuthSessionMock
       .mockResolvedValueOnce({ tokens: {} })
       .mockRejectedValueOnce(new Error('refresh denied'))
-    buildStudentRefreshClientMetadataMock.mockResolvedValue({
-      student_session_id: '11111111-1111-1111-1111-111111111111',
-    })
     notifySessionSupersededMock.mockClear()
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     ;(import.meta as any).env.VITE_API_BASE_URL = 'https://api.example/v1'
@@ -1186,11 +1183,24 @@ describe('authHeader refresh failure with student session metadata', () => {
     ;(import.meta as any).env.VITE_API_BASE_URL = originalEnv
     vi.clearAllMocks()
   })
-  it('notifies session superseded when refresh fails with stored student session id', async () => {
+  it('does not notify session superseded on generic refresh failure', async () => {
     await getCourse('c1')
-    expect(notifySessionSupersededMock).toHaveBeenCalledTimes(1)
+    expect(notifySessionSupersededMock).not.toHaveBeenCalled()
     const [, init] = vi.mocked(fetch).mock.calls[0]
     expect(new Headers(init?.headers as HeadersInit).has('Authorization')).toBe(false)
+  })
+
+  it('notifies session superseded when refresh fails with Cognito stale-session deny', async () => {
+    fetchAuthSessionMock
+      .mockReset()
+      .mockResolvedValueOnce({ tokens: {} })
+      .mockRejectedValueOnce(
+        new Error(
+          'student refresh session superseded (client_metadata_session_id_vs_rds_active)',
+        ),
+      )
+    await getCourse('c1')
+    expect(notifySessionSupersededMock).toHaveBeenCalledTimes(1)
   })
 })
 

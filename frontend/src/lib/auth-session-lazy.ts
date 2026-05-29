@@ -3,6 +3,8 @@
  * No static top-level imports from aws-amplify.
  */
 
+import { clearClientAuthState } from './clear-client-auth-state'
+
 let profileWarmDone = false
 let amplifyConfigured = false
 
@@ -57,7 +59,11 @@ export async function warmUserProfileOnce(alreadySignedIn = false): Promise<void
 
 export async function lazySignOut(): Promise<void> {
   resetProfileWarmState()
-  if (!(await ensureAmplifyConfigured())) return
-  const { signOut } = await import('aws-amplify/auth')
-  await signOut()
+  try {
+    if (!(await ensureAmplifyConfigured())) return
+    const { signOut } = await import('aws-amplify/auth')
+    await signOut()
+  } finally {
+    clearClientAuthState()
+  }
 }
