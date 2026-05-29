@@ -3,13 +3,11 @@ import {
   persistSessionSupersededBanner,
   readSessionSupersededBanner,
 } from './session-superseded-banner'
-import { clearSessionSupersedeHandling } from './session-supersede-handling'
+import { exitSupersededState } from './student-session-superseded'
 
 type ClearClientAuthStateOptions = {
   /** When false, keep the session-superseded banner in sessionStorage (default). */
   clearSupersededBanner?: boolean
-  /** When true, release the in-memory supersede latch (manual sign-out / dismiss). */
-  clearSupersedeHandling?: boolean
 }
 
 /**
@@ -17,8 +15,8 @@ type ClearClientAuthStateOptions = {
  * Shared by header sign-out and session-superseded handling.
  */
 export function clearClientAuthState(options: ClearClientAuthStateOptions = {}): void {
-  if (options.clearSupersedeHandling === true || options.clearSupersededBanner === true) {
-    clearSessionSupersedeHandling()
+  if (options.clearSupersededBanner === true) {
+    exitSupersededState()
   }
   const preserveBanner = options.clearSupersededBanner !== true
   const supersededMessage = preserveBanner ? readSessionSupersededBanner() : null

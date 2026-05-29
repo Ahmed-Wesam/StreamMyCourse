@@ -8,8 +8,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ApiError } from '../lib/api/client'
 import {
   notifySessionSuperseded,
-  resetSessionSupersededListenersForTests,
-} from '../lib/handleSessionSuperseded'
+  resetStudentSessionSupersededForTests,
+} from '../lib/student-session-superseded'
 import { SESSION_SUPERSEDED_BANNER_KEY } from '../lib/session-superseded-banner'
 import LessonPlayerPage from './LessonPlayerPage'
 
@@ -194,7 +194,7 @@ describe('LessonPlayerPage', () => {
   afterEach(() => {
     cleanup()
     sessionStorage.clear()
-    resetSessionSupersededListenersForTests()
+    resetStudentSessionSupersededForTests()
     vi.restoreAllMocks()
   })
 

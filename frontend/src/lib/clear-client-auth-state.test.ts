@@ -5,10 +5,10 @@ import { afterEach, describe, expect, it } from 'vitest'
 
 import { clearClientAuthState } from './clear-client-auth-state'
 import {
-  armSessionSupersedeHandling,
-  isSessionSupersedeHandling,
-  resetSessionSupersedeHandlingForTests,
-} from './session-supersede-handling'
+  enterSupersededState,
+  isStudentSessionSuperseded,
+  resetStudentSessionSupersededForTests,
+} from './student-session-superseded'
 import {
   persistSessionSupersededBanner,
   readSessionSupersededBanner,
@@ -20,7 +20,7 @@ describe('clearClientAuthState', () => {
     localStorage.clear()
     sessionStorage.clear()
     document.cookie = ''
-    resetSessionSupersedeHandlingForTests()
+    resetStudentSessionSupersededForTests()
   })
 
   it('clears localStorage and best-effort document cookies', () => {
@@ -44,16 +44,16 @@ describe('clearClientAuthState', () => {
     expect(sessionStorage.getItem(SESSION_SUPERSEDED_BANNER_KEY)).toBeNull()
   })
 
-  it('preserves supersede latch during supersede storage wipe', () => {
+  it('preserves supersede state during supersede storage wipe', () => {
     persistSessionSupersededBanner('Signed in elsewhere')
-    armSessionSupersedeHandling()
+    enterSupersededState()
     clearClientAuthState()
-    expect(isSessionSupersedeHandling()).toBe(true)
+    expect(isStudentSessionSuperseded()).toBe(true)
   })
 
-  it('clears supersede latch when clearSupersededBanner is true', () => {
-    armSessionSupersedeHandling()
+  it('clears supersede state when clearSupersededBanner is true', () => {
+    enterSupersededState()
     clearClientAuthState({ clearSupersededBanner: true })
-    expect(isSessionSupersedeHandling()).toBe(false)
+    expect(isStudentSessionSuperseded()).toBe(false)
   })
 })

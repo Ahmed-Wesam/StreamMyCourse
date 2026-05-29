@@ -39,27 +39,27 @@ describe('auth-session-lazy', () => {
     expect(hasSignedInIdToken).toHaveBeenCalledTimes(1)
   })
 
-  it('probeSignedIn skips token read while supersede latch is armed', async () => {
-    const { armSessionSupersedeHandling, resetSessionSupersedeHandlingForTests } = await import(
-      './session-supersede-handling'
+  it('probeSignedIn skips token read while student session is superseded', async () => {
+    const { enterSupersededState, resetStudentSessionSupersededForTests } = await import(
+      './student-session-superseded'
     )
-    armSessionSupersedeHandling()
+    enterSupersededState()
     const { probeSignedIn } = await import('./auth-session-lazy')
     await expect(probeSignedIn()).resolves.toBe(false)
     expect(hasSignedInIdToken).not.toHaveBeenCalled()
-    resetSessionSupersedeHandlingForTests()
+    resetStudentSessionSupersededForTests()
   })
 
-  it('probeSignedIn bypassSupersedeLatch probes while latch is armed', async () => {
-    const { armSessionSupersedeHandling, resetSessionSupersedeHandlingForTests } = await import(
-      './session-supersede-handling'
+  it('probeSignedIn bypassSupersedeCheck probes while supersede handling is active', async () => {
+    const { enterSupersededState, resetStudentSessionSupersededForTests } = await import(
+      './student-session-superseded'
     )
     hasSignedInIdToken.mockResolvedValue(true)
-    armSessionSupersedeHandling()
+    enterSupersededState()
     const { probeSignedIn } = await import('./auth-session-lazy')
-    await expect(probeSignedIn({ bypassSupersedeLatch: true })).resolves.toBe(true)
+    await expect(probeSignedIn({ bypassSupersedeCheck: true })).resolves.toBe(true)
     expect(hasSignedInIdToken).toHaveBeenCalledTimes(1)
-    resetSessionSupersedeHandlingForTests()
+    resetStudentSessionSupersededForTests()
   })
 
   it('warmUserProfileOnce calls fetchMe once when already signed in', async () => {

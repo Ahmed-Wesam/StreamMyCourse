@@ -4,10 +4,10 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import {
-  armSessionSupersedeHandling,
-  isSessionSupersedeHandling,
-  resetSessionSupersedeHandlingForTests,
-} from './session-supersede-handling'
+  enterSupersededState,
+  isStudentSessionSuperseded,
+  resetStudentSessionSupersededForTests,
+} from './student-session-superseded'
 import {
   clearSessionSupersededBanner,
   dismissSessionSupersededBannerUi,
@@ -22,7 +22,7 @@ describe('session-superseded-banner', () => {
   afterEach(() => {
     sessionStorage.clear()
     resetSessionSupersededDismissListenersForTests()
-    resetSessionSupersedeHandlingForTests()
+    resetStudentSessionSupersededForTests()
   })
 
   it('persists and reads the supersede message', () => {
@@ -42,17 +42,17 @@ describe('session-superseded-banner', () => {
     expect(readSessionSupersededBanner()).toBeNull()
   })
 
-  it('dismissSessionSupersededBannerUi clears storage, latch, and notifies listeners', () => {
+  it('dismissSessionSupersededBannerUi clears storage, supersede state, and notifies listeners', () => {
     const listener = vi.fn()
     persistSessionSupersededBanner('Signed in elsewhere')
-    armSessionSupersedeHandling()
+    enterSupersededState()
     const unsubscribe = subscribeSessionSupersededDismiss(listener)
 
     dismissSessionSupersededBannerUi()
     unsubscribe()
 
     expect(readSessionSupersededBanner()).toBeNull()
-    expect(isSessionSupersedeHandling()).toBe(false)
+    expect(isStudentSessionSuperseded()).toBe(false)
     expect(listener).toHaveBeenCalledTimes(1)
   })
 })

@@ -4,42 +4,32 @@ import { Hub } from 'aws-amplify/utils'
 import { sessionSupersededUserMessage } from '../lib/apiUserMessages'
 import { lazySignOut, probeSignedIn } from '../lib/auth-session-lazy'
 import {
-  reapplySessionSupersedeGuards,
+  exitSupersededState,
   subscribeSessionSuperseded,
-} from '../lib/handleSessionSuperseded'
-import { clearSessionSupersedeHandling } from '../lib/session-supersede-handling'
-import { restoreStudentSessionRefreshMetadata } from '../lib/student-session-refresh'
-import {
-  clearSessionSupersededBanner,
-  persistSessionSupersededBanner,
-  readSessionSupersededBanner,
-} from '../lib/session-superseded-banner'
+  syncSupersededFromStorage,
+} from '../lib/student-session-superseded'
+import { readSessionSupersededBanner } from '../lib/session-superseded-banner'
 
 function clearSupersededUiState(
   handlingRef: MutableRefObject<boolean>,
   setMessage: Dispatch<SetStateAction<string | null>>,
 ) {
   handlingRef.current = false
-  clearSessionSupersedeHandling()
-  restoreStudentSessionRefreshMetadata()
-  clearSessionSupersededBanner()
+  exitSupersededState()
   setMessage(null)
 }
 
 function showSupersededBanner(setMessage: Dispatch<SetStateAction<string | null>>): void {
-  persistSessionSupersededBanner(sessionSupersededUserMessage)
-  setMessage(sessionSupersededUserMessage)
+  setMessage(readSessionSupersededBanner() ?? sessionSupersededUserMessage)
 }
 
 function completeSupersededSignOut(
   handlingRef: MutableRefObject<boolean>,
-  setMessage: Dispatch<SetStateAction<string | null>>,
   onAfterSuperseded?: () => void,
 ): void {
   if (!handlingRef.current) return
-  showSupersededBanner(setMessage)
   onAfterSuperseded?.()
-  // Allow Hub signedIn to verify a real new session; latch stays armed until then or dismiss.
+  // Allow Hub signedIn to verify a real new session; supersede state stays active until then or dismiss.
   handlingRef.current = false
 }
 
@@ -63,10 +53,10 @@ export function StudentSessionController({
       if (event === 'signedIn') {
         if (handlingRef.current) return
         void (async () => {
-          const signedIn = await probeSignedIn({ bypassSupersedeLatch: true })
+          const signedIn = await probeSignedIn({ bypassSupersedeCheck: true })
           if (cancelled || !signedIn) {
             if (readSessionSupersededBanner()) {
-              reapplySessionSupersedeGuards()
+              syncSupersededFromStorage()
             }
             return
           }
@@ -81,7 +71,7 @@ export function StudentSessionController({
     void (async () => {
       const persisted = readSessionSupersededBanner()
       if (persisted) {
-        reapplySessionSupersedeGuards()
+        syncSupersededFromStorage()
         onMessage(persisted)
         return
       }
@@ -102,8 +92,8 @@ export function StudentSessionController({
       handlingRef.current = true
       showSupersededBanner(onMessage)
       void lazySignOut()
-        .then(() => completeSupersededSignOut(handlingRef, onMessage, onAfterSuperseded))
-        .catch(() => completeSupersededSignOut(handlingRef, onMessage, onAfterSuperseded))
+        .then(() => completeSupersededSignOut(handlingRef, onAfterSuperseded))
+        .catch(() => completeSupersededSignOut(handlingRef, onAfterSuperseded))
     })
   }, [onMessage, onAfterSuperseded])
 

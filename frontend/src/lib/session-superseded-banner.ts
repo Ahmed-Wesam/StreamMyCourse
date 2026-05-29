@@ -1,6 +1,5 @@
 import { clearAmplifyAuthCaches } from './clear-amplify-auth-caches'
-import { clearSessionSupersedeHandling } from './session-supersede-handling'
-import { restoreStudentSessionRefreshMetadata } from './student-session-refresh'
+import { exitSupersededState } from './student-session-superseded'
 
 /** sessionStorage key — survives route change to /login so the supersede message stays visible. */
 export const SESSION_SUPERSEDED_BANNER_KEY = 'smc:sessionSupersededMessage'
@@ -42,11 +41,9 @@ export function subscribeSessionSupersededDismiss(listener: SessionSupersededDis
   }
 }
 
-/** User dismissed the banner: hide UI, release latch, and wipe stale Amplify caches. */
+/** User dismissed the banner: hide UI, release supersede state, and wipe stale Amplify caches. */
 export function dismissSessionSupersededBannerUi(): void {
-  clearSessionSupersededBanner()
-  clearSessionSupersedeHandling()
-  restoreStudentSessionRefreshMetadata()
+  exitSupersededState()
   clearAmplifyAuthCaches()
   for (const listener of dismissListeners) {
     listener()

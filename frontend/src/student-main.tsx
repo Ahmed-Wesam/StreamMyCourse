@@ -4,7 +4,7 @@ import { BrowserRouter } from 'react-router-dom'
 import StudentApp from './student-app/App'
 import './style.css'
 
-void import('./lib/install-session-superseded-rejection-handler').then(
+void import('./lib/student-session-superseded').then(
   ({ installSessionSupersededRejectionHandler }) => {
     installSessionSupersededRejectionHandler()
   },
