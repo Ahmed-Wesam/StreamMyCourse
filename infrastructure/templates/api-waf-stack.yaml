@@ -125,7 +125,7 @@ Resources:
         - Name: AWSManagedRulesKnownBadInputsRuleSet
           Priority: 3
           OverrideAction:
-            Count: {}
+            None: {}
           Statement:
             ManagedRuleGroupStatement:
               VendorName: AWS
