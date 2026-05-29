@@ -1,10 +1,14 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const fetchAuthSessionMock = vi.hoisted(() => vi.fn())
+const loadTokensMock = vi.hoisted(() => vi.fn())
 const setClientMetadataProviderMock = vi.hoisted(() => vi.fn())
 
 vi.mock('aws-amplify/auth/cognito', () => ({
   cognitoUserPoolsTokenProvider: {
+    authTokenStore: {
+      loadTokens: loadTokensMock,
+    },
     setClientMetadataProvider: setClientMetadataProviderMock,
   },
 }))
@@ -14,17 +18,14 @@ vi.mock('aws-amplify/auth', () => ({
 }))
 
 import {
-  armSessionSupersedeHandling,
-  resetSessionSupersedeHandlingForTests,
-} from './session-supersede-handling'
+  enterSupersededState,
+  resetStudentSessionSupersededForTests,
+} from './student-session-superseded'
 import {
-  buildStudentRefreshClientMetadata,
   registerStudentSessionRefreshMetadata,
   resetStudentSessionRefreshRegistrationForTests,
   studentSessionIdFromIdToken,
   STUDENT_SESSION_METADATA_KEY,
-  restoreStudentSessionRefreshMetadata,
-  suspendStudentSessionRefreshMetadata,
 } from './student-session-refresh'
 
 describe('studentSessionIdFromIdToken', () => {
@@ -55,14 +56,15 @@ describe('studentSessionIdFromIdToken', () => {
 describe('registerStudentSessionRefreshMetadata', () => {
   beforeEach(() => {
     resetStudentSessionRefreshRegistrationForTests()
-    resetSessionSupersedeHandlingForTests()
+    resetStudentSessionSupersededForTests()
     fetchAuthSessionMock.mockReset()
+    loadTokensMock.mockReset()
     setClientMetadataProviderMock.mockReset()
   })
 
-  it('registers provider once and supplies student_session_id metadata', async () => {
-    fetchAuthSessionMock.mockResolvedValue({
-      tokens: { idToken: { payload: { student_session_id: 'sess-1' }, toString: () => 'jwt' } },
+  it('registers provider once and supplies student_session_id from cached tokens', async () => {
+    loadTokensMock.mockResolvedValue({
+      idToken: { payload: { student_session_id: 'sess-1' }, toString: () => 'jwt' },
     })
 
     registerStudentSessionRefreshMetadata()
@@ -71,39 +73,28 @@ describe('registerStudentSessionRefreshMetadata', () => {
 
     const provider = setClientMetadataProviderMock.mock.calls[0][0] as () => Promise<Record<string, string>>
     await expect(provider()).resolves.toEqual({ [STUDENT_SESSION_METADATA_KEY]: 'sess-1' })
+    expect(loadTokensMock).toHaveBeenCalledTimes(1)
+    expect(fetchAuthSessionMock).not.toHaveBeenCalled()
   })
 
-  it('buildStudentRefreshClientMetadata returns empty object when claim missing', async () => {
-    fetchAuthSessionMock.mockResolvedValue({
-      tokens: { idToken: { payload: {}, toString: () => 'jwt' } },
+  it('returns empty object when cached id token has no session claim', async () => {
+    loadTokensMock.mockResolvedValue({
+      idToken: { payload: {}, toString: () => 'jwt' },
     })
-    await expect(buildStudentRefreshClientMetadata()).resolves.toEqual({})
-  })
 
-  it('skips fetchAuthSession while supersede handling is armed', async () => {
     registerStudentSessionRefreshMetadata()
     const provider = setClientMetadataProviderMock.mock.calls[0][0] as () => Promise<Record<string, string>>
-    armSessionSupersedeHandling()
     await expect(provider()).resolves.toEqual({})
+    expect(loadTokensMock).toHaveBeenCalledTimes(1)
     expect(fetchAuthSessionMock).not.toHaveBeenCalled()
   })
 
-  it('suspendStudentSessionRefreshMetadata uses a no-op provider', async () => {
+  it('returns empty object while student session is superseded', async () => {
     registerStudentSessionRefreshMetadata()
-    suspendStudentSessionRefreshMetadata()
-    const provider = setClientMetadataProviderMock.mock.calls.at(-1)?.[0] as () => Promise<Record<string, string>>
+    const provider = setClientMetadataProviderMock.mock.calls[0][0] as () => Promise<Record<string, string>>
+    enterSupersededState()
     await expect(provider()).resolves.toEqual({})
+    expect(loadTokensMock).not.toHaveBeenCalled()
     expect(fetchAuthSessionMock).not.toHaveBeenCalled()
-  })
-
-  it('restoreStudentSessionRefreshMetadata re-attaches token metadata provider', async () => {
-    fetchAuthSessionMock.mockResolvedValue({
-      tokens: { idToken: { payload: { student_session_id: 'sess-1' }, toString: () => 'jwt' } },
-    })
-    registerStudentSessionRefreshMetadata()
-    suspendStudentSessionRefreshMetadata()
-    restoreStudentSessionRefreshMetadata()
-    const provider = setClientMetadataProviderMock.mock.calls.at(-1)?.[0] as () => Promise<Record<string, string>>
-    await expect(provider()).resolves.toEqual({ student_session_id: 'sess-1' })
   })
 })

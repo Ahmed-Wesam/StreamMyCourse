@@ -4,7 +4,7 @@
  */
 
 import { clearClientAuthState } from './clear-client-auth-state'
-import { isSessionSupersedeHandling } from './session-supersede-handling'
+import { isStudentSessionSuperseded } from './student-session-superseded'
 
 let profileWarmDone = false
 let amplifyConfigured = false
@@ -31,13 +31,13 @@ async function ensureAmplifyConfigured(): Promise<boolean> {
 }
 
 type ProbeSignedInOptions = {
-  /** Allow token probe while supersede latch is armed (Hub re-login verification). */
-  bypassSupersedeLatch?: boolean
+  /** Allow token probe while supersede handling is active (Hub re-login verification). */
+  bypassSupersedeCheck?: boolean
 }
 
 /** True when Cognito is configured and the user has an ID token (signed in). */
 export async function probeSignedIn(options?: ProbeSignedInOptions): Promise<boolean> {
-  if (!options?.bypassSupersedeLatch && isSessionSupersedeHandling()) return false
+  if (!options?.bypassSupersedeCheck && isStudentSessionSuperseded()) return false
   if (!(await ensureAmplifyConfigured())) return false
   const { hasSignedInIdToken } = await import('./api/session')
   return hasSignedInIdToken()
@@ -49,7 +49,7 @@ export async function probeSignedIn(options?: ProbeSignedInOptions): Promise<boo
  * @param alreadySignedIn Skip probe when caller already verified session (e.g. header idle probe).
  */
 export async function warmUserProfileOnce(alreadySignedIn = false): Promise<void> {
-  if (isSessionSupersedeHandling()) return
+  if (isStudentSessionSuperseded()) return
   if (profileWarmDone) return
   if (!(await ensureAmplifyConfigured())) return
   if (!alreadySignedIn) {
@@ -67,7 +67,7 @@ export async function warmUserProfileOnce(alreadySignedIn = false): Promise<void
 
 export async function lazySignOut(): Promise<void> {
   resetProfileWarmState()
-  const skipAmplifySignOut = isSessionSupersedeHandling()
+  const skipAmplifySignOut = isStudentSessionSuperseded()
   try {
     if (skipAmplifySignOut || !(await ensureAmplifyConfigured())) return
     const { signOut } = await import('aws-amplify/auth')

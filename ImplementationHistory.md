@@ -4,6 +4,27 @@
 
 ---
 
+## 2026-05-29 — Student session freeze fix (root cause)
+
+### Goal
+
+Stop intermittent student SPA tab freezes (“page not responsive”) caused by Cognito refresh reentrancy and stacked supersede guards—not by adding more debounces/latches.
+
+### Changes
+
+- [x] **Refresh metadata root cause** — [`student-session-refresh.ts`](frontend/src/lib/student-session-refresh.ts): Cognito `ClientMetadata` provider reads `student_session_id` from **`authTokenStore.loadTokens()`** (cached ID token payload), never `fetchAuthSession()` inside the provider callback.
+- [x] **Force refresh** — [`api/client.ts`](frontend/src/lib/api/client.ts): `refreshAuthSession()` calls only `fetchAuthSession({ forceRefresh: true })`; removed `buildStudentRefreshClientMetadata()` pre-fetch.
+- [x] **Consolidated supersede state** — [`student-session-superseded.ts`](frontend/src/lib/student-session-superseded.ts): idempotent `enterSupersededState`, `syncSupersededFromStorage` (reload without re-notify), debounced `notifySessionSuperseded`, `installSessionSupersededRejectionHandler`. **Deleted** [`session-supersede-handling.ts`](frontend/src/lib/session-supersede-handling.ts), [`handleSessionSuperseded.ts`](frontend/src/lib/handleSessionSuperseded.ts), [`install-session-superseded-rejection-handler.ts`](frontend/src/lib/install-session-superseded-rejection-handler.ts).
+- [x] **Removed notify-path cache wipes** — no `clearAmplifyAuthCaches` on supersede notify; wipe only on dismiss ([`session-superseded-banner.ts`](frontend/src/lib/session-superseded-banner.ts)) and sign-out ([`clear-client-auth-state.ts`](frontend/src/lib/clear-client-auth-state.ts) via `lazySignOut`).
+- [x] **Removed provider swap dance** — deleted `suspendStudentSessionRefreshMetadata` / `restoreStudentSessionRefreshMetadata` and `reapplySessionSupersedeGuards`.
+- [x] **Tests** — TDD slices: [`student-session-refresh.test.ts`](frontend/src/lib/student-session-refresh.test.ts), [`student-session-superseded.test.ts`](frontend/src/lib/student-session-superseded.test.ts); updated DOM/API tests for migrated imports; regression test that `notifySessionSuperseded` does not call `clearAmplifyAuthCaches`.
+
+### Verification
+
+- From `frontend/`: `npm run test` (564 tests)
+
+---
+
 ## 2026-05-29 — Remove WAF (cost)
 
 ### Goal

@@ -14,20 +14,21 @@ vi.mock('./auth', () => ({
 }))
 
 const notifySessionSupersededMock = vi.hoisted(() => vi.fn())
-vi.mock('./handleSessionSuperseded', () => ({
-  notifySessionSuperseded: (...args: unknown[]) => notifySessionSupersededMock(...args),
-  subscribeSessionSuperseded: () => () => {},
-  resetSessionSupersededListenersForTests: () => {},
-}))
+vi.mock('./student-session-superseded', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('./student-session-superseded')>()
+  return {
+    ...actual,
+    notifySessionSuperseded: (...args: unknown[]) => notifySessionSupersededMock(...args),
+  }
+})
 
-const buildStudentRefreshClientMetadataMock = vi.hoisted(() =>
-  vi.fn(async () => ({} as Record<string, string>)),
-)
-vi.mock('./student-session-refresh', () => ({
-  buildStudentRefreshClientMetadata: () => buildStudentRefreshClientMetadataMock(),
-  STUDENT_SESSION_METADATA_KEY: 'student_session_id',
-  registerStudentSessionRefreshMetadata: vi.fn(),
-}))
+vi.mock('./student-session-refresh', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('./student-session-refresh')>()
+  return {
+    ...actual,
+    registerStudentSessionRefreshMetadata: vi.fn(),
+  }
+})
 
 import {
   ApiError,
@@ -1065,6 +1066,7 @@ describe('createLesson', () => {
 
 describe('fetchAuthSession forceRefresh when first session has no token', () => {
   const originalEnv = import.meta.env.VITE_API_BASE_URL
+
   beforeEach(() => {
     vi.stubGlobal(
       'fetch',
@@ -1075,6 +1077,7 @@ describe('fetchAuthSession forceRefresh when first session has no token', () => 
         }),
       ),
     )
+    fetchAuthSessionMock.mockReset()
     fetchAuthSessionMock
       .mockResolvedValueOnce({ tokens: { idToken: undefined } })
       .mockResolvedValueOnce({ tokens: { idToken: 'refreshed-jwt' } })
@@ -1087,9 +1090,10 @@ describe('fetchAuthSession forceRefresh when first session has no token', () => 
     ;(import.meta as any).env.VITE_API_BASE_URL = originalEnv
     vi.clearAllMocks()
   })
-  it('calls fetchAuthSession with forceRefresh then sends Bearer', async () => {
+  it('calls fetchAuthSession with forceRefresh only then sends Bearer', async () => {
     await getCourse('c1')
     expect(fetchAuthSessionMock).toHaveBeenCalledTimes(2)
+    expect(fetchAuthSessionMock.mock.calls[0][0]).toBeUndefined()
     expect(fetchAuthSessionMock.mock.calls[1][0]).toEqual({ forceRefresh: true })
     const [, init] = vi.mocked(fetch).mock.calls[0]
     expect(new Headers(init?.headers as HeadersInit).get('Authorization')).toBe('Bearer refreshed-jwt')
@@ -1099,6 +1103,7 @@ describe('fetchAuthSession forceRefresh when first session has no token', () => 
 describe('bearerFromSession edge cases', () => {
   const originalEnv = import.meta.env.VITE_API_BASE_URL
   beforeEach(() => {
+    fetchAuthSessionMock.mockReset()
     vi.stubGlobal(
       'fetch',
       vi.fn(async () =>
@@ -1184,6 +1189,7 @@ describe('authHeader refresh failure', () => {
         }),
       ),
     )
+    fetchAuthSessionMock.mockReset()
     fetchAuthSessionMock
       .mockResolvedValueOnce({ tokens: {} })
       .mockRejectedValueOnce(new Error('refresh denied'))

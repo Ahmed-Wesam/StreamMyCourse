@@ -1,7 +1,7 @@
 import { fetchAuthSession } from 'aws-amplify/auth'
 import { useEffect, useState } from 'react'
 
-import { isSessionSupersedeHandling } from './session-supersede-handling'
+import { isStudentSessionSuperseded } from './student-session-superseded'
 
 const PROFILE_CLAIM_KEYS = ['email', 'given_name', 'name', 'nickname', 'preferred_username'] as const
 
@@ -32,7 +32,7 @@ function pickStringClaims(
 export async function loadMergedProfileAttributes(
   poolAttrs: Partial<Record<string, string | undefined>> = {},
 ): Promise<Partial<Record<string, string | undefined>>> {
-  if (isSessionSupersedeHandling()) return { ...poolAttrs }
+  if (isStudentSessionSuperseded()) return { ...poolAttrs }
   const session = await fetchAuthSession().catch(() => undefined)
 
   const payload = session?.tokens?.idToken?.payload as Record<string, unknown> | undefined

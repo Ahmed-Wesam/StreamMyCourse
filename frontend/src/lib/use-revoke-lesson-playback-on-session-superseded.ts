@@ -1,6 +1,6 @@
 import { useEffect } from 'react'
 
-import { subscribeSessionSuperseded } from './handleSessionSuperseded'
+import { subscribeSessionSuperseded } from './student-session-superseded'
 import {
   readSessionSupersededBanner,
   subscribeSessionSupersededDismiss,

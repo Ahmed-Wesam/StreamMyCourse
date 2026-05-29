@@ -15,19 +15,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { sessionSupersededUserMessage } from '../lib/apiUserMessages'
 
 import {
-
   notifySessionSuperseded,
-
-  resetSessionSupersededListenersForTests,
-
   resetSessionSupersededNotifyCooldownForTests,
-
-} from '../lib/handleSessionSuperseded'
-
-import {
-  isSessionSupersedeHandling,
-  resetSessionSupersedeHandlingForTests,
-} from '../lib/session-supersede-handling'
+  resetStudentSessionSupersededForTests,
+  isStudentSessionSuperseded,
+} from '../lib/student-session-superseded'
 import {
   resetSessionSupersededDismissListenersForTests,
   SESSION_SUPERSEDED_BANNER_KEY,
@@ -137,9 +129,8 @@ describe('StudentSessionGuard', () => {
 
     sessionStorage.clear()
 
-    resetSessionSupersededListenersForTests()
+    resetStudentSessionSupersededForTests()
     resetSessionSupersededDismissListenersForTests()
-    resetSessionSupersedeHandlingForTests()
 
     lazySignOutMock.mockClear()
 
@@ -411,7 +402,7 @@ describe('StudentSessionGuard', () => {
       expect(screen.getByTestId('session-superseded-banner')).toBeTruthy()
     })
     expect(probeSignedInMock).not.toHaveBeenCalled()
-    expect(isSessionSupersedeHandling()).toBe(true)
+    expect(isStudentSessionSuperseded()).toBe(true)
   })
 
   it('re-arms supersede guards when Hub signedIn fires but probe is false', async () => {
@@ -429,14 +420,14 @@ describe('StudentSessionGuard', () => {
 
     notifySessionSuperseded()
     await waitFor(() => expect(lazySignOutMock).toHaveBeenCalledTimes(1))
-    expect(isSessionSupersedeHandling()).toBe(true)
+    expect(isStudentSessionSuperseded()).toBe(true)
 
     probeSignedInMock.mockResolvedValueOnce(false)
     hubCallback!({ payload: { event: 'signedIn' } })
 
     await waitFor(() => {
       expect(probeSignedInMock).toHaveBeenCalled()
-      expect(isSessionSupersedeHandling()).toBe(true)
+      expect(isStudentSessionSuperseded()).toBe(true)
     })
     expect(screen.getByTestId('session-superseded-banner')).toBeTruthy()
   })

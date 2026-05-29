@@ -11,11 +11,7 @@ import { needsAuthBootstrap } from '../lib/auth-bootstrap'
 import { lazySignOut, probeSignedIn, warmUserProfileOnce } from '../lib/auth-session-lazy'
 
 import { clearClientAuthState } from '../lib/clear-client-auth-state'
-import { isSessionSupersedeHandling } from '../lib/session-supersede-handling'
-import {
-  clearSessionSupersededBanner,
-  readSessionSupersededBanner,
-} from '../lib/session-superseded-banner'
+import { isStudentSessionSuperseded } from '../lib/student-session-superseded'
 
 import { isAuthConfigured } from '../lib/auth'
 
@@ -107,7 +103,7 @@ export function StudentHeader() {
 
   const runSessionProbe = useCallback(async (cancelled: () => boolean) => {
 
-    if (isSessionSupersedeHandling() || readSessionSupersededBanner()) {
+    if (isStudentSessionSuperseded()) {
 
       if (!cancelled()) setSignedIn(false)
 
@@ -320,8 +316,6 @@ export function StudentHeader() {
       // Still clear local state even if Amplify signOut fails
 
     } finally {
-
-      clearSessionSupersededBanner()
 
       clearClientAuthState({ clearSupersededBanner: true })
 

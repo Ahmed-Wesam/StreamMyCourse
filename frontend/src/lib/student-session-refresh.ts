@@ -1,8 +1,6 @@
-import { fetchAuthSession } from 'aws-amplify/auth'
 import { cognitoUserPoolsTokenProvider } from 'aws-amplify/auth/cognito'
 
-import { isCognitoRefreshSessionSupersededError } from './cognito-session-superseded'
-import { isSessionSupersedeHandling } from './session-supersede-handling'
+import { isStudentSessionSuperseded } from './student-session-superseded'
 
 /** Cognito Pre Token claim and ClientMetadata key (see session_sync.py). */
 export const STUDENT_SESSION_METADATA_KEY = 'student_session_id'
@@ -23,40 +21,15 @@ export function studentSessionIdFromIdToken(idToken: IdTokenWithPayload | undefi
 }
 
 async function clientMetadataFromStoredTokens(): Promise<Record<string, string>> {
-  if (isSessionSupersedeHandling()) return {}
-  try {
-    const session = await fetchAuthSession()
-    const sessionId = studentSessionIdFromIdToken(
-      session.tokens?.idToken as IdTokenWithPayload | undefined,
-    )
-    return sessionId ? { [STUDENT_SESSION_METADATA_KEY]: sessionId } : {}
-  } catch (error) {
-    // Avoid Amplify refresh metadata provider re-entering a stale-session deny loop.
-    if (isCognitoRefreshSessionSupersededError(error)) return {}
-    throw error
-  }
+  if (isStudentSessionSuperseded()) return {}
+  const tokens = await cognitoUserPoolsTokenProvider.authTokenStore.loadTokens()
+  const sessionId = studentSessionIdFromIdToken(
+    tokens?.idToken as IdTokenWithPayload | undefined,
+  )
+  return sessionId ? { [STUDENT_SESSION_METADATA_KEY]: sessionId } : {}
 }
 
 let providerRegistered = false
-
-/** Stop refresh ClientMetadata reads while supersede sign-out runs (avoids Cognito deny loops). */
-export function suspendStudentSessionRefreshMetadata(): void {
-  try {
-    cognitoUserPoolsTokenProvider.setClientMetadataProvider(async () => ({}))
-  } catch {
-    /* Amplify not configured (tests) */
-  }
-}
-
-/** Re-attach session id metadata after dismiss or a verified new sign-in (Guard stays mounted). */
-export function restoreStudentSessionRefreshMetadata(): void {
-  if (!providerRegistered) return
-  try {
-    cognitoUserPoolsTokenProvider.setClientMetadataProvider(clientMetadataFromStoredTokens)
-  } catch {
-    /* Amplify not configured (tests) */
-  }
-}
 
 /**
  * Attach student_session_id to Cognito refresh (GetTokensFromRefreshToken ClientMetadata).
@@ -75,11 +48,6 @@ export function registerStudentSessionRefreshMetadata(): void {
 /** Allow registerStudentSessionRefreshMetadata after sign-out / storage wipe. */
 export function releaseStudentSessionRefreshRegistration(): void {
   providerRegistered = false
-}
-
-/** ClientMetadata for an explicit fetchAuthSession force refresh. */
-export async function buildStudentRefreshClientMetadata(): Promise<Record<string, string>> {
-  return clientMetadataFromStoredTokens()
 }
 
 /** Reset registration flag — test helper only. */
