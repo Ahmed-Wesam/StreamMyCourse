@@ -208,7 +208,7 @@ Focused checks for catalog round-trips (create/read/update, lesson FK). Same fix
 
 **GitHub Actions variable:** Set **`AWS_DEPLOY_ROLE_ARN`** at repo scope (IAM role ARN from **`github-deploy-role-stack.yaml`** output **`GitHubDeployRoleArn`**).
 
-**Bootstrap the CI Cognito user** (operator workstation): see **`scripts/ensure-ci-rds-verify-cognito-user.sh`** and **`COGNITO_RDS_VERIFY_TEST_PASSWORD`** on **`dev`** (and **`prod`** for prod verify). The script sets **`given_name`**, **`family_name`**, and **`email`** (required for Kinescope **`watermarkText`** on playback). Re-run it after deploying the watermark gate if existing CI users were created before those attributes were added.
+**Bootstrap the CI Cognito user** (operator workstation): see **`scripts/ensure-ci-rds-verify-cognito-user.sh`** and **`COGNITO_RDS_VERIFY_TEST_PASSWORD`** on **`dev`** (and **`prod`** for prod verify). The script sets **`given_name`**, **`family_name`**, and **`email`** (required for Kinescope **`watermarkText`** on playback). Re-run it after deploying the watermark gate if existing CI users were created before those attributes were added. **Deploy** also runs **`scripts/ensure-integration-cognito-playback-profiles.sh`** before minting integration JWTs.
 
 **Local RDS** (advanced): [`scripts/deploy-rds-stack.sh`](../../scripts/deploy-rds-stack.sh) targets **`dev`** or **`prod`**; integration tests normally follow **`dev`** in CI.
 
