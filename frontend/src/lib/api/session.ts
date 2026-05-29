@@ -2,7 +2,7 @@ import { fetchAuthSession } from 'aws-amplify/auth'
 
 import { isAuthConfigured } from '../auth'
 import { isCognitoRefreshSessionSupersededError } from '../cognito-session-superseded'
-import { notifySessionSuperseded, isStudentSessionSuperseded } from '../student-session-superseded'
+import { isStudentSessionSuperseded } from '../student-session-superseded-state'
 import { bearerFromSession, httpGet } from './client'
 import type { UserProfile } from './types'
 
@@ -15,7 +15,9 @@ export async function hasSignedInIdToken(): Promise<boolean> {
     return Boolean(bearerFromSession(session))
   } catch (error) {
     if (isCognitoRefreshSessionSupersededError(error)) {
-      notifySessionSuperseded()
+      void import('../student-session-notify').then(({ notifySessionSuperseded }) => {
+        notifySessionSuperseded()
+      })
     }
     return false
   }

@@ -14,13 +14,9 @@ vi.mock('./auth', () => ({
 }))
 
 const notifySessionSupersededMock = vi.hoisted(() => vi.fn())
-vi.mock('./student-session-superseded', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('./student-session-superseded')>()
-  return {
-    ...actual,
-    notifySessionSuperseded: (...args: unknown[]) => notifySessionSupersededMock(...args),
-  }
-})
+vi.mock('./student-session-notify', () => ({
+  notifySessionSuperseded: (...args: unknown[]) => notifySessionSupersededMock(...args),
+}))
 
 vi.mock('./student-session-refresh', async (importOriginal) => {
   const actual = await importOriginal<typeof import('./student-session-refresh')>()

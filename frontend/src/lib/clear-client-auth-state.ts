@@ -3,7 +3,7 @@ import {
   persistSessionSupersededBanner,
   readSessionSupersededBanner,
 } from './session-superseded-banner'
-import { exitSupersededState } from './student-session-superseded'
+import { exitSupersededState } from './student-session-superseded-state'
 
 type ClearClientAuthStateOptions = {
   /** When false, keep the session-superseded banner in sessionStorage (default). */

@@ -1,5 +1,5 @@
 import { clearAmplifyAuthCaches } from './clear-amplify-auth-caches'
-import { exitSupersededState } from './student-session-superseded'
+import { exitSupersededState } from './student-session-superseded-state'
 
 export {
   clearSessionSupersededBanner,

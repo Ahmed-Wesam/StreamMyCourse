@@ -1,6 +1,6 @@
 import { cognitoUserPoolsTokenProvider } from 'aws-amplify/auth/cognito'
 
-import { isStudentSessionSuperseded } from './student-session-superseded'
+import { isStudentSessionSuperseded } from './student-session-superseded-state'
 
 /** Cognito Pre Token claim and ClientMetadata key (see session_sync.py). */
 export const STUDENT_SESSION_METADATA_KEY = 'student_session_id'
