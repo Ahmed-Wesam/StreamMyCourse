@@ -17,6 +17,8 @@
 #   CI_RDS_VERIFY_ROLE — default teacher (can be overridden by --role)
 #   CI_RDS_VERIFY_USERNAME — default ci-rds-verify@noreply.local (can be overridden by --username)
 #   CI_RDS_VERIFY_PASSWORD — permanent password (required for new users; optional to only set role)
+#
+# Sets custom:role plus given_name, family_name, and email (required for Kinescope playback watermarkText).
 
 set -euo pipefail
 
@@ -105,11 +107,23 @@ else
   echo "CI_RDS_VERIFY_PASSWORD not set; skipping admin-set-user-password (set it to rotate password)." >&2
 fi
 
-echo "Ensuring custom:role=$ROLE"
+echo "Ensuring custom:role=$ROLE and playback watermark profile (given_name, family_name, email)"
+if [[ "$ROLE" == "student" ]]; then
+  GIVEN_NAME="CI"
+  FAMILY_NAME="Student"
+else
+  GIVEN_NAME="CI"
+  FAMILY_NAME="Teacher"
+fi
 aws cognito-idp admin-update-user-attributes \
   --user-pool-id "$POOL_ID" \
   --username "$USERNAME" \
-  --user-attributes "Name=custom:role,Value=$ROLE" \
+  --user-attributes \
+    "Name=email,Value=$USERNAME" \
+    "Name=email_verified,Value=true" \
+    "Name=given_name,Value=$GIVEN_NAME" \
+    "Name=family_name,Value=$FAMILY_NAME" \
+    "Name=custom:role,Value=$ROLE" \
   --region "$REGION"
 
 echo "Done. Store the same password in GitHub secret COGNITO_RDS_VERIFY_TEST_PASSWORD on the"
