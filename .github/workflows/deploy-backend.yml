@@ -1,6 +1,5 @@
 # After CI succeeds on a push to main: CI gate → dev edge + dev RDS (parallel) → apply-schema-dev →
-# deploy-backend-dev → deploy-api-waf-dev + deploy-edge-waf-dev (parallel with integration-http-tests where deps allow) →
-# integration-http-tests (pytest against dev API + Cognito JWT from dev Environment) →
+# deploy-backend-dev → integration-http-tests (pytest against dev API + Cognito JWT from dev Environment) →
 # verify-dev-rds → dev SPAs (+ prod edge + prod RDS branches in parallel with later stages).
 # Prod backend waits for verify-dev-rds (dev RDS API smoke), prod edge, prod RDS, schema apply, dev SPA
 # deploys, then prod backend (RDS-backed API); verify-prod-rds runs after prod backend.
@@ -456,42 +455,6 @@ jobs:
           echo "## Edge (dev)" >> "$GITHUB_STEP_SUMMARY"
           echo "**ACM + S3 + CloudFront** in **us-east-1** (StreamMyCourse-EdgeHosting-dev) deployed or no-op changeset." >> "$GITHUB_STEP_SUMMARY"
 
-  deploy-edge-waf-dev:
-    name: WAF (dev) — student CloudFront
-    runs-on: ubuntu-latest
-    environment: dev
-    needs: [gate, deploy-edge-dev]
-    permissions:
-      id-token: write
-      contents: read
-    if: |
-      always() && needs.gate.outputs.should_deploy == 'true' &&
-      needs.deploy-edge-dev.result == 'success' &&
-      (github.event_name == 'workflow_run' || github.event_name == 'workflow_dispatch')
-    env:
-      AWS_REGION: us-east-1
-    steps:
-      - uses: actions/checkout@v6
-        with:
-          ref: ${{ needs.gate.outputs.checkout_sha }}
-
-      - name: Configure AWS credentials (OIDC)
-        uses: aws-actions/configure-aws-credentials@v6
-        with:
-          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
-          aws-region: ${{ env.AWS_REGION }}
-
-      - name: Deploy edge WAF (CLOUDFRONT, us-east-1)
-        run: |
-          chmod +x scripts/deploy-edge-waf.sh
-          ./scripts/deploy-edge-waf.sh dev
-
-      - name: Summary
-        if: success()
-        run: |
-          echo "## Edge WAF (dev)" >> "$GITHUB_STEP_SUMMARY"
-          echo "**StreamMyCourse-EdgeWaf-dev** associated with student CloudFront distribution." >> "$GITHUB_STEP_SUMMARY"
-
   # Deploys the RDS PostgreSQL stack (1-AZ VPC + private db.t4g.micro + Secrets Manager
   # + VPC endpoints) and the in-VPC schema-applier Lambda (S3 zip uploaded in this job).
   # apply-schema-dev invokes that Lambda so the runner never needs TCP 5432 to RDS.
@@ -901,40 +864,6 @@ jobs:
           echo "## Backend dev" >> "$GITHUB_STEP_SUMMARY"
           echo "Video stack + API stack for **dev** deployed (or no-op changeset)." >> "$GITHUB_STEP_SUMMARY"
 
-  deploy-api-waf-dev:
-    name: WAF (dev) — catalog API Gateway
-    runs-on: ubuntu-latest
-    environment: dev
-    needs: [gate, deploy-backend-dev]
-    permissions:
-      id-token: write
-      contents: read
-    if: |
-      always() && needs.gate.outputs.should_deploy == 'true' &&
-      needs.deploy-backend-dev.result == 'success' &&
-      (github.event_name == 'workflow_run' || github.event_name == 'workflow_dispatch')
-    steps:
-      - uses: actions/checkout@v6
-        with:
-          ref: ${{ needs.gate.outputs.checkout_sha }}
-
-      - name: Configure AWS credentials (OIDC)
-        uses: aws-actions/configure-aws-credentials@v6
-        with:
-          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
-          aws-region: ${{ env.AWS_REGION }}
-
-      - name: Deploy API WAF (REGIONAL, eu-west-1)
-        run: |
-          chmod +x scripts/deploy-api-waf.sh
-          ./scripts/deploy-api-waf.sh dev
-
-      - name: Summary
-        if: success()
-        run: |
-          echo "## API WAF (dev)" >> "$GITHUB_STEP_SUMMARY"
-          echo "**StreamMyCourse-ApiWaf-dev** associated with catalog API Gateway stage." >> "$GITHUB_STEP_SUMMARY"
-
   deploy-web-dev:
     name: Web (dev)
     needs: [gate, deploy-edge-dev, deploy-backend-dev, integration-http-tests]
@@ -1046,43 +975,6 @@ jobs:
         run: |
           echo "## Edge (prod)" >> "$GITHUB_STEP_SUMMARY"
           echo "**ACM + S3 + CloudFront** in **us-east-1** (StreamMyCourse-EdgeHosting-prod) deployed or no-op changeset." >> "$GITHUB_STEP_SUMMARY"
-
-  deploy-edge-waf-prod:
-    name: WAF (prod) — student CloudFront
-    runs-on: ubuntu-latest
-    environment: prod
-    needs: [gate, deploy-edge-prod]
-    permissions:
-      id-token: write
-      contents: read
-    if: |
-      always() &&
-      needs.gate.outputs.should_deploy == 'true' &&
-      needs.deploy-edge-prod.result == 'success' &&
-      (github.event_name == 'workflow_run' || github.event_name == 'workflow_dispatch')
-    env:
-      AWS_REGION: us-east-1
-    steps:
-      - uses: actions/checkout@v6
-        with:
-          ref: ${{ needs.gate.outputs.checkout_sha }}
-
-      - name: Configure AWS credentials (OIDC)
-        uses: aws-actions/configure-aws-credentials@v6
-        with:
-          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
-          aws-region: ${{ env.AWS_REGION }}
-
-      - name: Deploy edge WAF (CLOUDFRONT, us-east-1)
-        run: |
-          chmod +x scripts/deploy-edge-waf.sh
-          ./scripts/deploy-edge-waf.sh prod
-
-      - name: Summary
-        if: success()
-        run: |
-          echo "## Edge WAF (prod)" >> "$GITHUB_STEP_SUMMARY"
-          echo "**StreamMyCourse-EdgeWaf-prod** associated with student CloudFront distribution." >> "$GITHUB_STEP_SUMMARY"
 
   deploy-rds-prod:
     name: RDS Stack (prod) — PostgreSQL + VPC
@@ -1475,40 +1367,6 @@ jobs:
         run: |
           echo "## Backend prod" >> "$GITHUB_STEP_SUMMARY"
           echo "Video stack + API stack for **prod** deployed (or no-op changeset)." >> "$GITHUB_STEP_SUMMARY"
-
-  deploy-api-waf-prod:
-    name: WAF (prod) — catalog API Gateway
-    runs-on: ubuntu-latest
-    environment: prod
-    needs: [gate, deploy-backend-prod]
-    permissions:
-      id-token: write
-      contents: read
-    if: |
-      always() && needs.gate.outputs.should_deploy == 'true' &&
-      needs.deploy-backend-prod.result == 'success' &&
-      (github.event_name == 'workflow_run' || github.event_name == 'workflow_dispatch')
-    steps:
-      - uses: actions/checkout@v6
-        with:
-          ref: ${{ needs.gate.outputs.checkout_sha }}
-
-      - name: Configure AWS credentials (OIDC)
-        uses: aws-actions/configure-aws-credentials@v6
-        with:
-          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
-          aws-region: ${{ env.AWS_REGION }}
-
-      - name: Deploy API WAF (REGIONAL, eu-west-1)
-        run: |
-          chmod +x scripts/deploy-api-waf.sh
-          ./scripts/deploy-api-waf.sh prod
-
-      - name: Summary
-        if: success()
-        run: |
-          echo "## API WAF (prod)" >> "$GITHUB_STEP_SUMMARY"
-          echo "**StreamMyCourse-ApiWaf-prod** associated with catalog API Gateway stage." >> "$GITHUB_STEP_SUMMARY"
 
   # Prod-only CloudFormation inputs; creds from GitHub Environment "prod" inside verify-rds-reusable.yml.
   verify-prod-rds:

@@ -306,31 +306,6 @@ Resources:
               - cloudwatch:TagResource
               - cloudwatch:UntagResource
             Resource: !Sub "arn:aws:cloudwatch:eu-west-1:${AWS::AccountId}:alarm:StreamMyCourse-*"
-          - Sid: Wafv2StreamMyCourseWebAcls
-            Effect: Allow
-            Action:
-              - wafv2:GetWebACL
-              - wafv2:CreateWebACL
-              - wafv2:UpdateWebACL
-              - wafv2:DeleteWebACL
-              - wafv2:ListTagsForResource
-              - wafv2:TagResource
-            Resource:
-              - !Sub "arn:aws:wafv2:eu-west-1:${AWS::AccountId}:regional/webacl/StreamMyCourse-*/*"
-              - !Sub "arn:aws:wafv2:us-east-1:${AWS::AccountId}:global/webacl/StreamMyCourse-*/*"
-          - Sid: Wafv2AssociateResources
-            Effect: Allow
-            Action:
-              - wafv2:AssociateWebACL
-              - wafv2:DisassociateWebACL
-              - wafv2:ListResourcesForWebACL
-              - wafv2:GetWebACLForResource
-            Resource: "*"
-            Condition:
-              ForAnyValue:StringEquals:
-                aws:RequestedRegion:
-                  - eu-west-1
-                  - us-east-1
 
   StreamMyCourseGitHubDeployWebPolicy:
     Type: AWS::IAM::Policy

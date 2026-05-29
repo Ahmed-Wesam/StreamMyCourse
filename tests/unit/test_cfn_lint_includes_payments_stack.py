@@ -14,8 +14,6 @@ def test_cfn_lint_scripts_include_payments_stack() -> None:
     for needle in (
         "payments-stack.yaml",
         "video-provider-edge-stack.yaml",
-        "api-waf-stack.yaml",
-        "edge-waf-stack.yaml",
     ):
         for script_name in ("cfn-lint-templates.sh", "cfn-lint-templates.ps1"):
             path = root / "scripts" / script_name

@@ -27,8 +27,6 @@ $CFN_LINT --config-file .cfnlintrc infrastructure/templates/rds-stack.yaml
 $CFN_LINT --config-file .cfnlintrc infrastructure/templates/media-cleanup-stack.yaml
 $CFN_LINT --config-file .cfnlintrc infrastructure/templates/payments-stack.yaml
 $CFN_LINT --config-file .cfnlintrc infrastructure/templates/video-provider-edge-stack.yaml
-$CFN_LINT --config-file .cfnlintrc infrastructure/templates/api-waf-stack.yaml
-$CFN_LINT --config-file .cfnlintrc infrastructure/templates/edge-waf-stack.yaml
 
 echo "OK cfn-lint"
 
