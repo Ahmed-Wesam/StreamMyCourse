@@ -320,6 +320,7 @@ def handle(
                 params["lessonId"],
                 cognito_sub=_actor_sub(claims),
                 role=_actor_role(claims),
+                viewer_claims=claims,
             )
             return json_response(200, playback, origin)
         if action == "get_upload_url":

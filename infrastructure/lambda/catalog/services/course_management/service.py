@@ -18,6 +18,10 @@ from services.common.errors import (
     NotFound,
     ServiceUnavailable,
 )
+from services.common.playback_watermark import (
+    missing_watermark_profile_fields,
+    playback_watermark_from_claims,
+)
 from services.common.sqs_client import send_media_cleanup_job
 from services.course_management.models import Course, CourseModule, Lesson
 from services.course_management.ports import (
@@ -878,6 +882,7 @@ class CourseManagementService:
         *,
         cognito_sub: str = "",
         role: str = "student",
+        viewer_claims: dict[str, Any] | None = None,
     ) -> Dict[str, Any]:
         if not _is_valid_uuid(course_id):
             raise NotFound("Course not found")
@@ -899,6 +904,7 @@ class CourseManagementService:
             playback,
             cognito_sub=(cognito_sub or "").strip(),
             role=(role or "student").strip().lower() or "student",
+            viewer_claims=viewer_claims,
         )
 
     def _playback_to_api(
@@ -907,10 +913,22 @@ class CourseManagementService:
         *,
         cognito_sub: str,
         role: str = "student",
+        viewer_claims: dict[str, Any] | None = None,
     ) -> Dict[str, Any]:
         if isinstance(playback, S3Playback):
             return {"provider": "s3", "playbackUrl": playback.playback_url}
         if isinstance(playback, KinescopePlayback):
+            if missing_watermark_profile_fields(viewer_claims or {}):
+                raise Forbidden(
+                    "Account profile is missing information required for protected video playback",
+                    code="watermark_profile_incomplete",
+                )
+            watermark_text = playback_watermark_from_claims(viewer_claims or {})
+            if not watermark_text:
+                raise Forbidden(
+                    "Account profile is missing information required for protected video playback",
+                    code="watermark_profile_incomplete",
+                )
             drm_token = (playback.drm_auth_token or "").strip()
             if not drm_token:
                 drm_token = self.mint_kinescope_drm_jwt(
@@ -922,6 +940,7 @@ class CourseManagementService:
                 "provider": "kinescope",
                 "videoId": playback.video_id,
                 "drmAuthToken": drm_token,
+                "watermarkText": watermark_text,
             }
         raise BadRequest("Unsupported playback response from video provider")
 

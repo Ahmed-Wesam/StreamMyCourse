@@ -929,7 +929,7 @@ class TestGetPlaybackUrl:
         with pytest.raises(BadRequest, match="not configured"):
             service_no_storage.get_playback_url(_VID, self._LID)
 
-    def test_kinescope_playback_returns_provider_payload(
+    def test_kinescope_playback_requires_watermark_profile(
         self, service: CourseManagementService, repo: MagicMock, video_provider: MagicMock
     ) -> None:
         repo.get_lesson_by_id.return_value = _lesson(
@@ -940,14 +940,75 @@ class TestGetPlaybackUrl:
             video_id="kinescope-video-id",
             drm_auth_token="signed.jwt.token",
         )
+        viewer_claims = {
+            "sub": "s1",
+            "given_name": "Jane",
+            "family_name": "Doe",
+            "email": "jane@gmail.com",
+        }
 
-        out = service.get_playback_url(_VID, self._LID)
+        out = service.get_playback_url(_VID, self._LID, viewer_claims=viewer_claims)
 
         assert out == {
             "provider": "kinescope",
             "videoId": "kinescope-video-id",
             "drmAuthToken": "signed.jwt.token",
+            "watermarkText": "Jane Doe\njane@gmail.com",
         }
+
+    @pytest.mark.parametrize(
+        "viewer_claims",
+        [
+            {},
+            None,
+            {"given_name": "Jane", "email": "jane@gmail.com"},
+            {"name": "Jane Doe", "email": "jane@gmail.com"},
+        ],
+    )
+    def test_kinescope_playback_rejects_incomplete_watermark_profile(
+        self,
+        service: CourseManagementService,
+        repo: MagicMock,
+        video_provider: MagicMock,
+        viewer_claims: dict | None,
+    ) -> None:
+        repo.get_lesson_by_id.return_value = _lesson(
+            id_=self._LID, video_key=_video_key(_VID, self._LID), video_status="ready"
+        )
+        video_provider.resolve_playback.return_value = KinescopePlayback(
+            provider="kinescope",
+            video_id="kinescope-video-id",
+            drm_auth_token="signed.jwt.token",
+        )
+
+        with pytest.raises(Forbidden, match="profile is missing") as exc:
+            service.get_playback_url(_VID, self._LID, viewer_claims=viewer_claims)
+
+        assert exc.value.code == "watermark_profile_incomplete"
+
+    def test_s3_playback_omits_watermark_text_even_with_viewer_claims(
+        self, service: CourseManagementService, repo: MagicMock, video_provider: MagicMock
+    ) -> None:
+        repo.get_lesson_by_id.return_value = _lesson(
+            id_=self._LID, video_key=_video_key(_VID, self._LID), video_status="ready"
+        )
+        video_provider.resolve_playback.return_value = S3Playback(
+            provider="s3",
+            playback_url="https://signed.example/get?sig=def",
+        )
+        viewer_claims = {
+            "given_name": "Jane",
+            "family_name": "Doe",
+            "email": "jane@gmail.com",
+        }
+
+        out = service.get_playback_url(_VID, self._LID, viewer_claims=viewer_claims)
+
+        assert out == {
+            "provider": "s3",
+            "playbackUrl": "https://signed.example/get?sig=def",
+        }
+        assert "watermarkText" not in out
 
 
 # --- get_upload_url -----------------------------------------------------------

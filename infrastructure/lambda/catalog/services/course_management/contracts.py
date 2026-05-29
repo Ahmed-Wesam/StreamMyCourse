@@ -102,6 +102,7 @@ class KinescopePlaybackResponse(TypedDict):
     provider: Literal["kinescope"]
     videoId: str
     drmAuthToken: str
+    watermarkText: str
 
 
 PlaybackResponse = S3PlaybackResponse | KinescopePlaybackResponse
