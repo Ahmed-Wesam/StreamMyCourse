@@ -12,6 +12,26 @@ describe('Layout', () => {
     cleanup()
   })
 
+  it('renders chromeAlert between chromeHeader and main content', () => {
+    render(
+      <MemoryRouter>
+        <Layout
+          chromeHeader={<div data-testid="chrome-slot">Chrome</div>}
+          chromeAlert={<div data-testid="alert-slot">Alert</div>}
+        >
+          <p>Body</p>
+        </Layout>
+      </MemoryRouter>,
+    )
+
+    const root = screen.getByText('Body').closest('.flex.min-h-screen')
+    expect(root).toBeTruthy()
+    const children = Array.from(root!.children)
+    expect(children[0].getAttribute('data-testid')).toBe('chrome-slot')
+    expect(children[1].getAttribute('data-testid')).toBe('alert-slot')
+    expect(children[2].tagName).toBe('MAIN')
+  })
+
   it('renders chromeHeader when provided', () => {
     render(
       <MemoryRouter>

@@ -11,7 +11,11 @@ import { needsAuthBootstrap } from '../lib/auth-bootstrap'
 import { lazySignOut, probeSignedIn, warmUserProfileOnce } from '../lib/auth-session-lazy'
 
 import { clearClientAuthState } from '../lib/clear-client-auth-state'
-import { clearSessionSupersededBanner } from '../lib/session-superseded-banner'
+import { isSessionSupersedeHandling } from '../lib/session-supersede-handling'
+import {
+  clearSessionSupersededBanner,
+  readSessionSupersededBanner,
+} from '../lib/session-superseded-banner'
 
 import { isAuthConfigured } from '../lib/auth'
 
@@ -102,6 +106,14 @@ export function StudentHeader() {
 
 
   const runSessionProbe = useCallback(async (cancelled: () => boolean) => {
+
+    if (isSessionSupersedeHandling() || readSessionSupersededBanner()) {
+
+      if (!cancelled()) setSignedIn(false)
+
+      return
+
+    }
 
     if (!isAuthConfigured()) {
 
@@ -309,9 +321,9 @@ export function StudentHeader() {
 
     } finally {
 
-      clearClientAuthState()
-
       clearSessionSupersededBanner()
+
+      clearClientAuthState({ clearSupersededBanner: true })
 
       setSignedIn(false)
 

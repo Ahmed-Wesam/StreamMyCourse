@@ -3,9 +3,11 @@ import { useEffect, useState } from 'react'
 import { fetchMe } from '../../lib/api/session'
 import type { UserProfile } from '../../lib/api/types'
 import { catalogApiUserMessage } from '../../lib/apiUserMessages'
+import { shouldSuppressInlineSessionSupersededMessage } from '../../lib/session-superseded-inline'
 
 type ProfileState =
   | { status: 'loading' }
+  | { status: 'superseded' }
   | { status: 'error'; message: string }
   | { status: 'ready'; profile: UserProfile }
 
@@ -24,7 +26,12 @@ export default function AccountProfilePage() {
         const profile = await fetchMe()
         if (!cancelled) setState({ status: 'ready', profile })
       } catch (err) {
-        if (!cancelled) setState({ status: 'error', message: catalogApiUserMessage(err) })
+        if (cancelled) return
+        if (shouldSuppressInlineSessionSupersededMessage(err)) {
+          setState({ status: 'superseded' })
+          return
+        }
+        setState({ status: 'error', message: catalogApiUserMessage(err) })
       }
     }
     void load()
@@ -43,6 +50,12 @@ export default function AccountProfilePage() {
       {state.status === 'loading' ? (
         <p className="mt-6 text-sm text-gray-500" role="status">
           Loading profile…
+        </p>
+      ) : null}
+
+      {state.status === 'superseded' ? (
+        <p className="mt-6 text-sm text-gray-500" role="status">
+          Sign in again using the message above to view your profile.
         </p>
       ) : null}
 

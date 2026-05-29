@@ -1,12 +1,43 @@
-import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
-import { useNavigate } from 'react-router-dom'
+import {
+  Children,
+  cloneElement,
+  isValidElement,
+  useCallback,
+  useEffect,
+  useState,
+  type ReactElement,
+  type ReactNode,
+} from 'react'
 
+import { Layout } from '../components/layout/Layout'
 import { registerStudentSessionRefreshMetadata } from '../lib/student-session-refresh'
 import {
+  dismissSessionSupersededBannerUi,
   readSessionSupersededBanner,
-  SUPERSEDED_REDIRECT_DELAY_MS,
 } from '../lib/session-superseded-banner'
+import { SessionSupersededBanner } from './SessionSupersededBanner'
 import { StudentSessionController } from './StudentSessionController'
+
+function injectLayoutChromeAlert(children: ReactNode, alert: ReactNode): ReactNode {
+  const only = Children.only(children)
+  if (!isValidElement(only) || only.type !== Layout) {
+    return (
+      <>
+        {alert}
+        {children}
+      </>
+    )
+  }
+  const layout = only as ReactElement<{ chromeAlert?: ReactNode }>
+  return cloneElement(layout, {
+    chromeAlert: (
+      <>
+        {layout.props.chromeAlert}
+        {alert}
+      </>
+    ),
+  })
+}
 
 /**
  * Student-only: wires Cognito refresh ClientMetadata and signs out when the API
@@ -17,52 +48,28 @@ import { StudentSessionController } from './StudentSessionController'
  */
 export function StudentSessionGuard({ children }: { children: ReactNode }) {
   const [message, setMessage] = useState<string | null>(() => readSessionSupersededBanner())
-  const navigate = useNavigate()
-  const redirectTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-  const clearSupersededRedirectTimer = useCallback(() => {
-    if (redirectTimeoutRef.current != null) {
-      clearTimeout(redirectTimeoutRef.current)
-      redirectTimeoutRef.current = null
-    }
+  const syncBannerFromStorage = useCallback(() => {
+    setMessage(readSessionSupersededBanner())
+  }, [])
+
+  const dismissBanner = useCallback(() => {
+    dismissSessionSupersededBannerUi()
+    setMessage(null)
   }, [])
 
   useEffect(() => {
     registerStudentSessionRefreshMetadata()
   }, [])
 
-  useEffect(() => () => clearSupersededRedirectTimer(), [clearSupersededRedirectTimer])
-
-  const scheduleSupersededRedirect = useCallback(() => {
-    clearSupersededRedirectTimer()
-    redirectTimeoutRef.current = setTimeout(() => {
-      redirectTimeoutRef.current = null
-      navigate('/login', { replace: true })
-    }, SUPERSEDED_REDIRECT_DELAY_MS)
-  }, [clearSupersededRedirectTimer, navigate])
-
-  useEffect(() => {
-    if (message == null) {
-      clearSupersededRedirectTimer()
-    }
-  }, [message, clearSupersededRedirectTimer])
+  const alert = message ? (
+    <SessionSupersededBanner message={message} onDismiss={dismissBanner} />
+  ) : null
 
   return (
     <>
-      {message ? (
-        <div
-          className="sticky top-16 z-[60] border-b border-amber-200 bg-amber-50 px-4 py-3 text-center text-sm text-amber-900 shadow-sm"
-          role="alert"
-          data-testid="session-superseded-banner"
-        >
-          {message}
-        </div>
-      ) : null}
-      <StudentSessionController
-        onMessage={setMessage}
-        onAfterSuperseded={scheduleSupersededRedirect}
-      />
-      {children}
+      <StudentSessionController onMessage={setMessage} onAfterSuperseded={syncBannerFromStorage} />
+      {injectLayoutChromeAlert(children, alert)}
     </>
   )
 }

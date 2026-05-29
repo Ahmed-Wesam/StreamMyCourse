@@ -16,11 +16,13 @@ import {
   setProviderCancelRetryFlag,
 } from '../../lib/billingProviderCancelRetry'
 import { catalogApiUserMessage } from '../../lib/apiUserMessages'
+import { shouldSuppressInlineSessionSupersededMessage } from '../../lib/session-superseded-inline'
 import { subscribeCtaLabel } from '../../lib/subscribeCopy'
 
 type PageState =
   | { status: 'loading' }
   | { status: 'not_subscribed' }
+  | { status: 'superseded' }
   | { status: 'error'; message: string }
   | { status: 'ready'; subscription: SubscriptionSummary }
 
@@ -78,6 +80,10 @@ export default function AccountSubscriptionPage() {
         setState({ status: 'not_subscribed' })
         return
       }
+      if (shouldSuppressInlineSessionSupersededMessage(err)) {
+        setState({ status: 'superseded' })
+        return
+      }
       setState({ status: 'error', message: catalogApiUserMessage(err, 'loadSubscription') })
     }
   }, [])
@@ -93,6 +99,10 @@ export default function AccountSubscriptionPage() {
         if (cancelled) return
         if (isNotSubscribedError(err)) {
           setState({ status: 'not_subscribed' })
+          return
+        }
+        if (shouldSuppressInlineSessionSupersededMessage(err)) {
+          setState({ status: 'superseded' })
           return
         }
         setState({ status: 'error', message: catalogApiUserMessage(err, 'loadSubscription') })
@@ -160,6 +170,12 @@ export default function AccountSubscriptionPage() {
       {state.status === 'loading' ? (
         <p className="mt-6 text-sm text-gray-500" role="status">
           Loading subscription…
+        </p>
+      ) : null}
+
+      {state.status === 'superseded' ? (
+        <p className="mt-6 text-sm text-gray-500" role="status">
+          Sign in again using the message above to manage your subscription.
         </p>
       ) : null}
 
