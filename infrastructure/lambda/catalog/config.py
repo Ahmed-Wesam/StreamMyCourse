@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 import os
-from dataclasses import dataclass
-from typing import List, Optional
+from dataclasses import dataclass, field
+from typing import Dict, List, Optional
 
 
 @dataclass(frozen=True)
@@ -35,6 +35,7 @@ class AppConfig:
     kinescope_drm_jwt_issuer: str = "streammycourse"
     kinescope_drm_jwt_audience: str = "kinescope"
     kinescope_webhook_secret: str = ""
+    rate_limit_max_overrides: Dict[str, int] = field(default_factory=dict)
 
 _DEFAULT_DB_PORT = 5432
 
@@ -69,6 +70,32 @@ def _parse_float(val: str, default: float) -> float:
         return float(val)
     except (ValueError, TypeError):
         return default
+
+
+def _parse_bool(val: str, default: bool) -> bool:
+    """Parse a boolean env var; empty/unset uses ``default``."""
+    s = (val or "").strip().lower()
+    if not s:
+        return default
+    return s in ("1", "true", "yes", "on")
+
+
+def _parse_rate_limit_max_overrides(raw: str) -> Dict[str, int]:
+    """Parse ``RATE_LIMIT_MAX_OVERRIDES`` as ``policy_id:max`` CSV pairs."""
+    out: Dict[str, int] = {}
+    for part in _split_csv(raw):
+        if ":" not in part:
+            continue
+        policy_id, max_raw = part.split(":", 1)
+        policy_id = policy_id.strip()
+        max_raw = max_raw.strip()
+        if not policy_id or not max_raw:
+            continue
+        try:
+            out[policy_id] = int(max_raw)
+        except ValueError:
+            continue
+    return out
 
 
 def _parse_int(val: str, default: int) -> int:
@@ -132,6 +159,10 @@ def load_config() -> AppConfig:
     deployment_environment = (deployment_raw or "dev").lower()
     student_cognito_client_id = os.environ.get("STUDENT_COGNITO_CLIENT_ID", "").strip()
 
+    rate_limit_max_overrides = _parse_rate_limit_max_overrides(
+        os.environ.get("RATE_LIMIT_MAX_OVERRIDES", "")
+    )
+
     return AppConfig(
         video_bucket=video_bucket,
         video_provider=video_provider,
@@ -155,4 +186,5 @@ def load_config() -> AppConfig:
         kinescope_drm_jwt_issuer=kinescope_drm_jwt_issuer,
         kinescope_drm_jwt_audience=kinescope_drm_jwt_audience,
         kinescope_webhook_secret=kinescope_webhook_secret,
+        rate_limit_max_overrides=rate_limit_max_overrides,
     )

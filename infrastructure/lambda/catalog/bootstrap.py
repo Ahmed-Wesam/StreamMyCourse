@@ -41,6 +41,8 @@ from services.subscription.manage_service import SubscriptionManageService
 from services.subscription.repo import SubscriptionRdsRepository
 from services.subscription.service import CourseAccessService
 from services.question_banks.rds_repo import QuestionBankRdsRepository
+from services.rate_limit.rds_repo import RateLimitRdsRepository
+from services.rate_limit.service import RateLimitService
 from services.question_banks.service import QuestionBankService
 from services.question_banks.visibility import (
     apply_module_quiz_visibility,
@@ -153,6 +155,7 @@ class AwsDeps:
     merchant_service: MerchantStatusService
     subscription_manage_service: SubscriptionManageService
     checkout_service: BillingCheckoutService
+    rate_limit_service: RateLimitService
 
 
 _cached: Dict[str, Any] = {}
@@ -309,6 +312,11 @@ def build_aws_deps(cfg: AppConfig) -> AwsDeps:
     )
     checkout_service = BillingCheckoutService(subscription_repo)
     subscription_manage_service = SubscriptionManageService(subscription_repo)
+    rate_limit_repo = RateLimitRdsRepository(conn_factory)
+    rate_limit_service = RateLimitService(
+        rate_limit_repo,
+        max_overrides=cfg.rate_limit_max_overrides,
+    )
 
     return AwsDeps(
         cfg=cfg,
@@ -320,6 +328,7 @@ def build_aws_deps(cfg: AppConfig) -> AwsDeps:
         merchant_service=merchant_service,
         subscription_manage_service=subscription_manage_service,
         checkout_service=checkout_service,
+        rate_limit_service=rate_limit_service,
     )
 
 
@@ -339,16 +348,17 @@ def lambda_bootstrap() -> Tuple[
     Optional[QuestionBankService],
     Optional[MerchantStatusService],
     Optional[SubscriptionManageService],
+    Optional[RateLimitService],
 ]:
     """
     Composition root: load config and construct dependencies once.
     When RDS settings are incomplete the catalog cannot be wired, so
-    ``(cfg, None, None, None, None, None, None, None)`` is returned and the handler responds
+    ``(cfg, None, None, None, None, None, None, None, None)`` is returned and the handler responds
     with a configuration error.
     """
     cfg = load_config()
     if not _rds_config_complete(cfg):
-        return cfg, None, None, None, None, None, None, None
+        return cfg, None, None, None, None, None, None, None, None
 
     existing = get_cached_aws_deps()
     if existing is not None:
@@ -361,6 +371,7 @@ def lambda_bootstrap() -> Tuple[
             existing.question_bank_service,
             existing.merchant_service,
             existing.subscription_manage_service,
+            existing.rate_limit_service,
         )
 
     deps = build_aws_deps(cfg)
@@ -374,4 +385,5 @@ def lambda_bootstrap() -> Tuple[
         deps.question_bank_service,
         deps.merchant_service,
         deps.subscription_manage_service,
+        deps.rate_limit_service,
     )

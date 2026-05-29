@@ -10,6 +10,7 @@ import pytest
 
 import index as index_mod
 from config import AppConfig
+from services.common.errors import RateLimitStoreError, TooManyRequests
 from services.course_management.service import CourseManagementService
 
 
@@ -28,12 +29,14 @@ def _bootstrap_returning(
     question_bank_service: Optional[Any] = None,
     merchant_service: Optional[Any] = None,
     subscription_manage_service: Optional[Any] = None,
+    rate_limit_service: Optional[Any] = None,
 ):
     """Factory: returns a `lambda_bootstrap` stand-in yielding fixed values."""
 
     def _stub() -> Tuple[
         AppConfig,
         Optional[CourseManagementService],
+        Optional[Any],
         Optional[Any],
         Optional[Any],
         Optional[Any],
@@ -50,6 +53,7 @@ def _bootstrap_returning(
             question_bank_service,
             merchant_service,
             subscription_manage_service,
+            rate_limit_service,
         )
 
     return _stub
@@ -101,7 +105,7 @@ class TestServiceUnconfigured:
         monkeypatch.setattr(
             index_mod,
             "lambda_bootstrap",
-            _bootstrap_returning(cfg_wildcard, None, None, None, None, None, None, None),
+            _bootstrap_returning(cfg_wildcard, None, None, None, None, None, None, None, None),
         )
         evt = make_lambda_event(method="GET", path="/courses")
 
@@ -125,7 +129,7 @@ class TestServiceUnconfigured:
         monkeypatch.setattr(
             index_mod,
             "lambda_bootstrap",
-            _bootstrap_returning(cfg_wildcard, None, None, None, None, None, None, None),
+            _bootstrap_returning(cfg_wildcard, None, None, None, None, None, None, None, None),
         )
         evt = make_lambda_event(
             method="OPTIONS",
@@ -154,7 +158,7 @@ class TestServiceUnconfigured:
         monkeypatch.setattr(
             index_mod,
             "lambda_bootstrap",
-            _bootstrap_returning(cfg_wildcard, None, None, None, None, None, None, None),
+            _bootstrap_returning(cfg_wildcard, None, None, None, None, None, None, None, None),
         )
         evt = make_lambda_event(
             method="GET",
@@ -180,7 +184,7 @@ class TestServiceUnconfigured:
             allowed_origins=["https://app.example.com", "http://localhost:5173"],
         )
         monkeypatch.setattr(
-            index_mod, "lambda_bootstrap", _bootstrap_returning(cfg, None, None, None, None, None, None, None)
+            index_mod, "lambda_bootstrap", _bootstrap_returning(cfg, None, None, None, None, None, None, None, None)
         )
         evt = make_lambda_event(
             method="GET", path="/courses", headers={"origin": "https://evil.com"}
@@ -211,7 +215,7 @@ class TestServiceConfigured:
         monkeypatch.setattr(
             index_mod,
             "lambda_bootstrap",
-            _bootstrap_returning(cfg_wildcard, mock_service, mock_auth, None, mock_progress, None, None, None),
+            _bootstrap_returning(cfg_wildcard, mock_service, mock_auth, None, mock_progress, None, None, None, None),
         )
 
         evt = make_lambda_event(method="GET", path="/courses")
@@ -229,7 +233,7 @@ class TestServiceConfigured:
         monkeypatch.setattr(
             index_mod,
             "lambda_bootstrap",
-            _bootstrap_returning(cfg_wildcard, None, None, None, None, None, None, None),
+            _bootstrap_returning(cfg_wildcard, None, None, None, None, None, None, None, None),
         )
         # API Gateway v1-style: `httpMethod` instead of `requestContext.http.method`.
         evt: Dict[str, Any] = {"httpMethod": "OPTIONS", "headers": {}}
@@ -269,7 +273,7 @@ class TestProgressRouting:
             monkeypatch.setattr(
                 index_mod,
                 "lambda_bootstrap",
-                _bootstrap_returning(cfg_wildcard, mock_service, mock_auth, None, mock_progress, None, None, None),
+                _bootstrap_returning(cfg_wildcard, mock_service, mock_auth, None, mock_progress, None, None, None, None),
             )
 
             evt = make_lambda_event(method="GET", path="/courses/course-123/progress")
@@ -302,7 +306,7 @@ class TestProgressRouting:
             monkeypatch.setattr(
                 index_mod,
                 "lambda_bootstrap",
-                _bootstrap_returning(cfg_wildcard, mock_service, mock_auth, None, mock_progress, None, None, None),
+                _bootstrap_returning(cfg_wildcard, mock_service, mock_auth, None, mock_progress, None, None, None, None),
             )
 
             evt = make_lambda_event(
@@ -331,7 +335,7 @@ class TestProgressRouting:
         monkeypatch.setattr(
             index_mod,
             "lambda_bootstrap",
-            _bootstrap_returning(cfg_wildcard, mock_service, mock_auth, None, mock_progress, None, None, None),
+            _bootstrap_returning(cfg_wildcard, mock_service, mock_auth, None, mock_progress, None, None, None, None),
         )
 
         evt = make_lambda_event(
@@ -353,12 +357,218 @@ class TestProgressRouting:
         monkeypatch.setattr(
             index_mod,
             "lambda_bootstrap",
-            _bootstrap_returning(cfg_wildcard, None, None, None, None, None, None, None),
+            _bootstrap_returning(cfg_wildcard, None, None, None, None, None, None, None, None),
         )
         evt = make_lambda_event(method="GET", path="/courses/course-123/progress")
-
         resp = index_mod.lambda_handler(evt, None)
 
         assert resp["statusCode"] == 503
         body = json.loads(resp["body"])
         assert body["code"] == "catalog_unconfigured"
+
+
+def _cfg_with_rds(**overrides: Any) -> AppConfig:
+    base = dict(
+        video_bucket="b",
+        default_mp4_url="",
+        video_url="",
+        allowed_origins=["*"],
+        db_host="rds.example.com",
+        db_name="smc",
+        db_secret_arn="arn:aws:secretsmanager:eu-west-1:123:secret:x",
+    )
+    base.update(overrides)
+    return AppConfig(**base)
+
+
+class TestRateLimitMiddleware:
+    def test_too_many_requests_returns_429_with_retry_after(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        make_lambda_event,
+    ) -> None:
+        cfg = _cfg_with_rds()
+        mock_service = MagicMock(spec=CourseManagementService)
+        mock_service.list_published_courses.return_value = []
+        mock_auth = MagicMock()
+        mock_rl = MagicMock()
+        mock_rl.check.side_effect = TooManyRequests(
+            "Too many requests",
+            retry_after_seconds=42,
+        )
+
+        monkeypatch.setattr(
+            index_mod,
+            "lambda_bootstrap",
+            _bootstrap_returning(
+                cfg,
+                mock_service,
+                mock_auth,
+                None,
+                MagicMock(),
+                None,
+                None,
+                None,
+                mock_rl,
+            ),
+        )
+
+        evt = make_lambda_event(method="GET", path="/courses")
+        evt["requestContext"]["identity"] = {"sourceIp": "203.0.113.10"}
+
+        resp = index_mod.lambda_handler(evt, None)
+
+        assert resp["statusCode"] == 429
+        body = json.loads(resp["body"])
+        assert body["code"] == "rate_limited"
+        assert resp["headers"]["Retry-After"] == "42"
+        mock_rl.check.assert_called_once()
+
+    def test_rate_limit_store_error_returns_503(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        make_lambda_event,
+    ) -> None:
+        cfg = _cfg_with_rds()
+        mock_service = MagicMock(spec=CourseManagementService)
+        mock_auth = MagicMock()
+        mock_rl = MagicMock()
+        mock_rl.check.side_effect = RateLimitStoreError()
+
+        monkeypatch.setattr(
+            index_mod,
+            "lambda_bootstrap",
+            _bootstrap_returning(
+                cfg,
+                mock_service,
+                mock_auth,
+                None,
+                MagicMock(),
+                None,
+                None,
+                None,
+                mock_rl,
+            ),
+        )
+
+        evt = make_lambda_event(method="GET", path="/courses")
+        evt["requestContext"]["identity"] = {"sourceIp": "203.0.113.10"}
+
+        resp = index_mod.lambda_handler(evt, None)
+
+        assert resp["statusCode"] == 503
+        body = json.loads(resp["body"])
+        assert body["code"] == "rate_limit_store_unavailable"
+
+    def test_options_skips_rate_limit_check(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        make_lambda_event,
+    ) -> None:
+        cfg = _cfg_with_rds()
+        mock_service = MagicMock(spec=CourseManagementService)
+        mock_auth = MagicMock()
+        mock_rl = MagicMock()
+
+        monkeypatch.setattr(
+            index_mod,
+            "lambda_bootstrap",
+            _bootstrap_returning(
+                cfg,
+                mock_service,
+                mock_auth,
+                None,
+                MagicMock(),
+                None,
+                None,
+                None,
+                mock_rl,
+            ),
+        )
+
+        evt = make_lambda_event(
+            method="OPTIONS",
+            path="/courses",
+            headers={"origin": "http://localhost:5173"},
+        )
+
+        resp = index_mod.lambda_handler(evt, None)
+
+        assert resp["statusCode"] == 204
+        mock_rl.check.assert_not_called()
+
+    def test_skipped_when_service_none(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        make_lambda_event,
+    ) -> None:
+        cfg = _cfg_with_rds()
+        mock_service = MagicMock(spec=CourseManagementService)
+        mock_service.list_published_courses.return_value = []
+        mock_auth = MagicMock()
+
+        monkeypatch.setattr(
+            index_mod,
+            "lambda_bootstrap",
+            _bootstrap_returning(
+                cfg,
+                mock_service,
+                mock_auth,
+                None,
+                MagicMock(),
+                None,
+                None,
+                None,
+                None,
+            ),
+        )
+
+        evt = make_lambda_event(method="GET", path="/courses")
+
+        resp = index_mod.lambda_handler(evt, None)
+
+        assert resp["statusCode"] == 200
+
+    def test_webhook_path_skips_rate_limit(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        make_lambda_event,
+    ) -> None:
+        cfg = _cfg_with_rds()
+        mock_service = MagicMock(spec=CourseManagementService)
+        mock_auth = MagicMock()
+        mock_rl = MagicMock()
+
+        with patch.object(index_mod, "handle_kinescope_drm_auth") as mock_webhook:
+            mock_webhook.return_value = {
+                "statusCode": 200,
+                "body": '{"ok": true}',
+                "headers": {"Content-Type": "application/json"},
+            }
+
+            monkeypatch.setattr(
+                index_mod,
+                "lambda_bootstrap",
+                _bootstrap_returning(
+                    cfg,
+                    mock_service,
+                    mock_auth,
+                    None,
+                    MagicMock(),
+                    None,
+                    None,
+                    None,
+                    mock_rl,
+                ),
+            )
+
+            evt = make_lambda_event(
+                method="POST",
+                path="/webhooks/kinescope/drm-auth",
+                body={"token": "t"},
+            )
+
+            resp = index_mod.lambda_handler(evt, None)
+
+        assert resp["statusCode"] == 200
+        mock_rl.check.assert_not_called()

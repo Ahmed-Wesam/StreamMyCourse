@@ -34,6 +34,28 @@ class Forbidden(HttpError):
         super().__init__(403, message, code=code)
 
 
+class TooManyRequests(HttpError):
+    def __init__(
+        self,
+        message: str = "Too many requests",
+        *,
+        code: str | None = "rate_limited",
+        retry_after_seconds: int | None = None,
+    ):
+        super().__init__(429, message, code=code)
+        self.retry_after_seconds = retry_after_seconds
+
+
+class RateLimitStoreError(HttpError):
+    def __init__(
+        self,
+        message: str = "Rate limit store unavailable",
+        *,
+        code: str | None = "rate_limit_store_unavailable",
+    ):
+        super().__init__(503, message, code=code)
+
+
 class ServiceUnavailable(HttpError):
     def __init__(self, message: str, *, code: str | None = "service_unavailable"):
         super().__init__(503, message, code=code)

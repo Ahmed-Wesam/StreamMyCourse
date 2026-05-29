@@ -64,6 +64,7 @@ def test_catalog_upload_url_returns_video_edge_required() -> None:
         None,
         None,
         None,
+        None,
     )
     with patch("index.load_config", return_value=_kinescope_cfg()), patch(
         "index.lambda_bootstrap", return_value=bootstrap

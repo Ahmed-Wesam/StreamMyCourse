@@ -78,6 +78,7 @@ def _bootstrap_returning(cfg: AppConfig, *, manage_svc: Any):
             MagicMock(name="qb_svc"),
             MagicMock(name="merchant_svc"),
             manage_svc,
+            None,
         )
 
     return _stub
