@@ -24,6 +24,7 @@ from services.course_management.kinescope_routing import (
 )
 from services.course_management.video_webhooks import handle_kinescope_drm_auth
 from services.question_banks.controller import handle_question_banks_request
+from services.rate_limit.http import check_rate_limit
 
 logger = logging.getLogger(__name__)
 
@@ -218,6 +219,7 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 question_bank_service,
                 merchant_service,
                 subscription_manage_service,
+                rate_limit_service,
             ) = lambda_bootstrap()
 
             headers = event.get("headers") or {}
@@ -261,6 +263,15 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                         origin,
                         auth_repo,
                         cfg.student_cognito_client_id,
+                    )
+
+                if route_response is None:
+                    route_response = check_rate_limit(
+                        event,
+                        origin,
+                        rate_limit_service,
+                        method=method,
+                        parts=parts,
                     )
 
                 if route_response is None:

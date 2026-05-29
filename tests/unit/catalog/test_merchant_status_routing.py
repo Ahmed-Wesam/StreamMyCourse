@@ -32,6 +32,7 @@ def _bootstrap_returning(
             MagicMock(name="qb_svc"),
             merchant_service,
             None,
+            None,
         )
 
     return _stub
