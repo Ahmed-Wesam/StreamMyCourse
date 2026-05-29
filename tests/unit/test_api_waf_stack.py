@@ -51,6 +51,7 @@ def test_api_waf_stack_courses_rate_rule_excludes_webhooks() -> None:
 def test_api_waf_stack_managed_common_rule_set_count_by_default() -> None:
     text = _api_waf_stack_text()
     assert "AWSManagedRulesCommonRuleSet" in text
+    assert "AWSManagedRulesKnownBadInputsRuleSet" in text
     assert "ManagedRuleGroupStatement:" in text
     assert "EnableManagedRulesBlock" in text
     assert "Count: {}" in text
