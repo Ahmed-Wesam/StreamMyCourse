@@ -231,6 +231,7 @@ describe('LessonPlayerPage', () => {
       provider: 'kinescope',
       videoId: 'ks-video-1',
       drmAuthToken: 'drm-token-1',
+      watermarkText: 'Jane Doe\njane@gmail.com',
     })
 
     renderLessonPlayer()
@@ -246,6 +247,7 @@ describe('LessonPlayerPage', () => {
       provider: 'kinescope',
       videoId: 'ks-video-1',
       drmAuthToken: 'drm-token-1',
+      watermarkText: 'Jane Doe\njane@gmail.com',
     })
 
     renderLessonPlayer()

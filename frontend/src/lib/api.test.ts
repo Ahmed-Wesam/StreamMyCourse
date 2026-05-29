@@ -59,6 +59,7 @@ import {
   isMediaCleanupUnavailableError,
   isNotSubscribedError,
   isPlaybackAuthRequiredError,
+  isWatermarkProfileIncompleteError,
   isProgressRdsUnavailableError,
   isSessionSupersededError,
   isSubscriptionRequiredError,
@@ -239,6 +240,17 @@ describe('isCourseAccessDeniedError', () => {
     expect(isCourseAccessDeniedError(new ApiError('x', 403, 'subscription_required'))).toBe(true)
     expect(isCourseAccessDeniedError(new ApiError('x', 403, 'enrollment_required'))).toBe(true)
     expect(isCourseAccessDeniedError(new ApiError('Forbidden', 403))).toBe(false)
+  })
+})
+
+describe('isWatermarkProfileIncompleteError', () => {
+  it('is true for 403 watermark_profile_incomplete', () => {
+    expect(
+      isWatermarkProfileIncompleteError(
+        new ApiError('profile is missing', 403, 'watermark_profile_incomplete'),
+      ),
+    ).toBe(true)
+    expect(isWatermarkProfileIncompleteError(new ApiError('Forbidden', 403))).toBe(false)
   })
 })
 
@@ -963,6 +975,7 @@ describe('getPlaybackUrl fetchMe deleteLesson markCourseThumbnailReady', () => {
               provider: 'kinescope',
               videoId: 'ks-video-1',
               drmAuthToken: 'drm-token-1',
+              watermarkText: 'Jane Doe\njane@gmail.com',
             }),
             { status: 200, headers: { 'Content-Type': 'application/json' } },
           )
@@ -998,6 +1011,7 @@ describe('getPlaybackUrl fetchMe deleteLesson markCourseThumbnailReady', () => {
     if ('provider' in p && p.provider === 'kinescope') {
       expect(p.videoId).toBe('ks-video-1')
       expect(p.drmAuthToken).toBe('drm-token-1')
+      expect(p.watermarkText).toBe('Jane Doe\njane@gmail.com')
     }
   })
   it('fetchMe GETs /users/me', async () => {

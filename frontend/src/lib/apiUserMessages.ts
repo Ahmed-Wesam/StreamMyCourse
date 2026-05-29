@@ -11,6 +11,7 @@ import {
   isProviderAgreementMissingError,
   isProviderCancelFailedError,
   isSessionSupersededError,
+  isWatermarkProfileIncompleteError,
 } from './api/client'
 
 /** Shown when the student session was superseded by a sign-in on another device. */
@@ -35,6 +36,10 @@ export const incompleteLessonPlayerLinkMessage =
 
 export const courseNotFoundMessage =
   'That course was not found or you no longer have access to it.'
+
+/** Shown when Kinescope playback is blocked because profile claims lack first/last name or email. */
+export const watermarkProfileIncompletePlaybackMessage =
+  'Video playback requires your Google account first name, last name, and email. Sign out and sign in again with Google, or contact support if this continues.'
 
 type ApiUserMessageContext =
   | 'loadCourses'
@@ -314,6 +319,9 @@ function readApiError(err: unknown): ApiError | null {
 function mapByApiErrorCode(err: ApiError): string | null {
   if (isSessionSupersededError(err)) {
     return sessionSupersededUserMessage
+  }
+  if (isWatermarkProfileIncompleteError(err)) {
+    return watermarkProfileIncompletePlaybackMessage
   }
   if (isBillingUnconfiguredError(err)) {
     return 'Subscriptions are not available right now. Please try again later.'
