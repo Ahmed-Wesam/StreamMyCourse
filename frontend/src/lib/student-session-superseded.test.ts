@@ -5,19 +5,21 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { sessionSupersededUserMessage } from './apiUserMessages'
 import * as amplifyCaches from './clear-amplify-auth-caches'
-import * as banner from './session-superseded-banner'
+import * as banner from './session-superseded-banner-storage'
 import {
   enterSupersededState,
   exitSupersededState,
-  installSessionSupersededRejectionHandler,
   isStudentSessionSuperseded,
   notifySessionSuperseded,
   resetSessionSupersededNotifyCooldownForTests,
-  resetSessionSupersededRejectionHandlerForTests,
   resetStudentSessionSupersededForTests,
   subscribeSessionSuperseded,
   syncSupersededFromStorage,
 } from './student-session-superseded'
+import {
+  installSessionSupersededRejectionHandler,
+  resetSessionSupersededRejectionHandlerForTests,
+} from './install-session-superseded-rejection-handler'
 import {
   persistSessionSupersededBanner,
   readSessionSupersededBanner,
