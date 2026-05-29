@@ -13,10 +13,9 @@ import {
   isSessionSupersededError,
   isWatermarkProfileIncompleteError,
 } from './api/client'
+import { sessionSupersededUserMessage } from './session-superseded-message'
 
-/** Shown when the student session was superseded by a sign-in on another device. */
-export const sessionSupersededUserMessage =
-  'Your account was signed in on another device. Please sign in again to continue.'
+export { sessionSupersededUserMessage } from './session-superseded-message'
 
 /** Broken or incomplete URL — question banks list route. */
 export const incompleteQuestionBanksListLinkMessage =
