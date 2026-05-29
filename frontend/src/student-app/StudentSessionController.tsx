@@ -63,11 +63,13 @@ export function StudentSessionController({
       onMessage(sessionSupersededUserMessage)
       void lazySignOut()
         .then(() => {
+          if (!handlingRef.current) return
           // lazySignOut clears sessionStorage; restore banner for /login and remounts.
           persistSessionSupersededBanner(sessionSupersededUserMessage)
           onAfterSuperseded?.()
         })
         .catch(() => {
+          if (!handlingRef.current) return
           handlingRef.current = false
           persistSessionSupersededBanner(sessionSupersededUserMessage)
           onAfterSuperseded?.()
