@@ -4,24 +4,42 @@
 
 ---
 
-## 2026-05-28 — API abuse protection (rate limits + WAF)
+## 2026-05-29 — Remove WAF (cost)
 
 ### Goal
 
-Close **Slice 6** of layered API abuse protection: observability, ADR, and doc sync for RDS route limits, API Gateway throttles, and dual WAF stacks (slices 1–5 already in repo).
+Drop AWS WAF Web ACLs and all repo wiring; keep **RDS rate limits** and **API Gateway throttles** for abuse protection.
+
+### Changes
+
+- [x] **Deleted** — `api-waf-stack.yaml`, `edge-waf-stack.yaml`, `deploy-api-waf.sh`, `deploy-edge-waf.sh`, WAF unit tests.
+- [x] **CI** — Removed `deploy-*-waf-*` jobs from [`deploy-backend.yml`](.github/workflows/deploy-backend.yml).
+- [x] **IAM** — Removed `wafv2:*` statements from [`iam-policy-github-deploy-backend.json`](infrastructure/iam-policy-github-deploy-backend.json) and [`github-deploy-role-stack.yaml`](infrastructure/templates/github-deploy-role-stack.yaml).
+- [x] **Ops** — [`scripts/delete-waf-stacks.sh`](scripts/delete-waf-stacks.sh) deletes `StreamMyCourse-ApiWaf-{dev,prod}` and `StreamMyCourse-EdgeWaf-{dev,prod}` if present.
+
+### AWS cleanup
+
+Run from repo root (admin credentials):
+
+```bash
+./scripts/delete-waf-stacks.sh
+```
+
+---
+
+## 2026-05-28 — API abuse protection (rate limits; WAF removed 2026-05-29)
+
+### Goal
+
+Close **Slice 6** of layered API abuse protection: observability, ADR, and doc sync for RDS route limits and API Gateway throttles (slices 1–5 already in repo). **WAF stacks were added then removed 2026-05-29** (cost).
 
 ### Changes
 
 - [x] **RDS rate limits** — [`services/rate_limit/`](infrastructure/lambda/catalog/services/rate_limit/): policies, service, RDS repo, middleware in [`index.py`](infrastructure/lambda/catalog/index.py); migration [`014_rate_limit_counters.sql`](infrastructure/database/migrations/014_rate_limit_counters.sql); optional [`RATE_LIMIT_MAX_OVERRIDES`](infrastructure/lambda/catalog/config.py) for policy tuning.
 - [x] **API Gateway throttles** — [`api-stack.yaml`](infrastructure/templates/api-stack.yaml) `CatalogApiStage.MethodSettings` (deployment V35).
-- [x] **WAF** — [`api-waf-stack.yaml`](infrastructure/templates/api-waf-stack.yaml) (REGIONAL, `/courses*` IP limit, webhooks excluded); [`edge-waf-stack.yaml`](infrastructure/templates/edge-waf-stack.yaml) (CloudFront student distribution).
 - [x] **Observability** — `CatalogApi4xxAlarm` CloudWatch alarm on API Gateway `4XXError` for catalog stage (`CatalogApi4xxAlarmThreshold` parameter); Lambda middleware logs **`rate_limit_denied`** ([`services/rate_limit/http.py`](infrastructure/lambda/catalog/services/rate_limit/http.py)).
 - [x] **ADR** — [`adr-0012-api-abuse-protection.md`](plans/architecture/adr-0012-api-abuse-protection.md): layered model, limits table, fail-closed 503 / 429 behavior.
-- [x] **Docs** — [`design.md`](design.md) §9; [`module-map.md`](plans/architecture/module-map.md) `services/rate_limit/` row; [`roadmap.md`](roadmap.md) MVP WAF baseline note.
-
-### Deploy / CI note
-
-`api-waf-stack` and `edge-waf-stack` deploy from [`.github/workflows/deploy-backend.yml`](.github/workflows/deploy-backend.yml) via [`scripts/deploy-api-waf.sh`](scripts/deploy-api-waf.sh) and [`scripts/deploy-edge-waf.sh`](scripts/deploy-edge-waf.sh) after the api-stack and edge-hosting stacks respectively.
+- [x] **Docs** — [`design.md`](design.md) §9; [`module-map.md`](plans/architecture/module-map.md) `services/rate_limit/` row.
 
 ### Verification
 
