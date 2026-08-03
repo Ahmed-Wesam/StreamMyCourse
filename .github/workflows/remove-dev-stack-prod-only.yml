@@ -249,7 +249,7 @@ jobs:
     runs-on: ubuntu-latest
     environment: prod
     needs:
-- frontend
+      - frontend
       - lambda
       - cloudformation
       - security
@@ -297,7 +297,7 @@ jobs:
     runs-on: ubuntu-latest
     environment: prod
     needs:
-- frontend
+      - frontend
       - lambda
       - cloudformation
       - security
@@ -460,7 +460,8 @@ jobs:
     name: Backend (prod) — Video + API
     runs-on: ubuntu-latest
     environment: prod
-          - deploy-edge-prod
+    needs:
+      - deploy-edge-prod
       - deploy-rds-prod
       - apply-schema-prod
     permissions:
@@ -1011,7 +1012,8 @@ jobs:
 
   deploy-web-prod:
     name: Web (prod)
-          - integration-http-tests
+    needs:
+      - integration-http-tests
       - verify-prod-rds
       - deploy-edge-prod
     if: |
@@ -1031,7 +1033,8 @@ jobs:
 
   deploy-teacher-web-prod:
     name: Teacher Web (prod)
-          - integration-http-tests
+    needs:
+      - integration-http-tests
       - verify-prod-rds
       - deploy-edge-prod
     if: |
