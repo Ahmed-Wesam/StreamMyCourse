@@ -11,7 +11,8 @@ beforeAll(() => {
   class PatchedRequest extends NativeRequest {
     constructor(input: RequestInfo | URL, init?: RequestInit) {
       if (init?.signal) {
-        const { signal: _signal, ...restInit } = init
+        const { signal, ...restInit } = init
+        void signal
         super(input, restInit)
         return
       }
