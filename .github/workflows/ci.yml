@@ -3,9 +3,7 @@ name: CI
 on:
   pull_request:
   push:
-    branches:
-      - main
-      - remove-dev-stack-prod-only  # CI only; Deploy still uses workflow on default branch (main)
+    branches: [ "main" ]
 
 permissions:
   contents: read
