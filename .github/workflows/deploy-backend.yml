@@ -1,4 +1,4 @@
-# After CI succeeds on a push to main or remove-dev-stack-prod-only: CI gate → prod edge + prod RDS (parallel) → apply-schema-prod →
+# After CI succeeds on a push to main: CI gate → prod edge + prod RDS (parallel) → apply-schema-prod →
 # deploy-backend-prod → integration-http-tests (pytest against prod API + Cognito JWT from prod Environment) →
 # verify-prod-rds → prod SPAs.
 # verify-prod-rds calls verify-rds-reusable.yml with prod CloudFormation inputs + GitHub Environment secrets.
@@ -58,11 +58,10 @@ jobs:
             echo "Skipping deploy: CI was not triggered by push (event=${{ github.event.workflow_run.event }})"
             exit 0
           fi
-          deploy_branch="${{ github.event.workflow_run.head_branch }}"
-          if [ "$deploy_branch" != "main" ] && [ "$deploy_branch" != "remove-dev-stack-prod-only" ]; then
+          if [ "${{ github.event.workflow_run.head_branch }}" != "main" ]; then
             echo "should_deploy=false" >> "$GITHUB_OUTPUT"
             echo "checkout_sha=${{ github.event.workflow_run.head_sha }}" >> "$GITHUB_OUTPUT"
-            echo "Skipping deploy: CI head branch is not deployable ($deploy_branch)"
+            echo "Skipping deploy: CI head branch is not main (${{ github.event.workflow_run.head_branch }})"
             exit 0
           fi
           echo "should_deploy=true" >> "$GITHUB_OUTPUT"

@@ -5,7 +5,7 @@ on:
   push:
     branches:
       - main
-      - remove-dev-stack-prod-only
+      - remove-dev-stack-prod-only  # CI only; Deploy still uses workflow on default branch (main)
 
 permissions:
   contents: read
