@@ -1,7 +1,7 @@
 # StreamMyCourse - AWS Deployment Script
 param(
     [Parameter(Mandatory=$false)]
-    [string]$Environment = "dev",
+    [string]$Environment = "prod",
 
     [Parameter(Mandatory=$false)]
     [string]$StackName = "",
@@ -420,7 +420,7 @@ if ($Template -eq "billing") {
 # API parameter overrides are passed as separate argv tokens (see $cfDeployArgs below)
 if ($Template -eq "auth") {
     if ($CognitoDomainPrefix -eq "") {
-        Write-Host "[X] CognitoDomainPrefix is required for auth template (globally unique, e.g. streammycourse-auth-dev)" -ForegroundColor Red
+        Write-Host "[X] CognitoDomainPrefix is required for auth template (globally unique, e.g. streammycourse-auth-prod)" -ForegroundColor Red
         exit 1
     }
     if ($GoogleClientId -eq "" -or $GoogleClientSecret -eq "") {
@@ -477,32 +477,30 @@ if ($Template -eq "edge-hosting") {
     $cfDeployArgs += '--parameter-overrides'
     $cfDeployArgs += $edgeOverrides
 } elseif ($Template -eq "auth") {
-    # Match deploy-backend dev merge: ensure local Vite OAuth redirects exist (including when callback env vars are empty).
-    if ($Environment -eq "dev") {
-        if (-not $StudentCallbackUrls.Contains('http://localhost:5173/')) {
-            $StudentCallbackUrls = $(if ([string]::IsNullOrWhiteSpace($StudentCallbackUrls)) { 'http://localhost:5173/' } else { "$StudentCallbackUrls,http://localhost:5173/" })
-        }
-        if (-not $StudentCallbackUrls.Contains('http://127.0.0.1:5173/')) {
-            $StudentCallbackUrls = $(if ([string]::IsNullOrWhiteSpace($StudentCallbackUrls)) { 'http://127.0.0.1:5173/' } else { "$StudentCallbackUrls,http://127.0.0.1:5173/" })
-        }
-        if (-not $StudentLogoutUrls.Contains('http://localhost:5173/')) {
-            $StudentLogoutUrls = $(if ([string]::IsNullOrWhiteSpace($StudentLogoutUrls)) { 'http://localhost:5173/' } else { "$StudentLogoutUrls,http://localhost:5173/" })
-        }
-        if (-not $StudentLogoutUrls.Contains('http://127.0.0.1:5173/')) {
-            $StudentLogoutUrls = $(if ([string]::IsNullOrWhiteSpace($StudentLogoutUrls)) { 'http://127.0.0.1:5173/' } else { "$StudentLogoutUrls,http://127.0.0.1:5173/" })
-        }
-        if (-not $TeacherCallbackUrls.Contains('http://localhost:5174/')) {
-            $TeacherCallbackUrls = $(if ([string]::IsNullOrWhiteSpace($TeacherCallbackUrls)) { 'http://localhost:5174/' } else { "$TeacherCallbackUrls,http://localhost:5174/" })
-        }
-        if (-not $TeacherCallbackUrls.Contains('http://127.0.0.1:5174/')) {
-            $TeacherCallbackUrls = $(if ([string]::IsNullOrWhiteSpace($TeacherCallbackUrls)) { 'http://127.0.0.1:5174/' } else { "$TeacherCallbackUrls,http://127.0.0.1:5174/" })
-        }
-        if (-not $TeacherLogoutUrls.Contains('http://localhost:5174/')) {
-            $TeacherLogoutUrls = $(if ([string]::IsNullOrWhiteSpace($TeacherLogoutUrls)) { 'http://localhost:5174/' } else { "$TeacherLogoutUrls,http://localhost:5174/" })
-        }
-        if (-not $TeacherLogoutUrls.Contains('http://127.0.0.1:5174/')) {
-            $TeacherLogoutUrls = $(if ([string]::IsNullOrWhiteSpace($TeacherLogoutUrls)) { 'http://127.0.0.1:5174/' } else { "$TeacherLogoutUrls,http://127.0.0.1:5174/" })
-        }
+    # Ensure local Vite OAuth redirects exist (including when callback env vars are empty).
+    if (-not $StudentCallbackUrls.Contains('http://localhost:5173/')) {
+        $StudentCallbackUrls = $(if ([string]::IsNullOrWhiteSpace($StudentCallbackUrls)) { 'http://localhost:5173/' } else { "$StudentCallbackUrls,http://localhost:5173/" })
+    }
+    if (-not $StudentCallbackUrls.Contains('http://127.0.0.1:5173/')) {
+        $StudentCallbackUrls = $(if ([string]::IsNullOrWhiteSpace($StudentCallbackUrls)) { 'http://127.0.0.1:5173/' } else { "$StudentCallbackUrls,http://127.0.0.1:5173/" })
+    }
+    if (-not $StudentLogoutUrls.Contains('http://localhost:5173/')) {
+        $StudentLogoutUrls = $(if ([string]::IsNullOrWhiteSpace($StudentLogoutUrls)) { 'http://localhost:5173/' } else { "$StudentLogoutUrls,http://localhost:5173/" })
+    }
+    if (-not $StudentLogoutUrls.Contains('http://127.0.0.1:5173/')) {
+        $StudentLogoutUrls = $(if ([string]::IsNullOrWhiteSpace($StudentLogoutUrls)) { 'http://127.0.0.1:5173/' } else { "$StudentLogoutUrls,http://127.0.0.1:5173/" })
+    }
+    if (-not $TeacherCallbackUrls.Contains('http://localhost:5174/')) {
+        $TeacherCallbackUrls = $(if ([string]::IsNullOrWhiteSpace($TeacherCallbackUrls)) { 'http://localhost:5174/' } else { "$TeacherCallbackUrls,http://localhost:5174/" })
+    }
+    if (-not $TeacherCallbackUrls.Contains('http://127.0.0.1:5174/')) {
+        $TeacherCallbackUrls = $(if ([string]::IsNullOrWhiteSpace($TeacherCallbackUrls)) { 'http://127.0.0.1:5174/' } else { "$TeacherCallbackUrls,http://127.0.0.1:5174/" })
+    }
+    if (-not $TeacherLogoutUrls.Contains('http://localhost:5174/')) {
+        $TeacherLogoutUrls = $(if ([string]::IsNullOrWhiteSpace($TeacherLogoutUrls)) { 'http://localhost:5174/' } else { "$TeacherLogoutUrls,http://localhost:5174/" })
+    }
+    if (-not $TeacherLogoutUrls.Contains('http://127.0.0.1:5174/')) {
+        $TeacherLogoutUrls = $(if ([string]::IsNullOrWhiteSpace($TeacherLogoutUrls)) { 'http://127.0.0.1:5174/' } else { "$TeacherLogoutUrls,http://127.0.0.1:5174/" })
     }
     $authOverrides = @(
         "Environment=$Environment",
@@ -582,11 +580,7 @@ if ($Template -eq "edge-hosting") {
     $cfDeployArgs += '--parameter-overrides'
     $cfDeployArgs += $rdsOverrides
 } elseif ($Template -eq "video") {
-    $videoCors = if ($Environment -eq 'prod') {
-        'https://researchspectrum.org,https://teach.researchspectrum.org,http://localhost:5173,http://127.0.0.1:5173,http://localhost:5174,http://127.0.0.1:5174'
-    } else {
-        'https://dev.researchspectrum.org,https://teach.dev.researchspectrum.org,http://localhost:5173,http://127.0.0.1:5173,http://localhost:5174,http://127.0.0.1:5174'
-    }
+    $videoCors = 'https://researchspectrum.org,https://teach.researchspectrum.org,http://localhost:5173,http://127.0.0.1:5173,http://localhost:5174,http://127.0.0.1:5174'
     $videoOverrides = @(
         "Environment=$Environment",
         "InvalidationLambdaCodeS3Bucket=$videoArtifactBucket",

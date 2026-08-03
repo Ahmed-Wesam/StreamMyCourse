@@ -1,12 +1,11 @@
 import { fetchAuthSession } from 'aws-amplify/auth'
 
 import { isCognitoRefreshSessionSupersededError } from '../cognito-session-superseded'
+import { notifySessionSuperseded } from '../student-session-notify'
 import { isStudentSessionSuperseded } from '../student-session-superseded-state'
 
 function notifySessionSupersededFromApiClient(): void {
-  void import('../student-session-notify').then(({ notifySessionSuperseded }) => {
-    notifySessionSuperseded()
-  })
+  notifySessionSuperseded()
 }
 
 const API_BASE_URL_RAW = import.meta.env.VITE_API_BASE_URL as string | undefined

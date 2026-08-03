@@ -6,8 +6,8 @@ Description: >
 Parameters:
   Environment:
     Type: String
-    Default: dev
-    AllowedValues: [dev, prod]
+    AllowedValues: [prod]
+    Default: prod
     Description: Deployment environment (affects naming only)
 
   ArtifactBucketName:
@@ -31,9 +31,6 @@ Parameters:
     Default: 'false'
     AllowedValues: ['true', 'false']
     Description: If true, only logs what would be deleted without actually deleting
-
-Conditions:
-  IsProd: !Equals [!Ref Environment, 'prod']
 
 Resources:
   # Lambda function
@@ -109,7 +106,7 @@ Resources:
     Type: AWS::Logs::LogGroup
     Properties:
       LogGroupName: !Sub '/aws/lambda/StreamMyCourse-ArtifactJanitor-${Environment}'
-      RetentionInDays: !If [IsProd, 30, 7]
+      RetentionInDays: 30
 
   # EventBridge rule for scheduled execution
   JanitorScheduleRule:

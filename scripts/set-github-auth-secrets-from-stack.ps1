@@ -3,13 +3,13 @@
 # Prereqs: aws CLI, gh CLI, gh auth login, StreamMyCourse-Auth-<env> and API stack deployed.
 #
 # Usage:
-#   .\scripts\set-github-auth-secrets-from-stack.ps1 -Environment dev
-#   .\scripts\set-github-auth-secrets-from-stack.ps1 -Environment dev -WhatIf
+#   .\scripts\set-github-auth-secrets-from-stack.ps1 -Environment prod
+#   .\scripts\set-github-auth-secrets-from-stack.ps1 -Environment prod -WhatIf
 #   .\scripts\set-github-auth-secrets-from-stack.ps1 -Environment prod -GitHubEnvironment prod
 
 param(
-    [ValidateSet('dev', 'prod')]
-    [string]$Environment = 'dev',
+    [ValidateSet('prod')]
+    [string]$Environment = 'prod',
     [string]$Region = 'eu-west-1',
     [string]$GitHubEnvironment = '',
     [switch]$WhatIf,
@@ -64,11 +64,7 @@ $awsExe = Resolve-AwsCli
 $ghExe = Resolve-GhCli
 
 $authStack = "StreamMyCourse-Auth-$Environment"
-$apiStack = if ($Environment -eq 'dev') {
-    'streammycourse-api'
-} else {
-    'StreamMyCourse-Api-prod'
-}
+$apiStack = 'StreamMyCourse-Api-prod'
 
 Write-Host "Auth stack: $authStack" -ForegroundColor Cyan
 Write-Host "API stack:  $apiStack (ApiEndpoint -> VITE_API_BASE_URL)" -ForegroundColor Cyan

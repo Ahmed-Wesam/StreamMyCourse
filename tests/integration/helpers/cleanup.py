@@ -139,18 +139,33 @@ def delete_prefixed_teacher_courses_via_http(
     return deleted_ids, matched_ids
 
 
-def _assert_dev_integration_video_bucket(bucket: str) -> None:
-    """Raise if *bucket* is not the known dev integration video-bucket name pattern."""
+def _integration_allow_prod_cleanup() -> bool:
+    flag = os.environ.get("INTEGRATION_ALLOW_PROD_CLEANUP", "").strip().lower()
+    return flag in ("1", "true", "yes", "on")
+
+
+def _assert_integration_video_bucket(bucket: str) -> None:
+    """Raise if *bucket* is not an allowed integration video-bucket name pattern."""
     if not bucket:
         raise RuntimeError("REFUSING: empty bucket name")
 
     dev_pattern = re.compile(r"^streammycourse-video-dev-.*videobucket")
+    prod_pattern = re.compile(r"^streammycourse-video-prod-.*videobucket")
+    allow_prod = _integration_allow_prod_cleanup()
 
     if "-prod-" in bucket:
+        if not allow_prod:
+            raise RuntimeError(
+                f"REFUSING to operate on bucket '{bucket}': "
+                "This appears to be a prod bucket. "
+                "Integration cleanup must not run against production "
+                "unless INTEGRATION_ALLOW_PROD_CLEANUP=1 is set."
+            )
+        if prod_pattern.match(bucket):
+            return
         raise RuntimeError(
             f"REFUSING to operate on bucket '{bucket}': "
-            "This appears to be a prod bucket. "
-            "Integration cleanup must not run against production."
+            "Prod bucket must match 'streammycourse-video-prod-*videobucket*'."
         )
 
     if dev_pattern.match(bucket):
@@ -158,8 +173,9 @@ def _assert_dev_integration_video_bucket(bucket: str) -> None:
 
     raise RuntimeError(
         f"REFUSING to operate on bucket '{bucket}': "
-        "Bucket must match 'streammycourse-video-dev-*videobucket*'. "
-        "Integration S3 cleanup is only for the non-prod dev video bucket."
+        "Bucket must match 'streammycourse-video-dev-*videobucket*' "
+        "or (with INTEGRATION_ALLOW_PROD_CLEANUP=1) "
+        "'streammycourse-video-prod-*videobucket*'."
     )
 
 
@@ -191,11 +207,11 @@ def delete_orphan_media_for_course_prefixes(
 ) -> List[str]:
     """Delete S3 objects only under ``{courseId}/`` for each UUID in *course_ids*.
 
-    Used after the HTTP safety net so shared dev buckets keep non-test objects.
+    Used after the HTTP safety net so shared integration buckets keep non-test objects.
     """
     if not course_ids:
         return []
-    _assert_dev_integration_video_bucket(bucket)
+    _assert_integration_video_bucket(bucket)
     deleted: List[str] = []
     skipped_non_uuid: List[str] = []
     for raw in course_ids:
@@ -235,13 +251,13 @@ def empty_entire_bucket(bucket: str, *, region: str) -> List[str]:
         **Destructive.** Session cleanup uses :func:`delete_orphan_media_for_course_prefixes`
         instead so shared dev buckets are not wiped. Keep this for rare manual recovery only.
 
-    SAFETY: Only empties buckets that match the StreamMyCourse **dev** video-bucket naming.
-    **Production** is always refused.
+    SAFETY: Only empties buckets that match the StreamMyCourse integration video-bucket
+    naming (dev, or prod when ``INTEGRATION_ALLOW_PROD_CLEANUP=1``).
     """
     if not bucket:
         return []
 
-    _assert_dev_integration_video_bucket(bucket)
+    _assert_integration_video_bucket(bucket)
     logger.warning(
         "empty_entire_bucket: full-bucket delete on %s (prefer scoped cleanup)", bucket
     )
@@ -265,8 +281,8 @@ def empty_entire_bucket(bucket: str, *, region: str) -> List[str]:
 
 
 def empty_uploads_prefix(bucket: str, *, region: str, prefix: str = "uploads/") -> List[str]:
-    """Delete only objects under *prefix* (default ``uploads/``) in the dev integration bucket."""
-    _assert_dev_integration_video_bucket(bucket)
+    """Delete only objects under *prefix* (default ``uploads/``) in the integration video bucket."""
+    _assert_integration_video_bucket(bucket)
     return delete_all_objects_under_prefix(bucket, region=region, prefix=prefix)
 
 

@@ -1,6 +1,31 @@
 # StreamMyCourse — Implementation History
 
 > Living document tracking all implementation progress, decisions, and milestones.
+>
+> **Note (2026):** CI/CD and integration tests target **prod only** (`StreamMyCourse-*-prod`). Older entries below may reference **dev** stacks, **`streammycourse-api`**, **`deploy-environment.ps1`**, or **`deploy-backend-dev-only.yml`** — see current docs in [`AGENTS.md`](AGENTS.md), [`design.md`](design.md) §10, and [`infrastructure/README.md`](infrastructure/README.md).
+
+---
+
+## 2026-08-03 — Remove dev stack / prod-only deploy
+
+### Goal
+
+Drop the mirrored **dev** AWS environment from the repo and CI/CD; **prod** is the sole deployed stack set. Local development uses Vite proxying to prod API and Cognito.
+
+### Changes
+
+- [x] **Deploy workflow** — [`.github/workflows/deploy-backend.yml`](.github/workflows/deploy-backend.yml): **prod-only** job graph (no `deploy-*-dev` jobs); chains **`deploy-edge-prod`** → **`deploy-rds-prod`** / **`apply-schema-prod`** → **`deploy-backend-prod`** → **`integration-http-tests`** → **`verify-prod-rds`** → prod SPAs via [`deploy-web-reusable.yml`](.github/workflows/deploy-web-reusable.yml) / [`deploy-teacher-web-reusable.yml`](.github/workflows/deploy-teacher-web-reusable.yml).
+- [x] **Removed dev deploy paths** — deleted [`.github/workflows/deploy-backend-dev-only.yml`](.github/workflows/deploy-backend-dev-only.yml), [`scripts/backend-dev/`](scripts/backend-dev/), [`infrastructure/deploy-environment.ps1`](infrastructure/deploy-environment.ps1).
+- [x] **Deploy scripts** — [`scripts/deploy-backend.sh`](scripts/deploy-backend.sh) and related `deploy-*.sh` / [`infrastructure/deploy.ps1`](infrastructure/deploy.ps1) accept **`prod`** only; CloudFormation templates default **`Environment=prod`**.
+- [x] **Lambda config** — [`infrastructure/lambda/catalog/config.py`](infrastructure/lambda/catalog/config.py) (and edge/billing config modules) default **`deployment_environment=prod`**.
+- [x] **Integration tests** — [`scripts/run-local-integration-tests.sh`](scripts/run-local-integration-tests.sh), [`scripts/run-integration-tests.ps1`](scripts/run-integration-tests.ps1), [`tests/integration/helpers/cleanup.py`](tests/integration/helpers/cleanup.py): target **`StreamMyCourse-*-prod`**; mutating tests require **`INTEGRATION_ALLOW_PROD_CLEANUP=1`** ([`tests/integration/README.md`](tests/integration/README.md)).
+- [x] **Local frontend** — [`frontend/.env.example`](frontend/.env.example): Vite **`VITE_API_PROXY_TARGET`** / Cognito env point at prod outputs; no separate dev API.
+- [x] **Docs** — [`AGENTS.md`](AGENTS.md), [`design.md`](design.md) §10, [`README.md`](README.md), [`infrastructure/README.md`](infrastructure/README.md) **Phase 0** teardown for legacy `*-dev` stacks and GitHub Environment **`dev`** removal.
+
+### Operator follow-up
+
+- Tear down remaining **`StreamMyCourse-*-dev`** stacks per [`infrastructure/README.md`](infrastructure/README.md) Phase 0 (RDS snapshot first).
+- Remove GitHub Environment **`dev`** after **`prod`** secrets/variables verified.
 
 ---
 

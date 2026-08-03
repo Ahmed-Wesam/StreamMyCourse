@@ -1,11 +1,11 @@
-# Called by deploy-backend.yml — one teacher SPA deploy to dev or prod.
+# Called by deploy-backend.yml — teacher SPA deploy to prod.
 name: Deploy Teacher Web (reusable)
 
 on:
   workflow_call:
     inputs:
       target_environment:
-        description: "GitHub Environment name (dev or prod)"
+        description: "GitHub Environment name (prod only)"
         required: true
         type: string
       checkout_ref:
@@ -87,7 +87,7 @@ jobs:
         working-directory: frontend
         env:
           VITE_API_BASE_URL: ${{ secrets.VITE_API_BASE_URL }}
-          VITE_STUDENT_SITE_URL: ${{ inputs.target_environment == 'prod' && 'https://researchspectrum.org' || 'https://dev.researchspectrum.org' }}
+          VITE_STUDENT_SITE_URL: https://researchspectrum.org
           VITE_COGNITO_USER_POOL_ID: ${{ secrets.VITE_COGNITO_USER_POOL_ID }}
           VITE_COGNITO_USER_POOL_CLIENT_ID: ${{ secrets.VITE_COGNITO_TEACHER_CLIENT_ID }}
           VITE_COGNITO_DOMAIN: ${{ secrets.VITE_COGNITO_DOMAIN }}

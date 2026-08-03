@@ -4,10 +4,8 @@ Description: 'StreamMyCourse - Video provider edge (no VPC) for Kinescope upload
 Parameters:
   Environment:
     Type: String
-    Default: dev
-    AllowedValues:
-      - dev
-      - prod
+    AllowedValues: [prod]
+    Default: prod
     Description: Deployment environment
 
   LambdaCodeS3Bucket:

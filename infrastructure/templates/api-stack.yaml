@@ -4,16 +4,14 @@ Description: 'StreamMyCourse - MVP API Stack (API Gateway + Lambda, no event sou
 Parameters:
   Environment:
     Type: String
-    Default: dev
-    AllowedValues:
-      - dev
-      - prod
+    AllowedValues: [prod]
+    Default: prod
     Description: Deployment environment
 
   CorsAllowOrigin:
     Type: String
     Default: 'http://localhost:5173'
-    Description: Allowed CORS origins for Lambda success responses (CSV supported; e.g., "https://app.example.com,https://dev.example.com,http://localhost:5173")
+    Description: Allowed CORS origins for Lambda success responses (CSV supported; e.g., "https://researchspectrum.org,http://localhost:5173")
 
   GatewayResponseAllowOrigin:
     Type: String
@@ -74,7 +72,7 @@ Parameters:
     Type: String
     MinLength: 1
     Description: >-
-      Name of the RDS stack (e.g. StreamMyCourse-Rds-dev) whose exports provide
+      Name of the RDS stack (e.g. StreamMyCourse-Rds-prod) whose exports provide
       the VPC/subnet/SG/secret and DB_* settings for the catalog Lambda (required).
 
   LogLevel:
@@ -149,7 +147,7 @@ Parameters:
     MinValue: 1
     Description: >-
       Sum of API Gateway 4XXError on the catalog stage per 5-minute period before
-      CloudWatch alarm (tune per env at deploy; dev may use a lower value).
+      CloudWatch alarm (tune at deploy if needed).
 
   KinescopeDrmJwtSecret:
     Type: String
@@ -197,7 +195,6 @@ Parameters:
 
 Conditions:
   HasVideoBucket: !Not [!Equals [!Ref VideoBucketName, '']]
-  IsProd: !Equals [!Ref Environment, prod]
   HasMediaCleanupQueueArn: !Not [!Equals [!Ref MediaCleanupQueueArn, '']]
   HasBillingEdgeLambdaArn: !Not [!Equals [!Ref BillingEdgeLambdaArn, '']]
   IsKinescopeProvider: !Equals [!Ref VideoProvider, kinescope]

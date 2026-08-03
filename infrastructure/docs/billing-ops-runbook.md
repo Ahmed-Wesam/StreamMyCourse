@@ -1,7 +1,7 @@
 # Billing ops runbook (WS8 — pre-go-live, mock on)
 
-**Stack:** `StreamMyCourse-Payments-{dev|prod}` ([`payments-stack.yaml`](../templates/payments-stack.yaml))  
-**Scope:** Subscription billing edge + fulfillment while **`PAYTABS_USE_MOCK=true`** on dev and prod. Live PayTabs flip is [WS9](../../plans/billing-workstream-9-paytabs-live-go-live.md).
+**Stack:** `StreamMyCourse-Payments-prod` ([`payments-stack.yaml`](../templates/payments-stack.yaml))  
+**Scope:** Subscription billing edge + fulfillment while **`PAYTABS_USE_MOCK=true`** on prod. Live PayTabs flip is [WS9](../../plans/billing-workstream-9-paytabs-live-go-live.md).
 
 **Contracts:** [manage-contract-v1](../../plans/billing/manage-contract-v1.md), [subscribe-contract-v1](../../plans/billing/subscribe-contract-v1.md), [access-policy-v1](../../plans/billing/access-policy-v1.md).
 
@@ -9,19 +9,19 @@
 
 ## Mock guard (`PAYTABS_USE_MOCK=true`)
 
-**Invariant (WS8):** Both **dev** and **prod** must run the mock PayTabs adapter — **no outbound PayTabs HTTP**, no real charges.
+**Invariant (WS8):** Prod must run the mock PayTabs adapter — **no outbound PayTabs HTTP**, no real charges.
 
 | Check | Where |
 |-------|--------|
-| Deploy input | GitHub Environment variable **`PAYTABS_USE_MOCK`** = `true` on **dev** and **prod** ([`deploy-backend.yml`](../../.github/workflows/deploy-backend.yml)) |
-| Runtime | Lambda **`StreamMyCourse-BillingEdge-{env}`** env **`PAYTABS_USE_MOCK`** = `true` |
+| Deploy input | GitHub Environment variable **`PAYTABS_USE_MOCK`** = `true` on **prod** ([`deploy-backend.yml`](../../.github/workflows/deploy-backend.yml)) |
+| Runtime | Lambda **`StreamMyCourse-BillingEdge-prod`** env **`PAYTABS_USE_MOCK`** = `true` |
 
 **Verify (no secret values):**
 
 ```bash
-# Replace {env} with dev or prod
+# Replace env with prod
 aws lambda get-function-configuration \
-  --function-name "StreamMyCourse-BillingEdge-{env}" \
+  --function-name "StreamMyCourse-BillingEdge-prod" \
   --query 'Environment.Variables.PAYTABS_USE_MOCK' --output text
 ```
 
@@ -154,7 +154,6 @@ Paste these into the PayTabs merchant profile **terms** and **privacy** fields (
 | Env | Terms | Privacy |
 |-----|-------|---------|
 | **prod** (live profile) | `https://researchspectrum.org/terms` | `https://researchspectrum.org/privacy` |
-| **dev** (test profile) | `https://dev.researchspectrum.org/terms` | `https://dev.researchspectrum.org/privacy` |
 
 Teachers see the same URLs on **Payment setup** (`/payment-setup`); copy from there if preferred. The **`termsUrlSet`** checklist item remains **manual** until PayTabs API verification is implemented — operator marks complete only after confirming the URL in the PayTabs dashboard.
 

@@ -9,11 +9,11 @@ The following paths are obsolete for MVP public SPAs and must not be reintroduce
 - **Hybrid SPA app clients + native Amplify sign-up/password** flows on hosted student or teacher bundles.
 - Amplify **`loginWith.email`** in the SPA codebase — sign-in configures **Hosted UI OAuth only**, and **`VITE_COGNITO_USER_POOL_ID`**, **`VITE_COGNITO_USER_POOL_CLIENT_ID`**, and **`VITE_COGNITO_DOMAIN`** must all be set for Amplify auth to initialize (parity with SPA build checker [`scripts/check-cognito-spa-env.mjs`](../../scripts/check-cognito-spa-env.mjs)).
 
-**Forks / lab without Google OAuth:** Do **not** run the **`Deploy`** workflow’s **full dev/prod backend** jobs that provision auth until **`GOOGLE_OAUTH_CLIENT_ID`** and **`GOOGLE_OAUTH_CLIENT_SECRET`** exist on each GitHub **Environment**. Local **`deploy.ps1 -Template auth`** also refuses empty Google parameters. SPA builds might still compile with pool ids from stacks created under an older template; that combination is unsupported for this repo’s **mainline** pipelines.
+**Forks / lab without Google OAuth:** Do **not** run the **`Deploy`** workflow’s **full prod backend** jobs that provision auth until **`GOOGLE_OAUTH_CLIENT_ID`** and **`GOOGLE_OAUTH_CLIENT_SECRET`** exist on the **`prod`** GitHub Environment. Local **`deploy.ps1 -Template auth`** also refuses empty Google parameters. SPA builds might still compile with pool ids from stacks created under an older template; that combination is unsupported for this repo’s **mainline** pipelines.
 
-**Legacy data (pre-Google-only):** Clearing code is not enough. Before the first Google-only cutover per environment, run **[Pre-launch clean slate](#pre-launch-clean-slate-dev-then-prod)** (ordered **DynamoDB → S3 video bucket (full prefix sweep or lifecycle) → Cognito users last**) so old native users and catalog rows cannot collide.
+**Legacy data (pre-Google-only):** Clearing code is not enough. Before the first Google-only cutover, run **[Pre-launch clean slate](#pre-launch-clean-slate-prod)** (ordered **DynamoDB → S3 video bucket (full prefix sweep or lifecycle) → Cognito users last**) so old native users and catalog rows cannot collide.
 
-## Pre-launch clean slate (dev then prod)
+## Pre-launch clean slate (prod)
 
 **Policy:** Before the first Google-only production cutover, wipe legacy native users and course state so native-vs-Google identity collision cannot occur. **Not launched — no retention requirement.** Double-check **AWS account, region, stack names, and environment** before destructive steps.
 
@@ -23,7 +23,7 @@ The following paths are obsolete for MVP public SPAs and must not be reintroduce
 
 Table name pattern: **`StreamMyCourse-Catalog-<env>`** (see [`api-stack.yaml`](../templates/api-stack.yaml) `CatalogTable`). Items use prefixes **`COURSE#`**, **`USER#`**, **`LESSON#`**.
 
-- **Verify table name** from CloudFormation stack **`StreamMyCourse-Api-<env>`** output or AWS Console.
+- **Verify table name** from CloudFormation stack **`StreamMyCourse-Api-prod`** output or AWS Console.
 - **Goal:** item count **0** (or table deleted and recreated only if your process allows — prefer scan + batch delete to keep the table).
 - Prefer a **repeatable script** or documented `aws dynamodb scan` + `batch-write-item` delete loop; avoid typos on prod.
 
@@ -61,7 +61,7 @@ There is **no** `create-first-admin.py` script: public app clients do not suppor
 
 **Break-glass path:**
 
-1. Open the **student** or **teacher** dev/prod site and complete **Sign in with Google** so a pool user exists.
+1. Open the **student** or **teacher** prod site and complete **Sign in with Google** so a pool user exists.
 2. In **AWS Console** → **Cognito** → user pool → **Users** → select that user → **Edit** attributes.
 3. Set **`custom:role`** to **`admin`** or **`teacher`** as needed.
 4. Ask the user to **sign out and sign in again** so JWTs carry the new claim.
@@ -72,7 +72,7 @@ MVP has **no** self-service teacher request API; promotion stays Console-based.
 
 ## Google Cloud (per environment)
 
-1. Create a **Google Cloud OAuth 2.0 Client ID** of type **Web application** for **dev** and a **separate** client for **prod** (never share client secrets across envs).
+1. Create a **Google Cloud OAuth 2.0 Client ID** of type **Web application** for **prod**.
 2. **Authorized redirect URIs:** exactly the Cognito hosted UI callback for that env, e.g.  
    `https://<COGNITO_DOMAIN_PREFIX>.auth.<region>.amazoncognito.com/oauth2/idpresponse`  
    (use the real prefix and region from the deployed auth stack.)
@@ -120,27 +120,27 @@ The backend job passes **`UserPoolArn`** into the API stack automatically on the
 1. **Print outputs** (same account/region as deploy, default `eu-west-1`):
 
    ```powershell
-   .\scripts\print-auth-stack-outputs.ps1 -Environment dev
+   .\scripts\print-auth-stack-outputs.ps1 -Environment prod
    ```
 
    ```bash
-   ./scripts/print-auth-stack-outputs.sh dev eu-west-1
+   ./scripts/print-auth-stack-outputs.sh prod eu-west-1
    ```
 
-2. **Set GitHub Environment secrets** (web reusable workflows use **`environment: dev`** / **`prod`**).
+2. **Set GitHub Environment secrets** (web reusable workflows use **`environment: prod`**).
 
-   **Cognito domain prefixes (backend Deploy):** Use **`COGNITO_DOMAIN_PREFIX`** on **both** GitHub Environments with **different** globally unique values for dev vs prod.
+   **Cognito domain prefix (backend Deploy):** Use **`COGNITO_DOMAIN_PREFIX`** on GitHub Environment **`prod`**.
 
    **Automated (AWS CLI + `gh`):** from repo root, after `gh auth login`:
 
    ```powershell
-   .\scripts\set-github-auth-secrets-from-stack.ps1 -Environment dev
+   .\scripts\set-github-auth-secrets-from-stack.ps1 -Environment prod
    ```
 
    Preview without writing:
 
    ```powershell
-   .\scripts\set-github-auth-secrets-from-stack.ps1 -Environment dev -WhatIf
+   .\scripts\set-github-auth-secrets-from-stack.ps1 -Environment prod -WhatIf
    ```
 
    **Manual map** (same as script):
@@ -151,11 +151,11 @@ The backend job passes **`UserPoolArn`** into the API stack automatically on the
    | `VITE_COGNITO_STUDENT_CLIENT_ID` | `StudentUserPoolClientId` |
    | `VITE_COGNITO_TEACHER_CLIENT_ID` | `TeacherUserPoolClientId` |
    | `VITE_COGNITO_DOMAIN` | `HostedUIDomain` |
-   | `VITE_API_BASE_URL` | **`ApiEndpoint`** from **`streammycourse-api`** (dev) or **`StreamMyCourse-Api-prod`** (prod) |
+   | `VITE_API_BASE_URL` | **`ApiEndpoint`** from **`StreamMyCourse-Api-prod`** |
 
-   Verify: `gh secret list --env dev`
+   Verify: `gh secret list --env prod`
 
-3. **Redeploy via CI/CD (default):** push to **`main`**. [`.github/workflows/deploy-backend.yml`](../../.github/workflows/deploy-backend.yml) runs **dev backend** → **integration HTTP tests** → **student + teacher web** → prod phases when gates pass (see workflow **`needs`** for full graph).
+3. **Redeploy via CI/CD (default):** push to **`main`**. [`.github/workflows/deploy-backend.yml`](../../.github/workflows/deploy-backend.yml) runs the **prod** pipeline when gates pass (see workflow **`needs`** for full graph).
 
 4. **Local dev:** paste printed `.env` lines into [`frontend/.env`](../../frontend/.env) (never commit). Restart Vite after changes.
 
@@ -174,7 +174,7 @@ After a successful **Deploy** for an environment:
 
 Amplify sends **`redirect_uri` = your SPA origin + `/`** (see [`frontend/src/lib/auth.ts`](../../frontend/src/lib/auth.ts)). That string must appear verbatim on the **correct** user pool app client (**`streammycourse-student-*`** vs **`streammycourse-teacher-*`**) under **Hosted UI → Allowed callback URLs** and **Allowed sign-out URLs**. Typical local values: **`http://localhost:5173/`** / **`http://127.0.0.1:5173/`** (student) and **`http://localhost:5174/`** / **`http://127.0.0.1:5174/`** (teacher). In dev, **`http://[::1]:…`** (including default ports) is normalized once to **`127.0.0.1`** in the SPA so Cognito does not need IPv6 literal callback URLs. **Separate topic:** if you open the Vite “Network” URL (**`http://10.x.x.x:5174`**, etc.), add that exact origin + `/` to the app client allowlists (the SPA does not rewrite LAN hosts to localhost).
 
-If GitHub **Environment** variables **`STUDENT_COGNITO_*`** / **`TEACHER_COGNITO_*`** override the auth stack but list only hosted HTTPS URLs, local sign-in fails until you add the localhost URLs (comma-separated) and redeploy **`StreamMyCourse-Auth-<env>`**. **Dev** deploys from [`.github/workflows/deploy-backend.yml`](../../.github/workflows/deploy-backend.yml) and **`deploy.ps1 -Template auth -Environment dev`** append those localhost entries automatically when the vars are non-empty but missing them.
+If GitHub **Environment** variables **`STUDENT_COGNITO_*`** / **`TEACHER_COGNITO_*`** override the auth stack but list only hosted HTTPS URLs, local sign-in fails until you add the localhost URLs (comma-separated) and redeploy **`StreamMyCourse-Auth-prod`**. **Prod** deploys from [`.github/workflows/deploy-backend.yml`](../../.github/workflows/deploy-backend.yml) and **`deploy.ps1 -Template auth -Environment prod`** append those localhost entries automatically when the vars are non-empty but missing them.
 
 ---
 

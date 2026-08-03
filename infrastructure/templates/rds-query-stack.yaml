@@ -6,15 +6,14 @@ Description: >-
 Parameters:
   Environment:
     Type: String
-    AllowedValues:
-      - dev
-      - prod
-    Description: Must match the RDS stack environment; echoed in EXPECTED_ENVIRONMENT for invoke guard.
+    AllowedValues: [prod]
+    Default: prod
+    Description: Must match the RDS stack environment; echoed in EXPECTED_ENVIRONMENT for invoke guard (confirm=prod).
 
   RdsStackName:
     Type: String
     Description: >-
-      Name of the deployed RDS stack (e.g. StreamMyCourse-Rds-dev). Imports subnet,
+      Name of the deployed RDS stack (e.g. StreamMyCourse-Rds-prod). Imports subnet,
       Lambda SG, and DB secret from its exports.
 
   QueryLambdaCodeS3Bucket:

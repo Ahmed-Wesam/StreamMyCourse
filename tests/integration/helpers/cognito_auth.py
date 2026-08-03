@@ -15,7 +15,7 @@ import boto3
 import pytest
 from botocore.exceptions import BotoCoreError, ClientError
 
-DEFAULT_AUTH_STACK = "StreamMyCourse-Auth-dev"
+DEFAULT_AUTH_STACK = "StreamMyCourse-Auth-prod"
 STUDENT_SESSION_CLAIM_KEYS = ("student_session_id", "custom:student_session_id")
 
 

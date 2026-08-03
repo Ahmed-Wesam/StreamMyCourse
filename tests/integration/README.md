@@ -2,7 +2,7 @@
 
 HTTPS-driven tests that exercise a deployed backend (API Gateway + Lambda + PostgreSQL catalog + S3) end-to-end.
 
-**CI targets the dev stack** (`streammycourse-api`, `StreamMyCourse-Video-dev`, region `eu-west-1`). The job uses GitHub Environment `dev` so Cognito JWT minting reuses the same secrets/variables as **Verify dev RDS** (`COGNITO_RDS_VERIFY_*`, `COGNITO_RDS_VERIFY_TEST_USERNAME` — see below).
+**CI targets the prod stack** (`StreamMyCourse-Api-prod`, `StreamMyCourse-Video-prod`, region `eu-west-1`). The job uses GitHub Environment `prod` so Cognito JWT minting reuses the same secrets/variables as **Verify prod RDS** (`COGNITO_RDS_VERIFY_*`, `COGNITO_RDS_VERIFY_TEST_USERNAME` — see below).
 
 ## What gets tested
 
@@ -10,15 +10,15 @@ Every test creates state through the public API, asserts on the API responses, a
 
 Course **modules**: `tests/integration/test_course_modules.py` covers `GET/POST/DELETE …/courses/{id}/modules`, lesson targeting via optional `moduleId`, ordering across modules vs `GET …/lessons`, delete guard when only one module remains, draft parity (404 for non-owning teachers and students, matching lessons), subscribed students listing modules on published courses, and negatives (`POST /lessons` with unknown `moduleId`, `DELETE …/modules/{unknown}` → 404). IDOR/student-role denials extend `test_access_control.py` and `test_student_permissions_denials.py`.
 
-**Kinescope (dev default):** When `INTEGRATION_VIDEO_PROVIDER=kinescope`, `tests/integration/test_kinescope_drm_auth.py` posts the provider-shaped `{id, token}` payload to `POST /webhooks/kinescope/drm-auth` after playback mints `drmAuthToken`. Requires catalog deploy with `KINESCOPE_DRM_JWT_SECRET` and Kinescope project auth URL registered (`scripts/configure-kinescope-drm-auth.sh`, also run from `deploy-backend.sh` on kinescope envs).
+**Kinescope (prod default):** When `INTEGRATION_VIDEO_PROVIDER=kinescope`, `tests/integration/test_kinescope_drm_auth.py` posts the provider-shaped `{id, token}` payload to `POST /webhooks/kinescope/drm-auth` after playback mints `drmAuthToken`. Requires catalog deploy with `KINESCOPE_DRM_JWT_SECRET` and Kinescope project auth URL registered (`scripts/configure-kinescope-drm-auth.sh`, also run from `deploy-backend.sh` on kinescope envs).
 
 ## Billing / subscription access (WS5)
 
-Catalog lesson access, progress, and related student flows require an **active platform subscription** (not course enrollment). Integration tests seed access by POSTing a **mock PayTabs IPN** to `POST /webhooks/payments/paytabs` with header **`X-Mock-Signature: test`** (billing edge mock adapter on dev).
+Catalog lesson access, progress, and related student flows require an **active platform subscription** (not course enrollment). Integration tests seed access by POSTing a **mock PayTabs IPN** to `POST /webhooks/payments/paytabs` with header **`X-Mock-Signature: test`** (billing edge mock adapter on prod).
 
 - **`INTEGRATION_BILLING_WEBHOOK`**: set to `0`, `false`, `no`, or `off` to skip tests that need the webhook (including `subscribed_course` / `enrolled_course` fixture path and most subscription-dependent cases).
-- **`INTEGRATION_BILLING_ENV`**: optional; default `dev` — must match the deployment segment inside `cart_id` (`v1|{env}|{user_sub}|{plan_id}`).
-- Tests that assert **403 `subscription_required`** without a subscription may **skip** if the shared student JWT already has an active subscription on dev (**`skip_if_student_has_subscription`**).
+- **`INTEGRATION_BILLING_ENV`**: optional; default `prod` — must match the deployment segment inside `cart_id` (`v1|{env}|{user_sub}|{plan_id}`).
+- Tests that assert **403 `subscription_required`** without a subscription may **skip** if the shared student JWT already has an active subscription on prod (**`skip_if_student_has_subscription`**).
 
 If the payments stack is missing or billing is unconfigured, helpers skip with reasons such as **404** (route missing), **503 `billing_unconfigured`**, or **401** (mock signature not accepted).
 
@@ -28,40 +28,36 @@ If the payments stack is missing or billing is unconfigured, helpers skip with r
 python -m pytest tests/integration/test_billing_checkout_e2e.py -q
 ```
 
-Without a deployed dev API and Cognito student JWT (e.g. via `./scripts/run-local-integration-tests.sh`), collection may still require **`INTEGRATION_API_BASE_URL`** / **`INTEGRATION_VIDEO_BUCKET`** from `conftest.py`; individual tests skip when the student JWT or billing webhook is disabled.
+Without a deployed prod API and Cognito student JWT (e.g. via `./scripts/run-local-integration-tests.sh`), collection may still require **`INTEGRATION_API_BASE_URL`** / **`INTEGRATION_VIDEO_BUCKET`** from `conftest.py`; individual tests skip when the student JWT or billing webhook is disabled.
 
-**Troubleshooting (module tests):** If `GET …/modules` returns API Gateway JWT/IAM authorization errors (`Invalid key=value pair … Authorization header`), or lesson JSON lacks `moduleId` / `moduleOrder`, the deployed **`streammycourse-api`** + **catalog Lambda** are behind the repo (PostgreSQL modules + `infrastructure/templates/api-stack.yaml`). Redeploy the dev/prod backends to match `main`; CI deploys Lambda before HTTPS tests for this reason.
+**Troubleshooting (module tests):** If `GET …/modules` returns API Gateway JWT/IAM authorization errors (`Invalid key=value pair … Authorization header`), or lesson JSON lacks `moduleId` / `moduleOrder`, the deployed **`StreamMyCourse-Api-prod`** + **catalog Lambda** are behind the repo (PostgreSQL modules + `infrastructure/templates/api-stack.yaml`). Redeploy the prod backend to match `main`; CI deploys Lambda before HTTPS tests for this reason.
 
 **Module delete + media:** `DELETE …/modules/{id}` with lessons carrying **video or thumbnail keys** returns **503** when **`MEDIA_CLEANUP_QUEUE_URL`** is unset (catalog refuses orphan S3 references). Prefer video-free lessons in module-delete tests unless the **`StreamMyCourse-MediaCleanup-*`** stack is deployed.
 
 
 ## Running locally
 
-Deploy **dev** (matches CI):
-
-```powershell
-# from repo root
-.\infrastructure\deploy-environment.ps1 -Environment dev
-```
-
-Or, on bash / WSL / CI:
+Deploy **prod** (matches CI):
 
 ```bash
-./scripts/deploy-backend.sh dev
+./scripts/deploy-backend.sh prod
 ```
 
 Then export the resource locations and run pytest:
 
 ```bash
 export INTEGRATION_API_BASE_URL="$(aws cloudformation describe-stacks \
-  --stack-name streammycourse-api \
+  --stack-name StreamMyCourse-Api-prod \
   --query 'Stacks[0].Outputs[?OutputKey==`ApiEndpoint`].OutputValue' \
   --output text)"
 export INTEGRATION_VIDEO_BUCKET="$(aws cloudformation describe-stacks \
-  --stack-name StreamMyCourse-Video-dev \
+  --stack-name StreamMyCourse-Video-prod \
   --query 'Stacks[0].Outputs[?OutputKey==`BucketName`].OutputValue' \
   --output text)"
 export INTEGRATION_AWS_REGION=eu-west-1
+export INTEGRATION_BILLING_ENV=prod
+export INTEGRATION_ALLOW_PROD_CLEANUP=1
+export INTEGRATION_AUTH_STACK=StreamMyCourse-Auth-prod
 
 # Required when the pool authorizer protects mutating routes:
 # Mint an IdToken (teacher client) or use a static JWT from your Cognito setup.
@@ -76,25 +72,28 @@ python -m pytest tests/integration -q
 PowerShell equivalent:
 
 ```powershell
-$env:INTEGRATION_API_BASE_URL = (aws cloudformation describe-stacks --stack-name streammycourse-api --query 'Stacks[0].Outputs[?OutputKey==`ApiEndpoint`].OutputValue' --output text)
-$env:INTEGRATION_VIDEO_BUCKET = (aws cloudformation describe-stacks --stack-name StreamMyCourse-Video-dev --query 'Stacks[0].Outputs[?OutputKey==`BucketName`].OutputValue' --output text)
+$env:INTEGRATION_API_BASE_URL = (aws cloudformation describe-stacks --stack-name StreamMyCourse-Api-prod --query 'Stacks[0].Outputs[?OutputKey==`ApiEndpoint`].OutputValue' --output text)
+$env:INTEGRATION_VIDEO_BUCKET = (aws cloudformation describe-stacks --stack-name StreamMyCourse-Video-prod --query 'Stacks[0].Outputs[?OutputKey==`BucketName`].OutputValue' --output text)
 $env:INTEGRATION_AWS_REGION = 'eu-west-1'
+$env:INTEGRATION_BILLING_ENV = 'prod'
+$env:INTEGRATION_ALLOW_PROD_CLEANUP = '1'
+$env:INTEGRATION_AUTH_STACK = 'StreamMyCourse-Auth-prod'
 
 pip install -r tests\integration\requirements.txt
 python -m pytest tests\integration -q
 ```
 
-Helper (deploys dev by default, then resolves stacks and runs pytest):
+Helper (deploys prod by default, then resolves stacks and runs pytest):
 
 ```powershell
 .\scripts\run-integration-tests.ps1
 ```
 
-Optional **`prod`** against your own stacks: `.\scripts\run-integration-tests.ps1 -Environment prod` (ensure you understand blast radius).
+**Prod blast radius:** integration tests mutate prod catalog and S3 test prefixes. Only run when you intend to exercise the live stack (`INTEGRATION_ALLOW_PROD_CLEANUP=1` is set by the helper scripts).
 
 ## Quick Local Run (no deploy)
 
-If the dev stacks are already deployed and you want to run tests without redeploying:
+If the prod stacks are already deployed and you want to run tests without redeploying:
 
 ### One-time setup: Create the CI Cognito user
 
@@ -116,7 +115,7 @@ export CI_RDS_VERIFY_PASSWORD='YourStrongPassword123!'
 
 Each run sets **`given_name`**, **`family_name`**, and **`email`** so integration JWTs satisfy the playback watermark gate (at least one name part + email).
 
-Store the same password in GitHub secret `COGNITO_RDS_VERIFY_TEST_PASSWORD` on the `dev` environment if you want CI to use the same credentials.
+Store the same password in GitHub secret `COGNITO_RDS_VERIFY_TEST_PASSWORD` on the `prod` environment if you want CI to use the same credentials.
 
 ### Run tests
 
@@ -156,9 +155,9 @@ With custom pytest arguments:
 
 ### What the script does
 
-1. Resolves stack outputs from `streammycourse-api`, `StreamMyCourse-Video-dev`, and `StreamMyCourse-Auth-dev`
+1. Resolves stack outputs from `StreamMyCourse-Api-prod`, `StreamMyCourse-Video-prod`, and `StreamMyCourse-Auth-prod`
 2. Mints a fresh Cognito JWT via `aws cognito-idp admin-initiate-auth` (using `TeacherUserPoolClientId`)
-3. Exports required environment variables (`INTEGRATION_API_BASE_URL`, `INTEGRATION_VIDEO_BUCKET`, `INTEGRATION_AWS_REGION`, `INTEGRATION_COGNITO_JWT`)
+3. Exports required environment variables (`INTEGRATION_API_BASE_URL`, `INTEGRATION_VIDEO_BUCKET`, `INTEGRATION_AWS_REGION`, `INTEGRATION_COGNITO_JWT`, `INTEGRATION_BILLING_ENV=prod`, `INTEGRATION_ALLOW_PROD_CLEANUP=1`, `INTEGRATION_AUTH_STACK=StreamMyCourse-Auth-prod`)
 4. Installs test dependencies if missing
 5. Runs `pytest tests/integration`
 
@@ -172,15 +171,15 @@ With custom pytest arguments:
 
 Your AWS profile needs:
 
-- `cloudformation:DescribeStacks` on **streammycourse-api**, **StreamMyCourse-Video-dev**, and **StreamMyCourse-Auth-dev**
-- `s3:ListBucket`, `s3:DeleteObject` on that environment's video bucket (safety-net cleanup)
-- `cognito-idp:AdminInitiateAuth` on the dev user pool (for JWT minting via `run-local-integration-tests.sh`).
+- `cloudformation:DescribeStacks` on **StreamMyCourse-Api-prod**, **StreamMyCourse-Video-prod**, and **StreamMyCourse-Auth-prod**
+- `s3:ListBucket`, `s3:DeleteObject` on that environment's video bucket (safety-net cleanup; requires `INTEGRATION_ALLOW_PROD_CLEANUP=1`)
+- `cognito-idp:AdminInitiateAuth` on the prod user pool (for JWT minting via `run-local-integration-tests.sh`).
 
 The HTTP test calls themselves only need **`INTEGRATION_COGNITO_JWT`** when routes require auth — they do not otherwise need AWS credentials. AWS credentials power the safety-net cleanup at session end.
 
 ## Cognito credentials (CI vs local)
 
-GitHub Deploy workflow **Integration HTTP tests** attaches **`environment: dev`**. Resolve stack outputs against **streammycourse-api** and **StreamMyCourse-Video-dev**, then mint **`INTEGRATION_COGNITO_JWT`** exactly like **`verify-rds-reusable.yml`**: **`StreamMyCourse-Auth-dev`** outputs, **`ADMIN_USER_PASSWORD_AUTH`**, **`TeacherUserPoolClientId`**.
+GitHub Deploy workflow **Integration HTTP tests** attaches **`environment: prod`**. Resolve stack outputs against **StreamMyCourse-Api-prod** and **StreamMyCourse-Video-prod**, then mint **`INTEGRATION_COGNITO_JWT`** exactly like **`verify-rds-reusable.yml`**: **`StreamMyCourse-Auth-prod`** outputs, **`ADMIN_USER_PASSWORD_AUTH`**, **`TeacherUserPoolClientId`**.
 
 **3-Principal CI Matrix:** The CI runs tests against three distinct Cognito principals to validate authorization boundaries:
 
@@ -190,7 +189,7 @@ GitHub Deploy workflow **Integration HTTP tests** attaches **`environment: dev`*
 | Alt Teacher | `INTEGRATION_COGNITO_JWT_ALT` | Second teacher (cross-user access control) | `test_access_control.py` |
 | Student | `INTEGRATION_COGNITO_JWT_STUDENT` | Enrolled student (limited read/playback) | `test_enrollment.py`, `test_student_permissions_allowed.py`, `test_student_permissions_denials.py`, `test_progress.py`, `test_playback_auth.py`, `test_kinescope_drm_auth.py`, `test_billing_checkout_e2e.py` |
 
-**On GitHub Environment `dev`** (reuse for both Integration HTTP tests and Verify dev RDS):
+**On GitHub Environment `prod`** (reuse for both Integration HTTP tests and Verify prod RDS):
 
 - **Secret** `COGNITO_RDS_VERIFY_TEST_PASSWORD`
 - **Variable** `COGNITO_RDS_VERIFY_TEST_USERNAME` (optional; defaults to `ci-rds-verify@noreply.local`)
@@ -198,19 +197,19 @@ GitHub Deploy workflow **Integration HTTP tests** attaches **`environment: dev`*
 
 **For multi-principal tests**, the same user pool credentials can mint tokens for different test users (configured in the Cognito pool) via `INTEGRATION_COGNITO_JWT_ALT` and `INTEGRATION_COGNITO_JWT_STUDENT`.
 
-**OIDC:** The Configure AWS Credentials step assumes the **repository** IAM role via job output **`resolve-oidc-deploy-role`** (pins **`vars.AWS_DEPLOY_ROLE_ARN`** in a job without `environment:`) so **`environment: dev`** does not shadow the deploy-role variable.
+**OIDC:** The Configure AWS Credentials step assumes the **repository** IAM role via job output **`resolve-oidc-deploy-role`** (pins **`vars.AWS_DEPLOY_ROLE_ARN`** in a job without `environment:`) so **`environment: prod`** does not shadow the deploy-role variable.
 
 ## Smoke tests (`test_rds_path.py`)
 
 Focused checks for catalog round-trips (create/read/update, lesson FK). Same fixtures as the rest of the suite.
 
-**Dev CI/CD:** [`.github/workflows/deploy-backend.yml`](../../.github/workflows/deploy-backend.yml) deploys RDS, applies schema via VPC Lambda, deploys **`deploy-backend-dev`**, runs **Integration HTTP tests**, then **Verify dev RDS** runs `test_rds_path.py` again via **`verify-rds-reusable.yml`**.
+**Prod CI/CD:** [`.github/workflows/deploy-backend.yml`](../../.github/workflows/deploy-backend.yml) deploys RDS, applies schema via VPC Lambda, deploys **`deploy-backend-prod`**, runs **Integration HTTP tests**, then **Verify prod RDS** runs `test_rds_path.py` again via **`verify-rds-reusable.yml`**.
 
 **GitHub Actions variable:** Set **`AWS_DEPLOY_ROLE_ARN`** at repo scope (IAM role ARN from **`github-deploy-role-stack.yaml`** output **`GitHubDeployRoleArn`**).
 
-**Bootstrap the CI Cognito user** (operator workstation): see **`scripts/ensure-ci-rds-verify-cognito-user.sh`** and **`COGNITO_RDS_VERIFY_TEST_PASSWORD`** on **`dev`** (and **`prod`** for prod verify). The script sets **`given_name`**, **`family_name`**, and **`email`** (playback requires at least one name part + email). Re-run it after deploying the watermark gate if existing CI users were created before those attributes were added. **Deploy** also runs **`scripts/ensure-integration-cognito-playback-profiles.sh`** before minting integration JWTs.
+**Bootstrap the CI Cognito user** (operator workstation): see **`scripts/ensure-ci-rds-verify-cognito-user.sh`** and **`COGNITO_RDS_VERIFY_TEST_PASSWORD`** on **`prod`**. The script sets **`given_name`**, **`family_name`**, and **`email`** (playback requires at least one name part + email). Re-run it after deploying the watermark gate if existing CI users were created before those attributes were added. **Deploy** also runs **`scripts/ensure-integration-cognito-playback-profiles.sh`** before minting integration JWTs.
 
-**Local RDS** (advanced): [`scripts/deploy-rds-stack.sh`](../../scripts/deploy-rds-stack.sh) targets **`dev`** or **`prod`**; integration tests normally follow **`dev`** in CI.
+**Local RDS** (advanced): [`scripts/deploy-rds-stack.sh`](../../scripts/deploy-rds-stack.sh) targets **`prod`**; integration tests normally follow **`prod`** in CI.
 
 ## Test layout
 
@@ -248,7 +247,7 @@ tests/integration/
 - **Per-test cleanup** is the primary path. The `course_factory` fixture registers a finalizer that calls `DELETE /courses/{id}` for every course it created. Lessons are deleted transitively.
 - **Session-end safety net** runs in `pytest_sessionfinish`.
   - **Courses:** lists the CI user's courses with `GET /courses/mine` (requires `INTEGRATION_COGNITO_JWT`) and `DELETE`s any whose title still starts with `integration-test-`. No direct Postgres from the runner.
-  - **S3:** deletes objects only under ``{courseId}/`` for each course whose title matched ``integration-test-`` on that sweep (see **`helpers.cleanup.delete_orphan_media_for_course_prefixes`**). The dev video-bucket name pattern is still enforced; prod is refused. Other teachers' keys in the same bucket are left intact.
+  - **S3:** deletes objects only under ``{courseId}/`` for each course whose title matched ``integration-test-`` on that sweep (see **`helpers.cleanup.delete_orphan_media_for_course_prefixes`**). The prod video-bucket name pattern is enforced when ``INTEGRATION_ALLOW_PROD_CLEANUP=1``; without that flag, prod buckets are refused. Other teachers' keys in the same bucket are left intact.
   - Findings go to stderr and `$GITHUB_STEP_SUMMARY` when present but **never fail** CI.
   - If API credentials are missing, the HTTP/S3 safety net cannot run: **`log_integration_cleanup_error`** logs at **ERROR** and emits a GitHub Actions **`::error::`** annotation when **`GITHUB_ACTIONS=true`**, so skipped deletes surface in the workflow log without failing pytest.
 

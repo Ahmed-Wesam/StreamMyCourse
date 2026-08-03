@@ -10,7 +10,7 @@ import pytest
 MODULES_GET_DEPLOY_HINT = (
     "Expected GET /courses/{id}/modules → 200 and a JSON array. "
     "If API Gateway responds with JWT/IAM Authorization errors, redeploy the "
-    "`streammycourse-api` stack so GET modules matches repo "
+    "`StreamMyCourse-Api-prod` stack so GET modules matches repo "
     "`infrastructure/templates/api-stack.yaml` "
     "(AuthorizationType NONE for GET modules, identical to GET lessons)."
 )
@@ -25,7 +25,7 @@ EXPECTED_CATALOG_FORBIDDEN_403 = (
     "Cross-teacher IDOR tests expect HTTP 403 with a JSON object from the catalog Lambda "
     'including "code": "forbidden". '
     "Non-JSON bodies or raw API Gateway authorization messages mean the request likely never "
-    "reached Lambda—redeploy streammycourse-api and the catalog Lambda to match main. "
+    "reached Lambda—redeploy StreamMyCourse-Api-prod and the catalog Lambda to match main. "
     "If only module routes fail while other mutating routes succeed, also compare GET /modules "
     "to infrastructure/templates/api-stack.yaml (GET should use AuthorizationType NONE like GET lessons)."
 )
@@ -33,7 +33,7 @@ EXPECTED_CATALOG_FORBIDDEN_403 = (
 EXPECTED_ROLE_DENIAL_JSON = (
     "Student role denial tests expect HTTP 401 or 403 with JSON from the catalog Lambda and "
     '`code` in ("forbidden","unauthorized"). Plain API Gateway responses indicate stack drift '
-    "or the request did not reach Lambda—redeploy streammycourse-api + catalog to match main."
+    "or the request did not reach Lambda—redeploy StreamMyCourse-Api-prod + catalog to match main."
 )
 
 _NON_JSON_BODY_HINT = "Response body is not valid JSON (common when API Gateway rejects before Lambda)."

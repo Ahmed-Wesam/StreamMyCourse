@@ -65,7 +65,7 @@ class BillingEdgeConfig:
 
 
 def load_billing_edge_config() -> BillingEdgeConfig:
-    deployment = (_env("DEPLOYMENT_ENVIRONMENT") or "dev").lower()
+    deployment = (_env("DEPLOYMENT_ENVIRONMENT") or "prod").lower()
     return BillingEdgeConfig(
         deployment_environment=deployment,
         payment_provider=_env("PAYMENT_PROVIDER"),

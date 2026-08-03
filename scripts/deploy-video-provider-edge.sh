@@ -2,15 +2,15 @@
 # Deploy StreamMyCourse-VideoProviderEdge-{env}: no-VPC Kinescope upload/webhook edge.
 set -euo pipefail
 
-ENV="${1:?Usage: deploy-video-provider-edge.sh <dev|prod> <region> <artifact_bucket> <suffix>}"
+ENV="${1:?Usage: deploy-video-provider-edge.sh <prod> <region> <artifact_bucket> <suffix>}"
 REGION="${2:?region}"
 ARTIFACT_BUCKET="${3:?artifact bucket}"
 SUFFIX="${4:?suffix}"
 
 case "$ENV" in
-dev | prod) ;;
+prod) ;;
 *)
-  echo "Environment must be dev or prod, got: $ENV" >&2
+  echo "Environment must be prod, got: $ENV" >&2
   exit 1
   ;;
 esac

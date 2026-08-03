@@ -236,11 +236,17 @@ export default function LessonPlayerPage() {
   useEffect(() => {
     let cancelled = false
 
+    setLoading(true)
+    setError(null)
+    setCourse(null)
+    setLessons([])
+    setModules([])
+    setPlayback(null)
+    setCourseProgress(null)
+    setNeedsSubscription(false)
+    setNeedsSignIn(false)
+
     async function run() {
-      setNeedsSubscription(false)
-      setNeedsSignIn(false)
-      setPlayback(null)
-      setCourseProgress(null)
       try {
         const c = await getCourse(courseId)
         if (cancelled) return

@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-# Run integration tests locally against the deployed dev environment.
+# Run integration tests locally against the deployed prod environment.
 # Resolves stack outputs, mints a Cognito JWT, and runs pytest.
 #
 # Prerequisites:
 #   - AWS CLI configured with credentials that can read CloudFormation stacks
-#     and call cognito-idp:AdminInitiateAuth on the dev user pool
-#   - Dev stacks deployed (streammycourse-api, StreamMyCourse-Video-dev, StreamMyCourse-Auth-dev)
+#     and call cognito-idp:AdminInitiateAuth on the prod user pool
+#   - Prod stacks deployed (StreamMyCourse-Api-prod, StreamMyCourse-Video-prod, StreamMyCourse-Auth-prod)
 #   - CI Cognito user created via ensure-ci-rds-verify-cognito-user.sh
 #
 # Password is read from .env.local file (auto-loaded) or environment variable
@@ -49,10 +49,10 @@ PASSWORD_ALT="${LOCAL_COGNITO_PASSWORD_ALT:-}"
 USERNAME_STUDENT="${LOCAL_COGNITO_USERNAME_STUDENT:-ci-student@noreply.local}"
 PASSWORD_STUDENT="${LOCAL_COGNITO_PASSWORD_STUDENT:-}"
 
-# Stack names (dev defaults)
-API_STACK="streammycourse-api"
-VIDEO_STACK="StreamMyCourse-Video-dev"
-AUTH_STACK="StreamMyCourse-Auth-dev"
+# Stack names (prod defaults)
+API_STACK="StreamMyCourse-Api-prod"
+VIDEO_STACK="StreamMyCourse-Video-prod"
+AUTH_STACK="StreamMyCourse-Auth-prod"
 
 # Collect extra args for pytest
 PYTEST_ARGS=("$@")
@@ -228,6 +228,9 @@ fi
 export INTEGRATION_API_BASE_URL="${API_BASE_URL%/}"  # strip trailing slash
 export INTEGRATION_VIDEO_BUCKET="$VIDEO_BUCKET"
 export INTEGRATION_AWS_REGION="$REGION"
+export INTEGRATION_BILLING_ENV="${INTEGRATION_BILLING_ENV:-prod}"
+export INTEGRATION_ALLOW_PROD_CLEANUP="${INTEGRATION_ALLOW_PROD_CLEANUP:-1}"
+export INTEGRATION_AUTH_STACK="${INTEGRATION_AUTH_STACK:-StreamMyCourse-Auth-prod}"
 export INTEGRATION_VIDEO_PROVIDER="${INTEGRATION_VIDEO_PROVIDER:-kinescope}"
 if [[ -z "${INTEGRATION_KINESCOPE_WEBHOOK_SECRET:-}" && -n "${KINESCOPE_WEBHOOK_SECRET:-}" ]]; then
     export INTEGRATION_KINESCOPE_WEBHOOK_SECRET="$KINESCOPE_WEBHOOK_SECRET"

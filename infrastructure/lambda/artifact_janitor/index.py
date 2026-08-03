@@ -34,30 +34,26 @@ def parse_artifact_key(key: str) -> Tuple[str, str, str]:
     """
     Parse artifact key into (type, environment, identifier).
 
-    Expected patterns:
-    - catalog-{env}-{sha}.zip -> ('catalog', 'dev', 'sha')
-    - rds-schema-apply-{env}-{sha}.zip -> ('rds-schema-apply', 'dev', 'sha')
+    Expected patterns (prod-only):
+    - catalog-prod-{sha}.zip -> ('catalog', 'prod', 'sha')
+    - rds-schema-apply-prod-{sha}.zip -> ('rds-schema-apply', 'prod', 'sha')
 
     Returns ('unknown', 'unknown', key) if pattern doesn't match.
     """
-    # Pattern: {type}-{env}-{suffix}.zip
-    match = re.match(r'^(.*?)-([a-z]+)-([a-f0-9]{12,})\.zip$', key)
+    match = re.match(r'^(.*?)-prod-([a-f0-9]{12,})\.zip$', key)
     if match:
-        artifact_type = match.group(1)  # 'catalog' or 'rds-schema-apply'
-        env = match.group(2)  # 'dev' or 'prod'
-        identifier = match.group(3)  # git sha or timestamp
-        return (artifact_type, env, identifier)
+        artifact_type = match.group(1)
+        identifier = match.group(2)
+        return (artifact_type, 'prod', identifier)
 
-    # Fallback for non-matching keys (timestamps, etc.)
-    if '-' in key:
+    # Fallback for non-matching keys (timestamps, legacy artifacts, etc.)
+    if '-prod-' in key:
         parts = key.rsplit('-', 1)
         if len(parts) == 2:
             base, suffix = parts
-            # Try to extract env from base
-            for env in ['prod', 'dev']:
-                if f'-{env}-' in base or base.endswith(f'-{env}'):
-                    artifact_type = base.replace(f'-{env}', '').replace(f'_{env}', '')
-                    return (artifact_type or 'unknown', env, suffix.replace('.zip', ''))
+            if '-prod-' in base or base.endswith('-prod'):
+                artifact_type = base.replace('-prod', '').replace('_prod', '')
+                return (artifact_type or 'unknown', 'prod', suffix.replace('.zip', ''))
 
     return ('unknown', 'unknown', key)
 

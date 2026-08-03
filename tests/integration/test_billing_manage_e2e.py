@@ -21,6 +21,7 @@ import pytest
 
 from helpers.api import ApiClient
 from helpers.billing_access import (
+    billing_environment,
     decode_jwt_sub,
     ensure_student_subscription,
     get_subscription,
@@ -140,12 +141,13 @@ def _publish_course_with_lesson(
 
 def _probe_mock_webhook(api_base_url: str) -> httpx.Response:
     """POST an ignored mock IPN type to verify mock signature without granting access."""
+    env = billing_environment()
     url = f"{api_base_url.rstrip('/')}/webhooks/payments/paytabs"
     body = {
         "tran_ref": "MOCK-PROBE-MANAGE-001",
         "tran_type": "Refund",
         "payment_result": "A",
-        "cart_id": "v1|dev|probe-user|00000000-0000-4000-8000-000000000001",
+        "cart_id": f"v1|{env}|probe-user|00000000-0000-4000-8000-000000000001",
     }
     with httpx.Client(timeout=30.0) as client:
         return client.post(

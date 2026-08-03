@@ -4,17 +4,15 @@ Description: 'StreamMyCourse - Video Hosting Stack (S3 + CloudFront CDN)'
 Parameters:
   Environment:
     Type: String
-    Default: dev
-    AllowedValues:
-      - dev
-      - prod
+    AllowedValues: [prod]
+    Default: prod
     Description: Deployment environment
 
   CorsAllowedOrigins:
     Type: String
     Description: >-
       Comma-separated browser origins allowed for S3 CORS (PUT/GET). No wildcards.
-    Default: 'https://researchspectrum.org,https://dev.researchspectrum.org,https://teach.researchspectrum.org,https://teach.dev.researchspectrum.org,http://localhost:5173,http://127.0.0.1:5173,http://localhost:5174,http://127.0.0.1:5174'
+    Default: 'https://researchspectrum.org,https://teach.researchspectrum.org,http://localhost:5173,http://127.0.0.1:5173,http://localhost:5174,http://127.0.0.1:5174'
 
   InvalidationLambdaCodeS3Bucket:
     Type: String
