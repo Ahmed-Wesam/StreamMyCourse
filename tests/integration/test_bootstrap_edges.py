@@ -58,11 +58,13 @@ def test_unknown_route_returns_4xx_with_cors_headers(api: ApiClient):
     # API Gateway GatewayResponses may still use * while Lambda OPTIONS uses the allowlist;
     # accept either pattern so this stays stable across stack parameter tweaks.
     assert "access-control-allow-origin" in headers
-    assert headers.get("access-control-allow-origin") in (
+    allowed_origins = {
         "*",
         "http://localhost:5173",
         "http://example.test",
-    )
+        _expected_first_allowlisted_origin(),
+    }
+    assert headers.get("access-control-allow-origin") in allowed_origins
 
 
 def test_unknown_method_on_known_path_returns_4xx(api: ApiClient):
