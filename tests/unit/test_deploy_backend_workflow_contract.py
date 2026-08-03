@@ -262,3 +262,37 @@ def test_deploy_workflow_upserts_paytabs_placeholder_secret_prod() -> None:
     assert "describe-secret" in prod_block
     assert "streammycourse/paytabs/dev" not in prod_block
     assert "Ensure PayTabs placeholder secret (dev)" not in prod_block
+
+
+def _branch_workflow_text() -> str:
+    path = _repo_root() / ".github" / "workflows" / "remove-dev-stack-prod-only.yml"
+    assert path.is_file(), f"missing {path}"
+    return path.read_text(encoding="utf-8")
+
+
+def test_branch_workflow_triggers_on_push_to_remove_dev_stack_prod_only() -> None:
+    text = _branch_workflow_text()
+    assert "branches: [remove-dev-stack-prod-only]" in text
+    assert "name: remove-dev-stack-prod-only" in text
+    assert "workflow_run:" not in text
+
+
+def test_branch_workflow_has_ci_and_prod_deploy_without_dev_jobs() -> None:
+    text = _branch_workflow_text()
+    for required in (
+        "  frontend:",
+        "  lambda-unit-tests:",
+        "  deploy-edge-prod:",
+        "  deploy-backend-prod:",
+        "  integration-http-tests:",
+        "  verify-prod-rds:",
+    ):
+        assert required in text, f"missing {required!r}"
+    for forbidden in (
+        "deploy-edge-dev",
+        "deploy-backend-dev",
+        "verify-dev-rds",
+        "environment: dev",
+        "  gate:",
+    ):
+        assert forbidden not in text, f"forbidden {forbidden!r}"
