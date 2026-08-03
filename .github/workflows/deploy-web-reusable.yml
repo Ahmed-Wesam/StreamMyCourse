@@ -1,11 +1,11 @@
-# Called by deploy-backend.yml — one student SPA deploy to dev or prod (GitHub Environment + secrets).
+# Called by deploy-backend.yml — student SPA deploy to prod (GitHub Environment + secrets).
 name: Deploy Web (reusable)
 
 on:
   workflow_call:
     inputs:
       target_environment:
-        description: "GitHub Environment name (dev or prod)"
+        description: "GitHub Environment name (prod only)"
         required: true
         type: string
       checkout_ref:

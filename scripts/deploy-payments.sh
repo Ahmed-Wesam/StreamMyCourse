@@ -1,16 +1,16 @@
 #!/usr/bin/env bash
-# Deploy StreamMyCourse-Payments-{env}: billing edge + fulfillment SQS/Lambda (WS2).
+# Deploy StreamMyCourse-Payments-prod: billing edge + fulfillment SQS/Lambda (WS2).
 set -euo pipefail
 
-ENV="${1:?Usage: deploy-payments.sh <dev|prod> <region> <artifact_bucket> <suffix>}"
+ENV="${1:?Usage: deploy-payments.sh <prod> <region> <artifact_bucket> <suffix>}"
 REGION="${2:?region}"
 ARTIFACT_BUCKET="${3:?artifact bucket}"
 SUFFIX="${4:?suffix}"
 
 case "$ENV" in
-dev | prod) ;;
+prod) ;;
 *)
-  echo "Environment must be dev or prod, got: $ENV" >&2
+  echo "Environment must be prod, got: $ENV" >&2
   exit 1
   ;;
 esac
@@ -28,14 +28,7 @@ SUBSCRIPTION_PLAN_ID="${SUBSCRIPTION_PLAN_ID:-}"
 BILLING_RETURN_SUCCESS_URL="${BILLING_RETURN_SUCCESS_URL:-}"
 BILLING_RETURN_CANCEL_URL="${BILLING_RETURN_CANCEL_URL:-}"
 
-case "$ENV" in
-dev)
-  SUBSCRIPTION_PLAN_ID="${SUBSCRIPTION_PLAN_ID:-a0000000-0000-4000-8000-000000000011}"
-  ;;
-prod)
-  SUBSCRIPTION_PLAN_ID="${SUBSCRIPTION_PLAN_ID:-a0000000-0000-4000-8000-000000000012}"
-  ;;
-esac
+SUBSCRIPTION_PLAN_ID="${SUBSCRIPTION_PLAN_ID:-a0000000-0000-4000-8000-000000000012}"
 
 EDGE_ZIP="/tmp/billing-edge-${ENV}-$$.zip"
 FULFILL_ZIP="/tmp/billing-fulfillment-${ENV}-$$.zip"

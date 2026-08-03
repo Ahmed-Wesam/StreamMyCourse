@@ -6,7 +6,6 @@
       "Effect": "Allow",
       "Action": "cloudformation:DescribeStacks",
       "Resource": [
-        "arn:aws:cloudformation:us-east-1:YOUR_AWS_ACCOUNT_ID:stack/StreamMyCourse-EdgeHosting-dev/*",
         "arn:aws:cloudformation:us-east-1:YOUR_AWS_ACCOUNT_ID:stack/StreamMyCourse-EdgeHosting-prod/*"
       ]
     },
@@ -21,12 +20,8 @@
         "s3:GetObject"
       ],
       "Resource": [
-        "arn:aws:s3:::streammycourse-site-dev-us-east-1-YOUR_AWS_ACCOUNT_ID",
-        "arn:aws:s3:::streammycourse-site-dev-us-east-1-YOUR_AWS_ACCOUNT_ID/*",
         "arn:aws:s3:::streammycourse-site-prod-us-east-1-YOUR_AWS_ACCOUNT_ID",
         "arn:aws:s3:::streammycourse-site-prod-us-east-1-YOUR_AWS_ACCOUNT_ID/*",
-        "arn:aws:s3:::streammycourse-teacher-dev-us-east-1-YOUR_AWS_ACCOUNT_ID",
-        "arn:aws:s3:::streammycourse-teacher-dev-us-east-1-YOUR_AWS_ACCOUNT_ID/*",
         "arn:aws:s3:::streammycourse-teacher-prod-us-east-1-YOUR_AWS_ACCOUNT_ID",
         "arn:aws:s3:::streammycourse-teacher-prod-us-east-1-YOUR_AWS_ACCOUNT_ID/*"
       ]

@@ -16,9 +16,7 @@ delete_if_exists() {
   fi
 }
 
-delete_if_exists "StreamMyCourse-ApiWaf-dev" "eu-west-1"
 delete_if_exists "StreamMyCourse-ApiWaf-prod" "eu-west-1"
-delete_if_exists "StreamMyCourse-EdgeWaf-dev" "us-east-1"
 delete_if_exists "StreamMyCourse-EdgeWaf-prod" "us-east-1"
 
 echo "WAF stack cleanup complete."

@@ -5,14 +5,12 @@ Description: >-
 Parameters:
   Environment:
     Type: String
-    Default: dev
-    AllowedValues:
-      - dev
-      - prod
+    AllowedValues: [prod]
+    Default: prod
 
   CognitoDomainPrefix:
     Type: String
-    Description: Globally unique hosted UI domain prefix (e.g. streammycourse-auth-dev)
+    Description: Globally unique hosted UI domain prefix (e.g. streammycourse-auth-prod)
 
   StudentCallbackUrls:
     Type: String
@@ -49,7 +47,7 @@ Parameters:
     Type: String
     Default: ''
     Description: >-
-      RDS stack name (e.g. StreamMyCourse-Rds-dev) whose exports supply VPC, DB
+      RDS stack name (e.g. StreamMyCourse-Rds-prod) whose exports supply VPC, DB
       secret, and endpoints for the optional PostAuthentication user sync Lambda.
       Leave empty to skip the sync Lambda (local auth-only deploys).
 

@@ -10,7 +10,7 @@ alwaysApply: true
 - **PowerShell (deploy optional + run pytest):** `.\scripts\run-integration-tests.ps1`
 - **Bash/MSYS/WSL (resolves stacks + mints JWTs + runs pytest):** `./scripts/run-local-integration-tests.sh`
 
-These scripts already encode the correct CloudFormation stack names and required env vars.
+These scripts already encode the correct **prod** CloudFormation stack names and required env vars.
 
 ## PowerShell command chaining (avoid `&&`)
 

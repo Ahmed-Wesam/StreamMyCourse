@@ -9,7 +9,7 @@ if [[ -n "${1:-}" ]]; then
 fi
 
 if [[ -z "${DEPLOYMENT_ENVIRONMENT:-}" ]]; then
-  echo "billing-mark-payout-ready: DEPLOYMENT_ENVIRONMENT unset (pass dev|prod as arg or env)" >&2
+  echo "billing-mark-payout-ready: DEPLOYMENT_ENVIRONMENT unset (pass prod as arg or env)" >&2
   exit 1
 fi
 

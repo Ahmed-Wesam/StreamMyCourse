@@ -26,7 +26,7 @@ class AppConfig:
     progress_position_slack_sec: int = 30
     # Billing (merchant status teacher gate + RDS environment key)
     billing_teacher_sub: str = ""
-    deployment_environment: str = "dev"
+    deployment_environment: str = "prod"
     student_cognito_client_id: str = ""
     video_provider: str = "kinescope"
     kinescope_api_token: str = ""
@@ -156,7 +156,7 @@ def load_config() -> AppConfig:
 
     billing_teacher_sub = os.environ.get("BILLING_TEACHER_SUB", "").strip()
     deployment_raw = os.environ.get("DEPLOYMENT_ENVIRONMENT", "").strip()
-    deployment_environment = (deployment_raw or "dev").lower()
+    deployment_environment = (deployment_raw or "prod").lower()
     student_cognito_client_id = os.environ.get("STUDENT_COGNITO_CLIENT_ID", "").strip()
 
     rate_limit_max_overrides = _parse_rate_limit_max_overrides(

@@ -6,7 +6,7 @@
 #   COGNITO_TEST_PASSWORD / COGNITO_TEST_USERNAME — primary teacher
 #   COGNITO_TEST_PASSWORD_ALT / COGNITO_TEST_USERNAME_ALT — alt teacher (optional)
 #   COGNITO_TEST_PASSWORD_STUDENT / COGNITO_TEST_USERNAME_STUDENT — student (optional)
-#   CI_RDS_VERIFY_AUTH_STACK — default StreamMyCourse-Auth-dev
+#   CI_RDS_VERIFY_AUTH_STACK — default StreamMyCourse-Auth-prod
 
 set -euo pipefail
 
@@ -23,7 +23,7 @@ ensure_one() {
   fi
   echo "Ensuring playback profile for ${username} (${role})"
   CI_RDS_VERIFY_PASSWORD="$password" \
-    CI_RDS_VERIFY_AUTH_STACK="${CI_RDS_VERIFY_AUTH_STACK:-StreamMyCourse-Auth-dev}" \
+    CI_RDS_VERIFY_AUTH_STACK="${CI_RDS_VERIFY_AUTH_STACK:-StreamMyCourse-Auth-prod}" \
     "$ENSURE" --role "$role" --username "$username"
 }
 

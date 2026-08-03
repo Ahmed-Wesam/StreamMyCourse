@@ -1,6 +1,6 @@
 """Billing / subscription helpers for HTTPS integration tests (WS5 Phase C).
 
-Uses the dev mock PayTabs adapter (``X-Mock-Signature: test``). Never log full JWTs
+Uses the mock PayTabs adapter (``X-Mock-Signature: test``). Never log full JWTs
 or ``PAYTABS_SERVER_KEY`` values.
 
 **WS8 manage cancel:** ``POST /billing/cancel-subscription`` triggers billing-edge
@@ -45,8 +45,8 @@ def decode_jwt_sub(token: str) -> str:
 
 
 def billing_environment() -> str:
-    """Deployment environment segment for cart_id (default ``dev``)."""
-    return os.environ.get("INTEGRATION_BILLING_ENV", "dev").strip() or "dev"
+    """Deployment environment segment for cart_id (default ``prod``)."""
+    return os.environ.get("INTEGRATION_BILLING_ENV", "prod").strip() or "prod"
 
 
 def seed_plan_id(environment: str | None = None) -> str:
@@ -421,7 +421,7 @@ def skip_if_student_has_subscription(
     course_id: str,
     lesson_id: str,
 ) -> None:
-    """Skip negative (no-sub) tests when shared dev already granted subscription."""
+    """Skip negative (no-sub) tests when shared integration env already granted subscription."""
     resp = student_api.get_playback(course_id, lesson_id)
     if resp.status_code == 200:
         pytest.skip("student already has active subscription (shared dev state)")

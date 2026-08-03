@@ -361,7 +361,8 @@ function CourseDetailBody({
                         )}
                         {quizTo ? (
                           <Link
-                            to={quizTo}
+                            to={typeof quizTo === 'string' ? quizTo : quizTo.pathname}
+                            state={typeof quizTo === 'string' ? undefined : quizTo.state}
                             className="ml-auto inline-flex items-center rounded-lg bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground transition hover:opacity-90"
                           >
                             Start quiz
@@ -643,6 +644,9 @@ export default function CourseDetailPage() {
   const loadCourseData = useCallback(async () => {
     setError(null)
     setLoading(true)
+    setCourse(null)
+    setLessons([])
+    setModules([])
     setCourseProgress(null)
     const signedIn = await hasSignedInIdToken()
     setPreviewOnly(!signedIn)

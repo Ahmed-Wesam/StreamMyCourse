@@ -84,7 +84,7 @@ describe('TeacherHeader', () => {
     expect(link.getAttribute('href')).toBe('https://student.example.test/')
   })
 
-  it('uses dev researchspectrum.org fallback for student site link when VITE_STUDENT_SITE_URL is unset', async () => {
+  it('uses researchspectrum.org fallback for student site link when VITE_STUDENT_SITE_URL is unset', async () => {
     vi.resetModules()
     useAuthenticatorMock.mockReturnValue({
       user: { username: 't@example.com' },
@@ -93,7 +93,7 @@ describe('TeacherHeader', () => {
     })
     await renderTestRoot()
     const link = screen.getByRole('link', { name: /View Student Site/i })
-    expect(link.getAttribute('href')).toBe('https://dev.researchspectrum.org')
+    expect(link.getAttribute('href')).toBe('https://researchspectrum.org')
   })
 
   it('calls signOut from desktop control', async () => {

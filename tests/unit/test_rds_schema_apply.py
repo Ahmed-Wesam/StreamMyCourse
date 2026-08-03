@@ -279,17 +279,17 @@ def test_split_real_migration_011_contains_expected_billing_ddl(schema_apply):
 
 
 def test_deploy_backend_bundles_migration_011() -> None:
-    """deploy-backend.yml must cat 011 into both dev and prod schema-applier bundles."""
+    """deploy-backend.yml must cat 011 into the prod schema-applier bundle."""
     path = _ROOT / ".github" / "workflows" / "deploy-backend.yml"
     text = path.read_text(encoding="utf-8")
     needle = "011_billing_subscription.sql"
-    for marker in ("rds-schema-apply-dev-", "rds-schema-apply-prod-"):
-        start = text.index(marker)
-        end = text.index('> "$PKG/schema.sql"', start)
-        chunk = text[start:end]
-        assert needle in chunk
-        assert "010_module_quiz_attempt_submissions.sql" in chunk
-        assert chunk.index("010_module_quiz_attempt_submissions.sql") < chunk.index(needle)
+    marker = "rds-schema-apply-prod-"
+    start = text.index(marker)
+    end = text.index('> "$PKG/schema.sql"', start)
+    chunk = text[start:end]
+    assert needle in chunk
+    assert "010_module_quiz_attempt_submissions.sql" in chunk
+    assert chunk.index("010_module_quiz_attempt_submissions.sql") < chunk.index(needle)
 
 
 def test_deploy_rds_stack_sh_bundles_migration_011() -> None:
@@ -319,17 +319,17 @@ def test_deploy_ps1_lists_migration_011() -> None:
 
 
 def test_deploy_backend_bundles_migration_012() -> None:
-    """deploy-backend.yml must cat 012 after 011 in both dev and prod schema bundles."""
+    """deploy-backend.yml must cat 012 after 011 in the prod schema bundle."""
     path = _ROOT / ".github" / "workflows" / "deploy-backend.yml"
     text = path.read_text(encoding="utf-8")
     needle = "012_billing_plan_price_50_jod.sql"
-    for marker in ("rds-schema-apply-dev-", "rds-schema-apply-prod-"):
-        start = text.index(marker)
-        end = text.index('> "$PKG/schema.sql"', start)
-        chunk = text[start:end]
-        assert needle in chunk
-        assert "011_billing_subscription.sql" in chunk
-        assert chunk.index("011_billing_subscription.sql") < chunk.index(needle)
+    marker = "rds-schema-apply-prod-"
+    start = text.index(marker)
+    end = text.index('> "$PKG/schema.sql"', start)
+    chunk = text[start:end]
+    assert needle in chunk
+    assert "011_billing_subscription.sql" in chunk
+    assert chunk.index("011_billing_subscription.sql") < chunk.index(needle)
 
 
 def test_deploy_rds_stack_sh_bundles_migration_012() -> None:

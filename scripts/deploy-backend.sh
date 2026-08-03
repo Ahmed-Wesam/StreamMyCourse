@@ -1,45 +1,24 @@
 #!/usr/bin/env bash
-# Deploy video (S3) + API (Lambda, API Gateway, RDS-backed catalog) for one environment.
-# Mirrors infrastructure/deploy-environment.ps1 for use in CI (Linux) or locally (Git Bash / WSL).
+# Deploy video (S3) + API (Lambda, API Gateway, RDS-backed catalog) for prod.
+# Used in CI (Linux) or locally (Git Bash / WSL).
 set -euo pipefail
 
-ENV="${1:?Usage: deploy-backend.sh <dev|prod>}"
+ENV="${1:?Usage: deploy-backend.sh <prod>}"
 case "$ENV" in
-dev | prod) ;;
+prod) ;;
 *)
-  echo "Environment must be dev or prod, got: $ENV" >&2
+  echo "Environment must be prod, got: $ENV" >&2
   exit 1
   ;;
 esac
 
 REGION="${AWS_REGION:-eu-west-1}"
-case "$ENV" in
-prod)
-  API_STACK="StreamMyCourse-Api-prod"
-  CORS="https://researchspectrum.org,https://teach.researchspectrum.org,http://localhost:5173,http://localhost:5174"
-  VIDEO_CORS="https://researchspectrum.org,https://teach.researchspectrum.org,http://localhost:5173,http://127.0.0.1:5173,http://localhost:5174,http://127.0.0.1:5174"
-  GW_ALLOW="https://researchspectrum.org"
-  ;;
-dev)
-  API_STACK="streammycourse-api"
-  CORS="https://dev.researchspectrum.org,https://teach.dev.researchspectrum.org,http://localhost:5173,http://localhost:5174"
-  VIDEO_CORS="https://dev.researchspectrum.org,https://teach.dev.researchspectrum.org,http://localhost:5173,http://127.0.0.1:5173,http://localhost:5174,http://127.0.0.1:5174"
-  GW_ALLOW="http://localhost:5173"
-  ;;
-esac
+API_STACK="StreamMyCourse-Api-prod"
+CORS="https://researchspectrum.org,https://teach.researchspectrum.org,http://localhost:5173,http://localhost:5174"
+VIDEO_CORS="https://researchspectrum.org,https://teach.researchspectrum.org,http://localhost:5173,http://127.0.0.1:5173,http://localhost:5174,http://127.0.0.1:5174"
+GW_ALLOW="https://researchspectrum.org"
 
-# Video provider: Kinescope on dev only until prod is explicitly cut over (prod stays S3).
-case "$ENV" in
-dev)
-  VIDEO_PROVIDER="${VIDEO_PROVIDER:-kinescope}"
-  ;;
-prod)
-  VIDEO_PROVIDER="${VIDEO_PROVIDER:-s3}"
-  ;;
-*)
-  VIDEO_PROVIDER="${VIDEO_PROVIDER:-s3}"
-  ;;
-esac
+VIDEO_PROVIDER="${VIDEO_PROVIDER:-s3}"
 
 KINESCOPE_PARAM_OVERRIDES=("VideoProvider=${VIDEO_PROVIDER}")
 if [[ "$VIDEO_PROVIDER" == "kinescope" ]]; then
@@ -48,7 +27,7 @@ if [[ "$VIDEO_PROVIDER" == "kinescope" ]]; then
   KINESCOPE_DRM_JWT_SECRET="${KINESCOPE_DRM_JWT_SECRET:-}"
   KINESCOPE_WEBHOOK_SECRET="${KINESCOPE_WEBHOOK_SECRET:-}"
   if [[ -z "$KINESCOPE_API_TOKEN" || -z "$KINESCOPE_PARENT_ID" ]]; then
-    echo "Error: VIDEO_PROVIDER=kinescope requires KINESCOPE_API_TOKEN and KINESCOPE_PARENT_ID (GitHub Environment dev secrets or local env)." >&2
+    echo "Error: VIDEO_PROVIDER=kinescope requires KINESCOPE_API_TOKEN and KINESCOPE_PARENT_ID (GitHub secrets or local env)." >&2
     exit 1
   fi
   if [[ -z "$KINESCOPE_DRM_JWT_SECRET" ]]; then
@@ -262,34 +241,30 @@ if [[ -z "$VIDEO_BUCKET" || -z "$BUCKET_URL" ]]; then
   exit 1
 fi
 
-# Async S3 cleanup (SQS + worker) for dev and prod. Override both URL and ARN to reuse
-# pre-deployed queue without running the media-cleanup stack again.
+# Async S3 cleanup (SQS + worker). Override both URL and ARN to reuse pre-deployed queue
+# without running the media-cleanup stack again.
 MEDIA_QUEUE_URL="${MEDIA_CLEANUP_QUEUE_URL:-}"
 MEDIA_QUEUE_ARN="${MEDIA_CLEANUP_QUEUE_ARN:-}"
-case "$ENV" in
-dev | prod)
-  if [[ -z "$MEDIA_QUEUE_URL" || -z "$MEDIA_QUEUE_ARN" ]]; then
-    MC_SCRIPT="${ROOT}/scripts/deploy-media-cleanup.sh"
-    chmod +x "$MC_SCRIPT"
-    "$MC_SCRIPT" "$ENV" "$REGION" "$ARTIFACT_BUCKET" "$SUFFIX"
-    MEDIA_STACK="StreamMyCourse-MediaCleanup-${ENV}"
-    MEDIA_QUEUE_URL="$(aws cloudformation describe-stacks \
-      --stack-name "$MEDIA_STACK" \
-      --region "$REGION" \
-      --query 'Stacks[0].Outputs[?OutputKey==`MediaCleanupQueueUrl`].OutputValue' \
-      --output text)"
-    MEDIA_QUEUE_ARN="$(aws cloudformation describe-stacks \
-      --stack-name "$MEDIA_STACK" \
-      --region "$REGION" \
-      --query 'Stacks[0].Outputs[?OutputKey==`MediaCleanupQueueArn`].OutputValue' \
-      --output text)"
-    if [[ -z "$MEDIA_QUEUE_URL" || "$MEDIA_QUEUE_URL" == "None" || -z "$MEDIA_QUEUE_ARN" || "$MEDIA_QUEUE_ARN" == "None" ]]; then
-      echo "Failed to read media cleanup stack outputs (queue URL / ARN)" >&2
-      exit 1
-    fi
+if [[ -z "$MEDIA_QUEUE_URL" || -z "$MEDIA_QUEUE_ARN" ]]; then
+  MC_SCRIPT="${ROOT}/scripts/deploy-media-cleanup.sh"
+  chmod +x "$MC_SCRIPT"
+  "$MC_SCRIPT" "$ENV" "$REGION" "$ARTIFACT_BUCKET" "$SUFFIX"
+  MEDIA_STACK="StreamMyCourse-MediaCleanup-${ENV}"
+  MEDIA_QUEUE_URL="$(aws cloudformation describe-stacks \
+    --stack-name "$MEDIA_STACK" \
+    --region "$REGION" \
+    --query 'Stacks[0].Outputs[?OutputKey==`MediaCleanupQueueUrl`].OutputValue' \
+    --output text)"
+  MEDIA_QUEUE_ARN="$(aws cloudformation describe-stacks \
+    --stack-name "$MEDIA_STACK" \
+    --region "$REGION" \
+    --query 'Stacks[0].Outputs[?OutputKey==`MediaCleanupQueueArn`].OutputValue' \
+    --output text)"
+  if [[ -z "$MEDIA_QUEUE_URL" || "$MEDIA_QUEUE_URL" == "None" || -z "$MEDIA_QUEUE_ARN" || "$MEDIA_QUEUE_ARN" == "None" ]]; then
+    echo "Failed to read media cleanup stack outputs (queue URL / ARN)" >&2
+    exit 1
   fi
-  ;;
-esac
+fi
 
 MEDIA_PARAM_OVERRIDES=()
 if [[ -n "${MEDIA_QUEUE_URL:-}" && -n "${MEDIA_QUEUE_ARN:-}" ]]; then
@@ -300,38 +275,34 @@ fi
 BILLING_EDGE_ARN="${BILLING_EDGE_LAMBDA_ARN:-}"
 BILLING_QUEUE_URL="${BILLING_FULFILLMENT_QUEUE_URL:-}"
 BILLING_QUEUE_ARN="${BILLING_FULFILLMENT_QUEUE_ARN:-}"
-case "$ENV" in
-dev | prod)
-  if [[ -z "$BILLING_EDGE_ARN" || -z "$BILLING_QUEUE_URL" || -z "$BILLING_QUEUE_ARN" ]]; then
-    PAY_SCRIPT="${ROOT}/scripts/deploy-payments.sh"
-    chmod +x "$PAY_SCRIPT"
-    export BILLING_FULFILLMENT_ALERT_EMAIL="${BILLING_FULFILLMENT_ALERT_EMAIL:-}"
-    "$PAY_SCRIPT" "$ENV" "$REGION" "$ARTIFACT_BUCKET" "$SUFFIX"
-    PAYMENTS_STACK="StreamMyCourse-Payments-${ENV}"
-    BILLING_EDGE_ARN="$(aws cloudformation describe-stacks \
-      --stack-name "$PAYMENTS_STACK" \
-      --region "$REGION" \
-      --query 'Stacks[0].Outputs[?OutputKey==`BillingEdgeLambdaArn`].OutputValue' \
-      --output text)"
-    BILLING_QUEUE_URL="$(aws cloudformation describe-stacks \
-      --stack-name "$PAYMENTS_STACK" \
-      --region "$REGION" \
-      --query 'Stacks[0].Outputs[?OutputKey==`BillingFulfillmentQueueUrl`].OutputValue' \
-      --output text)"
-    BILLING_QUEUE_ARN="$(aws cloudformation describe-stacks \
-      --stack-name "$PAYMENTS_STACK" \
-      --region "$REGION" \
-      --query 'Stacks[0].Outputs[?OutputKey==`BillingFulfillmentQueueArn`].OutputValue' \
-      --output text)"
-    if [[ -z "$BILLING_EDGE_ARN" || "$BILLING_EDGE_ARN" == "None" \
-      || -z "$BILLING_QUEUE_URL" || "$BILLING_QUEUE_URL" == "None" \
-      || -z "$BILLING_QUEUE_ARN" || "$BILLING_QUEUE_ARN" == "None" ]]; then
-      echo "Failed to read payments stack outputs (edge ARN / fulfillment queue URL / ARN)" >&2
-      exit 1
-    fi
+if [[ -z "$BILLING_EDGE_ARN" || -z "$BILLING_QUEUE_URL" || -z "$BILLING_QUEUE_ARN" ]]; then
+  PAY_SCRIPT="${ROOT}/scripts/deploy-payments.sh"
+  chmod +x "$PAY_SCRIPT"
+  export BILLING_FULFILLMENT_ALERT_EMAIL="${BILLING_FULFILLMENT_ALERT_EMAIL:-}"
+  "$PAY_SCRIPT" "$ENV" "$REGION" "$ARTIFACT_BUCKET" "$SUFFIX"
+  PAYMENTS_STACK="StreamMyCourse-Payments-${ENV}"
+  BILLING_EDGE_ARN="$(aws cloudformation describe-stacks \
+    --stack-name "$PAYMENTS_STACK" \
+    --region "$REGION" \
+    --query 'Stacks[0].Outputs[?OutputKey==`BillingEdgeLambdaArn`].OutputValue' \
+    --output text)"
+  BILLING_QUEUE_URL="$(aws cloudformation describe-stacks \
+    --stack-name "$PAYMENTS_STACK" \
+    --region "$REGION" \
+    --query 'Stacks[0].Outputs[?OutputKey==`BillingFulfillmentQueueUrl`].OutputValue' \
+    --output text)"
+  BILLING_QUEUE_ARN="$(aws cloudformation describe-stacks \
+    --stack-name "$PAYMENTS_STACK" \
+    --region "$REGION" \
+    --query 'Stacks[0].Outputs[?OutputKey==`BillingFulfillmentQueueArn`].OutputValue' \
+    --output text)"
+  if [[ -z "$BILLING_EDGE_ARN" || "$BILLING_EDGE_ARN" == "None" \
+    || -z "$BILLING_QUEUE_URL" || "$BILLING_QUEUE_URL" == "None" \
+    || -z "$BILLING_QUEUE_ARN" || "$BILLING_QUEUE_ARN" == "None" ]]; then
+    echo "Failed to read payments stack outputs (edge ARN / fulfillment queue URL / ARN)" >&2
+    exit 1
   fi
-  ;;
-esac
+fi
 
 BILLING_PARAM_OVERRIDES=()
 if [[ -n "${BILLING_EDGE_ARN:-}" ]]; then

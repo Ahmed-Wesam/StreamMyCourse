@@ -1,9 +1,9 @@
 #!/usr/bin/env pwsh
 # Print Cognito auth stack CloudFormation outputs and map them to GitHub Actions secrets / local .env.
-# Usage: .\scripts\print-auth-stack-outputs.ps1 [-Environment dev|prod] [-Region eu-west-1]
+# Usage: .\scripts\print-auth-stack-outputs.ps1 [-Environment prod] [-Region eu-west-1]
 param(
-    [ValidateSet('dev', 'prod')]
-    [string]$Environment = 'dev',
+    [ValidateSet('prod')]
+    [string]$Environment = 'prod',
     [string]$Region = 'eu-west-1'
 )
 

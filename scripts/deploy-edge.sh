@@ -1,17 +1,17 @@
 #!/usr/bin/env bash
 # Deploy unified edge hosting (ACM + student + teacher S3/CloudFront/R53) in us-east-1.
-# Used by .github/workflows/deploy-backend.yml (deploy-edge-dev / deploy-edge-prod).
+# Used by .github/workflows/deploy-backend.yml (deploy-edge-prod).
 # Required env: ROUTE53_HOSTED_ZONE_ID, STUDENT_WEB_DOMAIN, TEACHER_WEB_DOMAIN
 # Optional: WEB_CERT_DOMAIN (primary name on cert; defaults to STUDENT_WEB_DOMAIN), WEB_CERT_SANS (comma-separated SANs)
 # Optional: EDGE_ATTACH_CF_ALIASES=false while legacy Web/TeacherWeb CloudFront distributions still
 #   hold the same alternate domain names (otherwise CloudFront returns 409). Default true.
 set -euo pipefail
 
-ENV="${1:?usage: deploy-edge.sh <dev|prod>}"
+ENV="${1:?usage: deploy-edge.sh <prod>}"
 case "$ENV" in
-dev | prod) ;;
+prod) ;;
 *)
-  echo "Environment must be dev or prod, got: $ENV" >&2
+  echo "Environment must be prod, got: $ENV" >&2
   exit 1
   ;;
 esac

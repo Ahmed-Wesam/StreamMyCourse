@@ -35,7 +35,7 @@ class VideoProviderEdgeConfig:
 
 
 def load_video_provider_edge_config() -> VideoProviderEdgeConfig:
-    deployment = (_env("DEPLOYMENT_ENVIRONMENT") or "dev").lower()
+    deployment = (_env("DEPLOYMENT_ENVIRONMENT") or "prod").lower()
     return VideoProviderEdgeConfig(
         deployment_environment=deployment,
         catalog_lambda_arn=_env("CATALOG_LAMBDA_ARN"),

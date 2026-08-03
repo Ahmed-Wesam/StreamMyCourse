@@ -12,10 +12,8 @@ Description: 'StreamMyCourse - RDS PostgreSQL Stack (1-AZ VPC, private RDS, Secr
 Parameters:
   Environment:
     Type: String
-    Default: dev
-    AllowedValues:
-      - dev
-      - prod
+    AllowedValues: [prod]
+    Default: prod
     Description: Deployment environment
 
   DbName:
@@ -68,7 +66,6 @@ Parameters:
     Description: S3 object key for the schema-applier Lambda zip (must be set with SchemaApplierCodeS3Bucket for CI)
 
 Conditions:
-  IsProd: !Equals [!Ref Environment, prod]
   HasSchemaApplierCode: !And
     - !Not [!Equals [!Ref SchemaApplierCodeS3Bucket, '']]
     - !Not [!Equals [!Ref SchemaApplierCodeS3Key, '']]
@@ -302,9 +299,9 @@ Resources:
       VPCSecurityGroups:
         - !Ref RdsSecurityGroup
       DBSubnetGroupName: !Ref DbSubnetGroup
-      BackupRetentionPeriod: !If [IsProd, 7, 1]
+      BackupRetentionPeriod: 7
       CopyTagsToSnapshot: true
-      DeletionProtection: !If [IsProd, true, false]
+      DeletionProtection: true
       EnableIAMDatabaseAuthentication: false
       Tags:
         - Key: Project

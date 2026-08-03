@@ -20,7 +20,7 @@
 From repo root (Git Bash / WSL; same packaging pattern as other RDS helper Lambdas):
 
 ```bash
-./scripts/deploy-rds-query-stack.sh dev
+./scripts/deploy-rds-query-stack.sh prod
 ```
 
 Optional environment variables for the deploy script (defaults `false`):
@@ -38,15 +38,15 @@ After maintenance, redeploy with **`ALLOW_CATALOG_WIPE=false`** and **`ALLOW_MUT
 **Read example** (`payload.json`):
 
 ```json
-{"confirm":"dev","sql":"SELECT COUNT(*) FROM courses"}
+{"confirm":"prod","sql":"SELECT COUNT(*) FROM courses"}
 ```
 
 ```bash
-aws lambda invoke --function-name StreamMyCourse-RdsQuery-dev \
+aws lambda invoke --function-name StreamMyCourse-RdsQuery-prod \
   --cli-binary-format raw-in-base64-out \
   --payload fileb://payload.json \
-  /tmp/rds-query-dev-out.json --region eu-west-1
-cat /tmp/rds-query-dev-out.json
+  /tmp/rds-query-prod-out.json --region eu-west-1
+cat /tmp/rds-query-prod-out.json
 ```
 
 ## Quickstart (Windows / PowerShell): read, clear (keep `users`), verify
@@ -82,7 +82,6 @@ function Invoke-RdsQuery([string]$envName, $payloadObj) {
 ### 1) First-time read probe (safe)
 
 ```powershell
-Invoke-RdsQuery 'dev'  @{ confirm='dev';  sql='SELECT 1 AS ok' }
 Invoke-RdsQuery 'prod' @{ confirm='prod'; sql='SELECT 1 AS ok' }
 ```
 
@@ -99,7 +98,6 @@ UNION ALL SELECT 'users', COUNT(*)::int FROM users
 ORDER BY tbl;
 '@
 
-Invoke-RdsQuery 'dev'  @{ confirm='dev';  sql=$countsSql }
 Invoke-RdsQuery 'prod' @{ confirm='prod'; sql=$countsSql }
 ```
 
@@ -112,7 +110,6 @@ This clears **`enrollments`**, **`lessons`**, and **`courses`** only.
 ```powershell
 $truncateSql = 'TRUNCATE enrollments, lessons, courses RESTART IDENTITY CASCADE'
 
-Invoke-RdsQuery 'dev'  @{ confirm='dev';  sql=$truncateSql; allow_mutating_sql=$true }
 Invoke-RdsQuery 'prod' @{ confirm='prod'; sql=$truncateSql; allow_mutating_sql=$true }
 ```
 
@@ -123,10 +120,6 @@ If you get `canceling statement due to statement timeout`, use Option B.
 Run as **three separate invokes** (one statement per invoke), FK-safe order:
 
 ```powershell
-Invoke-RdsQuery 'dev' @{ confirm='dev'; sql='DELETE FROM enrollments'; allow_mutating_sql=$true }
-Invoke-RdsQuery 'dev' @{ confirm='dev'; sql='DELETE FROM lessons';      allow_mutating_sql=$true }
-Invoke-RdsQuery 'dev' @{ confirm='dev'; sql='DELETE FROM courses';      allow_mutating_sql=$true }
-
 Invoke-RdsQuery 'prod' @{ confirm='prod'; sql='DELETE FROM enrollments'; allow_mutating_sql=$true }
 Invoke-RdsQuery 'prod' @{ confirm='prod'; sql='DELETE FROM lessons';      allow_mutating_sql=$true }
 Invoke-RdsQuery 'prod' @{ confirm='prod'; sql='DELETE FROM courses';      allow_mutating_sql=$true }
@@ -135,14 +128,13 @@ Invoke-RdsQuery 'prod' @{ confirm='prod'; sql='DELETE FROM courses';      allow_
 ### 4) Verify (read-back)
 
 ```powershell
-Invoke-RdsQuery 'dev'  @{ confirm='dev';  sql=$countsSql }
 Invoke-RdsQuery 'prod' @{ confirm='prod'; sql=$countsSql }
 ```
 
 **Catalog wipe** (only after deploy with `AllowCatalogWipe=true` / `ALLOW_CATALOG_WIPE=true`):
 
 ```json
-{"confirm":"dev","wipe_catalog":true}
+{"confirm":"prod","wipe_catalog":true}
 ```
 
 Response includes `counts_before` and `counts_after` per table when `ok` is true. That path truncates **`users` as well**—see **Policy: `users` table** above; assistants must not execute it on chat request alone.
@@ -150,7 +142,7 @@ Response includes `counts_before` and `counts_after` per table when `ok` is true
 **Mutating SQL** (only with `AllowMutatingSql=true` and payload flag):
 
 ```json
-{"confirm":"dev","sql":"DELETE FROM enrollments WHERE false","allow_mutating_sql":true}
+{"confirm":"prod","sql":"DELETE FROM enrollments WHERE false","allow_mutating_sql":true}
 ```
 
 ## Selective catalog clear (keep `users`)
@@ -162,16 +154,15 @@ Response includes `counts_before` and `counts_after` per table when `ok` is true
 1. **Enable mutating SQL** for the maintenance window (defaults are off):
 
    ```bash
-   ALLOW_MUTATING_SQL=true ./scripts/deploy-rds-query-stack.sh dev
    ALLOW_MUTATING_SQL=true ./scripts/deploy-rds-query-stack.sh prod
    ```
 
 2. **Confirm the stack actually allows mutating** (payload `allow_mutating_sql` is ignored if the function env is false):
 
    ```bash
-   aws cloudformation describe-stacks --stack-name StreamMyCourse-RdsQuery-dev \
+   aws cloudformation describe-stacks --stack-name StreamMyCourse-RdsQuery-prod \
      --query "Stacks[0].Parameters[?ParameterKey=='AllowMutatingSql']" --region eu-west-1
-   aws lambda get-function-configuration --function-name StreamMyCourse-RdsQuery-dev \
+   aws lambda get-function-configuration --function-name StreamMyCourse-RdsQuery-prod \
      --query "Environment.Variables.ALLOW_MUTATING_SQL" --region eu-west-1
    ```
 
@@ -181,13 +172,13 @@ Response includes `counts_before` and `counts_after` per table when `ok` is true
    $region = 'eu-west-1'
 
    aws --no-cli-pager cloudformation describe-stacks `
-     --stack-name StreamMyCourse-RdsQuery-dev `
+     --stack-name StreamMyCourse-RdsQuery-prod `
      --query "Stacks[0].Parameters[?ParameterKey=='AllowMutatingSql']" `
      --output json `
      --region $region
 
    aws --no-cli-pager lambda get-function-configuration `
-     --function-name StreamMyCourse-RdsQuery-dev `
+     --function-name StreamMyCourse-RdsQuery-prod `
      --query "Environment.Variables.ALLOW_MUTATING_SQL" `
      --output text `
      --region $region
@@ -198,7 +189,7 @@ Response includes `counts_before` and `counts_after` per table when `ok` is true
 3. **Prefer one mutating statement** (the handler allows a single SQL string per invoke):
 
    ```json
-   {"confirm":"dev","sql":"TRUNCATE enrollments, lessons, courses RESTART IDENTITY CASCADE","allow_mutating_sql":true}
+   {"confirm":"prod","sql":"TRUNCATE enrollments, lessons, courses RESTART IDENTITY CASCADE","allow_mutating_sql":true}
    ```
 
 4. **If `TRUNCATE` fails with `statement timeout`** (the Lambda sets `statement_timeout` to 60s): long locks or a large catalog can exceed it. Use **three separate invokes** in FK-safe order (still one statement each):
@@ -217,7 +208,7 @@ Response includes `counts_before` and `counts_after` per table when `ok` is true
 
 The old standalone wipe Lambda and **`RDS_WIPE_RUNBOOK`** are removed; use this runbook instead.
 
-**When:** Before deploying the catalog Lambda that uses `{courseId}/lessons/...` S3 keys, wipe **dev** then **prod** so old `uploads/...` rows and objects do not break playback.
+**When:** Before deploying the catalog Lambda that uses `{courseId}/lessons/...` S3 keys, wipe **prod** so old `uploads/...` rows and objects do not break playback.
 
 ### 1. Prod RDS snapshot (mandatory before prod TRUNCATE)
 
@@ -236,31 +227,26 @@ Record the snapshot identifier in your ops log.
 ### 2. Build and deploy the query stack with wipe enabled
 
 ```bash
-ALLOW_CATALOG_WIPE=true ./scripts/deploy-rds-query-stack.sh dev
 ALLOW_CATALOG_WIPE=true ./scripts/deploy-rds-query-stack.sh prod
 ```
 
 ### 3. Empty the video bucket, invoke wipe, lock down again
 
-**Dev**
+**Prod**
 
 ```bash
-BUCKET=$(aws cloudformation describe-stacks --stack-name StreamMyCourse-Video-dev \
+BUCKET=$(aws cloudformation describe-stacks --stack-name StreamMyCourse-Video-prod \
   --query "Stacks[0].Outputs[?OutputKey=='BucketName'].OutputValue" --output text --region eu-west-1)
 aws s3 rm "s3://${BUCKET}/" --recursive --region eu-west-1
 
-aws lambda invoke --function-name StreamMyCourse-RdsQuery-dev \
+aws lambda invoke --function-name StreamMyCourse-RdsQuery-prod \
   --cli-binary-format raw-in-base64-out \
   --payload fileb://wipe-payload.json \
-  /tmp/rds-query-dev-out.json --region eu-west-1
-cat /tmp/rds-query-dev-out.json
+  /tmp/rds-query-prod-out.json --region eu-west-1
+cat /tmp/rds-query-prod-out.json
 ```
 
-Where `wipe-payload.json` contains `{"confirm":"dev","wipe_catalog":true}`.
-
-Redeploy **without** `ALLOW_CATALOG_WIPE` when finished.
-
-**Prod** (after snapshot in §1): same pattern with `prod` and `StreamMyCourse-Video-prod`.
+Where `wipe-payload.json` contains `{"confirm":"prod","wipe_catalog":true}`.
 
 ### 4. Deploy order after wipe
 
@@ -270,8 +256,8 @@ Do **not** deploy the new Lambda before TRUNCATE, or rows still holding `uploads
 
 ## Retiring old wipe stacks
 
-If **`StreamMyCourse-RdsWipe-<env>`** still exists in AWS from earlier work, delete it after you rely on **`StreamMyCourse-RdsQuery-<env>`**:
+If **`StreamMyCourse-RdsWipe-prod`** still exists in AWS from earlier work, delete it after you rely on **`StreamMyCourse-RdsQuery-prod`**:
 
 ```bash
-aws cloudformation delete-stack --stack-name StreamMyCourse-RdsWipe-dev --region eu-west-1
+aws cloudformation delete-stack --stack-name StreamMyCourse-RdsWipe-prod --region eu-west-1
 ```

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Create or update the dedicated CI user for Verify dev/prod RDS (or local RDS path tests).
-# Requires AWS credentials with cognito-idp admin APIs on the target pool (default dev stack).
+# Create or update the dedicated CI user for Verify prod RDS (or local RDS path tests).
+# Requires AWS credentials with cognito-idp admin APIs on the target pool (default prod stack).
 #
 # Usage:
 #   ./scripts/ensure-ci-rds-verify-cognito-user.sh
@@ -69,7 +69,7 @@ if [[ "$ROLE" != "teacher" && "$ROLE" != "student" ]]; then
 fi
 
 REGION="${AWS_REGION:-${AWS_DEFAULT_REGION:-eu-west-1}}"
-STACK="${CI_RDS_VERIFY_AUTH_STACK:-StreamMyCourse-Auth-dev}"
+STACK="${CI_RDS_VERIFY_AUTH_STACK:-StreamMyCourse-Auth-prod}"
 
 POOL_ID="$(aws cloudformation describe-stacks \
   --stack-name "$STACK" \
@@ -127,4 +127,4 @@ aws cognito-idp admin-update-user-attributes \
   --region "$REGION"
 
 echo "Done. Store the same password in GitHub secret COGNITO_RDS_VERIFY_TEST_PASSWORD on the"
-echo "GitHub Environment that matches this stack (dev for *-Auth-dev, prod for *-Auth-prod)."
+echo "GitHub Environment that matches this stack (prod for *-Auth-prod)."

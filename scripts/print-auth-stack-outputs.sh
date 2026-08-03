@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 # Print Cognito auth stack outputs and map to GitHub secrets / .env (POSIX; aws CLI only).
-# Usage: ./scripts/print-auth-stack-outputs.sh [dev|prod] [region]
+# Usage: ./scripts/print-auth-stack-outputs.sh [prod] [region]
 set -euo pipefail
-ENV="${1:-dev}"
+ENV="${1:-prod}"
 REGION="${2:-eu-west-1}"
-case "$ENV" in dev | prod) ;; *)
-  echo "Usage: $0 [dev|prod] [region]" >&2
+case "$ENV" in prod) ;; *)
+  echo "Usage: $0 [prod] [region]" >&2
   exit 1
   ;;
 esac

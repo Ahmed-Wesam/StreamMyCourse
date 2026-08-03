@@ -4,10 +4,8 @@ Description: 'StreamMyCourse - SQS + Lambda worker for async S3 media cleanup af
 Parameters:
   Environment:
     Type: String
-    Default: dev
-    AllowedValues:
-      - dev
-      - prod
+    AllowedValues: [prod]
+    Default: prod
     Description: Deployment environment
 
   VideoBucketName:

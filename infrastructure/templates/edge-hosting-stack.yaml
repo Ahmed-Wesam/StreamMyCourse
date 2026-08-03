@@ -6,10 +6,8 @@ Description: >-
 Parameters:
   Environment:
     Type: String
-    Default: dev
-    AllowedValues:
-      - dev
-      - prod
+    AllowedValues: [prod]
+    Default: prod
     Description: Deployment environment
 
   HostedZoneId:

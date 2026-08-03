@@ -155,7 +155,7 @@ StreamMyCourse deploys to AWS using GitHub Actions with OIDC authentication. Inf
 | Secret/Variable | Description |
 |-----------------|-------------|
 | `AWS_DEPLOY_ROLE_ARN` | OIDC role ARN for AWS deployment |
-| `AWS_ACCOUNT_ID` | AWS account ID (set on both dev and prod environments) |
+| `AWS_ACCOUNT_ID` | AWS account ID (set on the **prod** GitHub Environment) |
 | `GOOGLE_OAUTH_CLIENT_ID` | Google OAuth client ID (for auth stack) |
 | `GOOGLE_OAUTH_CLIENT_SECRET` | Google OAuth client secret (for auth stack) |
 
@@ -165,8 +165,7 @@ StreamMyCourse deploys to AWS using GitHub Actions with OIDC authentication. Inf
 # Get your AWS account ID
 aws sts get-caller-identity --query Account --output text
 
-# Set as GitHub Actions variable (recommended - per environment)
-gh variable set AWS_ACCOUNT_ID --env dev --body "YOUR_ACCOUNT_ID"
+# Set as GitHub Actions variable (recommended - prod environment)
 gh variable set AWS_ACCOUNT_ID --env prod --body "YOUR_ACCOUNT_ID"
 ```
 

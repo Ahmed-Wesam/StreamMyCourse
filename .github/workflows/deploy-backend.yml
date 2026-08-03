@@ -1,20 +1,14 @@
-# After CI succeeds on a push to main: CI gate → dev edge + dev RDS (parallel) → apply-schema-dev →
-# deploy-backend-dev → integration-http-tests (pytest against dev API + Cognito JWT from dev Environment) →
-# verify-dev-rds → dev SPAs (+ prod edge + prod RDS branches in parallel with later stages).
-# Prod backend waits for verify-dev-rds (dev RDS API smoke), prod edge, prod RDS, schema apply, dev SPA
-# deploys, then prod backend (RDS-backed API); verify-prod-rds runs after prod backend.
-# verify-dev-rds / verify-prod-rds call verify-rds-reusable.yml with environment-specific inputs + secret mapping only.
-# Prod SPAs run after prod edge (unchanged). Never prod-only on edge.
+# After CI succeeds on a push to main: CI gate → prod edge + prod RDS (parallel) → apply-schema-prod →
+# deploy-backend-prod → integration-http-tests (pytest against prod API + Cognito JWT from prod Environment) →
+# verify-prod-rds → prod SPAs.
+# verify-prod-rds calls verify-rds-reusable.yml with prod CloudFormation inputs + GitHub Environment secrets.
 # Manual dispatch: runs full pipeline without waiting for upstream CI (operator responsibility).
 #
 # Lambda zip is uploaded to catalog-{env}-{gitSha}.zip so LambdaCodeS3Key changes every commit
 # (CFN updates the function).
-# For dev and prod, scripts/deploy-backend.sh deploys StreamMyCourse-MediaCleanup-{env} (SQS + worker)
-# and StreamMyCourse-Payments-{env} (billing edge + fulfillment queue) before the API stack, then
+# For prod, scripts/deploy-backend.sh deploys StreamMyCourse-MediaCleanup-prod (SQS + worker)
+# and StreamMyCourse-Payments-prod (billing edge + fulfillment queue) before the API stack, then
 # passes media cleanup queue URL/ARN and billing edge ARN + fulfillment queue URL/ARN into api-stack.yaml.
-# When VIDEO_PROVIDER=kinescope (dev default), deploy-backend.sh also deploys
-# StreamMyCourse-VideoProviderEdge-{env} after the first API deploy and re-deploys api-stack with
-# VideoProviderEdgeLambdaArn so upload/webhook routes target the edge Lambda.
 name: Deploy
 
 on:
@@ -73,7 +67,7 @@ jobs:
           echo "should_deploy=true" >> "$GITHUB_OUTPUT"
           echo "checkout_sha=${{ github.event.workflow_run.head_sha }}" >> "$GITHUB_OUTPUT"
 
-  # Pin repo-level OIDC role ARN here (no `environment:`) so jobs that use `environment: dev` for
+  # Pin repo-level OIDC role ARN here (no `environment:`) so jobs that use `environment: prod` for
   # Cognito secrets can still assume the backend deploy role without Environment var shadowing.
   resolve-oidc-deploy-role:
     name: Resolve repo OIDC deploy role ARN
@@ -87,866 +81,18 @@ jobs:
         run: |
           echo "arn=${{ vars.AWS_DEPLOY_ROLE_ARN }}" >> "$GITHUB_OUTPUT"
 
-  # --- Integration tests (HTTP suite against deployed dev API) ------------------------
-  integration-http-tests:
-    name: Integration HTTP tests — pytest against deployed dev API
-    runs-on: ubuntu-latest
-    environment: dev
-    needs: [gate, deploy-backend-dev, resolve-oidc-deploy-role]
-    permissions:
-      id-token: write
-      contents: read
-    if: |
-      always() &&
-      needs.gate.outputs.should_deploy == 'true' &&
-      needs.resolve-oidc-deploy-role.result == 'success' &&
-      needs.deploy-backend-dev.result == 'success' &&
-      (github.event_name == 'workflow_run' || github.event_name == 'workflow_dispatch')
-    steps:
-      - uses: actions/checkout@v6
-        with:
-          ref: ${{ needs.gate.outputs.checkout_sha }}
+  # --- Integration tests (HTTP suite against deployed prod API; job runs after deploy-backend-prod)
 
-      - name: Configure AWS credentials (OIDC)
-        uses: aws-actions/configure-aws-credentials@v6
-        with:
-          role-to-assume: ${{ needs.resolve-oidc-deploy-role.outputs.aws_deploy_role_arn }}
-          aws-region: ${{ env.AWS_REGION }}
-
-      - uses: actions/setup-python@v6
-        with:
-          python-version: "3.11"
-
-      - name: Install test dependencies
-        run: pip install -r tests/integration/requirements.txt
-
-      - name: Resolve dev stack outputs
-        env:
-          API_STACK: streammycourse-api
-          VIDEO_STACK: StreamMyCourse-Video-dev
-        run: |
-          set -euo pipefail
-          REGION="${{ env.AWS_REGION }}"
-          API_BASE_URL="$(aws cloudformation describe-stacks \
-            --stack-name "$API_STACK" \
-            --region "$REGION" \
-            --query "Stacks[0].Outputs[?OutputKey=='ApiEndpoint'].OutputValue" \
-            --output text)"
-          VIDEO_BUCKET="$(aws cloudformation describe-stacks \
-            --stack-name "$VIDEO_STACK" \
-            --region "$REGION" \
-            --query "Stacks[0].Outputs[?OutputKey=='BucketName'].OutputValue" \
-            --output text)"
-          CORS_CSV="$(aws cloudformation describe-stacks \
-            --stack-name "$API_STACK" \
-            --region "$REGION" \
-            --query "Stacks[0].Parameters[?ParameterKey=='CorsAllowOrigin'].ParameterValue" \
-            --output text)"
-          FIRST_CORS_ORIGIN="${CORS_CSV%%,*}"
-          FIRST_CORS_ORIGIN="${FIRST_CORS_ORIGIN#"${FIRST_CORS_ORIGIN%%[![:space:]]*}"}"
-          FIRST_CORS_ORIGIN="${FIRST_CORS_ORIGIN%"${FIRST_CORS_ORIGIN##*[![:space:]]}"}"
-          if [[ -z "$FIRST_CORS_ORIGIN" || "$FIRST_CORS_ORIGIN" == "None" ]]; then
-            FIRST_CORS_ORIGIN="http://localhost:5173"
-          fi
-          if [[ -z "$API_BASE_URL" || -z "$VIDEO_BUCKET" ]]; then
-            echo "Failed to resolve dev stack outputs (ApiEndpoint / BucketName)" >&2
-            exit 1
-          fi
-          {
-            echo "INTEGRATION_API_BASE_URL=$API_BASE_URL"
-            echo "INTEGRATION_VIDEO_BUCKET=$VIDEO_BUCKET"
-            echo "INTEGRATION_AWS_REGION=$REGION"
-            echo "INTEGRATION_EXPECTED_CORS_ORIGIN=$FIRST_CORS_ORIGIN"
-            echo "INTEGRATION_VIDEO_PROVIDER=kinescope"
-          } >> "$GITHUB_ENV"
-          echo "Resolved dev API: $API_BASE_URL"
-          echo "Resolved dev bucket: $VIDEO_BUCKET"
-
-      - name: Require Kinescope webhook secret for integration tests (dev)
-        env:
-          KINESCOPE_WEBHOOK_SECRET: ${{ secrets.KINESCOPE_WEBHOOK_SECRET }}
-        run: |
-          set -euo pipefail
-          if [[ -z "${KINESCOPE_WEBHOOK_SECRET:-}" ]]; then
-            echo "::error::GitHub Environment \"dev\" must set KINESCOPE_WEBHOOK_SECRET for Kinescope integration tests."
-            exit 1
-          fi
-          echo "::add-mask::$KINESCOPE_WEBHOOK_SECRET"
-          echo "INTEGRATION_KINESCOPE_WEBHOOK_SECRET=$KINESCOPE_WEBHOOK_SECRET" >> "$GITHUB_ENV"
-
-      - name: Require Cognito credentials for integration HTTP tests
-        env:
-          COGNITO_TEST_PASSWORD: ${{ secrets.COGNITO_RDS_VERIFY_TEST_PASSWORD }}
-          COGNITO_TEST_USERNAME: ${{ vars.COGNITO_RDS_VERIFY_TEST_USERNAME }}
-          LEGACY_JWT: ${{ secrets.COGNITO_RDS_VERIFY_JWT }}
-        run: |
-          set -euo pipefail
-          if [[ -z "${COGNITO_TEST_PASSWORD:-}" ]] && [[ -z "${LEGACY_JWT:-}" ]]; then
-            echo "::error::On GitHub Environment \"dev\" set secret COGNITO_RDS_VERIFY_TEST_PASSWORD and optional variable COGNITO_RDS_VERIFY_TEST_USERNAME (default ci-rds-verify@noreply.local), or secret COGNITO_RDS_VERIFY_JWT as fallback. See tests/integration/README.md."
-            exit 1
-          fi
-
-      - name: Ensure CI Cognito playback profile attributes (dev)
-        env:
-          COGNITO_TEST_PASSWORD: ${{ secrets.COGNITO_RDS_VERIFY_TEST_PASSWORD }}
-          COGNITO_TEST_USERNAME: ${{ vars.COGNITO_RDS_VERIFY_TEST_USERNAME }}
-          COGNITO_TEST_PASSWORD_ALT: ${{ secrets.COGNITO_RDS_VERIFY_TEST_PASSWORD_ALT }}
-          COGNITO_TEST_USERNAME_ALT: ${{ vars.COGNITO_RDS_VERIFY_TEST_USERNAME_ALT }}
-          COGNITO_TEST_PASSWORD_STUDENT: ${{ secrets.COGNITO_RDS_VERIFY_TEST_PASSWORD_STUDENT }}
-          COGNITO_TEST_USERNAME_STUDENT: ${{ vars.COGNITO_RDS_VERIFY_TEST_USERNAME_STUDENT }}
-        run: |
-          set -euo pipefail
-          if [[ -z "${COGNITO_TEST_PASSWORD:-}" ]]; then
-            echo "Skipping Cognito playback profile ensure (COGNITO_RDS_VERIFY_TEST_PASSWORD unset)"
-            exit 0
-          fi
-          export CI_RDS_VERIFY_AUTH_STACK=StreamMyCourse-Auth-dev
-          bash ./scripts/ensure-integration-cognito-playback-profiles.sh
-
-      - name: Mint Cognito JWT (or static JWT fallback)
-        env:
-          COGNITO_TEST_PASSWORD: ${{ secrets.COGNITO_RDS_VERIFY_TEST_PASSWORD }}
-          COGNITO_TEST_USERNAME: ${{ vars.COGNITO_RDS_VERIFY_TEST_USERNAME }}
-          LEGACY_JWT: ${{ secrets.COGNITO_RDS_VERIFY_JWT }}
-          AUTH_STACK: StreamMyCourse-Auth-dev
-        run: |
-          set -euo pipefail
-          REGION="${{ env.AWS_REGION }}"
-          USERNAME="${COGNITO_TEST_USERNAME:-ci-rds-verify@noreply.local}"
-          TOKEN=""
-
-          if [[ -n "${COGNITO_TEST_PASSWORD:-}" ]]; then
-            pool="$(aws cloudformation describe-stacks \
-              --stack-name "$AUTH_STACK" \
-              --region "$REGION" \
-              --query "Stacks[0].Outputs[?OutputKey=='UserPoolId'].OutputValue" \
-              --output text)"
-            client="$(aws cloudformation describe-stacks \
-              --stack-name "$AUTH_STACK" \
-              --region "$REGION" \
-              --query "Stacks[0].Outputs[?OutputKey=='TeacherUserPoolClientId'].OutputValue" \
-              --output text)"
-            if [[ -n "$pool" && "$pool" != "None" && -n "$client" && "$client" != "None" ]]; then
-              tmp_json="$(mktemp)"
-              jq -n \
-                --arg pool "$pool" \
-                --arg client "$client" \
-                --arg user "$USERNAME" \
-                --arg pass "$COGNITO_TEST_PASSWORD" \
-                '{UserPoolId:$pool,ClientId:$client,AuthFlow:"ADMIN_USER_PASSWORD_AUTH",AuthParameters:{USERNAME:$user,PASSWORD:$pass}}' \
-                >"$tmp_json"
-              if TOKEN="$(aws cognito-idp admin-initiate-auth \
-                --cli-input-json "file://$tmp_json" \
-                --region "$REGION" \
-                --query 'AuthenticationResult.IdToken' \
-                --output text 2>/dev/null)"; then
-                :
-              else
-                TOKEN=""
-              fi
-              rm -f "$tmp_json"
-            fi
-          fi
-
-          if [[ -n "${TOKEN:-}" && "$TOKEN" != "None" ]]; then
-            echo "::add-mask::$TOKEN"
-            echo "INTEGRATION_COGNITO_JWT=$TOKEN" >> "$GITHUB_ENV"
-            echo "Minted Cognito IdToken for integration HTTP tests (dev; user: $USERNAME)"
-          elif [[ -n "${LEGACY_JWT:-}" ]]; then
-            if [[ -n "${COGNITO_TEST_PASSWORD:-}" ]]; then
-              echo "::warning::Cognito token minting failed - using static JWT fallback"
-            else
-              echo "Using static JWT fallback (COGNITO_RDS_VERIFY_TEST_PASSWORD unset on this environment)"
-            fi
-            echo "::add-mask::$LEGACY_JWT"
-            echo "INTEGRATION_COGNITO_JWT=$LEGACY_JWT" >> "$GITHUB_ENV"
-          else
-            echo "::error::Could not mint Cognito IdToken and COGNITO_RDS_VERIFY_JWT is not set on this environment"
-            exit 1
-          fi
-
-      - name: Mint Cognito JWT ALT (teacher B) - conditional
-        env:
-          COGNITO_TEST_PASSWORD_ALT: ${{ secrets.COGNITO_RDS_VERIFY_TEST_PASSWORD_ALT }}
-          COGNITO_TEST_USERNAME_ALT: ${{ vars.COGNITO_RDS_VERIFY_TEST_USERNAME_ALT }}
-          AUTH_STACK: StreamMyCourse-Auth-dev
-        run: |
-          set -euo pipefail
-          REGION="${{ env.AWS_REGION }}"
-          USERNAME="${COGNITO_TEST_USERNAME_ALT:-ci-rds-verify-2@noreply.local}"
-          TOKEN=""
-
-          # Skip if password secret is not set
-          if [[ -z "${COGNITO_TEST_PASSWORD_ALT:-}" ]]; then
-            echo "Skipping ALT JWT minting (COGNITO_RDS_VERIFY_TEST_PASSWORD_ALT not set)"
-            exit 0
-          fi
-
-          if [[ -n "${COGNITO_TEST_PASSWORD_ALT:-}" ]]; then
-            pool="$(aws cloudformation describe-stacks \
-              --stack-name "$AUTH_STACK" \
-              --region "$REGION" \
-              --query "Stacks[0].Outputs[?OutputKey=='UserPoolId'].OutputValue" \
-              --output text)"
-            client="$(aws cloudformation describe-stacks \
-              --stack-name "$AUTH_STACK" \
-              --region "$REGION" \
-              --query "Stacks[0].Outputs[?OutputKey=='TeacherUserPoolClientId'].OutputValue" \
-              --output text)"
-            if [[ -n "$pool" && "$pool" != "None" && -n "$client" && "$client" != "None" ]]; then
-              tmp_json="$(mktemp)"
-              jq -n \
-                --arg pool "$pool" \
-                --arg client "$client" \
-                --arg user "$USERNAME" \
-                --arg pass "$COGNITO_TEST_PASSWORD_ALT" \
-                '{UserPoolId:$pool,ClientId:$client,AuthFlow:"ADMIN_USER_PASSWORD_AUTH",AuthParameters:{USERNAME:$user,PASSWORD:$pass}}' \
-                >"$tmp_json"
-              if TOKEN="$(aws cognito-idp admin-initiate-auth \
-                --cli-input-json "file://$tmp_json" \
-                --region "$REGION" \
-                --query 'AuthenticationResult.IdToken' \
-                --output text 2>/dev/null)"; then
-                :
-              else
-                TOKEN=""
-              fi
-              rm -f "$tmp_json"
-            fi
-          fi
-
-          if [[ -n "${TOKEN:-}" && "$TOKEN" != "None" ]]; then
-            echo "::add-mask::$TOKEN"
-            echo "INTEGRATION_COGNITO_JWT_ALT=$TOKEN" >> "$GITHUB_ENV"
-            echo "Minted Cognito IdToken ALT for integration HTTP tests (dev; user: $USERNAME)"
-          else
-            echo "::warning::Could not mint Cognito IdToken ALT (teacher B)"
-          fi
-
-      - name: Mint Cognito JWT STUDENT - conditional
-        env:
-          COGNITO_TEST_PASSWORD_STUDENT: ${{ secrets.COGNITO_RDS_VERIFY_TEST_PASSWORD_STUDENT }}
-          COGNITO_TEST_USERNAME_STUDENT: ${{ vars.COGNITO_RDS_VERIFY_TEST_USERNAME_STUDENT }}
-          AUTH_STACK: StreamMyCourse-Auth-dev
-        run: |
-          set -euo pipefail
-          REGION="${{ env.AWS_REGION }}"
-          USERNAME="${COGNITO_TEST_USERNAME_STUDENT:-ci-student@noreply.local}"
-          TOKEN=""
-
-          # Skip if password secret is not set
-          if [[ -z "${COGNITO_TEST_PASSWORD_STUDENT:-}" ]]; then
-            echo "Skipping STUDENT JWT minting (COGNITO_RDS_VERIFY_TEST_PASSWORD_STUDENT not set)"
-            exit 0
-          fi
-
-          if [[ -n "${COGNITO_TEST_PASSWORD_STUDENT:-}" ]]; then
-            pool="$(aws cloudformation describe-stacks \
-              --stack-name "$AUTH_STACK" \
-              --region "$REGION" \
-              --query "Stacks[0].Outputs[?OutputKey=='UserPoolId'].OutputValue" \
-              --output text)"
-            client="$(aws cloudformation describe-stacks \
-              --stack-name "$AUTH_STACK" \
-              --region "$REGION" \
-              --query "Stacks[0].Outputs[?OutputKey=='StudentUserPoolClientId'].OutputValue" \
-              --output text)"
-            if [[ -n "$pool" && "$pool" != "None" && -n "$client" && "$client" != "None" ]]; then
-              tmp_json="$(mktemp)"
-              jq -n \
-                --arg pool "$pool" \
-                --arg client "$client" \
-                --arg user "$USERNAME" \
-                --arg pass "$COGNITO_TEST_PASSWORD_STUDENT" \
-                '{UserPoolId:$pool,ClientId:$client,AuthFlow:"ADMIN_USER_PASSWORD_AUTH",AuthParameters:{USERNAME:$user,PASSWORD:$pass}}' \
-                >"$tmp_json"
-              if TOKEN="$(aws cognito-idp admin-initiate-auth \
-                --cli-input-json "file://$tmp_json" \
-                --region "$REGION" \
-                --query 'AuthenticationResult.IdToken' \
-                --output text 2>/dev/null)"; then
-                :
-              else
-                TOKEN=""
-              fi
-              rm -f "$tmp_json"
-            fi
-          fi
-
-          if [[ -n "${TOKEN:-}" && "$TOKEN" != "None" ]]; then
-            echo "::add-mask::$TOKEN"
-            echo "INTEGRATION_COGNITO_JWT_STUDENT=$TOKEN" >> "$GITHUB_ENV"
-            echo "Minted Cognito IdToken STUDENT for integration HTTP tests (dev; user: $USERNAME)"
-          else
-            echo "::warning::Could not mint Cognito IdToken STUDENT"
-          fi
-
-      - name: Run pytest
-        id: pytest
-        working-directory: tests/integration
-        env:
-          COGNITO_TEST_PASSWORD_STUDENT: ${{ secrets.COGNITO_RDS_VERIFY_TEST_PASSWORD_STUDENT }}
-          COGNITO_TEST_USERNAME_STUDENT: ${{ vars.COGNITO_RDS_VERIFY_TEST_USERNAME_STUDENT }}
-        run: |
-          echo "[integration-diag] pytest_start=$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
-          # Disable errexit only around pytest so the end marker is emitted even
-          # on failure (default shell is `bash -eo pipefail`).
-          set +e
-          pytest -q --junitxml=results.xml
-          rc=$?
-          set -e
-          echo "[integration-diag] pytest_end=$(date -u +"%Y-%m-%dT%H:%M:%SZ") exit=$rc"
-          exit $rc
-
-      - name: Summary
-        if: always()
-        run: |
-          if [[ "${{ steps.pytest.outcome }}" == "success" ]]; then
-            echo "## Integration HTTP tests: PASSED" >> "$GITHUB_STEP_SUMMARY"
-          else
-            echo "## Integration HTTP tests: FAILED" >> "$GITHUB_STEP_SUMMARY"
-          fi
-
-      - name: Upload pytest results
-        if: always()
-        uses: actions/upload-artifact@v7
-        with:
-          name: integration-http-test-results
-          path: tests/integration/results.xml
-          if-no-files-found: warn
-
-  # --- Dev: edge infra then backend + web in parallel) --------------------------------
-  deploy-edge-dev:
-    name: Edge (dev) — ACM cert + student + teacher web CF
-    runs-on: ubuntu-latest
-    environment: dev
-    needs: [gate]
-    permissions:
-      id-token: write
-      contents: read
-    if: |
-      always() && needs.gate.outputs.should_deploy == 'true' &&
-      (github.event_name == 'workflow_run' || github.event_name == 'workflow_dispatch')
-    steps:
-      - uses: actions/checkout@v6
-        with:
-          ref: ${{ needs.gate.outputs.checkout_sha }}
-
-      - name: Configure AWS credentials (OIDC)
-        uses: aws-actions/configure-aws-credentials@v6
-        with:
-          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
-          aws-region: ${{ env.AWS_REGION }}
-
-      - name: Deploy unified edge hosting (us-east-1)
-        env:
-          ROUTE53_HOSTED_ZONE_ID: ${{ vars.ROUTE53_HOSTED_ZONE_ID }}
-          STUDENT_WEB_DOMAIN: ${{ vars.STUDENT_WEB_DOMAIN }}
-          TEACHER_WEB_DOMAIN: ${{ vars.TEACHER_WEB_DOMAIN }}
-          WEB_CERT_DOMAIN: ${{ vars.WEB_CERT_DOMAIN }}
-          WEB_CERT_SANS: ${{ vars.WEB_CERT_SANS }}
-        run: |
-          chmod +x scripts/deploy-edge.sh
-          ./scripts/deploy-edge.sh dev
-
-      - name: Summary
-        if: success()
-        run: |
-          echo "## Edge (dev)" >> "$GITHUB_STEP_SUMMARY"
-          echo "**ACM + S3 + CloudFront** in **us-east-1** (StreamMyCourse-EdgeHosting-dev) deployed or no-op changeset." >> "$GITHUB_STEP_SUMMARY"
-
-  # Deploys the RDS PostgreSQL stack (1-AZ VPC + private db.t4g.micro + Secrets Manager
-  # + VPC endpoints) and the in-VPC schema-applier Lambda (S3 zip uploaded in this job).
-  # apply-schema-dev invokes that Lambda so the runner never needs TCP 5432 to RDS.
-  deploy-rds-dev:
-    name: RDS Stack (dev) — PostgreSQL + VPC
-    runs-on: ubuntu-latest
-    environment: dev
-    needs: [gate]
-    permissions:
-      id-token: write
-      contents: read
-    if: |
-      always() && needs.gate.outputs.should_deploy == 'true' &&
-      (github.event_name == 'workflow_run' || github.event_name == 'workflow_dispatch')
-    steps:
-      - uses: actions/checkout@v6
-        with:
-          ref: ${{ needs.gate.outputs.checkout_sha }}
-
-      - name: Configure AWS credentials (OIDC)
-        uses: aws-actions/configure-aws-credentials@v6
-        with:
-          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
-          aws-region: ${{ env.AWS_REGION }}
-
-      - uses: actions/setup-python@v6
-        with:
-          python-version: "3.11"
-
-      - name: Package and upload schema-applier Lambda (psycopg2 + bundled SQL)
-        id: schema_pkg
-        env:
-          CHECKOUT_SHA: ${{ needs.gate.outputs.checkout_sha }}
-        run: |
-          set -euo pipefail
-          REGION="${{ env.AWS_REGION }}"
-          ACCOUNT="$(aws sts get-caller-identity --query Account --output text --region "$REGION")"
-          BUCKET="streammycourse-artifacts-${ACCOUNT}-${REGION}"
-          SHA="${CHECKOUT_SHA:?missing gate checkout_sha}"
-          SHORT="${SHA:0:12}"
-          KEY="rds-schema-apply-dev-${SHORT}.zip"
-          STAGE="$(mktemp -d)"
-          PKG="${STAGE}/pkg"
-          mkdir -p "$PKG"
-          cp "${{ github.workspace }}/infrastructure/lambda/rds_schema_apply/index.py" "$PKG/"
-          # Bundle 001 (canonical fresh-DB schema), 003 (in-place upgrade
-          # for the (course_id, lesson_id) FK invariant), and 004
-          # (created_by non-blank invariant). Each migration is idempotent so
-          # re-running on every deploy is safe.
-          cat \
-            "${{ github.workspace }}/infrastructure/database/migrations/001_initial_schema.sql" \
-            "${{ github.workspace }}/infrastructure/database/migrations/003_progress_course_lesson_fk.sql" \
-            "${{ github.workspace }}/infrastructure/database/migrations/004_enforce_course_created_by.sql" \
-            "${{ github.workspace }}/infrastructure/database/migrations/006_question_banks_module_quizzes.sql" \
-            "${{ github.workspace }}/infrastructure/database/migrations/007_question_bank_questions.sql" \
-            "${{ github.workspace }}/infrastructure/database/migrations/008_student_module_quiz_bindings.sql" \
-            "${{ github.workspace }}/infrastructure/database/migrations/009_module_quiz_attempts.sql" \
-            "${{ github.workspace }}/infrastructure/database/migrations/010_module_quiz_attempt_submissions.sql" \
-            "${{ github.workspace }}/infrastructure/database/migrations/011_billing_subscription.sql" \
-            "${{ github.workspace }}/infrastructure/database/migrations/012_billing_plan_price_50_jod.sql" \
-            "${{ github.workspace }}/infrastructure/database/migrations/013_student_active_session.sql" \
-            "${{ github.workspace }}/infrastructure/database/migrations/014_rate_limit_counters.sql" \
-            > "$PKG/schema.sql"
-          pip install psycopg2-binary==2.9.9 \
-            --quiet \
-            --platform manylinux2014_x86_64 \
-            --only-binary=:all: \
-            --python-version 3.11 \
-            --implementation cp \
-            -t "$PKG"
-          (cd "$PKG" && zip -rq "${STAGE}/bundle.zip" .)
-          aws s3 cp "${STAGE}/bundle.zip" "s3://${BUCKET}/${KEY}" --region "$REGION"
-          echo "bucket=${BUCKET}" >> "$GITHUB_OUTPUT"
-          echo "key=${KEY}" >> "$GITHUB_OUTPUT"
-          echo "Uploaded schema-applier s3://${BUCKET}/${KEY}"
-
-      - name: Deploy RDS stack (dev)
-        run: |
-          set -euo pipefail
-          BUCKET="${{ steps.schema_pkg.outputs.bucket }}"
-          KEY="${{ steps.schema_pkg.outputs.key }}"
-          aws cloudformation validate-template \
-            --template-body "file://${{ github.workspace }}/infrastructure/templates/rds-stack.yaml" \
-            --region "${{ env.AWS_REGION }}"
-          aws cloudformation deploy \
-            --template-file "${{ github.workspace }}/infrastructure/templates/rds-stack.yaml" \
-            --stack-name StreamMyCourse-Rds-dev \
-            --capabilities CAPABILITY_IAM CAPABILITY_NAMED_IAM \
-            --region "${{ env.AWS_REGION }}" \
-            --no-fail-on-empty-changeset \
-            --parameter-overrides \
-              "Environment=dev" \
-              "SchemaApplierCodeS3Bucket=${BUCKET}" \
-              "SchemaApplierCodeS3Key=${KEY}"
-
-      - name: Wait for RDS instance available
-        run: |
-          set -euo pipefail
-          aws rds wait db-instance-available \
-            --db-instance-identifier streammycourse-dev \
-            --region "${{ env.AWS_REGION }}"
-
-      - name: Summary
-        if: success()
-        run: |
-          echo "## RDS Stack (dev)" >> "$GITHUB_STEP_SUMMARY"
-          echo "StreamMyCourse-Rds-dev deployed (VPC + private RDS + Secrets Manager + VPC endpoints + schema-applier Lambda zip from CI)." >> "$GITHUB_STEP_SUMMARY"
-
-  # Invokes the VPC schema-applier Lambda (see rds-stack.yaml) — no psql from the runner.
-  apply-schema-dev:
-    name: Apply PostgreSQL schema (dev)
-    runs-on: ubuntu-latest
-    environment: dev
-    needs: [gate, deploy-rds-dev]
-    permissions:
-      id-token: write
-      contents: read
-    if: |
-      always() && needs.gate.outputs.should_deploy == 'true' &&
-      needs.deploy-rds-dev.result == 'success' &&
-      (github.event_name == 'workflow_run' || github.event_name == 'workflow_dispatch')
-    steps:
-      - uses: actions/checkout@v6
-        with:
-          ref: ${{ needs.gate.outputs.checkout_sha }}
-
-      - name: Configure AWS credentials (OIDC)
-        uses: aws-actions/configure-aws-credentials@v6
-        with:
-          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
-          aws-region: ${{ env.AWS_REGION }}
-
-      - name: Invoke schema-applier Lambda
-        run: |
-          set -euo pipefail
-          FN="$(aws cloudformation describe-stacks \
-            --stack-name StreamMyCourse-Rds-dev \
-            --region "${{ env.AWS_REGION }}" \
-            --query "Stacks[0].Outputs[?OutputKey=='SchemaApplierFunctionName'].OutputValue" \
-            --output text)"
-          if [[ -z "$FN" || "$FN" == "None" ]]; then
-            echo "Missing CloudFormation output SchemaApplierFunctionName. Deploy RDS with SchemaApplierCodeS3Bucket/Key." >&2
-            exit 1
-          fi
-          OUT=/tmp/schema-invoke.json
-          aws lambda invoke \
-            --region "${{ env.AWS_REGION }}" \
-            --function-name "$FN" \
-            --cli-binary-format raw-in-base64-out \
-            --payload '{}' \
-            "$OUT"
-          # Sync invoke: outfile is the Lambda payload only. Unhandled errors use errorMessage (no .ok).
-          if jq -e 'has("errorMessage")' "$OUT" >/dev/null 2>&1; then
-            echo "Schema applier Lambda raised (FunctionError)" >&2
-            jq -c '{errorMessage, errorType}' "$OUT" >&2
-            exit 1
-          fi
-          if ! jq -e '.ok == true' "$OUT" >/dev/null 2>&1; then
-            echo "Schema applier returned non-success payload:" >&2
-            jq -c '{ok, error}' "$OUT" >&2 || cat "$OUT" >&2
-            exit 1
-          fi
-
-      - name: Summary
-        if: success()
-        run: |
-          echo "## PostgreSQL schema (dev)" >> "$GITHUB_STEP_SUMMARY"
-          echo "Invoked **StreamMyCourse-RdsSchemaApplier-dev** (bundled \`001_initial_schema.sql\` → schema.sql, includes \`lesson_progress\`, via VPC Lambda)." >> "$GITHUB_STEP_SUMMARY"
-
-  deploy-backend-dev:
-    name: Backend (dev) — Video + API
-    runs-on: ubuntu-latest
-    environment: dev
-    needs: [gate, deploy-edge-dev, deploy-rds-dev, apply-schema-dev]
-    permissions:
-      id-token: write
-      contents: read
-    if: |
-      always() && needs.gate.outputs.should_deploy == 'true' &&
-      needs.deploy-edge-dev.result == 'success' &&
-      needs.deploy-rds-dev.result == 'success' &&
-      needs.apply-schema-dev.result == 'success' &&
-      (github.event_name == 'workflow_run' || github.event_name == 'workflow_dispatch')
-    env:
-      RDS_STACK_NAME: StreamMyCourse-Rds-dev
-    steps:
-      - uses: actions/checkout@v6
-        with:
-          ref: ${{ needs.gate.outputs.checkout_sha }}
-
-      - name: Configure AWS credentials (OIDC)
-        uses: aws-actions/configure-aws-credentials@v6
-        with:
-          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
-          aws-region: ${{ env.AWS_REGION }}
-
-      - name: Require Cognito configuration
-        env:
-          COGNITO_DOMAIN_PREFIX: ${{ vars.COGNITO_DOMAIN_PREFIX }}
-        run: |
-          set -euo pipefail
-          if [[ -z "${COGNITO_DOMAIN_PREFIX}" ]]; then
-            echo "GitHub Environment variable COGNITO_DOMAIN_PREFIX must be set for full deploy (auth stack is required)." >&2
-            exit 1
-          fi
-
-      - name: Require Google OAuth
-        env:
-          GOOGLE_OAUTH_CLIENT_ID: ${{ secrets.GOOGLE_OAUTH_CLIENT_ID }}
-          GOOGLE_OAUTH_CLIENT_SECRET: ${{ secrets.GOOGLE_OAUTH_CLIENT_SECRET }}
-        run: |
-          set -euo pipefail
-          if [[ -z "${GOOGLE_OAUTH_CLIENT_ID}" || -z "${GOOGLE_OAUTH_CLIENT_SECRET}" ]]; then
-            echo "GitHub Environment secrets GOOGLE_OAUTH_CLIENT_ID and GOOGLE_OAUTH_CLIENT_SECRET must be set for full deploy (Google-federation-only auth stack)." >&2
-            exit 1
-          fi
-
-      - uses: actions/setup-python@v6
-        with:
-          python-version: "3.11"
-
-      - name: Package and upload Cognito user profile sync Lambda (dev)
-        id: cognito_sync_pkg
-        env:
-          CHECKOUT_SHA: ${{ needs.gate.outputs.checkout_sha }}
-        run: |
-          set -euo pipefail
-          REGION="${{ env.AWS_REGION }}"
-          ACCOUNT="$(aws sts get-caller-identity --query Account --output text --region "$REGION")"
-          BUCKET="streammycourse-artifacts-${ACCOUNT}-${REGION}"
-          SHA="${CHECKOUT_SHA:?missing gate checkout_sha}"
-          SHORT="${SHA:0:12}"
-          KEY="cognito-user-profile-sync-dev-${SHORT}.zip"
-          STAGE="$(mktemp -d)"
-          PKG="$STAGE/pkg"
-          mkdir -p "$PKG"
-          WS="${{ github.workspace }}"
-          cp "$WS/infrastructure/lambda/cognito_user_profile_sync/_vendor_bootstrap.py" "$PKG/"
-          cp "$WS/infrastructure/lambda/cognito_user_profile_sync/handler.py" "$PKG/"
-          cp "$WS/infrastructure/lambda/cognito_user_profile_sync/session_sync.py" "$PKG/"
-          cp "$WS/infrastructure/lambda/cognito_user_profile_sync/sync_config.py" "$PKG/"
-          cp "$WS/infrastructure/lambda/cognito_user_profile_sync/repo.py" "$PKG/"
-          pip install psycopg2-binary==2.9.9 \
-            --quiet \
-            --platform manylinux2014_x86_64 \
-            --only-binary=:all: \
-            --python-version 3.11 \
-            --implementation cp \
-            -t "$PKG/_vendor"
-          (cd "$PKG" && zip -rq "$STAGE/bundle.zip" .)
-          aws s3 cp "$STAGE/bundle.zip" "s3://${BUCKET}/${KEY}" --region "$REGION"
-          echo "bucket=${BUCKET}" >> "$GITHUB_OUTPUT"
-          echo "key=${KEY}" >> "$GITHUB_OUTPUT"
-          echo "Uploaded Cognito profile sync s3://${BUCKET}/${KEY}"
-
-      - name: Deploy auth (dev) — Cognito
-        run: |
-          set -euo pipefail
-          STACK="StreamMyCourse-Auth-dev"
-          # When GitHub Environment vars override Cognito callback/logout lists, they often omit
-          # local Vite origins (see frontend/src/lib/auth.ts); missing entries → redirect_mismatch.
-          student_cb="${STUDENT_COGNITO_CALLBACK_URLS:-}"
-          student_lo="${STUDENT_COGNITO_LOGOUT_URLS:-}"
-          teacher_cb="${TEACHER_COGNITO_CALLBACK_URLS:-}"
-          teacher_lo="${TEACHER_COGNITO_LOGOUT_URLS:-}"
-          # Merge local Vite URLs even when GH vars are unset (empty would skip overrides and omit dev redirects).
-          [[ "$student_cb" != *"http://localhost:5173/"* ]] && student_cb="${student_cb:+$student_cb,}http://localhost:5173/"
-          [[ "$student_cb" != *"http://127.0.0.1:5173/"* ]] && student_cb="${student_cb:+$student_cb,}http://127.0.0.1:5173/"
-          [[ "$student_lo" != *"http://localhost:5173/"* ]] && student_lo="${student_lo:+$student_lo,}http://localhost:5173/"
-          [[ "$student_lo" != *"http://127.0.0.1:5173/"* ]] && student_lo="${student_lo:+$student_lo,}http://127.0.0.1:5173/"
-          [[ "$teacher_cb" != *"http://localhost:5174/"* ]] && teacher_cb="${teacher_cb:+$teacher_cb,}http://localhost:5174/"
-          [[ "$teacher_cb" != *"http://127.0.0.1:5174/"* ]] && teacher_cb="${teacher_cb:+$teacher_cb,}http://127.0.0.1:5174/"
-          [[ "$teacher_lo" != *"http://localhost:5174/"* ]] && teacher_lo="${teacher_lo:+$teacher_lo,}http://localhost:5174/"
-          [[ "$teacher_lo" != *"http://127.0.0.1:5174/"* ]] && teacher_lo="${teacher_lo:+$teacher_lo,}http://127.0.0.1:5174/"
-          aws cloudformation validate-template \
-            --template-body "file://${{ github.workspace }}/infrastructure/templates/auth-stack.yaml" \
-            --region "${{ env.AWS_REGION }}"
-          auth_params=(
-            "Environment=dev"
-            "CognitoDomainPrefix=${{ vars.COGNITO_DOMAIN_PREFIX }}"
-            "GoogleClientId=${GOOGLE_OAUTH_CLIENT_ID}"
-            "GoogleClientSecret=${GOOGLE_OAUTH_CLIENT_SECRET}"
-            "RdsStackName=StreamMyCourse-Rds-dev"
-            "EnableUserProfileSync=true"
-            "CognitoUserProfileSyncCodeS3Bucket=${{ steps.cognito_sync_pkg.outputs.bucket }}"
-            "CognitoUserProfileSyncCodeS3Key=${{ steps.cognito_sync_pkg.outputs.key }}"
-          )
-          [[ -n "$student_cb" ]] && auth_params+=("StudentCallbackUrls=$student_cb")
-          [[ -n "$student_lo" ]] && auth_params+=("StudentLogoutUrls=$student_lo")
-          [[ -n "$teacher_cb" ]] && auth_params+=("TeacherCallbackUrls=$teacher_cb")
-          [[ -n "$teacher_lo" ]] && auth_params+=("TeacherLogoutUrls=$teacher_lo")
-          aws cloudformation deploy \
-            --template-file "${{ github.workspace }}/infrastructure/templates/auth-stack.yaml" \
-            --stack-name "$STACK" \
-            --capabilities CAPABILITY_IAM CAPABILITY_NAMED_IAM \
-            --region "${{ env.AWS_REGION }}" \
-            --no-fail-on-empty-changeset \
-            --parameter-overrides "${auth_params[@]}"
-
-          # Second pass: wire sync Lambda client IDs (avoids CFN cycle Pool -> Lambda -> Client -> Pool).
-          student_client_id="$(aws cloudformation describe-stacks \
-            --stack-name "$STACK" \
-            --region "${{ env.AWS_REGION }}" \
-            --query "Stacks[0].Outputs[?OutputKey=='StudentUserPoolClientId'].OutputValue" \
-            --output text 2>/dev/null || true)"
-          teacher_client_id="$(aws cloudformation describe-stacks \
-            --stack-name "$STACK" \
-            --region "${{ env.AWS_REGION }}" \
-            --query "Stacks[0].Outputs[?OutputKey=='TeacherUserPoolClientId'].OutputValue" \
-            --output text 2>/dev/null || true)"
-          if [[ -n "$student_client_id" && "$student_client_id" != "None" && -n "$teacher_client_id" && "$teacher_client_id" != "None" ]]; then
-            auth_params_client=(
-              "Environment=dev"
-              "CognitoDomainPrefix=${{ vars.COGNITO_DOMAIN_PREFIX }}"
-              "GoogleClientId=${GOOGLE_OAUTH_CLIENT_ID}"
-              "GoogleClientSecret=${GOOGLE_OAUTH_CLIENT_SECRET}"
-              "RdsStackName=StreamMyCourse-Rds-dev"
-              "EnableUserProfileSync=true"
-              "CognitoUserProfileSyncCodeS3Bucket=${{ steps.cognito_sync_pkg.outputs.bucket }}"
-              "CognitoUserProfileSyncCodeS3Key=${{ steps.cognito_sync_pkg.outputs.key }}"
-              "StudentCognitoClientId=${student_client_id}"
-              "TeacherCognitoClientId=${teacher_client_id}"
-            )
-            [[ -n "$student_cb" ]] && auth_params_client+=("StudentCallbackUrls=$student_cb")
-            [[ -n "$student_lo" ]] && auth_params_client+=("StudentLogoutUrls=$student_lo")
-            [[ -n "$teacher_cb" ]] && auth_params_client+=("TeacherCallbackUrls=$teacher_cb")
-            [[ -n "$teacher_lo" ]] && auth_params_client+=("TeacherLogoutUrls=$teacher_lo")
-            aws cloudformation deploy \
-              --template-file "${{ github.workspace }}/infrastructure/templates/auth-stack.yaml" \
-              --stack-name "$STACK" \
-              --capabilities CAPABILITY_IAM CAPABILITY_NAMED_IAM \
-              --region "${{ env.AWS_REGION }}" \
-              --no-fail-on-empty-changeset \
-              --parameter-overrides "${auth_params_client[@]}"
-          fi
-
-          USER_POOL_ARN="$(aws cloudformation describe-stacks \
-            --stack-name "$STACK" \
-            --region "${{ env.AWS_REGION }}" \
-            --query "Stacks[0].Outputs[?OutputKey=='UserPoolArn'].OutputValue" \
-            --output text)"
-          if [[ -z "$USER_POOL_ARN" ]]; then
-            echo "Failed to resolve UserPoolArn output from $STACK" >&2
-            exit 1
-          fi
-          echo "COGNITO_USER_POOL_ARN=$USER_POOL_ARN" >> "$GITHUB_ENV"
-        env:
-          STUDENT_COGNITO_CALLBACK_URLS: ${{ vars.STUDENT_COGNITO_CALLBACK_URLS }}
-          STUDENT_COGNITO_LOGOUT_URLS: ${{ vars.STUDENT_COGNITO_LOGOUT_URLS }}
-          TEACHER_COGNITO_CALLBACK_URLS: ${{ vars.TEACHER_COGNITO_CALLBACK_URLS }}
-          TEACHER_COGNITO_LOGOUT_URLS: ${{ vars.TEACHER_COGNITO_LOGOUT_URLS }}
-          GOOGLE_OAUTH_CLIENT_ID: ${{ secrets.GOOGLE_OAUTH_CLIENT_ID }}
-          GOOGLE_OAUTH_CLIENT_SECRET: ${{ secrets.GOOGLE_OAUTH_CLIENT_SECRET }}
-
-      - name: Ensure PayTabs placeholder secret (dev)
-        run: |
-          set -euo pipefail
-          SECRET_ID="streammycourse/paytabs/dev"
-          REGION="${AWS_REGION:-eu-west-1}"
-          if aws secretsmanager describe-secret --secret-id "$SECRET_ID" --region "$REGION" >/dev/null 2>&1; then
-            echo "PayTabs secret already exists: $SECRET_ID"
-            exit 0
-          fi
-          aws secretsmanager create-secret \
-            --name "$SECRET_ID" \
-            --region "$REGION" \
-            --description "PayTabs credentials placeholder (WS3); replace with live keys before go-live" \
-            --secret-string '{"server_key":"placeholder-dev-paytabs-server-key","profile_id":"placeholder-dev-paytabs-profile-id","api_domain":"secure-jordan.paytabs.com"}'
-
-      - name: Require Kinescope credentials (dev)
-        env:
-          KINESCOPE_API_TOKEN: ${{ secrets.KINESCOPE_API_TOKEN }}
-          KINESCOPE_PARENT_ID: ${{ secrets.KINESCOPE_PARENT_ID }}
-          KINESCOPE_DRM_JWT_SECRET: ${{ secrets.KINESCOPE_DRM_JWT_SECRET }}
-        run: |
-          set -euo pipefail
-          if [[ -z "${KINESCOPE_API_TOKEN:-}" || -z "${KINESCOPE_PARENT_ID:-}" ]]; then
-            echo "::error::GitHub Environment \"dev\" must set secrets KINESCOPE_API_TOKEN and KINESCOPE_PARENT_ID for Kinescope rollout."
-            exit 1
-          fi
-          if [[ -z "${KINESCOPE_DRM_JWT_SECRET:-}" ]]; then
-            echo "::error::GitHub Environment \"dev\" must set secret KINESCOPE_DRM_JWT_SECRET (playback DRM JWT signing)."
-            exit 1
-          fi
-
-      - name: Deploy dev
-        env:
-          PAYTABS_SERVER_KEY: ${{ secrets.PAYTABS_SERVER_KEY }}
-          PAYTABS_PROFILE_ID: ${{ vars.PAYTABS_PROFILE_ID }}
-          PAYTABS_API_DOMAIN: ${{ vars.PAYTABS_API_DOMAIN }}
-          PAYMENT_PROVIDER: ${{ vars.PAYMENT_PROVIDER }}
-          PAYTABS_USE_MOCK: ${{ vars.PAYTABS_USE_MOCK }}
-          BILLING_FULFILLMENT_ALERT_EMAIL: ${{ vars.BILLING_FULFILLMENT_ALERT_EMAIL }}
-          BILLING_TEACHER_SUB: ${{ vars.BILLING_TEACHER_SUB }}
-          VIDEO_PROVIDER: kinescope
-          KINESCOPE_API_TOKEN: ${{ secrets.KINESCOPE_API_TOKEN }}
-          KINESCOPE_PARENT_ID: ${{ secrets.KINESCOPE_PARENT_ID }}
-          KINESCOPE_DRM_JWT_SECRET: ${{ secrets.KINESCOPE_DRM_JWT_SECRET }}
-          KINESCOPE_WEBHOOK_SECRET: ${{ secrets.KINESCOPE_WEBHOOK_SECRET }}
-        run: |
-          chmod +x scripts/deploy-backend.sh
-          ./scripts/deploy-backend.sh dev
-
-      - name: Summary
-        if: success()
-        run: |
-          echo "## Backend dev" >> "$GITHUB_STEP_SUMMARY"
-          echo "Video stack + API stack for **dev** deployed (or no-op changeset)." >> "$GITHUB_STEP_SUMMARY"
-
-  deploy-web-dev:
-    name: Web (dev)
-    needs: [gate, deploy-edge-dev, deploy-backend-dev, integration-http-tests]
-    if: |
-      always() && needs.gate.outputs.should_deploy == 'true' &&
-      needs.deploy-edge-dev.result == 'success' &&
-      needs.deploy-backend-dev.result == 'success' &&
-      needs.integration-http-tests.result == 'success' &&
-      (github.event_name == 'workflow_run' || github.event_name == 'workflow_dispatch')
-    uses: ./.github/workflows/deploy-web-reusable.yml
-    secrets:
-      AWS_DEPLOY_ROLE_ARN: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
-      VITE_API_BASE_URL: ${{ secrets.VITE_API_BASE_URL }}
-      VITE_COGNITO_USER_POOL_ID: ${{ secrets.VITE_COGNITO_USER_POOL_ID }}
-      VITE_COGNITO_STUDENT_CLIENT_ID: ${{ secrets.VITE_COGNITO_STUDENT_CLIENT_ID }}
-      VITE_COGNITO_DOMAIN: ${{ secrets.VITE_COGNITO_DOMAIN }}
-    with:
-      target_environment: dev
-      checkout_ref: ${{ needs.gate.outputs.checkout_sha }}
-
-  deploy-teacher-web-dev:
-    name: Teacher Web (dev)
-    needs: [gate, deploy-edge-dev, deploy-backend-dev, integration-http-tests]
-    if: |
-      always() && needs.gate.outputs.should_deploy == 'true' &&
-      needs.deploy-edge-dev.result == 'success' &&
-      needs.deploy-backend-dev.result == 'success' &&
-      needs.integration-http-tests.result == 'success' &&
-      (github.event_name == 'workflow_run' || github.event_name == 'workflow_dispatch')
-    uses: ./.github/workflows/deploy-teacher-web-reusable.yml
-    secrets:
-      AWS_DEPLOY_ROLE_ARN: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
-      VITE_API_BASE_URL: ${{ secrets.VITE_API_BASE_URL }}
-      VITE_COGNITO_USER_POOL_ID: ${{ secrets.VITE_COGNITO_USER_POOL_ID }}
-      VITE_COGNITO_TEACHER_CLIENT_ID: ${{ secrets.VITE_COGNITO_TEACHER_CLIENT_ID }}
-      VITE_COGNITO_DOMAIN: ${{ secrets.VITE_COGNITO_DOMAIN }}
-    with:
-      target_environment: dev
-      checkout_ref: ${{ needs.gate.outputs.checkout_sha }}
-
-  # Runs catalog smoke tests (test_rds_path.py) against the deployed dev API.
-  # Dev-only CloudFormation inputs; Cognito/AWS creds come from GitHub Environment "dev" inside verify-rds-reusable.yml.
-  verify-dev-rds:
-    name: Verify dev RDS (integration tests)
-    uses: ./.github/workflows/verify-rds-reusable.yml
-    secrets:
-      # Repository secrets (job cannot set `environment` when using only `uses:`). Copy values from Environment "dev" secrets of the same name into repo Actions secrets.
-      COGNITO_RDS_VERIFY_TEST_PASSWORD: ${{ secrets.COGNITO_RDS_VERIFY_TEST_PASSWORD }}
-      COGNITO_RDS_VERIFY_JWT: ${{ secrets.COGNITO_RDS_VERIFY_JWT }}
-    needs: [gate, deploy-backend-dev, integration-http-tests]
-    if: |
-      always() && needs.gate.outputs.should_deploy == 'true' &&
-      needs.deploy-backend-dev.result == 'success' &&
-      needs.integration-http-tests.result == 'success' &&
-      (github.event_name == 'workflow_run' || github.event_name == 'workflow_dispatch')
-    with:
-      github_environment: dev
-      checkout_ref: ${{ needs.gate.outputs.checkout_sha }}
-      aws_deploy_role_arn: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
-      # Must match workflow env.AWS_REGION (not available in workflow_call `with` context).
-      aws_region: eu-west-1
-      # dev API stack uses legacy lowercase name; see scripts/deploy-backend.sh.
-      api_stack_name: streammycourse-api
-      video_stack_name: StreamMyCourse-Video-dev
-      auth_stack_name: StreamMyCourse-Auth-dev
-      target_label: dev
-      api_endpoint_description: streammycourse-api (dev)
-
-  # --- Stage 4: prod (prod edge in parallel with dev backend + SPAs; then prod app deploys) ---
   deploy-edge-prod:
     name: Edge (prod) — ACM cert + student + teacher web CF
     runs-on: ubuntu-latest
     environment: prod
-    needs: [gate, deploy-edge-dev, deploy-backend-dev, integration-http-tests]
+    needs: [gate]
     permissions:
       id-token: write
       contents: read
     if: |
-      always() &&
-      needs.gate.outputs.should_deploy == 'true' &&
-      needs.deploy-edge-dev.result == 'success' &&
-      needs.deploy-backend-dev.result == 'success' &&
-      needs.integration-http-tests.result == 'success' &&
+      always() && needs.gate.outputs.should_deploy == 'true' &&
       (github.event_name == 'workflow_run' || github.event_name == 'workflow_dispatch')
     steps:
       - uses: actions/checkout@v6
@@ -976,19 +122,19 @@ jobs:
           echo "## Edge (prod)" >> "$GITHUB_STEP_SUMMARY"
           echo "**ACM + S3 + CloudFront** in **us-east-1** (StreamMyCourse-EdgeHosting-prod) deployed or no-op changeset." >> "$GITHUB_STEP_SUMMARY"
 
+  # Deploys the RDS PostgreSQL stack (1-AZ VPC + private db.t4g.micro + Secrets Manager
+  # + VPC endpoints) and the in-VPC schema-applier Lambda (S3 zip uploaded in this job).
+  # apply-schema-prod invokes that Lambda so the runner never needs TCP 5432 to RDS.
   deploy-rds-prod:
     name: RDS Stack (prod) — PostgreSQL + VPC
     runs-on: ubuntu-latest
     environment: prod
-    needs: [gate, deploy-edge-dev, deploy-backend-dev, integration-http-tests]
+    needs: [gate]
     permissions:
       id-token: write
       contents: read
     if: |
       always() && needs.gate.outputs.should_deploy == 'true' &&
-      needs.deploy-edge-dev.result == 'success' &&
-      needs.deploy-backend-dev.result == 'success' &&
-      needs.integration-http-tests.result == 'success' &&
       (github.event_name == 'workflow_run' || github.event_name == 'workflow_dispatch')
     steps:
       - uses: actions/checkout@v6
@@ -1021,10 +167,6 @@ jobs:
           PKG="${STAGE}/pkg"
           mkdir -p "$PKG"
           cp "${{ github.workspace }}/infrastructure/lambda/rds_schema_apply/index.py" "$PKG/"
-          # Bundle 001 (canonical fresh-DB schema), 003 (in-place upgrade
-          # for the (course_id, lesson_id) FK invariant), and 004
-          # (created_by non-blank invariant). Each migration is idempotent so
-          # re-running on every deploy is safe.
           cat \
             "${{ github.workspace }}/infrastructure/database/migrations/001_initial_schema.sql" \
             "${{ github.workspace }}/infrastructure/database/migrations/003_progress_course_lesson_fk.sql" \
@@ -1149,12 +291,6 @@ jobs:
     environment: prod
     needs:
       - gate
-      - deploy-edge-dev
-      - deploy-backend-dev
-      - integration-http-tests
-      - deploy-web-dev
-      - deploy-teacher-web-dev
-      - verify-dev-rds
       - deploy-edge-prod
       - deploy-rds-prod
       - apply-schema-prod
@@ -1164,12 +300,6 @@ jobs:
     if: |
       always() &&
       needs.gate.outputs.should_deploy == 'true' &&
-      needs.deploy-edge-dev.result == 'success' &&
-      needs.deploy-backend-dev.result == 'success' &&
-      needs.integration-http-tests.result == 'success' &&
-      needs.deploy-web-dev.result == 'success' &&
-      needs.deploy-teacher-web-dev.result == 'success' &&
-      needs.verify-dev-rds.result == 'success' &&
       needs.deploy-edge-prod.result == 'success' &&
       needs.deploy-rds-prod.result == 'success' &&
       needs.apply-schema-prod.result == 'success' &&
@@ -1368,6 +498,332 @@ jobs:
           echo "## Backend prod" >> "$GITHUB_STEP_SUMMARY"
           echo "Video stack + API stack for **prod** deployed (or no-op changeset)." >> "$GITHUB_STEP_SUMMARY"
 
+  integration-http-tests:
+    name: Integration HTTP tests — pytest against deployed prod API
+    runs-on: ubuntu-latest
+    environment: prod
+    needs: [gate, deploy-backend-prod, resolve-oidc-deploy-role]
+    permissions:
+      id-token: write
+      contents: read
+    if: |
+      always() &&
+      needs.gate.outputs.should_deploy == 'true' &&
+      needs.resolve-oidc-deploy-role.result == 'success' &&
+      needs.deploy-backend-prod.result == 'success' &&
+      (github.event_name == 'workflow_run' || github.event_name == 'workflow_dispatch')
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ needs.gate.outputs.checkout_sha }}
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v6
+        with:
+          role-to-assume: ${{ needs.resolve-oidc-deploy-role.outputs.aws_deploy_role_arn }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+
+      - name: Install test dependencies
+        run: pip install -r tests/integration/requirements.txt
+
+      - name: Resolve prod stack outputs
+        env:
+          API_STACK: StreamMyCourse-Api-prod
+          VIDEO_STACK: StreamMyCourse-Video-prod
+        run: |
+          set -euo pipefail
+          REGION="${{ env.AWS_REGION }}"
+          API_BASE_URL="$(aws cloudformation describe-stacks \
+            --stack-name "$API_STACK" \
+            --region "$REGION" \
+            --query "Stacks[0].Outputs[?OutputKey=='ApiEndpoint'].OutputValue" \
+            --output text)"
+          VIDEO_BUCKET="$(aws cloudformation describe-stacks \
+            --stack-name "$VIDEO_STACK" \
+            --region "$REGION" \
+            --query "Stacks[0].Outputs[?OutputKey=='BucketName'].OutputValue" \
+            --output text)"
+          CORS_CSV="$(aws cloudformation describe-stacks \
+            --stack-name "$API_STACK" \
+            --region "$REGION" \
+            --query "Stacks[0].Parameters[?ParameterKey=='CorsAllowOrigin'].ParameterValue" \
+            --output text)"
+          FIRST_CORS_ORIGIN="${CORS_CSV%%,*}"
+          FIRST_CORS_ORIGIN="${FIRST_CORS_ORIGIN#"${FIRST_CORS_ORIGIN%%[![:space:]]*}"}"
+          FIRST_CORS_ORIGIN="${FIRST_CORS_ORIGIN%"${FIRST_CORS_ORIGIN##*[![:space:]]}"}"
+          if [[ -z "$FIRST_CORS_ORIGIN" || "$FIRST_CORS_ORIGIN" == "None" ]]; then
+            FIRST_CORS_ORIGIN="https://researchspectrum.org"
+          fi
+          if [[ -z "$API_BASE_URL" || -z "$VIDEO_BUCKET" ]]; then
+            echo "Failed to resolve prod stack outputs (ApiEndpoint / BucketName)" >&2
+            exit 1
+          fi
+          {
+            echo "INTEGRATION_API_BASE_URL=$API_BASE_URL"
+            echo "INTEGRATION_VIDEO_BUCKET=$VIDEO_BUCKET"
+            echo "INTEGRATION_AWS_REGION=$REGION"
+            echo "INTEGRATION_EXPECTED_CORS_ORIGIN=$FIRST_CORS_ORIGIN"
+            echo "INTEGRATION_BILLING_ENV=prod"
+            echo "INTEGRATION_AUTH_STACK=StreamMyCourse-Auth-prod"
+            echo "INTEGRATION_ALLOW_PROD_CLEANUP=1"
+            echo "INTEGRATION_VIDEO_PROVIDER=s3"
+          } >> "$GITHUB_ENV"
+          echo "Resolved prod API: $API_BASE_URL"
+          echo "Resolved prod bucket: $VIDEO_BUCKET"
+
+      - name: Require Kinescope webhook secret for integration tests (prod)
+        env:
+          KINESCOPE_WEBHOOK_SECRET: ${{ secrets.KINESCOPE_WEBHOOK_SECRET }}
+        run: |
+          set -euo pipefail
+          if [[ -z "${KINESCOPE_WEBHOOK_SECRET:-}" ]]; then
+            echo "::error::GitHub Environment \"prod\" must set KINESCOPE_WEBHOOK_SECRET for Kinescope integration tests."
+            exit 1
+          fi
+          echo "::add-mask::$KINESCOPE_WEBHOOK_SECRET"
+          echo "INTEGRATION_KINESCOPE_WEBHOOK_SECRET=$KINESCOPE_WEBHOOK_SECRET" >> "$GITHUB_ENV"
+
+      - name: Require Cognito credentials for integration HTTP tests
+        env:
+          COGNITO_TEST_PASSWORD: ${{ secrets.COGNITO_RDS_VERIFY_TEST_PASSWORD }}
+          COGNITO_TEST_USERNAME: ${{ vars.COGNITO_RDS_VERIFY_TEST_USERNAME }}
+          LEGACY_JWT: ${{ secrets.COGNITO_RDS_VERIFY_JWT }}
+        run: |
+          set -euo pipefail
+          if [[ -z "${COGNITO_TEST_PASSWORD:-}" ]] && [[ -z "${LEGACY_JWT:-}" ]]; then
+            echo "::error::On GitHub Environment \"prod\" set secret COGNITO_RDS_VERIFY_TEST_PASSWORD and optional variable COGNITO_RDS_VERIFY_TEST_USERNAME (default ci-rds-verify@noreply.local), or secret COGNITO_RDS_VERIFY_JWT as fallback. See tests/integration/README.md."
+            exit 1
+          fi
+
+      - name: Ensure CI Cognito playback profile attributes (prod)
+        env:
+          COGNITO_TEST_PASSWORD: ${{ secrets.COGNITO_RDS_VERIFY_TEST_PASSWORD }}
+          COGNITO_TEST_USERNAME: ${{ vars.COGNITO_RDS_VERIFY_TEST_USERNAME }}
+          COGNITO_TEST_PASSWORD_ALT: ${{ secrets.COGNITO_RDS_VERIFY_TEST_PASSWORD_ALT }}
+          COGNITO_TEST_USERNAME_ALT: ${{ vars.COGNITO_RDS_VERIFY_TEST_USERNAME_ALT }}
+          COGNITO_TEST_PASSWORD_STUDENT: ${{ secrets.COGNITO_RDS_VERIFY_TEST_PASSWORD_STUDENT }}
+          COGNITO_TEST_USERNAME_STUDENT: ${{ vars.COGNITO_RDS_VERIFY_TEST_USERNAME_STUDENT }}
+        run: |
+          set -euo pipefail
+          if [[ -z "${COGNITO_TEST_PASSWORD:-}" ]]; then
+            echo "Skipping Cognito playback profile ensure (COGNITO_RDS_VERIFY_TEST_PASSWORD unset)"
+            exit 0
+          fi
+          export CI_RDS_VERIFY_AUTH_STACK=StreamMyCourse-Auth-prod
+          bash ./scripts/ensure-integration-cognito-playback-profiles.sh
+
+      - name: Mint Cognito JWT (or static JWT fallback)
+        env:
+          COGNITO_TEST_PASSWORD: ${{ secrets.COGNITO_RDS_VERIFY_TEST_PASSWORD }}
+          COGNITO_TEST_USERNAME: ${{ vars.COGNITO_RDS_VERIFY_TEST_USERNAME }}
+          LEGACY_JWT: ${{ secrets.COGNITO_RDS_VERIFY_JWT }}
+          AUTH_STACK: StreamMyCourse-Auth-prod
+        run: |
+          set -euo pipefail
+          REGION="${{ env.AWS_REGION }}"
+          USERNAME="${COGNITO_TEST_USERNAME:-ci-rds-verify@noreply.local}"
+          TOKEN=""
+
+          if [[ -n "${COGNITO_TEST_PASSWORD:-}" ]]; then
+            pool="$(aws cloudformation describe-stacks \
+              --stack-name "$AUTH_STACK" \
+              --region "$REGION" \
+              --query "Stacks[0].Outputs[?OutputKey=='UserPoolId'].OutputValue" \
+              --output text)"
+            client="$(aws cloudformation describe-stacks \
+              --stack-name "$AUTH_STACK" \
+              --region "$REGION" \
+              --query "Stacks[0].Outputs[?OutputKey=='TeacherUserPoolClientId'].OutputValue" \
+              --output text)"
+            if [[ -n "$pool" && "$pool" != "None" && -n "$client" && "$client" != "None" ]]; then
+              tmp_json="$(mktemp)"
+              jq -n \
+                --arg pool "$pool" \
+                --arg client "$client" \
+                --arg user "$USERNAME" \
+                --arg pass "$COGNITO_TEST_PASSWORD" \
+                '{UserPoolId:$pool,ClientId:$client,AuthFlow:"ADMIN_USER_PASSWORD_AUTH",AuthParameters:{USERNAME:$user,PASSWORD:$pass}}' \
+                >"$tmp_json"
+              if TOKEN="$(aws cognito-idp admin-initiate-auth \
+                --cli-input-json "file://$tmp_json" \
+                --region "$REGION" \
+                --query 'AuthenticationResult.IdToken' \
+                --output text 2>/dev/null)"; then
+                :
+              else
+                TOKEN=""
+              fi
+              rm -f "$tmp_json"
+            fi
+          fi
+
+          if [[ -n "${TOKEN:-}" && "$TOKEN" != "None" ]]; then
+            echo "::add-mask::$TOKEN"
+            echo "INTEGRATION_COGNITO_JWT=$TOKEN" >> "$GITHUB_ENV"
+            echo "Minted Cognito IdToken for integration HTTP tests (prod; user: $USERNAME)"
+          elif [[ -n "${LEGACY_JWT:-}" ]]; then
+            if [[ -n "${COGNITO_TEST_PASSWORD:-}" ]]; then
+              echo "::warning::Cognito token minting failed - using static JWT fallback"
+            else
+              echo "Using static JWT fallback (COGNITO_RDS_VERIFY_TEST_PASSWORD unset on this environment)"
+            fi
+            echo "::add-mask::$LEGACY_JWT"
+            echo "INTEGRATION_COGNITO_JWT=$LEGACY_JWT" >> "$GITHUB_ENV"
+          else
+            echo "::error::Could not mint Cognito IdToken and COGNITO_RDS_VERIFY_JWT is not set on this environment"
+            exit 1
+          fi
+
+      - name: Mint Cognito JWT ALT (teacher B) - conditional
+        env:
+          COGNITO_TEST_PASSWORD_ALT: ${{ secrets.COGNITO_RDS_VERIFY_TEST_PASSWORD_ALT }}
+          COGNITO_TEST_USERNAME_ALT: ${{ vars.COGNITO_RDS_VERIFY_TEST_USERNAME_ALT }}
+          AUTH_STACK: StreamMyCourse-Auth-prod
+        run: |
+          set -euo pipefail
+          REGION="${{ env.AWS_REGION }}"
+          USERNAME="${COGNITO_TEST_USERNAME_ALT:-ci-rds-verify-2@noreply.local}"
+          TOKEN=""
+
+          if [[ -z "${COGNITO_TEST_PASSWORD_ALT:-}" ]]; then
+            echo "Skipping ALT JWT minting (COGNITO_RDS_VERIFY_TEST_PASSWORD_ALT not set)"
+            exit 0
+          fi
+
+          if [[ -n "${COGNITO_TEST_PASSWORD_ALT:-}" ]]; then
+            pool="$(aws cloudformation describe-stacks \
+              --stack-name "$AUTH_STACK" \
+              --region "$REGION" \
+              --query "Stacks[0].Outputs[?OutputKey=='UserPoolId'].OutputValue" \
+              --output text)"
+            client="$(aws cloudformation describe-stacks \
+              --stack-name "$AUTH_STACK" \
+              --region "$REGION" \
+              --query "Stacks[0].Outputs[?OutputKey=='TeacherUserPoolClientId'].OutputValue" \
+              --output text)"
+            if [[ -n "$pool" && "$pool" != "None" && -n "$client" && "$client" != "None" ]]; then
+              tmp_json="$(mktemp)"
+              jq -n \
+                --arg pool "$pool" \
+                --arg client "$client" \
+                --arg user "$USERNAME" \
+                --arg pass "$COGNITO_TEST_PASSWORD_ALT" \
+                '{UserPoolId:$pool,ClientId:$client,AuthFlow:"ADMIN_USER_PASSWORD_AUTH",AuthParameters:{USERNAME:$user,PASSWORD:$pass}}' \
+                >"$tmp_json"
+              if TOKEN="$(aws cognito-idp admin-initiate-auth \
+                --cli-input-json "file://$tmp_json" \
+                --region "$REGION" \
+                --query 'AuthenticationResult.IdToken' \
+                --output text 2>/dev/null)"; then
+                :
+              else
+                TOKEN=""
+              fi
+              rm -f "$tmp_json"
+            fi
+          fi
+
+          if [[ -n "${TOKEN:-}" && "$TOKEN" != "None" ]]; then
+            echo "::add-mask::$TOKEN"
+            echo "INTEGRATION_COGNITO_JWT_ALT=$TOKEN" >> "$GITHUB_ENV"
+            echo "Minted Cognito IdToken ALT for integration HTTP tests (prod; user: $USERNAME)"
+          else
+            echo "::warning::Could not mint Cognito IdToken ALT (teacher B)"
+          fi
+
+      - name: Mint Cognito JWT STUDENT - conditional
+        env:
+          COGNITO_TEST_PASSWORD_STUDENT: ${{ secrets.COGNITO_RDS_VERIFY_TEST_PASSWORD_STUDENT }}
+          COGNITO_TEST_USERNAME_STUDENT: ${{ vars.COGNITO_RDS_VERIFY_TEST_USERNAME_STUDENT }}
+          AUTH_STACK: StreamMyCourse-Auth-prod
+        run: |
+          set -euo pipefail
+          REGION="${{ env.AWS_REGION }}"
+          USERNAME="${COGNITO_TEST_USERNAME_STUDENT:-ci-student@noreply.local}"
+          TOKEN=""
+
+          if [[ -z "${COGNITO_TEST_PASSWORD_STUDENT:-}" ]]; then
+            echo "Skipping STUDENT JWT minting (COGNITO_RDS_VERIFY_TEST_PASSWORD_STUDENT not set)"
+            exit 0
+          fi
+
+          if [[ -n "${COGNITO_TEST_PASSWORD_STUDENT:-}" ]]; then
+            pool="$(aws cloudformation describe-stacks \
+              --stack-name "$AUTH_STACK" \
+              --region "$REGION" \
+              --query "Stacks[0].Outputs[?OutputKey=='UserPoolId'].OutputValue" \
+              --output text)"
+            client="$(aws cloudformation describe-stacks \
+              --stack-name "$AUTH_STACK" \
+              --region "$REGION" \
+              --query "Stacks[0].Outputs[?OutputKey=='StudentUserPoolClientId'].OutputValue" \
+              --output text)"
+            if [[ -n "$pool" && "$pool" != "None" && -n "$client" && "$client" != "None" ]]; then
+              tmp_json="$(mktemp)"
+              jq -n \
+                --arg pool "$pool" \
+                --arg client "$client" \
+                --arg user "$USERNAME" \
+                --arg pass "$COGNITO_TEST_PASSWORD_STUDENT" \
+                '{UserPoolId:$pool,ClientId:$client,AuthFlow:"ADMIN_USER_PASSWORD_AUTH",AuthParameters:{USERNAME:$user,PASSWORD:$pass}}' \
+                >"$tmp_json"
+              if TOKEN="$(aws cognito-idp admin-initiate-auth \
+                --cli-input-json "file://$tmp_json" \
+                --region "$REGION" \
+                --query 'AuthenticationResult.IdToken' \
+                --output text 2>/dev/null)"; then
+                :
+              else
+                TOKEN=""
+              fi
+              rm -f "$tmp_json"
+            fi
+          fi
+
+          if [[ -n "${TOKEN:-}" && "$TOKEN" != "None" ]]; then
+            echo "::add-mask::$TOKEN"
+            echo "INTEGRATION_COGNITO_JWT_STUDENT=$TOKEN" >> "$GITHUB_ENV"
+            echo "Minted Cognito IdToken STUDENT for integration HTTP tests (prod; user: $USERNAME)"
+          else
+            echo "::warning::Could not mint Cognito IdToken STUDENT"
+          fi
+
+      - name: Run pytest
+        id: pytest
+        working-directory: tests/integration
+        env:
+          COGNITO_TEST_PASSWORD_STUDENT: ${{ secrets.COGNITO_RDS_VERIFY_TEST_PASSWORD_STUDENT }}
+          COGNITO_TEST_USERNAME_STUDENT: ${{ vars.COGNITO_RDS_VERIFY_TEST_USERNAME_STUDENT }}
+        run: |
+          echo "[integration-diag] pytest_start=$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
+          set +e
+          pytest -q --junitxml=results.xml
+          rc=$?
+          set -e
+          echo "[integration-diag] pytest_end=$(date -u +"%Y-%m-%dT%H:%M:%SZ") exit=$rc"
+          exit $rc
+
+      - name: Summary
+        if: always()
+        run: |
+          if [[ "${{ steps.pytest.outcome }}" == "success" ]]; then
+            echo "## Integration HTTP tests: PASSED" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "## Integration HTTP tests: FAILED" >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Upload pytest results
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: integration-http-test-results
+          path: tests/integration/results.xml
+          if-no-files-found: warn
+
   # Prod-only CloudFormation inputs; creds from GitHub Environment "prod" inside verify-rds-reusable.yml.
   verify-prod-rds:
     name: Verify prod RDS (integration tests)
@@ -1375,10 +831,11 @@ jobs:
     secrets:
       COGNITO_RDS_VERIFY_TEST_PASSWORD: ${{ secrets.COGNITO_RDS_VERIFY_TEST_PASSWORD }}
       COGNITO_RDS_VERIFY_JWT: ${{ secrets.COGNITO_RDS_VERIFY_JWT }}
-    needs: [gate, deploy-backend-prod]
+    needs: [gate, deploy-backend-prod, integration-http-tests]
     if: |
       always() && needs.gate.outputs.should_deploy == 'true' &&
       needs.deploy-backend-prod.result == 'success' &&
+      needs.integration-http-tests.result == 'success' &&
       (github.event_name == 'workflow_run' || github.event_name == 'workflow_dispatch')
     with:
       github_environment: prod
@@ -1396,19 +853,13 @@ jobs:
     needs:
       - gate
       - integration-http-tests
-      - deploy-edge-dev
-      - deploy-backend-dev
-      - deploy-web-dev
-      - deploy-teacher-web-dev
+      - verify-prod-rds
       - deploy-edge-prod
     if: |
       always() &&
       needs.gate.outputs.should_deploy == 'true' &&
       needs.integration-http-tests.result == 'success' &&
-      needs.deploy-edge-dev.result == 'success' &&
-      needs.deploy-backend-dev.result == 'success' &&
-      needs.deploy-web-dev.result == 'success' &&
-      needs.deploy-teacher-web-dev.result == 'success' &&
+      needs.verify-prod-rds.result == 'success' &&
       needs.deploy-edge-prod.result == 'success' &&
       (github.event_name == 'workflow_run' || github.event_name == 'workflow_dispatch')
     uses: ./.github/workflows/deploy-web-reusable.yml
@@ -1427,19 +878,13 @@ jobs:
     needs:
       - gate
       - integration-http-tests
-      - deploy-edge-dev
-      - deploy-backend-dev
-      - deploy-web-dev
-      - deploy-teacher-web-dev
+      - verify-prod-rds
       - deploy-edge-prod
     if: |
       always() &&
       needs.gate.outputs.should_deploy == 'true' &&
       needs.integration-http-tests.result == 'success' &&
-      needs.deploy-edge-dev.result == 'success' &&
-      needs.deploy-backend-dev.result == 'success' &&
-      needs.deploy-web-dev.result == 'success' &&
-      needs.deploy-teacher-web-dev.result == 'success' &&
+      needs.verify-prod-rds.result == 'success' &&
       needs.deploy-edge-prod.result == 'success' &&
       (github.event_name == 'workflow_run' || github.event_name == 'workflow_dispatch')
     uses: ./.github/workflows/deploy-teacher-web-reusable.yml

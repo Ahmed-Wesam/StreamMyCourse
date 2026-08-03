@@ -4,10 +4,8 @@ Description: 'StreamMyCourse - Billing edge (no VPC) + fulfillment queue/worker 
 Parameters:
   Environment:
     Type: String
-    Default: dev
-    AllowedValues:
-      - dev
-      - prod
+    AllowedValues: [prod]
+    Default: prod
     Description: Deployment environment
 
   LambdaCodeS3Bucket:
@@ -26,7 +24,7 @@ Parameters:
     Type: String
     MinLength: 1
     Description: >-
-      RDS stack (e.g. StreamMyCourse-Rds-dev) whose exports provide VPC subnet
+      RDS stack (e.g. StreamMyCourse-Rds-prod) whose exports provide VPC subnet
       and Lambda security group for the fulfillment worker.
 
   MessageRetentionPeriod:
@@ -52,13 +50,13 @@ Parameters:
   PaytabsProfileId:
     Type: String
     Default: ''
-    Description: PAYTABS_PROFILE_ID (dev inline keys; prod uses SM in later slices)
+    Description: PAYTABS_PROFILE_ID (optional; prod uses Secrets Manager when PAYTABS_SECRET_ARN is set)
 
   PaytabsServerKey:
     Type: String
     Default: ''
     NoEcho: true
-    Description: PAYTABS_SERVER_KEY from deploy overrides (dev); omit on prod SM-only
+    Description: PAYTABS_SERVER_KEY from deploy overrides; omit when using PAYTABS_SECRET_ARN only
 
   PaytabsSecretArn:
     Type: String
@@ -71,7 +69,7 @@ Parameters:
     AllowedValues:
       - 'true'
       - 'false'
-    Description: PAYTABS_USE_MOCK — explicit mock on non-prod only
+    Description: PAYTABS_USE_MOCK — explicit mock checkout (non-live PayTabs)
 
   BillingFulfillmentAlertEmail:
     Type: String
@@ -91,7 +89,7 @@ Parameters:
     Type: String
     Default: ''
     Description: >-
-      Default subscription_plans.id for checkout (dev/prod seed UUIDs from 011).
+      Default subscription_plans.id for checkout (seed UUID from migration 011).
 
   BillingReturnSuccessUrl:
     Type: String
