@@ -21,11 +21,12 @@ CI_JOB_NAMES = [
     "integration-tests-static",
     "lambda-unit-tests",
 ]
-ci_needs = "\n".join(f"      - {n}" for n in CI_JOB_NAMES)
+ci_needs_block = "needs:\n" + "\n".join(f"      - {n}" for n in CI_JOB_NAMES)
 
 deploy_jobs_start = deploy.index("jobs:\n") + len("jobs:\n")
 deploy_body = deploy[deploy_jobs_start:]
 
+# Drop CI gate job (main-only workflow_run gate).
 deploy_body = re.sub(
     r"  gate:.*?(?=  # Pin repo-level OIDC)",
     "",
@@ -34,38 +35,31 @@ deploy_body = re.sub(
     flags=re.S,
 )
 
-replacements = [
-    (r"needs: \[gate, ([^\]]+)\]", r"needs: [\1]"),
-    (r"needs: \[gate\]", f"needs:\n{ci_needs.strip()}"),
-    (r"needs:\n      - gate\n", ""),
-    (r"needs\.gate\.outputs\.should_deploy == 'true'\s*&&\s*", ""),
-    (r"always\(\) &&\s*", "success() && "),
-    (r"\$\{\{ needs\.gate\.outputs\.checkout_sha \}\}", "${{ github.sha }}"),
-    (r"needs\.gate\.outputs\.checkout_sha", "github.sha"),
-    (
-        r"\(github\.event_name == 'workflow_run' \|\| github\.event_name == 'workflow_dispatch'\)",
-        "true",
-    ),
-    (r"missing gate checkout_sha", "missing github.sha"),
-]
-for pat, rep in replacements:
-    deploy_body = re.sub(pat, rep, deploy_body)
-deploy_body = re.sub(r"\s*&&\s*true\s*$", "", deploy_body, flags=re.M)
+# Single-line needs: [gate] -> full CI needs block (edge/rds parallel after CI).
+deploy_body = re.sub(r"    needs: \[gate\]", f"    {ci_needs_block}", deploy_body)
 
-# deploy-backend-prod waits on infra jobs only (CI is transitive via edge/rds/schema).
+# Single-line needs: [gate, ...] -> drop gate only.
+deploy_body = re.sub(r"needs: \[gate, ", "needs: [", deploy_body)
+
+# Multi-line needs lists that started with gate.
+deploy_body = re.sub(r"(\n      - gate\n)", "\n", deploy_body)
+
+deploy_body = deploy_body.replace("${{ needs.gate.outputs.checkout_sha }}", "${{ github.sha }}")
+deploy_body = deploy_body.replace("needs.gate.outputs.checkout_sha", "github.sha")
+deploy_body = deploy_body.replace("missing gate checkout_sha", "missing github.sha")
+
 deploy_body = re.sub(
-    r"(  deploy-backend-prod:\n.*?    needs:\n)(?:      - frontend\n"
-    r"      - lambda\n"
-    r"      - cloudformation\n"
-    r"      - security\n"
-    r"      - workflow-lint\n"
-    r"      - integration-tests-static\n"
-    r"      - lambda-unit-tests\n)",
-    r"\1",
+    r"needs\.gate\.outputs\.should_deploy == 'true'\s*&&\s*",
+    "",
     deploy_body,
-    count=1,
-    flags=re.S,
 )
+deploy_body = re.sub(r"always\(\) &&\s*", "success() && ", deploy_body)
+deploy_body = re.sub(
+    r"\(github\.event_name == 'workflow_run' \|\| github\.event_name == 'workflow_dispatch'\)",
+    "true",
+    deploy_body,
+)
+deploy_body = re.sub(r"\s*&&\s*true\s*$", "", deploy_body, flags=re.M)
 
 deploy_body = deploy_body.replace(
     "  resolve-oidc-deploy-role:\n"
@@ -76,8 +70,7 @@ deploy_body = deploy_body.replace(
     "  resolve-oidc-deploy-role:\n"
     "    name: Resolve repo OIDC deploy role ARN\n"
     "    runs-on: ubuntu-latest\n"
-    "    needs:\n"
-    f"{ci_needs}\n"
+    f"    {ci_needs_block}\n"
     "    if: success()",
 )
 
@@ -115,11 +108,12 @@ for forbidden in (
     "deploy-backend-dev",
     "environment: dev",
     "Environment=dev",
-    "gate",
+    "  gate:",
+    "needs.gate",
 ):
     if forbidden in out:
         raise SystemExit(f"forbidden {forbidden!r} in output")
-for required in ("deploy-edge-prod", "frontend:"):
+for required in ("deploy-edge-prod", "frontend:", "    needs:\n      - deploy-edge-prod"):
     if required not in out:
         raise SystemExit(f"missing {required!r}")
 print("Sanity OK")
