@@ -372,19 +372,36 @@ jobs:
           set -euo pipefail
           BUCKET="${{ steps.schema_pkg_prod.outputs.bucket }}"
           KEY="${{ steps.schema_pkg_prod.outputs.key }}"
+          REGION="${{ env.AWS_REGION }}"
+          STACK="StreamMyCourse-Rds-prod"
+          OVERRIDES=(
+            "Environment=prod"
+            "SchemaApplierCodeS3Bucket=${BUCKET}"
+            "SchemaApplierCodeS3Key=${KEY}"
+          )
+          # Preserve snapshot-restore parameter on stack updates; omitting it makes CFN
+          # try to replace the custom-named DbInstance (UPDATE_FAILED).
+          if aws cloudformation describe-stacks --stack-name "$STACK" --region "$REGION" >/dev/null 2>&1; then
+            SNAPSHOT="$(aws cloudformation describe-stacks \
+              --stack-name "$STACK" \
+              --region "$REGION" \
+              --query "Stacks[0].Parameters[?ParameterKey=='DbSnapshotIdentifier'].ParameterValue | [0]" \
+              --output text 2>/dev/null || true)"
+            if [[ -n "${SNAPSHOT:-}" && "${SNAPSHOT}" != "None" && "${SNAPSHOT}" != "" ]]; then
+              OVERRIDES+=("DbSnapshotIdentifier=${SNAPSHOT}")
+              echo "Preserving DbSnapshotIdentifier=${SNAPSHOT} on stack update"
+            fi
+          fi
           aws cloudformation validate-template \
             --template-body "file://${{ github.workspace }}/infrastructure/templates/rds-stack.yaml" \
-            --region "${{ env.AWS_REGION }}"
+            --region "$REGION"
           aws cloudformation deploy \
             --template-file "${{ github.workspace }}/infrastructure/templates/rds-stack.yaml" \
-            --stack-name StreamMyCourse-Rds-prod \
+            --stack-name "$STACK" \
             --capabilities CAPABILITY_IAM CAPABILITY_NAMED_IAM \
-            --region "${{ env.AWS_REGION }}" \
+            --region "$REGION" \
             --no-fail-on-empty-changeset \
-            --parameter-overrides \
-              "Environment=prod" \
-              "SchemaApplierCodeS3Bucket=${BUCKET}" \
-              "SchemaApplierCodeS3Key=${KEY}"
+            --parameter-overrides "${OVERRIDES[@]}"
 
       - name: Wait for RDS instance available
         run: |
