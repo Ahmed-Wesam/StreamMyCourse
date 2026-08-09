@@ -45,7 +45,7 @@ def _db_instance_block(text: str) -> str:
 
 
 def _parameter_block(params: str, name: str) -> str:
-    match = re.search(rf"^\s{re.escape(name)}:\s*$", params, re.MULTILINE)
+    match = re.search(rf"^\s+{re.escape(name)}:\s*$", params, re.MULTILINE)
     assert match, f"parameter {name!r} not found under Parameters"
     start = match.end()
     next_param = re.search(r"^\n  [A-Za-z]", params[start:], re.MULTILINE)
