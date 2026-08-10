@@ -22,15 +22,3 @@ export function termsUrl(): string {
 export function privacyUrl(): string {
   return legalPath('/privacy')
 }
-
-export function refundUrl(): string {
-  return legalPath('/refund')
-}
-
-export function deliveryUrl(): string {
-  return legalPath('/delivery')
-}
-
-export function educationalDisclaimerUrl(): string {
-  return legalPath('/educational-disclaimer')
-}
