@@ -41,10 +41,28 @@ PASSWORD="$("$PY" -c 'import json, sys; print(json.load(sys.stdin)["password"])'
 
 echo "Syncing master password for ${DB_ID} from ${SECRET_ID} ..."
 
+TMP_JSON="$(mktemp)"
+chmod 600 "$TMP_JSON"
+trap 'rm -f "$TMP_JSON"' EXIT
+
+DB_ID="$DB_ID" RDS_PASSWORD="$PASSWORD" "$PY" - "$TMP_JSON" <<'PY'
+import json
+import os
+import sys
+
+with open(sys.argv[1], "w", encoding="utf-8") as fh:
+    json.dump(
+        {
+            "DBInstanceIdentifier": os.environ["DB_ID"],
+            "MasterUserPassword": os.environ["RDS_PASSWORD"],
+            "ApplyImmediately": True,
+        },
+        fh,
+    )
+PY
+
 aws rds modify-db-instance \
-  --db-instance-identifier "$DB_ID" \
-  --master-user-password "$PASSWORD" \
-  --apply-immediately \
+  --cli-input-json "file://${TMP_JSON}" \
   --region "$REGION"
 
 echo "Waiting for RDS instance ${DB_ID} ..."
