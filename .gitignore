@@ -82,6 +82,11 @@ tmp/
 plans/
 reports/
 
+# Prod pause/restore operator artifacts (export-pause-manifest.sh, teardown helpers)
+pause-manifest.json
+.restore-import-*.json
+s3del-*.json
+
 # Operator-only notes (e.g. Cognito bootstrap scratch — not backed up by git)
 .local-operator-notes.txt
 
