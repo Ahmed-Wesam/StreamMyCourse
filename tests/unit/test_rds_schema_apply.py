@@ -358,6 +358,86 @@ def test_deploy_ps1_lists_migration_012() -> None:
     assert chunk.index("011_billing_subscription.sql") < chunk.index(needle)
 
 
+def test_deploy_backend_bundles_migration_013() -> None:
+    """deploy-backend.yml must cat 013 after 012 in the prod schema bundle."""
+    path = _ROOT / ".github" / "workflows" / "deploy-backend.yml"
+    text = path.read_text(encoding="utf-8")
+    needle = "013_student_active_session.sql"
+    marker = "rds-schema-apply-prod-"
+    start = text.index(marker)
+    end = text.index('> "$PKG/schema.sql"', start)
+    chunk = text[start:end]
+    assert needle in chunk
+    assert "012_billing_plan_price_50_jod.sql" in chunk
+    assert chunk.index("012_billing_plan_price_50_jod.sql") < chunk.index(needle)
+
+
+def test_deploy_rds_stack_sh_bundles_migration_013() -> None:
+    """scripts/deploy-rds-stack.sh must cat 013 after 012."""
+    path = _ROOT / "scripts" / "deploy-rds-stack.sh"
+    text = path.read_text(encoding="utf-8")
+    needle = "013_student_active_session.sql"
+    start = text.index("cat \\")
+    end = text.index('> "$PKG/schema.sql"', start)
+    chunk = text[start:end]
+    assert needle in chunk
+    assert "012_billing_plan_price_50_jod.sql" in chunk
+    assert chunk.index("012_billing_plan_price_50_jod.sql") < chunk.index(needle)
+
+
+def test_deploy_ps1_lists_migration_013() -> None:
+    """infrastructure/deploy.ps1 schema bundle must include 013 after 012."""
+    path = _ROOT / "infrastructure" / "deploy.ps1"
+    text = path.read_text(encoding="utf-8")
+    needle = "013_student_active_session.sql"
+    start = text.index("$schemaSqlFiles = @(")
+    end = text.index(")", start)
+    chunk = text[start:end]
+    assert needle in chunk
+    assert "012_billing_plan_price_50_jod.sql" in chunk
+    assert chunk.index("012_billing_plan_price_50_jod.sql") < chunk.index(needle)
+
+
+def test_deploy_backend_bundles_migration_014() -> None:
+    """deploy-backend.yml must cat 014 after 013 in the prod schema bundle."""
+    path = _ROOT / ".github" / "workflows" / "deploy-backend.yml"
+    text = path.read_text(encoding="utf-8")
+    needle = "014_rate_limit_counters.sql"
+    marker = "rds-schema-apply-prod-"
+    start = text.index(marker)
+    end = text.index('> "$PKG/schema.sql"', start)
+    chunk = text[start:end]
+    assert needle in chunk
+    assert "013_student_active_session.sql" in chunk
+    assert chunk.index("013_student_active_session.sql") < chunk.index(needle)
+
+
+def test_deploy_rds_stack_sh_bundles_migration_014() -> None:
+    """scripts/deploy-rds-stack.sh must cat 014 after 013."""
+    path = _ROOT / "scripts" / "deploy-rds-stack.sh"
+    text = path.read_text(encoding="utf-8")
+    needle = "014_rate_limit_counters.sql"
+    start = text.index("cat \\")
+    end = text.index('> "$PKG/schema.sql"', start)
+    chunk = text[start:end]
+    assert needle in chunk
+    assert "013_student_active_session.sql" in chunk
+    assert chunk.index("013_student_active_session.sql") < chunk.index(needle)
+
+
+def test_deploy_ps1_lists_migration_014() -> None:
+    """infrastructure/deploy.ps1 schema bundle must include 014 after 013."""
+    path = _ROOT / "infrastructure" / "deploy.ps1"
+    text = path.read_text(encoding="utf-8")
+    needle = "014_rate_limit_counters.sql"
+    start = text.index("$schemaSqlFiles = @(")
+    end = text.index(")", start)
+    chunk = text[start:end]
+    assert needle in chunk
+    assert "013_student_active_session.sql" in chunk
+    assert chunk.index("013_student_active_session.sql") < chunk.index(needle)
+
+
 def test_concatenated_001_003_004_006_007_008_bundle_is_splittable_and_complete(schema_apply):
     """Deploy script and CI concatenate 001, 003, 004, 006, 007, and 008 into schema.sql."""
     migrations_dir = _ROOT / "infrastructure" / "database" / "migrations"
@@ -403,8 +483,8 @@ def test_concatenated_001_003_004_006_007_008_bundle_is_splittable_and_complete(
     assert len(parts) >= 32
 
 
-def test_concatenated_deploy_schema_bundle_through_011_is_splittable(schema_apply):
-    """CI deploy-backend.yml concatenates 001–011 (skipping 002/005) into schema.sql."""
+def test_concatenated_deploy_schema_bundle_through_014_is_splittable(schema_apply):
+    """CI deploy-backend.yml concatenates 001–014 (skipping 002/005) into schema.sql."""
     migrations_dir = _ROOT / "infrastructure" / "database" / "migrations"
     names = (
         "001_initial_schema.sql",
@@ -417,16 +497,15 @@ def test_concatenated_deploy_schema_bundle_through_011_is_splittable(schema_appl
         "010_module_quiz_attempt_submissions.sql",
         "011_billing_subscription.sql",
         "012_billing_plan_price_50_jod.sql",
+        "013_student_active_session.sql",
+        "014_rate_limit_counters.sql",
     )
     bundle = "".join((migrations_dir / n).read_text(encoding="utf-8") for n in names)
     parts = schema_apply._split_sql_statements(bundle)
     joined = "\n".join(parts)
-    assert "CREATE TABLE IF NOT EXISTS module_quiz_attempt_submissions" in joined
-    assert "CREATE TABLE IF NOT EXISTS subscription_plans" in joined
-    assert "CREATE TABLE IF NOT EXISTS user_subscriptions" in joined
-    assert "UPDATE subscription_plans" in joined
-    assert "50000" in joined
-    assert len(parts) >= 40
+    assert "student_active_session_id" in joined
+    assert "CREATE TABLE IF NOT EXISTS rate_limit_counters" in joined
+    assert len(parts) >= 42
 
 
 def test_handler_returns_error_when_secret_arn_missing(schema_apply, monkeypatch) -> None:

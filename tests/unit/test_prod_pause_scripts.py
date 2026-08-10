@@ -179,3 +179,12 @@ def test_restore_prod_sh_references_restore_orchestration() -> None:
 
 def test_sync_rds_secret_after_restore_sh_passes_bash_syntax_check() -> None:
     _bash_syntax_check("scripts/sync-rds-secret-after-restore.sh")
+
+
+def test_sync_rds_secret_after_restore_sh_avoids_password_on_cli() -> None:
+    text = _script_must_exist("scripts/sync-rds-secret-after-restore.sh").read_text(
+        encoding="utf-8"
+    )
+    assert "--master-user-password" not in text
+    assert "--cli-input-json" in text
+    assert "file://${TMP_JSON}" in text

@@ -329,7 +329,9 @@ if ($Template -eq "rds") {
         "$PSScriptRoot\database\migrations\009_module_quiz_attempts.sql",
         "$PSScriptRoot\database\migrations\010_module_quiz_attempt_submissions.sql",
         "$PSScriptRoot\database\migrations\011_billing_subscription.sql",
-        "$PSScriptRoot\database\migrations\012_billing_plan_price_50_jod.sql"
+        "$PSScriptRoot\database\migrations\012_billing_plan_price_50_jod.sql",
+        "$PSScriptRoot\database\migrations\013_student_active_session.sql",
+        "$PSScriptRoot\database\migrations\014_rate_limit_counters.sql"
     )
     if (-not (Test-Path $schemaHandler)) {
         Write-Host "[X] Missing schema applier: $schemaHandler" -ForegroundColor Red

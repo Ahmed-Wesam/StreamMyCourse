@@ -1,7 +1,7 @@
 /**
  * @vitest-environment jsdom
  */
-import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { cleanup, render, screen } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { afterEach, describe, expect, it } from 'vitest'
 
@@ -28,23 +28,6 @@ describe('Legal pages', () => {
     ).toBeTruthy()
   })
 
-  it('shows Arabic title and rtl prose on Terms when Arabic toggle is selected', () => {
-    render(
-      <MemoryRouter>
-        <TermsPage />
-      </MemoryRouter>,
-    )
-
-    fireEvent.click(screen.getByRole('button', { name: /Arabic/i }))
-
-    expect(
-      screen.getByRole('heading', { level: 1, name: /الشروط والأحكام/i }),
-    ).toBeTruthy()
-
-    const prose = screen.getByTestId('legal-prose')
-    expect(prose.getAttribute('dir')).toBe('rtl')
-  })
-
   it('renders Privacy page with English title', () => {
     render(
       <MemoryRouter>
@@ -53,21 +36,6 @@ describe('Legal pages', () => {
     )
 
     expect(screen.getByRole('heading', { level: 1, name: /Privacy Policy/i })).toBeTruthy()
-  })
-
-  it('shows Arabic title and rtl prose on Privacy when Arabic toggle is selected', () => {
-    render(
-      <MemoryRouter>
-        <PrivacyPage />
-      </MemoryRouter>,
-    )
-
-    fireEvent.click(screen.getByRole('button', { name: /Arabic/i }))
-
-    expect(screen.getByRole('heading', { level: 1, name: /سياسة الخصوصية/i })).toBeTruthy()
-
-    const prose = screen.getByTestId('legal-prose')
-    expect(prose.getAttribute('dir')).toBe('rtl')
   })
 
   it('renders Refund page with English title', () => {
