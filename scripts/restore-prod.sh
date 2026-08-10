@@ -134,6 +134,124 @@ require_edge_env() {
   : "${TEACHER_WEB_DOMAIN:?TEACHER_WEB_DOMAIN is required for edge stack import/deploy}"
 }
 
+restore_python() {
+  if command -v python3 >/dev/null 2>&1; then
+    echo python3
+  else
+    echo python
+  fi
+}
+
+video_cors_allowed_origins() {
+  require_edge_env
+  echo "https://${STUDENT_WEB_DOMAIN},https://${TEACHER_WEB_DOMAIN},http://localhost:5173,http://127.0.0.1:5173,http://localhost:5174,http://127.0.0.1:5174"
+}
+
+append_student_localhost_cognito_urls() {
+  local urls="$1"
+  if [[ "$urls" != *"http://localhost:5173/"* ]]; then
+    urls="${urls},http://localhost:5173/"
+  fi
+  if [[ "$urls" != *"http://127.0.0.1:5173/"* ]]; then
+    urls="${urls},http://127.0.0.1:5173/"
+  fi
+  echo "$urls"
+}
+
+append_teacher_localhost_cognito_urls() {
+  local urls="$1"
+  if [[ "$urls" != *"http://localhost:5174/"* ]]; then
+    urls="${urls},http://localhost:5174/"
+  fi
+  if [[ "$urls" != *"http://127.0.0.1:5174/"* ]]; then
+    urls="${urls},http://127.0.0.1:5174/"
+  fi
+  echo "$urls"
+}
+
+auth_student_callback_urls() {
+  require_edge_env
+  local urls="${STUDENT_COGNITO_CALLBACK_URLS:-}"
+  if [[ -z "$urls" ]]; then
+    urls="https://${STUDENT_WEB_DOMAIN}/"
+  fi
+  append_student_localhost_cognito_urls "$urls"
+}
+
+auth_student_logout_urls() {
+  require_edge_env
+  local urls="${STUDENT_COGNITO_LOGOUT_URLS:-}"
+  if [[ -z "$urls" ]]; then
+    urls="https://${STUDENT_WEB_DOMAIN}/"
+  fi
+  append_student_localhost_cognito_urls "$urls"
+}
+
+auth_teacher_callback_urls() {
+  require_edge_env
+  local urls="${TEACHER_COGNITO_CALLBACK_URLS:-}"
+  if [[ -z "$urls" ]]; then
+    urls="https://${TEACHER_WEB_DOMAIN}/"
+  fi
+  append_teacher_localhost_cognito_urls "$urls"
+}
+
+auth_teacher_logout_urls() {
+  require_edge_env
+  local urls="${TEACHER_COGNITO_LOGOUT_URLS:-}"
+  if [[ -z "$urls" ]]; then
+    urls="https://${TEACHER_WEB_DOMAIN}/"
+  fi
+  append_teacher_localhost_cognito_urls "$urls"
+}
+
+cfn_parameters_file_uri() {
+  local path="$1"
+  if command -v cygpath >/dev/null 2>&1; then
+    echo "file://$(cygpath -m "$path")"
+  else
+    echo "file://${path}"
+  fi
+}
+
+cfn_deploy_stack_from_parameters_file() {
+  local stack="$1"
+  local template="$2"
+  local region="$3"
+  local params_file="$4"
+  local params_uri update_err
+  params_uri="$(cfn_parameters_file_uri "$params_file")"
+
+  if stack_exists "$stack" "$region"; then
+    update_err="$(mktemp)"
+    if ! aws cloudformation update-stack \
+      --stack-name "$stack" \
+      --template-file "$template" \
+      --parameters "$params_uri" \
+      --capabilities CAPABILITY_IAM CAPABILITY_NAMED_IAM \
+      --region "$region" 2>"$update_err"; then
+      if grep -q "No updates are to be performed" "$update_err"; then
+        echo "Stack ${stack} already up to date (no CloudFormation changes)."
+        rm -f "$update_err"
+        return 0
+      fi
+      cat "$update_err" >&2
+      rm -f "$update_err"
+      return 1
+    fi
+    rm -f "$update_err"
+    aws cloudformation wait stack-update-complete --stack-name "$stack" --region "$region"
+  else
+    aws cloudformation create-stack \
+      --stack-name "$stack" \
+      --template-file "$template" \
+      --parameters "$params_uri" \
+      --capabilities CAPABILITY_IAM CAPABILITY_NAMED_IAM \
+      --region "$region"
+    aws cloudformation wait stack-create-complete --stack-name "$stack" --region "$region"
+  fi
+}
+
 edge_parameter_overrides() {
   local cert_primary="${WEB_CERT_DOMAIN:-$STUDENT_WEB_DOMAIN}"
   local attach="${EDGE_ATTACH_CF_ALIASES:-true}"
@@ -304,7 +422,7 @@ PY
 import_video_stack() {
   local video_bucket cors import_file overrides
   video_bucket="$(manifest_get video_bucket_name)"
-  cors="https://researchspectrum.org,https://teach.researchspectrum.org,http://localhost:5173,http://127.0.0.1:5173,http://localhost:5174,http://127.0.0.1:5174"
+  cors="$(video_cors_allowed_origins)"
 
   package_invalidation_lambda
 
@@ -451,38 +569,58 @@ deploy_auth_stack() {
     --template-body "$(template_uri "$TEMPLATES/auth-stack.yaml")" \
     --region "$REGION_EU"
 
-  local auth_overrides=(
-    "Environment=${ENV}"
-    "CognitoDomainPrefix=${COGNITO_DOMAIN_PREFIX}"
-    "GoogleClientId=${GOOGLE_OAUTH_CLIENT_ID}"
-    "GoogleClientSecret=${GOOGLE_OAUTH_CLIENT_SECRET}"
-    "RdsStackName=${RDS_STACK}"
-    "EnableUserProfileSync=true"
-    "CognitoUserProfileSyncCodeS3Bucket=${COGNITO_SYNC_BUCKET}"
-    "CognitoUserProfileSyncCodeS3Key=${COGNITO_SYNC_KEY}"
-  )
-  if [[ -n "${STUDENT_COGNITO_CALLBACK_URLS:-}" ]]; then
-    auth_overrides+=("StudentCallbackUrls=${STUDENT_COGNITO_CALLBACK_URLS}")
-  fi
-  if [[ -n "${STUDENT_COGNITO_LOGOUT_URLS:-}" ]]; then
-    auth_overrides+=("StudentLogoutUrls=${STUDENT_COGNITO_LOGOUT_URLS}")
-  fi
-  if [[ -n "${TEACHER_COGNITO_CALLBACK_URLS:-}" ]]; then
-    auth_overrides+=("TeacherCallbackUrls=${TEACHER_COGNITO_CALLBACK_URLS}")
-  fi
-  if [[ -n "${TEACHER_COGNITO_LOGOUT_URLS:-}" ]]; then
-    auth_overrides+=("TeacherLogoutUrls=${TEACHER_COGNITO_LOGOUT_URLS}")
-  fi
+  local py params_file
+  py="$(restore_python)"
+  params_file="$(mktemp)"
+  chmod 600 "$params_file"
 
-  aws cloudformation deploy \
-    --template-file "$TEMPLATES/auth-stack.yaml" \
-    --stack-name "$AUTH_STACK" \
-    --capabilities CAPABILITY_IAM CAPABILITY_NAMED_IAM \
-    --region "$REGION_EU" \
-    --no-fail-on-empty-changeset \
-    --parameter-overrides "${auth_overrides[@]}"
+  RESTORE_AUTH_ENV="$ENV" \
+  RESTORE_AUTH_COGNITO_DOMAIN_PREFIX="$COGNITO_DOMAIN_PREFIX" \
+  RESTORE_AUTH_GOOGLE_CLIENT_ID="$GOOGLE_OAUTH_CLIENT_ID" \
+  RESTORE_AUTH_RDS_STACK="$RDS_STACK" \
+  RESTORE_AUTH_SYNC_BUCKET="$COGNITO_SYNC_BUCKET" \
+  RESTORE_AUTH_SYNC_KEY="$COGNITO_SYNC_KEY" \
+  RESTORE_AUTH_STUDENT_CALLBACK_URLS="$(auth_student_callback_urls)" \
+  RESTORE_AUTH_STUDENT_LOGOUT_URLS="$(auth_student_logout_urls)" \
+  RESTORE_AUTH_TEACHER_CALLBACK_URLS="$(auth_teacher_callback_urls)" \
+  RESTORE_AUTH_TEACHER_LOGOUT_URLS="$(auth_teacher_logout_urls)" \
+  printf '%s' "$GOOGLE_OAUTH_CLIENT_SECRET" | "$py" - "$params_file" <<'PY'
+import json
+import os
+import sys
 
-  local student_client_id teacher_client_id
+secret = sys.stdin.read()
+out_path = sys.argv[1]
+params = {
+    "Environment": os.environ["RESTORE_AUTH_ENV"],
+    "CognitoDomainPrefix": os.environ["RESTORE_AUTH_COGNITO_DOMAIN_PREFIX"],
+    "GoogleClientId": os.environ["RESTORE_AUTH_GOOGLE_CLIENT_ID"],
+    "GoogleClientSecret": secret,
+    "RdsStackName": os.environ["RESTORE_AUTH_RDS_STACK"],
+    "EnableUserProfileSync": "true",
+    "CognitoUserProfileSyncCodeS3Bucket": os.environ["RESTORE_AUTH_SYNC_BUCKET"],
+    "CognitoUserProfileSyncCodeS3Key": os.environ["RESTORE_AUTH_SYNC_KEY"],
+    "StudentCallbackUrls": os.environ["RESTORE_AUTH_STUDENT_CALLBACK_URLS"],
+    "StudentLogoutUrls": os.environ["RESTORE_AUTH_STUDENT_LOGOUT_URLS"],
+    "TeacherCallbackUrls": os.environ["RESTORE_AUTH_TEACHER_CALLBACK_URLS"],
+    "TeacherLogoutUrls": os.environ["RESTORE_AUTH_TEACHER_LOGOUT_URLS"],
+}
+
+with open(out_path, "w", encoding="utf-8") as fh:
+    json.dump(
+        [{"ParameterKey": k, "ParameterValue": v} for k, v in params.items()],
+        fh,
+    )
+PY
+
+  cfn_deploy_stack_from_parameters_file \
+    "$AUTH_STACK" \
+    "$TEMPLATES/auth-stack.yaml" \
+    "$REGION_EU" \
+    "$params_file"
+  rm -f "$params_file"
+
+  local student_client_id teacher_client_id client_params_file
   student_client_id="$(aws cloudformation describe-stacks \
     --stack-name "$AUTH_STACK" \
     --region "$REGION_EU" \
@@ -495,17 +633,21 @@ deploy_auth_stack() {
     --output text 2>/dev/null || true)"
 
   if [[ -n "$student_client_id" && "$student_client_id" != "None" && -n "$teacher_client_id" && "$teacher_client_id" != "None" ]]; then
-    auth_overrides+=(
-      "StudentCognitoClientId=${student_client_id}"
-      "TeacherCognitoClientId=${teacher_client_id}"
-    )
-    aws cloudformation deploy \
-      --template-file "$TEMPLATES/auth-stack.yaml" \
-      --stack-name "$AUTH_STACK" \
-      --capabilities CAPABILITY_IAM CAPABILITY_NAMED_IAM \
-      --region "$REGION_EU" \
-      --no-fail-on-empty-changeset \
-      --parameter-overrides "${auth_overrides[@]}"
+    client_params_file="$(mktemp)"
+    chmod 600 "$client_params_file"
+    jq -n \
+      --arg student "$student_client_id" \
+      --arg teacher "$teacher_client_id" \
+      '[
+        {"ParameterKey":"StudentCognitoClientId","ParameterValue":$student},
+        {"ParameterKey":"TeacherCognitoClientId","ParameterValue":$teacher}
+      ]' >"$client_params_file"
+    cfn_deploy_stack_from_parameters_file \
+      "$AUTH_STACK" \
+      "$TEMPLATES/auth-stack.yaml" \
+      "$REGION_EU" \
+      "$client_params_file"
+    rm -f "$client_params_file"
   fi
   echo "Auth stack deployed: ${AUTH_STACK}"
 }

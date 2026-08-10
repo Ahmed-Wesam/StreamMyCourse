@@ -188,3 +188,43 @@ def test_sync_rds_secret_after_restore_sh_avoids_password_on_cli() -> None:
     assert "--master-user-password" not in text
     assert "--cli-input-json" in text
     assert "file://${TMP_JSON}" in text
+    assert "RDS_PASSWORD" not in text
+    assert "PASSWORD=" not in text
+
+
+def test_restore_prod_sh_video_cors_uses_web_domains() -> None:
+    text = _script_must_exist("scripts/restore-prod.sh").read_text(encoding="utf-8")
+    assert "video_cors_allowed_origins" in text
+    assert "STUDENT_WEB_DOMAIN" in text
+    assert "TEACHER_WEB_DOMAIN" in text
+    assert "https://researchspectrum.org,https://teach.researchspectrum.org" not in text
+
+
+def test_restore_prod_sh_auth_deploy_avoids_google_secret_on_cli() -> None:
+    text = _script_must_exist("scripts/restore-prod.sh").read_text(encoding="utf-8")
+    assert "GoogleClientSecret=${GOOGLE_OAUTH_CLIENT_SECRET}" not in text
+    assert "cfn_deploy_stack_from_parameters_file" in text
+    assert '--parameters "$params_uri"' in text
+
+
+def test_restore_prod_sh_derives_cognito_urls_from_web_domains() -> None:
+    text = _script_must_exist("scripts/restore-prod.sh").read_text(encoding="utf-8")
+    assert "auth_student_callback_urls" in text
+    assert "auth_teacher_callback_urls" in text
+    assert 'urls="https://${STUDENT_WEB_DOMAIN}/"' in text
+    assert 'urls="https://${TEACHER_WEB_DOMAIN}/"' in text
+    assert "RESTORE_AUTH_STUDENT_CALLBACK_URLS=\"$(auth_student_callback_urls)\"" in text
+
+
+def test_restore_prod_sh_cfn_deploy_tolerates_no_op_update() -> None:
+    text = _script_must_exist("scripts/restore-prod.sh").read_text(encoding="utf-8")
+    assert "No updates are to be performed" in text
+    assert "already up to date" in text
+
+
+def test_export_pause_manifest_sh_uses_python_fallback() -> None:
+    text = _script_must_exist("scripts/export-pause-manifest.sh").read_text(encoding="utf-8")
+    assert 'PY=python3' in text or "python3" in text
+    assert "PY=python" in text
+    assert '"$PY"' in text
+    assert "python3 <<" not in text

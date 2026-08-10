@@ -38,6 +38,12 @@ done
 REGION_EU="eu-west-1"
 REGION_US="us-east-1"
 
+if command -v python3 >/dev/null 2>&1; then
+  PY=python3
+else
+  PY=python
+fi
+
 STACK_VIDEO="StreamMyCourse-Video-prod"
 STACK_EDGE="StreamMyCourse-EdgeHosting-prod"
 STACK_API="StreamMyCourse-Api-prod"
@@ -103,10 +109,10 @@ export OUT_PATH \
   api_endpoint user_pool_id student_user_pool_client_id teacher_user_pool_client_id \
   cognito_hosted_ui_domain rds_db_host rds_snapshot_identifier
 
-PAUSE_MANIFEST_JSON_KEYS_JSON="$(python3 -c 'import json, sys; print(json.dumps(sys.argv[1:]))' "${PAUSE_MANIFEST_JSON_KEYS[@]}")"
+PAUSE_MANIFEST_JSON_KEYS_JSON="$("$PY" -c 'import json, sys; print(json.dumps(sys.argv[1:]))' "${PAUSE_MANIFEST_JSON_KEYS[@]}")"
 export PAUSE_MANIFEST_JSON_KEYS_JSON
 
-python3 <<'PY'
+"$PY" <<'PY'
 import json
 import os
 

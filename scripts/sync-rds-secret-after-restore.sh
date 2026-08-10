@@ -31,30 +31,30 @@ else
   PY=python
 fi
 
-SECRET_JSON="$(aws secretsmanager get-secret-value \
-  --secret-id "$SECRET_ID" \
-  --region "$REGION" \
-  --query SecretString \
-  --output text)"
-
-PASSWORD="$("$PY" -c 'import json, sys; print(json.load(sys.stdin)["password"])' <<<"$SECRET_JSON")"
-
 echo "Syncing master password for ${DB_ID} from ${SECRET_ID} ..."
 
 TMP_JSON="$(mktemp)"
 chmod 600 "$TMP_JSON"
 trap 'rm -f "$TMP_JSON"' EXIT
 
-DB_ID="$DB_ID" RDS_PASSWORD="$PASSWORD" "$PY" - "$TMP_JSON" <<'PY'
+aws secretsmanager get-secret-value \
+  --secret-id "$SECRET_ID" \
+  --region "$REGION" \
+  --query SecretString \
+  --output text \
+| "$PY" - "$TMP_JSON" "$DB_ID" <<'PY'
 import json
-import os
 import sys
 
-with open(sys.argv[1], "w", encoding="utf-8") as fh:
+secret_json = sys.stdin.read()
+out_path = sys.argv[1]
+db_id = sys.argv[2]
+password = json.loads(secret_json)["password"]
+with open(out_path, "w", encoding="utf-8") as fh:
     json.dump(
         {
-            "DBInstanceIdentifier": os.environ["DB_ID"],
-            "MasterUserPassword": os.environ["RDS_PASSWORD"],
+            "DBInstanceIdentifier": db_id,
+            "MasterUserPassword": password,
             "ApplyImmediately": True,
         },
         fh,
