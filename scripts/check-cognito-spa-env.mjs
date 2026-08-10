@@ -69,6 +69,17 @@ const fileEnv = skipDotenv ? {} : loadFrontendViteEnv()
 const pool = effective('VITE_COGNITO_USER_POOL_ID', fileEnv)
 const client = effective('VITE_COGNITO_USER_POOL_CLIENT_ID', fileEnv)
 const domain = effective('VITE_COGNITO_DOMAIN', fileEnv)
+const apiBase = effective('VITE_API_BASE_URL', fileEnv)
+
+if (apiBase) {
+  const normalized = apiBase.replace(/\/+$/, '')
+  if (normalized.endsWith('/v1')) {
+    console.error(
+      'check-cognito-spa-env: VITE_API_BASE_URL must be the API Gateway stage root (ApiEndpoint), not .../v1. Use the CloudFormation ApiEndpoint value exactly, e.g. https://xxxx.execute-api.region.amazonaws.com/prod',
+    )
+    process.exit(1)
+  }
+}
 
 if (!pool) {
   process.exit(0)
