@@ -6,6 +6,26 @@
 
 ---
 
+## 2026-08-09 — Legal pages, prod pause/restore, SPA API base URL guard
+
+### Legal (student SPA)
+
+- [x] **Five English policy pages** — refund, delivery, educational disclaimer plus expanded privacy/terms ([`frontend/src/lib/legal/content/*.en.ts`](frontend/src/lib/legal/content/)); routes in [`student-app/App.tsx`](frontend/src/student-app/App.tsx); public (no auth bootstrap) per [`auth-bootstrap.ts`](frontend/src/lib/auth-bootstrap.ts).
+- [x] **Footer links** — [`legal/links.ts`](frontend/src/lib/legal/links.ts); teacher shell uses student-origin absolute URLs via [`legalUrls.ts`](frontend/src/lib/legalUrls.ts).
+- [x] **Removed Arabic bilingual UI** — English-only [`LegalDocumentPage`](frontend/src/pages/legal/LegalDocumentPage.tsx); deleted placeholder `.ar` content modules.
+
+### Prod pause / restore (operator)
+
+- [x] **Scripts** — [`scripts/teardown-prod.sh`](scripts/teardown-prod.sh), [`scripts/restore-prod.sh`](scripts/restore-prod.sh), [`scripts/export-pause-manifest.sh`](scripts/export-pause-manifest.sh), [`scripts/sync-rds-secret-after-restore.sh`](scripts/sync-rds-secret-after-restore.sh), [`scripts/lib/prod_pause_constants.sh`](scripts/lib/prod_pause_constants.sh); Windows wrapper [`teardown-prod.ps1`](scripts/teardown-prod.ps1).
+- [x] **Runbook** — [`infrastructure/docs/prod-shutdown-restore-runbook.md`](infrastructure/docs/prod-shutdown-restore-runbook.md).
+- [x] **Restore hardening** — `RESTORE_DB_SNAPSHOT_IDENTIFIER` wired in [`deploy-rds-stack.sh`](scripts/deploy-rds-stack.sh); Cognito callback URLs derived from `STUDENT_WEB_DOMAIN` / `TEACHER_WEB_DOMAIN`; video CORS aligned; secrets via CFN parameter files / `cli-input-json`; schema bundle includes migrations **013**–**014**; contract tests in [`tests/unit/test_prod_pause_scripts.py`](tests/unit/test_prod_pause_scripts.py).
+
+### Build / CI guard
+
+- [x] **`VITE_API_BASE_URL`** — [`scripts/check-cognito-spa-env.mjs`](scripts/check-cognito-spa-env.mjs) rejects paths ending in `/v1`; CI Vitest placeholder uses `.../prod` ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)).
+
+---
+
 ## 2026-08-03 — Remove dev stack / prod-only deploy
 
 ### Goal
