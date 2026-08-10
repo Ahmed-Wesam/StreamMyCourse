@@ -3,6 +3,7 @@
 #
 # Usage:
 #   ./scripts/deploy-rds-stack.sh prod
+#   RESTORE_DB_SNAPSHOT_IDENTIFIER='rds:streammycourse-prod-...' ./scripts/deploy-rds-stack.sh prod
 #   SKIP_SCHEMA_APPLIER=1 ./scripts/deploy-rds-stack.sh prod   # VPC + RDS only (no applier Lambda)
 #
 # Requires: aws CLI, zip, python3 + pip, bash. Build uses Linux manylinux wheels for Lambda (same
@@ -104,6 +105,21 @@ PY
   rm -rf "$STAGE"
   echo "Uploaded schema-applier s3://${BUCKET}/${KEY}"
   OVERRIDES+=("SchemaApplierCodeS3Bucket=${BUCKET}" "SchemaApplierCodeS3Key=${KEY}")
+fi
+
+if [[ -n "${RESTORE_DB_SNAPSHOT_IDENTIFIER:-}" ]]; then
+  OVERRIDES+=("DbSnapshotIdentifier=${RESTORE_DB_SNAPSHOT_IDENTIFIER}")
+  echo "Restoring RDS from snapshot: ${RESTORE_DB_SNAPSHOT_IDENTIFIER}"
+elif aws cloudformation describe-stacks --stack-name "$STACK" --region "$REGION" >/dev/null 2>&1; then
+  SNAPSHOT="$(aws cloudformation describe-stacks \
+    --stack-name "$STACK" \
+    --region "$REGION" \
+    --query "Stacks[0].Parameters[?ParameterKey=='DbSnapshotIdentifier'].ParameterValue | [0]" \
+    --output text 2>/dev/null || true)"
+  if [[ -n "${SNAPSHOT:-}" && "${SNAPSHOT}" != "None" && "${SNAPSHOT}" != "" ]]; then
+    OVERRIDES+=("DbSnapshotIdentifier=${SNAPSHOT}")
+    echo "Preserving DbSnapshotIdentifier=${SNAPSHOT} on stack update"
+  fi
 fi
 
 # deploy uses --template-file; pass Windows path when under MSYS so aws.exe can open the file.
