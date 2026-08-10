@@ -11,10 +11,26 @@ export function studentSiteOrigin(): string {
   return DEFAULT_STUDENT_ORIGIN
 }
 
+function legalPath(path: string): string {
+  return `${studentSiteOrigin()}${path}`
+}
+
 export function termsUrl(): string {
-  return `${studentSiteOrigin()}/terms`
+  return legalPath('/terms')
 }
 
 export function privacyUrl(): string {
-  return `${studentSiteOrigin()}/privacy`
+  return legalPath('/privacy')
+}
+
+export function refundUrl(): string {
+  return legalPath('/refund')
+}
+
+export function deliveryUrl(): string {
+  return legalPath('/delivery')
+}
+
+export function educationalDisclaimerUrl(): string {
+  return legalPath('/educational-disclaimer')
 }

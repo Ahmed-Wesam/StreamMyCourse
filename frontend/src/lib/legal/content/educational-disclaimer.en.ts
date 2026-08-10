@@ -1,0 +1,177 @@
+import { legalConfig } from '../../legalConfig'
+import type { LegalDocumentContent } from './types'
+
+const { supportEmail } = legalConfig
+
+export const educationalDisclaimerEn: LegalDocumentContent = {
+  title: 'Educational Disclaimer',
+  lastUpdated: '2026-06-01',
+  sections: [
+    {
+      heading: 'Purpose of This Disclaimer',
+      paragraphs: [
+        'The courses, assessments, certifications, educational materials, educational resources, and other currently available Services provided by Research Spectrum are intended solely for educational and informational purposes.',
+        'By accessing or using Research Spectrum Services, you acknowledge and agree to this Disclaimer.',
+      ],
+    },
+    {
+      heading: 'No Guarantee of Outcomes',
+      paragraphs: [
+        'Research Spectrum makes no guarantees, representations, or warranties regarding any specific outcome resulting from the use of its Services.',
+        'Research Spectrum does not guarantee:',
+        '• Publication of manuscripts',
+        '• Acceptance of research papers',
+        '• Journal acceptance',
+        '• Residency placement',
+        '• Employment opportunities',
+        '• Promotions',
+        '• Academic success',
+        '• Examination success',
+        '• Research funding',
+        '• Grant awards',
+        '• Scholarship awards',
+        '• Acceptance into educational programs',
+        '• Research collaboration opportunities',
+        '• Professional advancement',
+        '• Any specific educational, academic, financial, professional, or personal outcome',
+        'Individual results vary based on numerous factors beyond the control of Research Spectrum.',
+      ],
+    },
+    {
+      heading: 'Educational Content Only',
+      paragraphs: [
+        'All content provided through Research Spectrum is educational in nature.',
+        'Content should not be interpreted as:',
+        '• Medical advice',
+        '• Legal advice',
+        '• Financial advice',
+        '• Regulatory advice',
+        '• Professional advice',
+        '• Institutional guidance',
+        '• Academic accreditation',
+        '• Career counseling',
+        'Users should consult appropriately qualified professionals before making decisions based on information obtained through the Services.',
+      ],
+    },
+    {
+      heading: 'Research Collaboration Opportunities',
+      paragraphs: [
+        'Research Spectrum may, at its sole discretion, offer:',
+        '• Research collaboration opportunities',
+        '• Mentorship opportunities',
+        '• Project participation opportunities',
+        '• Academic initiatives',
+        '• Educational opportunities',
+        'to selected individuals.',
+        'Such opportunities are entirely discretionary.',
+        'Completion of required pathway requirements may make a user eligible to apply for certain opportunities offered by Research Spectrum. Eligibility to apply does not guarantee invitation, selection, acceptance, participation, authorship, project assignment, mentorship, collaboration opportunities, or project availability.',
+        'Research Spectrum reserves the sole right to determine:',
+        '• Eligibility criteria',
+        '• Selection criteria',
+        '• Project availability',
+        '• Participant capacity',
+        '• Participation requirements',
+        'at any time.',
+      ],
+    },
+    {
+      heading: 'Certificates',
+      paragraphs: [
+        'Certificates issued by Research Spectrum verify completion of Research Spectrum educational and assessment requirements and reflect successful completion of platform-defined competency requirements.',
+        'Certificates do not constitute:',
+        '• Academic credit',
+        '• University accreditation',
+        '• Professional licensure',
+        '• Professional certification',
+        '• Government recognition',
+        '• Institutional endorsement',
+        'Research Spectrum certificates confirm that a user has met Research Spectrum\'s defined learning and assessment standards. They should not be interpreted as a substitute for accredited academic qualifications, government-recognised professional certifications, or professional licenses issued by regulatory bodies.',
+      ],
+    },
+    {
+      heading: 'Accuracy of Information',
+      paragraphs: [
+        'Research Spectrum strives to provide accurate and up-to-date educational content.',
+        'However, Research Spectrum does not warrant that:',
+        '• All content is complete',
+        '• All content is error-free',
+        '• All content is current',
+        '• All content reflects the latest developments',
+        '• All content is suitable for every user or situation',
+        'Educational content may be updated, revised, expanded, modified, reorganized, or corrected at any time.',
+      ],
+    },
+    {
+      heading: 'User Responsibility',
+      paragraphs: [
+        'Users remain solely responsible for:',
+        '• Decisions made using information obtained from Research Spectrum',
+        '• Research conducted using information obtained from Research Spectrum',
+        '• Academic work prepared using information obtained from Research Spectrum',
+        '• Professional actions taken based on educational content',
+        'Research Spectrum shall not be responsible for decisions, actions, omissions, or outcomes arising from the use of the Services.',
+      ],
+    },
+    {
+      heading: 'Third-Party Resources',
+      paragraphs: [
+        'Research Spectrum may reference, discuss, link to, or mention third-party resources, software, journals, databases, websites, tools, services, organizations, or platforms.',
+        'Such references do not constitute endorsement.',
+        'Research Spectrum is not responsible for:',
+        '• Third-party content',
+        '• Third-party policies',
+        '• Third-party services',
+        '• Third-party availability',
+        '• Third-party accuracy',
+      ],
+    },
+    {
+      heading: 'Limitation of Reliance',
+      paragraphs: [
+        'Users acknowledge that educational content provided through Research Spectrum is intended to supplement learning and should not be relied upon as the sole basis for academic, professional, legal, medical, financial, or research decisions.',
+      ],
+    },
+    {
+      heading: 'Limitation of Liability',
+      paragraphs: [
+        'To the fullest extent permitted by applicable law, Research Spectrum shall not be liable for:',
+        '• Direct damages',
+        '• Indirect damages',
+        '• Incidental damages',
+        '• Consequential damages',
+        '• Special damages',
+        '• Loss of opportunities',
+        '• Loss of funding',
+        '• Loss of employment',
+        '• Academic outcomes',
+        '• Research outcomes',
+        '• Publication outcomes',
+        '• Business losses',
+        'arising from or relating to the use of the Services.',
+      ],
+    },
+    {
+      heading: 'Changes to This Disclaimer',
+      paragraphs: [
+        'Research Spectrum reserves the right to modify this Disclaimer at any time.',
+        'Updated versions will be published on the website.',
+        'Continued use of Research Spectrum Services following publication of an updated Disclaimer constitutes acceptance of the revised Disclaimer.',
+        'Research Spectrum may additionally notify users of significant changes via email.',
+      ],
+    },
+    {
+      heading: 'Language',
+      paragraphs: [
+        'This Disclaimer may be provided in multiple languages.',
+        'In the event of any discrepancy, inconsistency, conflict, or ambiguity between language versions, the English version shall prevail.',
+      ],
+    },
+    {
+      heading: 'Contact',
+      paragraphs: [
+        'For questions regarding this Disclaimer, please contact:',
+        'For inquiries: ' + supportEmail,
+      ],
+    },
+  ],
+}

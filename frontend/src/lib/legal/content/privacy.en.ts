@@ -1,97 +1,276 @@
-import { legalConfig } from '../../legalConfig'
-import type { LegalDocumentContent } from './types'
-
-const {
-  legalEntityNameEn,
-  brandDisplayName,
-  supportEmail,
-  websiteHost,
-  governingLaw,
-} = legalConfig
-
-export const privacyEn: LegalDocumentContent = {
-  title: 'Privacy Policy',
-  lastUpdated: '2026-05-23',
-  sections: [
-    {
-      heading: '1. Introduction',
-      paragraphs: [
-        `${legalEntityNameEn} ("we", "us") operates ${brandDisplayName} at ${websiteHost}. This Privacy Policy explains what personal information we collect, how we use it, and your choices.`,
-      ],
-    },
-    {
-      heading: '2. Information we collect',
-      paragraphs: [
-        'Account information: name, email address, and identifiers from your Google sign-in.',
-        'Subscription and billing information: subscription status, billing dates, and payment confirmation details from our payment provider (we do not receive or store your full card number).',
-        'Usage information: course progress, quiz results, and how you use the service.',
-        'Technical information: IP address, browser type, and device information collected in server logs for security and troubleshooting.',
-        'Communications: information you send when you contact support.',
-      ],
-    },
-    {
-      heading: '3. How we use information',
-      paragraphs: [
-        'To provide the service, authenticate you, manage subscriptions, and give access to courses.',
-        'To process payments, send service-related notices, and respond to support requests.',
-        'To maintain security, prevent fraud, and improve the platform.',
-        'We do not sell your personal information.',
-      ],
-    },
-    {
-      heading: '4. Sharing with service providers',
-      paragraphs: [
-        'We share information with companies that help us run the service, including:',
-        'Google: sign-in authentication.',
-        'Amazon Web Services: hosting, authentication, storage, and related cloud services.',
-        'PayTabs: payment processing for subscriptions.',
-        'These providers process data under their own privacy policies and only as needed to perform services for us. Some processing may occur outside Jordan.',
-      ],
-    },
-    {
-      heading: '5. Data retention',
-      paragraphs: [
-        'We keep account and subscription records while your account is active and for a reasonable period afterward for legal, accounting, and dispute purposes.',
-        'You may request deletion subject to exceptions where we must retain data by law or for ongoing billing or disputes.',
-      ],
-    },
-    {
-      heading: '6. Your rights',
-      paragraphs: [
-        'Under applicable law in Jordan, including the Personal Data Protection Law where it applies, you may request access to, correction of, or deletion of your personal information.',
-        `Contact us at ${supportEmail}. We may need to verify your identity before responding.`,
-      ],
-    },
-    {
-      heading: '7. Security',
-      paragraphs: [
-        'We use reasonable technical and organizational measures to protect personal information, including encryption in transit and access controls. No method of transmission or storage is completely secure.',
-      ],
-    },
-    {
-      heading: '8. Cookies and similar technologies',
-      paragraphs: [
-        'We use cookies and local storage to keep you signed in and to operate the site. You can control cookies through your browser settings, but some features may not work if you disable them.',
-      ],
-    },
-    {
-      heading: '9. Children',
-      paragraphs: [
-        `${brandDisplayName} is not directed to children under 13. We do not knowingly collect personal information from children under 13.`,
-      ],
-    },
-    {
-      heading: '10. Changes to this policy',
-      paragraphs: [
-        'We may update this Privacy Policy from time to time. We will post the revised policy on this page and update the "Last updated" date. Material changes may also be communicated on the site or by email.',
-      ],
-    },
-    {
-      heading: '11. Contact us',
-      paragraphs: [
-        `Questions or privacy requests: ${supportEmail}.`,
-        `Governing law: ${governingLaw}.`,
-      ],
-    },
-  ],
-}
+import { legalConfig } from '../../legalConfig'
+import type { LegalDocumentContent } from './types'
+
+const { supportEmail } = legalConfig
+
+export const privacyEn: LegalDocumentContent = {
+  title: 'Privacy Policy',
+  lastUpdated: '2026-06-01',
+  sections: [
+    {
+      heading: 'Introduction',
+      paragraphs: [
+        'Research Spectrum ("Research Spectrum", "we", "our", or "us") respects your privacy and is committed to protecting your personal information.',
+        'This Privacy Policy explains how we collect, use, store, disclose, and protect information when you access or use our website, educational platform, courses, assessments, certifications, digital resources, and related services (collectively, the "Services").',
+        'By accessing or using our Services, you agree to the collection and use of information in accordance with this Privacy Policy.',
+        'Operator: Research Spectrum is operated by Bahaa Aburayya for Electronic Shopping, a sole proprietorship registered in the Hashemite Kingdom of Jordan.',
+      ],
+    },
+    {
+      heading: 'Information We Collect',
+      paragraphs: [
+        'Information You Provide',
+        'We may collect information that you voluntarily provide, including:',
+        '• Full name',
+        '• Email address',
+        '• Phone number',
+        '• Country of residence',
+        '• Account credentials',
+        '• Billing information',
+        '• Payment-related information',
+        '• Support requests',
+        '• Feedback',
+        '• Reviews and testimonials',
+        '• Communications with Research Spectrum',
+        'Educational Information',
+        'We may collect information relating to your use of educational services, including:',
+        '• Course enrollments',
+        '• Lesson completion status',
+        '• Assessment results',
+        '• Quiz results',
+        '• Examination results',
+        '• Certification status',
+        '• Learning progress',
+        '• Course activity history',
+        'Technical Information',
+        'We may automatically collect technical information, including:',
+        '• IP address',
+        '• Browser type and version',
+        '• Operating system',
+        '• Device type',
+        '• Device identifiers',
+        '• Login history',
+        '• Session information',
+        '• Network information',
+        '• Platform activity logs',
+        '• Security-related information',
+        '• Error reports',
+        '• Usage analytics',
+        'Cookies and Similar Technologies',
+        'We may use:',
+        '• Cookies',
+        '• Local storage technologies',
+        '• Session identifiers',
+        '• Analytics tools',
+        '• Security technologies',
+        'to improve functionality, security, performance, and user experience.',
+      ],
+    },
+    {
+      heading: 'How We Use Information',
+      paragraphs: [
+        'We may use information to:',
+        '• Provide Services',
+        '• Process purchases',
+        '• Deliver educational content',
+        '• Manage user accounts',
+        '• Verify course access',
+        '• Enforce device limitations',
+        '• Enforce licensing restrictions',
+        '• Prevent fraud',
+        '• Detect unauthorized account sharing',
+        '• Protect intellectual property',
+        '• Improve educational content',
+        '• Analyze platform performance',
+        '• Respond to support requests',
+        '• Generate certificates',
+        '• Verify certificate authenticity',
+        '• Comply with legal obligations',
+        '• Communicate with users',
+      ],
+    },
+    {
+      heading: 'Marketing Communications',
+      paragraphs: [
+        'Research Spectrum may send:',
+        '• Newsletters',
+        '• Educational updates',
+        '• Product announcements',
+        '• Promotional offers',
+        '• Course launch announcements',
+        '• Marketing communications',
+        'Users may unsubscribe from marketing communications at any time.',
+        'Even if marketing communications are disabled, Research Spectrum may continue sending:',
+        '• Account notices',
+        '• Security notifications',
+        '• Password reset emails',
+        '• Transaction confirmations',
+        '• Certificate notifications',
+        '• Service announcements',
+        '• Legal notices',
+      ],
+    },
+    {
+      heading: 'Device and Access Monitoring',
+      paragraphs: [
+        'To protect educational content and enforce licensing restrictions, Research Spectrum may monitor:',
+        '• Device registrations',
+        '• Login activity',
+        '• Session activity',
+        '• Access patterns',
+        '• Security events',
+        '• Technical identifiers',
+        'Research Spectrum may use technical measures to enforce:',
+        '• Maximum registered device limits',
+        '• Single-session access restrictions',
+        '• Anti-piracy protections',
+        '• Security controls',
+      ],
+    },
+    {
+      heading: 'Sharing of Information',
+      paragraphs: [
+        'Research Spectrum does not sell personal information.',
+        'We may share information with:',
+        'Service Providers',
+        'Including providers of:',
+        '• Hosting services',
+        '• Learning management systems',
+        '• Analytics services',
+        '• Email services',
+        '• Security services',
+        '• Payment processing services',
+        '• Video delivery services',
+        'Legal Requirements',
+        'We may disclose information where required to:',
+        '• Comply with laws',
+        '• Respond to court orders',
+        '• Respond to lawful government requests',
+        '• Protect legal rights',
+        '• Prevent fraud',
+        '• Enforce our Terms & Conditions',
+        'Business Protection',
+        'Information may be disclosed where reasonably necessary to:',
+        '• Protect intellectual property',
+        '• Investigate abuse',
+        '• Investigate fraud',
+        '• Investigate unauthorized content distribution',
+        '• Protect platform security',
+      ],
+    },
+    {
+      heading: 'Payment Information',
+      paragraphs: [
+        'Payments are processed by third-party payment providers.',
+        'Research Spectrum does not store complete payment card information.',
+        'Payment information is handled in accordance with the policies and security standards of the applicable payment processor.',
+      ],
+    },
+    {
+      heading: 'Certificate Verification',
+      paragraphs: [
+        'Research Spectrum may maintain records relating to:',
+        '• Certificate issuance',
+        '• Completion dates',
+        '• Assessment outcomes',
+        '• Verification identifiers',
+        '• QR verification data',
+        'for verification and fraud prevention purposes.',
+      ],
+    },
+    {
+      heading: 'Reviews, Testimonials, and Feedback',
+      paragraphs: [
+        'By submitting reviews, testimonials, feedback, comments, or similar content, you grant Research Spectrum permission to:',
+        '• Display such content',
+        '• Publish such content',
+        '• Reproduce such content',
+        '• Use such content for educational purposes',
+        '• Use such content for promotional purposes',
+        'Research Spectrum may edit content for formatting, clarity, or length.',
+      ],
+    },
+    {
+      heading: 'Data Retention',
+      paragraphs: [
+        'Research Spectrum may retain information for as long as reasonably necessary to:',
+        '• Provide Services',
+        '• Maintain records',
+        '• Verify certifications',
+        '• Resolve disputes',
+        '• Enforce agreements',
+        '• Comply with legal obligations',
+        '• Protect intellectual property',
+        'Certain information may be retained even after account closure where legally permitted or required.',
+        'Educational and Certification Records',
+        'Research Spectrum stores educational records including course completion records, quiz results, assignment outcomes, certificate records, and credential verification records. Certain certification, completion, credential verification, and fraud-prevention records may be retained after account closure where reasonably necessary to support certificate verification, dispute resolution, legal compliance, platform security, or fraud prevention.',
+      ],
+    },
+    {
+      heading: 'Data Security',
+      paragraphs: [
+        'Research Spectrum implements reasonable administrative, technical, and organizational safeguards designed to protect information from:',
+        '• Unauthorized access',
+        '• Unauthorized disclosure',
+        '• Misuse',
+        '• Alteration',
+        '• Destruction',
+        'However, no method of transmission or storage is completely secure, and Research Spectrum cannot guarantee absolute security.',
+      ],
+    },
+    {
+      heading: 'International Users',
+      paragraphs: [
+        'Users accessing Research Spectrum from outside Jordan acknowledge that information may be processed and stored in jurisdictions different from their own.',
+        'By using the Services, you consent to such transfers where permitted by applicable law.',
+      ],
+    },
+    {
+      heading: 'Children\'s Privacy',
+      paragraphs: [
+        'Research Spectrum is not intended for individuals under eighteen (18) years of age.',
+        'We do not knowingly collect personal information from children.',
+        'If we become aware that personal information from a child has been collected, we may delete such information.',
+      ],
+    },
+    {
+      heading: 'Your Rights',
+      paragraphs: [
+        'Subject to applicable law, users may request:',
+        '• Access to personal information',
+        '• Correction of inaccurate information',
+        '• Deletion of certain information',
+        '• Restriction of processing',
+        '• Withdrawal of consent where applicable',
+        'Certificate Visibility Controls',
+        'Users may control the public visibility of their certificates and certificate profile through the platform\'s privacy settings. Where certificate visibility controls are available, users may manage whether their certificates are accessible via public certificate verification pages. Adjusting certificate visibility does not delete underlying certification records, which may be retained in accordance with Section 9 (Data Retention) for verification, dispute resolution, and fraud-prevention purposes.',
+        'Account Deletion',
+        'Users may request account deletion through the platform\'s account settings. Certain educational, certification, and fraud-prevention records may be retained after account deletion as described in Section 9.',
+        'Research Spectrum may decline requests where permitted or required by law.',
+      ],
+    },
+    {
+      heading: 'Changes to This Privacy Policy',
+      paragraphs: [
+        'Research Spectrum may modify this Privacy Policy at any time.',
+        'Updated versions will be published on the website.',
+        'Continued use of the Services after publication of an updated Privacy Policy constitutes acceptance of the revised policy.',
+        'Research Spectrum may additionally notify users of significant changes via email.',
+      ],
+    },
+    {
+      heading: 'Language',
+      paragraphs: [
+        'This Privacy Policy may be provided in multiple languages.',
+        'In the event of any discrepancy, inconsistency, conflict, or ambiguity between language versions, the English version shall prevail.',
+      ],
+    },
+    {
+      heading: 'Contact',
+      paragraphs: [
+        'For privacy-related inquiries, requests, or concerns, please contact:',
+        'For inquiries: ' + supportEmail,
+      ],
+    },
+  ],
+}
