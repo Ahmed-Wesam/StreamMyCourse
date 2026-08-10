@@ -56,3 +56,24 @@ def test_pool_unset_succeeds_even_if_client_set() -> None:
         }
     )
     assert result.returncode == 0, (result.stdout, result.stderr)
+
+
+def test_api_base_url_with_v1_suffix_fails() -> None:
+    result = _run_checker(
+        {
+            "VITE_API_BASE_URL": "https://spjxahk3gg.execute-api.eu-west-1.amazonaws.com/prod/v1",
+        }
+    )
+    assert result.returncode == 1, (result.stdout, result.stderr)
+    combined = f"{result.stdout}\n{result.stderr}"
+    assert "VITE_API_BASE_URL" in combined
+    assert "/v1" in combined
+
+
+def test_api_base_url_stage_root_succeeds_without_cognito() -> None:
+    result = _run_checker(
+        {
+            "VITE_API_BASE_URL": "https://spjxahk3gg.execute-api.eu-west-1.amazonaws.com/prod",
+        }
+    )
+    assert result.returncode == 0, (result.stdout, result.stderr)

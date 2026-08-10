@@ -38,7 +38,7 @@ jobs:
       - name: Vitest unit tests
         run: npm run test
         env:
-          VITE_API_BASE_URL: https://api.test.example/v1
+          VITE_API_BASE_URL: https://api.test.example/prod
 
   lambda:
     name: Lambda syntax checks
