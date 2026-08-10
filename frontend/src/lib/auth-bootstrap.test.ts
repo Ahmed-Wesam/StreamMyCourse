@@ -27,6 +27,12 @@ describe('needsAuthBootstrap', () => {
     it('returns false for privacy page', () => {
       expect(needsAuthBootstrap('/privacy', '')).toBe(false)
     })
+
+    it('returns false for other legal policy pages', () => {
+      expect(needsAuthBootstrap('/refund', '')).toBe(false)
+      expect(needsAuthBootstrap('/delivery', '')).toBe(false)
+      expect(needsAuthBootstrap('/educational-disclaimer', '')).toBe(false)
+    })
   })
 
   describe('OAuth callback (search only; hash ignored)', () => {
