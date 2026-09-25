@@ -93,6 +93,16 @@ aws cloudformation describe-stacks --stack-name StreamMyCourse-Api-prod --region
 
 Optional **`deploy.ps1`** API parameters: `-VideoUrl`, `-DefaultMp4Url` (passed through to CloudFormation).
 
+## Prod pause / restore
+
+Full procedure: [`docs/prod-shutdown-restore-runbook.md`](docs/prod-shutdown-restore-runbook.md).
+
+Entry scripts (repo root):
+
+- [`scripts/export-pause-manifest.sh`](../scripts/export-pause-manifest.sh)
+- [`scripts/teardown-prod.sh`](../scripts/teardown-prod.sh) / [`scripts/teardown-prod.ps1`](../scripts/teardown-prod.ps1)
+- [`scripts/restore-prod.sh`](../scripts/restore-prod.sh)
+
 ## Phase 0 — AWS teardown (legacy dev stacks)
 
 Use this when removing **old `*-dev`** resources after the prod-only cutover. **Double-check account, region, and stack names** before destructive steps. Take RDS snapshots before prod touches.

@@ -35,7 +35,7 @@ Use this runbook when you need to **stop prod AWS spend** for an extended period
 
 **When not to use**
 
-- Dev/test stacks — use other tooling (e.g. [`remove-dev-stack-prod-only.yml`](../../.github/workflows/remove-dev-stack-prod-only.yml)).
+- Legacy `*-dev` stacks — see [Phase 0](../README.md#phase-0--aws-teardown-legacy-dev-stacks) in `infrastructure/README.md`.
 - Partial stack edits — use normal deploy scripts / CI instead of full teardown.
 
 ---
