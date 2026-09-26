@@ -3,7 +3,7 @@ import { Link, useLocation, useNavigate } from 'react-router-dom'
 
 import { SiteHeader, type SiteNavLink } from '../components/layout/SiteHeader'
 import { Button } from '../components/ui/Button'
-import { needsAuthBootstrap } from '../lib/auth-bootstrap'
+import { isStudentIdleProbePath, needsAuthBootstrap } from '../lib/auth-bootstrap'
 import {
   getProfileDisplayNameOnce,
   lazySignOut,
@@ -18,8 +18,6 @@ const ProfileMenu = lazy(() =>
   import('../components/layout/ProfileMenu').then((m) => ({ default: m.ProfileMenu })),
 )
 
-const COURSE_DETAIL = /^\/courses\/[^/]+$/
-
 const STUDENT_NAV: SiteNavLink[] = [
   { href: '/dashboard', label: 'Dashboard' },
   { href: '/courses', label: 'Courses' },
@@ -29,16 +27,6 @@ const STUDENT_NAV: SiteNavLink[] = [
   { href: '/faq', label: 'FAQ' },
   { href: '/contact', label: 'Contact' },
 ]
-
-function isPublicRoute(pathname: string): boolean {
-  return (
-    pathname === '/' ||
-    pathname === '/details' ||
-    pathname === '/learn' ||
-    pathname === '/courses' ||
-    COURSE_DETAIL.test(pathname)
-  )
-}
 
 function isOAuthCallback(search: string): boolean {
   const params = new URLSearchParams(search)
@@ -158,7 +146,7 @@ export function StudentHeader() {
 
     if (immediateAfterOAuth || needsAuthBootstrap(path, search)) {
       scheduleProbe(true)
-    } else if (isPublicRoute(path)) {
+    } else if (isStudentIdleProbePath(path)) {
       scheduleProbe(false)
     } else {
       scheduleProbe(true)
@@ -171,7 +159,7 @@ export function StudentHeader() {
       }
       if (timeoutId != null) clearTimeout(timeoutId)
     }
-  }, [location.pathname, location.search, location.hash, runSessionProbe])
+  }, [location, runSessionProbe])
 
   async function handleSignOut() {
     profileRequestRef.current += 1

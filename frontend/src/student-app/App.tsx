@@ -1,6 +1,5 @@
 import { lazy, Suspense } from 'react'
 import { Navigate, Route, Routes, useLocation } from 'react-router-dom'
-import HomePage from '../pages/HomePage'
 import { AuthGate } from '../components/auth/AuthGate'
 import { StudentAccountAuth } from '../components/auth/StudentAccountAuth'
 import { AccountLayout } from '../pages/account/AccountLayout'
@@ -12,6 +11,11 @@ import { Layout } from '../components/layout/Layout'
 import { LazyRoute } from '../components/layout/RouteChunkFallback'
 import { ScrollToTop } from './ScrollToTop'
 
+const HomePage = lazy(() => import('../pages/HomePage'))
+const AboutInstructorPage = lazy(() => import('../pages/AboutInstructorPage'))
+const FaqPage = lazy(() => import('../pages/FaqPage'))
+const ContactPage = lazy(() => import('../pages/ContactPage'))
+const ResearchTeamPage = lazy(() => import('../pages/ResearchTeamPage'))
 const CoursePage = lazy(() => import('../pages/CoursePage'))
 const CourseDetailPage = lazy(() => import('../pages/CourseDetailPage'))
 const LearnRedirectPage = lazy(() => import('../pages/LearnRedirectPage'))
@@ -46,7 +50,46 @@ function StudentApp() {
         <Layout chromeHeader={<StudentHeader />}>
         <ScrollToTop />
         <Routes>
-        <Route path="/" element={<HomePage />} />
+        <Route
+          path="/"
+          element={
+            <LazyRoute>
+              <HomePage />
+            </LazyRoute>
+          }
+        />
+        <Route
+          path="/about"
+          element={
+            <LazyRoute>
+              <AboutInstructorPage />
+            </LazyRoute>
+          }
+        />
+        <Route
+          path="/faq"
+          element={
+            <LazyRoute>
+              <FaqPage />
+            </LazyRoute>
+          }
+        />
+        <Route
+          path="/contact"
+          element={
+            <LazyRoute>
+              <ContactPage />
+            </LazyRoute>
+          }
+        />
+        <Route
+          path="/research-team"
+          element={
+            <LazyRoute>
+              <ResearchTeamPage />
+            </LazyRoute>
+          }
+        />
         <Route
           path="/details"
           element={

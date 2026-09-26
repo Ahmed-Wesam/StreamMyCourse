@@ -3,6 +3,29 @@ const LESSON_PLAYER = /^\/courses\/[^/]+\/lessons\//
 const MODULE_QUIZ = /^\/courses\/[^/]+\/modules\/[^/]+\/quiz/
 
 /**
+ * Public student paths that idle-probe auth after paint (do not import auth immediately).
+ * Keep in sync with marketing + catalog surfaces that should stay first-paint light.
+ */
+export function isStudentIdleProbePath(pathname: string): boolean {
+  return (
+    pathname === '/' ||
+    pathname === '/details' ||
+    pathname === '/learn' ||
+    pathname === '/courses' ||
+    pathname === '/about' ||
+    pathname === '/faq' ||
+    pathname === '/contact' ||
+    pathname === '/research-team' ||
+    pathname === '/terms' ||
+    pathname === '/privacy' ||
+    pathname === '/refund' ||
+    pathname === '/delivery' ||
+    pathname === '/educational-disclaimer' ||
+    COURSE_DETAIL.test(pathname)
+  )
+}
+
+/**
  * Whether the current route should run auth bootstrap (session restore / OAuth callback).
  */
 export function needsAuthBootstrap(pathname: string, search: string): boolean {
@@ -13,18 +36,8 @@ export function needsAuthBootstrap(pathname: string, search: string): boolean {
     return true
   }
 
-  if (
-    pathname === '/' ||
-    pathname === '/details' ||
-    pathname === '/learn' ||
-    pathname === '/courses' ||
-    pathname === '/terms' ||
-    pathname === '/privacy' ||
-    pathname === '/refund' ||
-    pathname === '/delivery' ||
-    pathname === '/educational-disclaimer' ||
-    COURSE_DETAIL.test(pathname)
-  ) {
+  // Same set as isStudentIdleProbePath — public marketing/catalog/legal stay off AuthShell.
+  if (isStudentIdleProbePath(pathname)) {
     return false
   }
 
