@@ -177,7 +177,7 @@ POST /webhooks/kinescope/drm-auth     // DRM auth callback; validates signed tok
 
 ## 8. React Frontend (MVP)
 
-**User-visible brand:** **Research Spectrum** (strings, titles/meta, logo/favicons via [`frontend/src/lib/brand.ts`](frontend/src/lib/brand.ts) and shared header/footer). Repo, stacks, and infra names remain **StreamMyCourse**. Shared visual foundation (Tailwind `rs-*` tokens, self-hosted Plus Jakarta Sans, UI primitives) is in place; page restyles and new marketing routes are later work.
+**User-visible brand:** **Research Spectrum** (strings, titles/meta, logo/favicons via [`frontend/src/lib/brand.ts`](frontend/src/lib/brand.ts) and shared header/footer). Repo, stacks, and infra names remain **StreamMyCourse**. Shared visual foundation (Tailwind `rs-*` tokens, self-hosted Plus Jakarta Sans, UI primitives) is in place. Public marketing routes (`/`, `/about`, `/faq`, `/contact`, `/research-team`) use that system. Student app flows (catalog, player, quiz) and the instructor app are still the older layouts.
 
 ### Tech Stack
 - **React 19** + **Vite**
@@ -228,13 +228,17 @@ The frontend is built as **two separate SPAs** deployed to different subdomains:
 
 | Site | Domain | Purpose | Routes |
 |------|--------|---------|--------|
-| **Student** | `streammycourse.com` | Browse and watch courses | `/`, `/details`, `/courses`, `/login`, `/privacy`, `/terms`, `/courses/:id`, `/courses/:id/lessons/:id`, `/courses/:id/modules/:moduleId/quiz` |
+| **Student** | `streammycourse.com` | Browse and watch courses | `/`, `/about`, `/faq`, `/contact`, `/research-team`, `/details`, `/courses`, `/login`, `/privacy`, `/terms`, `/refund`, `/delivery`, `/educational-disclaimer`, `/courses/:id`, `/courses/:id/lessons/:id`, `/courses/:id/modules/:moduleId/quiz` |
 | **Teacher** | `teach.streammycourse.com` | Create, edit, upload content | `/`, `/courses/:id` |
 
 ### Student Site Routes (View-Only)
 ```
-/                                    # Home (marketing / entry)
-/details                             # Course marketing / pricing (Figma parity; `/course` redirects here)
+/                                    # Research Spectrum marketing home (catalog cards from public GET /courses; no prices)
+/about                               # About instructor (public)
+/faq                                 # FAQ (public)
+/contact                             # Contact shell (no submit API yet)
+/research-team                       # Research Team explainer (no application yet)
+/details                             # Legacy course marketing / pricing (Figma parity; `/course` redirects here)
 /courses                             # Enrolled courses hub (resume / progress; `/catalog` and `/my-course` redirect here)
 /login                               # Student sign-in (Hosted UI / auth shell)
 /courses/:courseId                   # Course detail
