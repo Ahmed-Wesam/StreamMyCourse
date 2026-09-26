@@ -5,7 +5,9 @@ import { readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import type { ReactNode } from 'react'
-import { cleanup, render, screen, waitFor } from '@testing-library/react'
+import { cleanup, configure, render, screen, waitFor } from '@testing-library/react'
+
+configure({ asyncUtilTimeout: 5000 })
 import { MemoryRouter, Outlet } from 'react-router-dom'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
@@ -21,6 +23,18 @@ vi.mock('../components/auth/AuthShell', () => ({
 
 vi.mock('../pages/HomePage', () => ({
   default: () => <div data-testid="student-page-home" />,
+}))
+vi.mock('../pages/AboutInstructorPage', () => ({
+  default: () => <div data-testid="student-page-about" />,
+}))
+vi.mock('../pages/FaqPage', () => ({
+  default: () => <div data-testid="student-page-faq" />,
+}))
+vi.mock('../pages/ContactPage', () => ({
+  default: () => <div data-testid="student-page-contact" />,
+}))
+vi.mock('../pages/ResearchTeamPage', () => ({
+  default: () => <div data-testid="student-page-research-team" />,
 }))
 vi.mock('../pages/CoursePage', () => ({
   default: () => <div data-testid="student-page-course" />,
@@ -206,10 +220,53 @@ describe('StudentApp', () => {
     })
   })
 
+  it('mounts the about route at /about without AuthShell', async () => {
+    renderAt('/about')
+    expect(await screen.findByTestId('student-page-about')).toBeTruthy()
+    expect(AuthShellMock).not.toHaveBeenCalled()
+    expect(screen.queryByTestId('auth-shell')).toBeNull()
+  })
+
+  it('mounts the faq route at /faq without AuthShell', async () => {
+    renderAt('/faq')
+    expect(await screen.findByTestId('student-page-faq')).toBeTruthy()
+    expect(AuthShellMock).not.toHaveBeenCalled()
+    expect(screen.queryByTestId('auth-shell')).toBeNull()
+  })
+
+  it('mounts the contact route at /contact without AuthShell', async () => {
+    renderAt('/contact')
+    expect(await screen.findByTestId('student-page-contact')).toBeTruthy()
+    expect(AuthShellMock).not.toHaveBeenCalled()
+    expect(screen.queryByTestId('auth-shell')).toBeNull()
+  })
+
+  it('mounts the research-team route at /research-team without AuthShell', async () => {
+    renderAt('/research-team')
+    expect(await screen.findByTestId('student-page-research-team')).toBeTruthy()
+    expect(AuthShellMock).not.toHaveBeenCalled()
+    expect(screen.queryByTestId('auth-shell')).toBeNull()
+  })
+
+  it('keeps /register on the catch-all to home', async () => {
+    renderAt('/register')
+    expect(await screen.findByTestId('student-page-home')).toBeTruthy()
+  })
+
+  it('keeps /dashboard on the catch-all to home', async () => {
+    renderAt('/dashboard')
+    expect(await screen.findByTestId('student-page-home')).toBeTruthy()
+  })
+
+  it('keeps /certificates on the catch-all to home', async () => {
+    renderAt('/certificates')
+    expect(await screen.findByTestId('student-page-home')).toBeTruthy()
+  })
+
   describe('AuthGate integration', () => {
-    it('does not render AuthShell on the public home route /', () => {
+    it('does not render AuthShell on the public home route /', async () => {
       renderAt('/')
-      expect(screen.getByTestId('student-page-home')).toBeTruthy()
+      expect(await screen.findByTestId('student-page-home')).toBeTruthy()
       expect(AuthShellMock).not.toHaveBeenCalled()
       expect(screen.queryByTestId('auth-shell')).toBeNull()
     })

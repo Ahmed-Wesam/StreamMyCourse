@@ -34,9 +34,31 @@ html {
   min-height: 100%;
 }
 
+@keyframes rs-floaty {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-12px);
+  }
+}
+
 @media (prefers-reduced-motion: no-preference) {
   html {
     scroll-behavior: smooth;
+  }
+
+  .rs-hero-float {
+    animation: rs-floaty 5s cubic-bezier(0.22, 0.61, 0.36, 1) infinite;
+  }
+
+  .rs-hero-float-d1 {
+    animation-delay: 0.8s;
+  }
+
+  .rs-hero-float-d2 {
+    animation-delay: 0.4s;
   }
 }
 
