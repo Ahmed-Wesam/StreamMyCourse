@@ -31,8 +31,10 @@ import {
   CourseManagementLoadingSkeleton,
   CourseManagementNotFound,
 } from '../components/course/CourseManagementPageStates'
+import { usePageTitle } from '../lib/page-title'
 
 export default function CourseManagement() {
+  usePageTitle('Course')
   const { courseId } = useParams<{ courseId: string }>()
   const navigate = useNavigate()
   const [course, setCourse] = useState<Course | null>(null)

@@ -21,6 +21,7 @@ import {
   catalogApiUserMessage,
   incompleteModuleQuizLinkMessage,
 } from '../lib/questionBankErrors'
+import { usePageTitle } from '../lib/page-title'
 
 type ResultsModel = ModuleQuizLatestSubmission | ModuleQuizSubmitResponse
 
@@ -42,6 +43,7 @@ function applyStartResponse(
 }
 
 export default function ModuleQuizPage() {
+  usePageTitle('Quiz')
   const { courseId, moduleId } = useParams<{ courseId: string; moduleId: string }>()
   const location = useLocation()
   const [backTo, setBackTo] = useState<ModuleQuizReturnTo>(() =>

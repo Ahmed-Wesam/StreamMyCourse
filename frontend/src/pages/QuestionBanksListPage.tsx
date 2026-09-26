@@ -9,10 +9,12 @@ import {
   incompleteQuestionBanksListLinkMessage,
   questionBankUserMessage,
 } from '../lib/questionBankErrors'
+import { usePageTitle } from '../lib/page-title'
 
 const MAX_BANK_NAME_LENGTH = 80
 
 export default function QuestionBanksListPage() {
+  usePageTitle('Question bank')
   const { courseId: courseIdParam } = useParams<{ courseId: string }>()
   const navigate = useNavigate()
   const courseId = courseIdParam?.trim() ?? ''

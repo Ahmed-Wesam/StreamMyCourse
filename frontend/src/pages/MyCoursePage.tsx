@@ -9,6 +9,7 @@ import {
 } from '../lib/api/catalog'
 import type { Course, CourseModule, CourseProgress, Lesson } from '../lib/api/types'
 import { catalogApiUserMessage } from '../lib/apiUserMessages'
+import { usePageTitle } from '../lib/page-title'
 
 type CourseRowData = {
   course: Course
@@ -187,6 +188,7 @@ async function loadCourseRow(course: Course): Promise<CourseRowData> {
 }
 
 export default function MyCoursePage() {
+  usePageTitle('Courses')
   const [state, setState] = useState<PageState>({ status: 'loading' })
 
   useEffect(() => {

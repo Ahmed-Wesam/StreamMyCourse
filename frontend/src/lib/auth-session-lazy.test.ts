@@ -4,6 +4,8 @@ const fetchMe = vi.hoisted(() => vi.fn())
 const hasSignedInIdToken = vi.hoisted(() => vi.fn())
 const isAuthConfigured = vi.hoisted(() => vi.fn())
 const configureAmplify = vi.hoisted(() => vi.fn())
+const loadMergedProfileAttributes = vi.hoisted(() => vi.fn())
+const displayNameFromAttributes = vi.hoisted(() => vi.fn())
 
 vi.mock('./auth', () => ({
   isAuthConfigured: () => isAuthConfigured(),
@@ -15,6 +17,11 @@ vi.mock('./api/session', () => ({
   fetchMe: () => fetchMe(),
 }))
 
+vi.mock('./cognito-display-name', () => ({
+  loadMergedProfileAttributes: (...args: unknown[]) => loadMergedProfileAttributes(...args),
+  displayNameFromAttributes: (...args: unknown[]) => displayNameFromAttributes(...args),
+}))
+
 describe('auth-session-lazy', () => {
   beforeEach(async () => {
     vi.resetModules()
@@ -22,6 +29,8 @@ describe('auth-session-lazy', () => {
     hasSignedInIdToken.mockReset()
     isAuthConfigured.mockReset()
     configureAmplify.mockReset()
+    loadMergedProfileAttributes.mockReset()
+    displayNameFromAttributes.mockReset()
     isAuthConfigured.mockReturnValue(true)
     const mod = await import('./auth-session-lazy')
     mod.resetProfileWarmState()
@@ -103,6 +112,113 @@ describe('auth-session-lazy', () => {
     resetProfileWarmState()
     await warmUserProfileOnce(true)
 
+    expect(fetchMe).toHaveBeenCalledTimes(2)
+  })
+
+  it('getProfileDisplayNameOnce caches display name and clears on resetProfileWarmState', async () => {
+    fetchMe.mockResolvedValue({
+      userId: 'u1',
+      email: 'ada@example.com',
+      role: 'student',
+      cognitoSub: 'sub',
+      createdAt: '',
+      updatedAt: '',
+    })
+    loadMergedProfileAttributes.mockResolvedValue({ email: 'ada@example.com', given_name: 'Ada' })
+    displayNameFromAttributes.mockReturnValue('Ada')
+
+    const { getProfileDisplayNameOnce, resetProfileWarmState } = await import('./auth-session-lazy')
+    await expect(getProfileDisplayNameOnce()).resolves.toBe('Ada')
+    await expect(getProfileDisplayNameOnce()).resolves.toBe('Ada')
+    expect(fetchMe).toHaveBeenCalledTimes(1)
+    expect(displayNameFromAttributes).toHaveBeenCalledTimes(1)
+
+    resetProfileWarmState()
+    displayNameFromAttributes.mockReturnValue('Bob')
+    fetchMe.mockResolvedValue({
+      userId: 'u2',
+      email: 'bob@example.com',
+      role: 'student',
+      cognitoSub: 'sub2',
+      createdAt: '',
+      updatedAt: '',
+    })
+    loadMergedProfileAttributes.mockResolvedValue({ email: 'bob@example.com', given_name: 'Bob' })
+
+    await expect(getProfileDisplayNameOnce()).resolves.toBe('Bob')
+    expect(fetchMe).toHaveBeenCalledTimes(2)
+  })
+
+  it('does not keep a display name that resolves after sign-out reset', async () => {
+    let resolveFetch: (value: {
+      userId: string
+      email: string
+      role: string
+      cognitoSub: string
+      createdAt: string
+      updatedAt: string
+    }) => void = () => {}
+    let markFetchStarted: () => void = () => {}
+    const fetchStarted = new Promise<void>((resolve) => {
+      markFetchStarted = resolve
+    })
+    fetchMe.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveFetch = resolve
+          markFetchStarted()
+        }),
+    )
+    loadMergedProfileAttributes.mockResolvedValue({ email: 'ada@example.com', given_name: 'Ada' })
+    displayNameFromAttributes.mockReturnValue('Ada')
+
+    const { getProfileDisplayNameOnce, resetProfileWarmState } = await import('./auth-session-lazy')
+    const inFlight = getProfileDisplayNameOnce()
+    await fetchStarted
+    resetProfileWarmState()
+    resolveFetch({
+      userId: 'u1',
+      email: 'ada@example.com',
+      role: 'student',
+      cognitoSub: 'sub',
+      createdAt: '',
+      updatedAt: '',
+    })
+    await inFlight
+
+    displayNameFromAttributes.mockReturnValue('Bob')
+    fetchMe.mockResolvedValue({
+      userId: 'u2',
+      email: 'bob@example.com',
+      role: 'student',
+      cognitoSub: 'sub2',
+      createdAt: '',
+      updatedAt: '',
+    })
+    loadMergedProfileAttributes.mockResolvedValue({ email: 'bob@example.com', given_name: 'Bob' })
+
+    await expect(getProfileDisplayNameOnce()).resolves.toBe('Bob')
+  })
+
+  it('retries a display name after a failed lookup', async () => {
+    fetchMe.mockRejectedValueOnce(new Error('network'))
+    loadMergedProfileAttributes.mockRejectedValueOnce(new Error('network'))
+
+    const { getProfileDisplayNameOnce } = await import('./auth-session-lazy')
+    await expect(getProfileDisplayNameOnce()).resolves.toBeNull()
+
+    fetchMe.mockResolvedValue({
+      userId: 'u1',
+      email: 'ada@example.com',
+      role: 'student',
+      cognitoSub: 'sub',
+      createdAt: '',
+      updatedAt: '',
+    })
+    loadMergedProfileAttributes.mockResolvedValue({ email: 'ada@example.com', given_name: 'Ada' })
+    displayNameFromAttributes.mockReturnValue('Ada')
+
+    await expect(getProfileDisplayNameOnce()).resolves.toBe('Ada')
     expect(fetchMe).toHaveBeenCalledTimes(2)
   })
 })

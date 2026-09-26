@@ -1,7 +1,10 @@
-import { useAuthenticator } from '../lib/auth-ui'
-import { useEffect, useId, useState } from 'react'
-import { Link, useLocation } from 'react-router-dom'
+import { useLocation } from 'react-router-dom'
 
+import { ProfileMenu } from '../components/layout/ProfileMenu'
+import { SiteHeader, type SiteNavLink } from '../components/layout/SiteHeader'
+import { Badge } from '../components/ui/Badge'
+import { Button } from '../components/ui/Button'
+import { useAuthenticator } from '../lib/auth-ui'
 import { useCognitoDisplayName } from '../lib/cognito-display-name'
 
 const studentSiteUrl =
@@ -10,176 +13,65 @@ const studentSiteUrl =
     ? import.meta.env.VITE_STUDENT_SITE_URL
     : 'https://researchspectrum.org'
 
+const TEACHER_NAV: SiteNavLink[] = [
+  { href: '/', label: 'Dashboard' },
+  { href: '/settings/payments', label: 'Payments' },
+]
+
+const FALLBACK_PROFILE_NAME = 'Instructor'
+
+const studentSiteLinkClass =
+  'whitespace-nowrap rounded-[10px] px-[9px] py-1.5 text-[13px] font-bold text-rs-body no-underline transition-colors duration-200 hover:bg-rs-sky-2 hover:text-rs-blue'
+
 export function TeacherHeader() {
   const { user, signOut } = useAuthenticator((ctx) => [ctx.user, ctx.signOut])
-  const { label: displayName, title: displayNameTitle, ready: displayNameReady } =
-    useCognitoDisplayName(user?.username)
-  const [scrolled, setScrolled] = useState(false)
-  const [mobileOpen, setMobileOpen] = useState(false)
+  const { label: displayName, ready: displayNameReady } = useCognitoDisplayName(user?.username)
   const location = useLocation()
-  const isDashboard = location.pathname === '/'
-  const isPayments = location.pathname === '/settings/payments'
-  const menuId = useId()
+  const profileName = displayNameReady && displayName.trim() ? displayName : FALLBACK_PROFILE_NAME
 
-  useEffect(() => {
-    const onScroll = () => setScrolled(window.scrollY > 4)
-    onScroll()
-    window.addEventListener('scroll', onScroll, { passive: true })
-    return () => window.removeEventListener('scroll', onScroll)
-  }, [])
-
-  useEffect(() => {
-    setMobileOpen(false)
-  }, [location.pathname, location.search])
-
-  useEffect(() => {
-    if (!mobileOpen) return
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') setMobileOpen(false)
-    }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [mobileOpen])
-
-  const linkClass =
-    'block rounded-md px-3 py-2.5 text-base font-medium text-gray-800 hover:bg-gray-50 active:bg-gray-100'
+  const studentSiteLink = (
+    <a
+      href={studentSiteUrl}
+      target="_blank"
+      rel="noopener noreferrer"
+      className={studentSiteLinkClass}
+    >
+      View Student Site
+    </a>
+  )
 
   return (
-    <header
-      className={`sticky top-0 z-30 border-b border-slate-200/90 bg-white transition-shadow ${
-        scrolled ? 'shadow-sm shadow-slate-300/25' : ''
-      }`}
-    >
-      <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-3 sm:px-5 lg:px-10">
-        <Link to="/" className="flex min-w-0 items-center gap-2">
-          <span className="truncate text-xl font-bold tracking-tight text-gray-900">SPSS Spectrum</span>
-          <span className="hidden sm:inline-flex items-center rounded-full bg-emerald-100 px-2.5 py-0.5 text-xs font-medium text-emerald-800">
-            Instructor
-          </span>
-        </Link>
-
-        <nav className="hidden items-center gap-8 md:flex" aria-label="Main">
-          <Link
-            to="/"
-            className={`text-sm font-medium transition-colors ${
-              isDashboard ? 'text-emerald-600' : 'text-gray-700 hover:text-gray-900'
-            }`}
-          >
-            Dashboard
-          </Link>
-          <Link
-            to="/settings/payments"
-            className={`text-sm font-medium transition-colors ${
-              isPayments ? 'text-emerald-600' : 'text-gray-700 hover:text-gray-900'
-            }`}
-          >
-            Payments
-          </Link>
-          <span className="text-sm text-gray-400">|</span>
-          <a
+    <SiteHeader
+      links={TEACHER_NAV}
+      activePath={location.pathname}
+      homeHref="/"
+      badge={<Badge tone="blue">Instructor</Badge>}
+      rightSlot={
+        <>
+          {studentSiteLink}
+          <ProfileMenu
+            name={profileName}
+            subtitle="Instructor"
+            items={[{ label: 'Sign out', onSelect: () => void signOut() }]}
+          />
+        </>
+      }
+      mobileCta={
+        <>
+          <Button
             href={studentSiteUrl}
+            variant="ghost"
+            size="sm"
             target="_blank"
             rel="noopener noreferrer"
-            className="text-sm font-medium text-gray-500 transition-colors hover:text-gray-700"
           >
-            View Student Site →
-          </a>
-          <span className="text-sm text-gray-400">|</span>
-          {displayNameReady ? (
-            <span
-              className="max-w-[12rem] truncate text-sm font-medium text-gray-700 transition-colors"
-              title={displayNameTitle}
-            >
-              {displayName}
-            </span>
-          ) : null}
-          <button
-            type="button"
-            className="text-sm font-medium text-emerald-700 hover:text-emerald-800"
-            onClick={() => void signOut()}
-          >
+            View Student Site
+          </Button>
+          <Button type="button" variant="ghost" size="sm" onClick={() => void signOut()}>
             Sign out
-          </button>
-        </nav>
-
-        <div className="flex items-center md:hidden">
-          <button
-            type="button"
-            className="inline-flex items-center justify-center rounded-md p-2 text-gray-700 hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-emerald-500"
-            aria-expanded={mobileOpen}
-            aria-controls={menuId}
-            aria-label={mobileOpen ? 'Close menu' : 'Open menu'}
-            onClick={() => setMobileOpen((o) => !o)}
-          >
-            {mobileOpen ? (
-              <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-              </svg>
-            ) : (
-              <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
-              </svg>
-            )}
-          </button>
-        </div>
-      </div>
-
-      {mobileOpen && (
-        <>
-          <button
-            type="button"
-            className="fixed inset-0 z-30 bg-black/25 md:hidden"
-            aria-label="Close menu"
-            onClick={() => setMobileOpen(false)}
-          />
-          <nav
-            id={menuId}
-            className="absolute left-0 right-0 top-full z-40 border-b border-gray-200 bg-white shadow-lg md:hidden"
-            aria-label="Mobile"
-          >
-            <div className="mx-auto max-w-7xl space-y-0.5 px-3 py-3 sm:px-5 lg:px-10">
-              <Link
-                to="/"
-                className={linkClass}
-                onClick={() => setMobileOpen(false)}
-              >
-                Dashboard
-              </Link>
-              <Link
-                to="/settings/payments"
-                className={linkClass}
-                onClick={() => setMobileOpen(false)}
-              >
-                Payments
-              </Link>
-              <a
-                href={studentSiteUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className={linkClass}
-                onClick={() => setMobileOpen(false)}
-              >
-                View Student Site →
-              </a>
-              {displayNameReady ? (
-                <span className={linkClass} title={displayNameTitle}>
-                  {displayName}
-                </span>
-              ) : null}
-              <button
-                type="button"
-                className={`${linkClass} w-full text-left text-emerald-700`}
-                onClick={() => {
-                  setMobileOpen(false)
-                  void signOut()
-                }}
-              >
-                Sign out
-              </button>
-            </div>
-          </nav>
+          </Button>
         </>
-      )}
-    </header>
+      }
+    />
   )
 }

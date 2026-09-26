@@ -35,6 +35,7 @@ import {
   questionBankStatusLabel,
   UNTITLED_QUESTION_BANK_LABEL,
 } from '../lib/questionBankDisplay'
+import { usePageTitle } from '../lib/page-title'
 
 const MAX_BANK_NAME_LENGTH = 80
 
@@ -98,6 +99,7 @@ function QuestionBankStudioHeader({
 }
 
 export default function QuestionBankStudioPage() {
+  usePageTitle('Question bank')
   const { courseId: courseIdParam, bankId: bankIdParam } = useParams<{ courseId: string; bankId: string }>()
   const navigate = useNavigate()
   const courseId = courseIdParam?.trim() ?? ''

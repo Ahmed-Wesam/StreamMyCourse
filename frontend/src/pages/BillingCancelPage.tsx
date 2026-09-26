@@ -1,8 +1,10 @@
 import { Link } from 'react-router-dom'
 
 import { billingCancelMessage } from '../lib/subscribeCopy'
+import { usePageTitle } from '../lib/page-title'
 
 export default function BillingCancelPage() {
+  usePageTitle('Payment')
   return (
     <div className="mx-auto max-w-lg px-6 py-16 text-center">
       <h1 className="text-2xl font-bold text-foreground">Checkout canceled</h1>

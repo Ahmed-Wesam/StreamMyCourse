@@ -12,8 +12,10 @@ import {
 } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { ImageWithFallback } from '../components/figma/ImageWithFallback'
+import { BRAND_NAME } from '../lib/brand'
 import { FIGMA_MOCK_COURSE_INSTRUCTOR_IMAGE_SRC } from '../lib/figma-mocks.assets'
 import { FIGMA_MOCK_COURSE_INSTRUCTOR_NAME } from '../lib/figma-mocks.data'
+import { usePageTitle } from '../lib/page-title'
 
 const publications = [
   {
@@ -51,7 +53,7 @@ const testimonials = [
   {
     name: 'Sarah Johnson',
     role: 'Public Health Researcher',
-    text: 'SPSS Spectrum completely transformed how I approach data analysis. The instructor breaks down complex statistical concepts into clear, manageable steps. I now run full regression models with confidence.',
+    text: `${BRAND_NAME} completely transformed how I approach data analysis. The instructor breaks down complex statistical concepts into clear, manageable steps. I now run full regression models with confidence.`,
   },
   {
     name: 'Michael Chen',
@@ -61,11 +63,13 @@ const testimonials = [
   {
     name: 'Emily Rodriguez',
     role: 'Market Research Analyst',
-    text: 'I had no stats background at all. SPSS Spectrum walked me through everything from data entry to advanced analysis. My team is now amazed by the reports I produce.',
+    text: `I had no stats background at all. ${BRAND_NAME} walked me through everything from data entry to advanced analysis. My team is now amazed by the reports I produce.`,
   },
 ]
 
 export default function HomePage() {
+  usePageTitle()
+
   return (
     <div className="min-h-screen bg-background">
       <section className="bg-primary text-primary-foreground">
@@ -85,7 +89,7 @@ export default function HomePage() {
               lineHeight: 1.15,
             }}
           >
-            SPSS Spectrum
+            {BRAND_NAME}
           </h1>
           <p className="text-xl opacity-90 mb-10 max-w-2xl mx-auto">
             The complete guide to mastering IBM SPSS Statistics — from data entry
@@ -217,7 +221,7 @@ export default function HomePage() {
                   researchers.
                 </p>
                 <p className="text-muted-foreground leading-relaxed mt-3">
-                  SPSS Spectrum was designed from the ground up based on common pain
+                  {BRAND_NAME} was designed from the ground up based on common pain
                   points students and researchers face — making the course practical,
                   approachable, and immediately applicable to your own data.
                 </p>
@@ -306,7 +310,7 @@ export default function HomePage() {
           </h2>
           <p className="opacity-90 mb-8 max-w-xl mx-auto">
             Join thousands of students and researchers who have transformed their data
-            analysis skills with SPSS Spectrum.
+            analysis skills with {BRAND_NAME}.
           </p>
           <Link
             to="/details#pricing"

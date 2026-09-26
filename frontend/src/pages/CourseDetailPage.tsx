@@ -28,6 +28,7 @@ import { groupLessonsByModule } from '../lib/lessonGrouping'
 import { lessonPlayerPath, moduleQuizLinkTo } from '../lib/moduleQuizNavigation'
 import { PricingSection } from '../components/course/PricingSection'
 import { FIGMA_MOCK_COURSE_INSTRUCTOR_NAME, FIGMA_MOCK_COURSE_PRICING_PLANS } from '../lib/figma-mocks.data'
+import { usePageTitle } from '../lib/page-title'
 
 /** 0–100 for the thumbnail bar, or null when no in-progress / completed state to show. */
 function lessonThumbnailProgressPercent(
@@ -640,6 +641,8 @@ export default function CourseDetailPage() {
   const [subscribing, setSubscribing] = useState(false)
   const [courseProgress, setCourseProgress] = useState<CourseProgress | null>(null)
   const [markingLessonId, setMarkingLessonId] = useState<string | null>(null)
+
+  usePageTitle(course?.title?.trim() || 'Course')
 
   const loadCourseData = useCallback(async () => {
     setError(null)

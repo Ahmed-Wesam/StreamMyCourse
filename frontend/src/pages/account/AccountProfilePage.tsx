@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react'
 import { fetchMe } from '../../lib/api/session'
 import type { UserProfile } from '../../lib/api/types'
 import { catalogApiUserMessage } from '../../lib/apiUserMessages'
+import { usePageTitle } from '../../lib/page-title'
 import { shouldSuppressInlineSessionSupersededMessage } from '../../lib/session-superseded-inline'
 
 type ProfileState =
@@ -17,6 +18,7 @@ function displayNameFromEmail(email: string): string {
 }
 
 export default function AccountProfilePage() {
+  usePageTitle('Account')
   const [state, setState] = useState<ProfileState>({ status: 'loading' })
 
   useEffect(() => {

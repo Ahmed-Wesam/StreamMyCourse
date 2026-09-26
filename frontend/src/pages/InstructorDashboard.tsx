@@ -9,8 +9,10 @@ import {
 } from '../lib/api/catalog'
 import type { Course } from '../lib/api/types'
 import { catalogApiUserMessage } from '../lib/apiUserMessages'
+import { usePageTitle } from '../lib/page-title'
 
 export default function InstructorDashboard() {
+  usePageTitle('Dashboard')
   const navigate = useNavigate()
   const [courses, setCourses] = useState<Course[]>([])
   const [loading, setLoading] = useState(true)

@@ -1,30 +1,31 @@
+@import '@fontsource-variable/plus-jakarta-sans/wght.css';
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
-/* Design tokens — cool neutrals + blue primary (subtle site-wide harmony) */
+/* Design tokens — Research Spectrum prototype palette */
 :root {
-  --font-size: 18px;
-  /* Slightly cool canvas so white cards read clearly */
-  --background: #f5f8fc;
-  --foreground: oklch(0.145 0.012 255);
+  --font-size: 16px;
+  --background: #ffffff;
+  --foreground: #0b1733;
   --card: #ffffff;
-  --card-foreground: oklch(0.145 0.012 255);
+  --card-foreground: #0b1733;
   --popover: #ffffff;
-  --popover-foreground: oklch(0.145 0.012 255);
-  --primary: #2563eb;
+  --popover-foreground: #0b1733;
+  --primary: #1e5eff;
   --primary-foreground: #ffffff;
-  --secondary: #eef3f9;
-  --secondary-foreground: #0f172a;
-  --muted: #e6edf5;
-  --muted-foreground: #5c6578;
-  --accent: #e8f0fa;
-  --accent-foreground: #0f172a;
+  --secondary: #f5f8ff;
+  --secondary-foreground: #0b1733;
+  --muted: #eaf1ff;
+  --muted-foreground: #7180a0;
+  --accent: #eaf1ff;
+  --accent-foreground: #0b1733;
   --destructive: #d4183d;
   --destructive-foreground: #ffffff;
-  --border: rgba(30, 58, 138, 0.09);
+  --border: #e7ecf7;
   --input: transparent;
-  --ring: #93c5fd;
+  --ring: #1e5eff;
 }
 
 /* Base styles */
@@ -33,15 +34,160 @@ html {
   min-height: 100%;
 }
 
+@media (prefers-reduced-motion: no-preference) {
+  html {
+    scroll-behavior: smooth;
+  }
+}
+
 body {
   margin: 0;
-  font-family: system-ui, -apple-system, sans-serif;
+  font-family: "Plus Jakarta Sans Variable", "Plus Jakarta Sans", system-ui, sans-serif;
   @apply text-foreground antialiased;
   background-color: var(--background);
-  /* Very soft blue wash — fixed so long pages feel consistent */
-  background-image:
-    radial-gradient(ellipse 120% 72% at 50% -28%, rgba(59, 130, 246, 0.055), transparent 54%),
-    radial-gradient(ellipse 82% 52% at 100% 100%, rgba(37, 99, 235, 0.042), transparent 50%),
-    radial-gradient(ellipse 68% 42% at 0% 100%, rgba(14, 165, 233, 0.032), transparent 48%);
-  background-attachment: fixed;
+}
+
+/* RS-1 chrome helpers — keep long utility strings out of the JS entry gzip budget */
+@layer components {
+  .rs-btn {
+    @apply inline-flex items-center justify-center gap-[9px] whitespace-nowrap rounded-full border-0 px-[26px] py-[14px] text-[15.5px] font-bold cursor-pointer transition duration-300 ease-rs;
+    @apply focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-rs-blue;
+    font-family: inherit;
+  }
+
+  .rs-btn-primary {
+    @apply bg-rs-grad-cta text-white shadow-[0_14px_30px_-10px_rgba(30,94,255,.55)];
+  }
+
+  .rs-btn-primary:hover:not(:disabled):not([aria-disabled='true']) {
+    @apply -translate-y-0.5 shadow-[0_22px_40px_-12px_rgba(30,94,255,.6)];
+  }
+
+  .rs-btn-ghost {
+    @apply border-[1.5px] border-solid border-rs-line bg-white text-rs-navy;
+  }
+
+  .rs-btn-ghost:hover:not(:disabled):not([aria-disabled='true']) {
+    @apply -translate-y-0.5 border-rs-blue text-rs-blue;
+  }
+
+  .rs-btn:disabled,
+  .rs-btn[aria-disabled='true'] {
+    @apply pointer-events-none cursor-not-allowed opacity-70;
+  }
+
+  .rs-btn-sm {
+    @apply px-[18px] py-[9px] text-[13.5px];
+  }
+
+  .rs-btn-arrow {
+    @apply shrink-0 transition duration-300 ease-rs;
+  }
+
+  .group:hover .rs-btn-arrow-primary {
+    transform: translateX(3px);
+  }
+
+  .rs-site-bar {
+    @apply mx-auto flex h-[76px] max-w-wrap items-center justify-between px-7;
+  }
+
+  .rs-site-brand {
+    @apply flex min-w-0 items-center gap-3;
+  }
+
+  .rs-site-lockup {
+    @apply flex items-center gap-[9px] no-underline;
+  }
+
+  .rs-site-word {
+    @apply text-sm font-extrabold leading-none tracking-[-0.02em];
+  }
+
+  .rs-site-desktop-nav {
+    @apply hidden items-center gap-0.5 nav:flex;
+  }
+
+  .rs-site-tools {
+    @apply flex items-center gap-2;
+  }
+
+  .rs-site-desktop-slot {
+    @apply hidden items-center gap-2 nav:flex;
+  }
+
+  .rs-site-mobile-nav {
+    @apply border-b border-rs-line bg-white px-5 pb-6 pt-3.5 shadow-rs nav:hidden;
+  }
+
+  .rs-site-mobile-link {
+    @apply block border-b border-rs-line-2 px-2 py-[14px] text-base font-semibold text-rs-navy;
+  }
+
+  .rs-site-signin {
+    @apply rounded-full px-3.5 py-2 text-sm font-semibold text-rs-navy no-underline transition-colors hover:bg-rs-sky-2;
+  }
+
+  .rs-site-mark {
+    @apply h-9 w-auto shrink-0 object-contain;
+  }
+
+  .rs-foot-social {
+    @apply flex h-[38px] w-[38px] items-center justify-center rounded-[11px] border border-rs-line text-rs-muted transition duration-[250ms] hover:border-transparent hover:bg-rs-grad-cta hover:text-white;
+  }
+
+  .rs-site-header {
+    @apply sticky top-0 z-50 transition-[background,box-shadow,backdrop-filter] duration-300 ease-rs;
+  }
+
+  .rs-site-header-scrolled {
+    @apply bg-[rgba(255,255,255,.82)] shadow-[0_1px_0_#e7ecf7,0_8px_30px_-22px_rgba(15,40,110,.4)] backdrop-blur-[16px];
+  }
+
+  .rs-site-nav-link {
+    @apply whitespace-nowrap rounded-[10px] px-[9px] py-1.5 text-[13px] font-bold text-rs-body transition-colors duration-200 hover:bg-rs-sky-2 hover:text-rs-blue;
+  }
+
+  .rs-site-nav-link-active {
+    @apply bg-rs-sky-2 text-rs-blue;
+  }
+
+  .rs-site-menu-btn {
+    @apply flex size-11 items-center justify-center rounded-xl border-0 bg-transparent transition-colors duration-200 ease-rs hover:bg-rs-sky-2 nav:hidden;
+  }
+
+  .rs-site-burger {
+    @apply relative block h-[2.2px] w-[22px] rounded-sm bg-rs-navy transition duration-300 ease-rs;
+  }
+
+  .rs-site-burger::before,
+  .rs-site-burger::after {
+    content: '';
+    @apply absolute left-0 block h-[2.2px] w-[22px] rounded-sm bg-rs-navy transition duration-300 ease-rs;
+  }
+
+  .rs-site-burger::before {
+    top: -7px;
+  }
+
+  .rs-site-burger::after {
+    top: 7px;
+  }
+
+  .rs-site-burger-open {
+    @apply bg-transparent;
+  }
+
+  .rs-site-burger-open::before,
+  .rs-site-burger-open::after {
+    top: 0;
+  }
+
+  .rs-site-burger-open::before {
+    transform: rotate(45deg);
+  }
+
+  .rs-site-burger-open::after {
+    transform: rotate(-45deg);
+  }
 }
