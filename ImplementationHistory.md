@@ -6,6 +6,30 @@
 
 ---
 
+## 2026-09-26 — Research Spectrum marketing pages (RS-2)
+
+### Decisions
+
+- Prototype marketing copy ships as launch copy. Instructor bio, credentials, and publications are copied from Bahaa's About page; photo is [`frontend/src/assets/instructors/dr-bahaa-aburayya.webp`](frontend/src/assets/instructors/dr-bahaa-aburayya.webp).
+- Homepage course cards are whatever public `GET /courses` returns. The courses-section heading stays the literal line "Four Courses. One Complete Research Skill Set."
+- No dollar prices, checkout, contact `POST`, or Research Team apply control. One FAQ purchase answer dropped `$50` / `$150` and kept the rest of the sentence.
+- Marketing catalog fetch is [`listPublishedCourses`](frontend/src/lib/api/public-catalog.ts) (`credentials: 'omit'`, no Amplify). `https:` thumbnails only. Published rows with a missing or blank id are dropped so cards do not link to `/courses/`.
+- Contact submit stays a shell (no `POST`). The “not available yet” notice uses the page’s info colors, not an error banner.
+
+### What landed
+
+- Lazy public routes in [`frontend/src/student-app/App.tsx`](frontend/src/student-app/App.tsx): `/about`, `/faq`, `/contact`, `/research-team`. Home is lazy too.
+- [`isStudentIdleProbePath`](frontend/src/lib/auth-bootstrap.ts) drives the student header idle probe and the AuthShell skip list.
+- Homepage sections under [`frontend/src/pages/home/`](frontend/src/pages/home/); About, FAQ, Research Team, Contact pages; legal pages restyled in [`LegalDocumentPage.tsx`](frontend/src/pages/legal/LegalDocumentPage.tsx) (wording unchanged).
+- Removed unused [`frontend/src/lib/figma-mocks.assets.ts`](frontend/src/lib/figma-mocks.assets.ts) after the homepage stopped using the mock instructor image.
+
+### Verification
+
+- [x] `npm run lint` / `npm run knip` / `npm run test` (85 files, 648 tests) / `npm run build:all` / `npm run check:bundle` — student `firstLoadPublic` **75.96 KB**. The student app route test waits up to 5s for the lazy home chunk.
+- [ ] Browser viewport QA — not run (no browser tools in this session).
+
+---
+
 ## 2026-09-25 — Research Spectrum design foundation (RS-1)
 
 ### Decisions
