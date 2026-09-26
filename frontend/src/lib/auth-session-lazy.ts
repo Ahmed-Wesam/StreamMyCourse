@@ -8,11 +8,17 @@ import { isStudentSessionSuperseded } from './student-session-superseded-state'
 
 let profileWarmDone = false
 let amplifyConfigured = false
+/** Successful label only. Failures stay uncached so the next probe can retry. */
+let cachedProfileDisplayName: string | undefined
+/** Bumped on sign-out so an in-flight lookup cannot repopulate the cache. */
+let profileNameEpoch = 0
 
 /** Reset warm state (e.g. after sign-out). */
 export function resetProfileWarmState(): void {
   profileWarmDone = false
   amplifyConfigured = false
+  cachedProfileDisplayName = undefined
+  profileNameEpoch += 1
 }
 
 /** Called after AuthShell bootstrap successfully warms /users/me. */
@@ -62,6 +68,44 @@ export async function warmUserProfileOnce(alreadySignedIn = false): Promise<void
     await fetchMe()
   } catch {
     profileWarmDone = false
+  }
+}
+
+/**
+ * Resolve a short profile label for chrome (ProfileMenu). Uses /users/me email plus
+ * ID-token claims via cognito-display-name (dynamic import only). Cached until reset.
+ */
+export async function getProfileDisplayNameOnce(): Promise<string | null> {
+  if (isStudentSessionSuperseded()) return null
+  if (cachedProfileDisplayName !== undefined) return cachedProfileDisplayName
+  const epoch = profileNameEpoch
+  if (!(await ensureAmplifyConfigured())) return null
+  if (epoch !== profileNameEpoch || isStudentSessionSuperseded()) return null
+
+  try {
+    const [{ fetchMe }, { loadMergedProfileAttributes, displayNameFromAttributes }] =
+      await Promise.all([import('./api/session'), import('./cognito-display-name')])
+
+    let email = ''
+    try {
+      const me = await fetchMe()
+      email = typeof me.email === 'string' ? me.email.trim() : ''
+    } catch {
+      // Token claims alone may still yield a label.
+    }
+
+    if (epoch !== profileNameEpoch || isStudentSessionSuperseded()) return null
+
+    const poolAttrs = email ? { email } : {}
+    const attrs = await loadMergedProfileAttributes(poolAttrs)
+    if (epoch !== profileNameEpoch || isStudentSessionSuperseded()) return null
+
+    const label = displayNameFromAttributes(attrs, email).trim()
+    if (!label || epoch !== profileNameEpoch) return null
+    cachedProfileDisplayName = label
+    return label
+  } catch {
+    return null
   }
 }
 

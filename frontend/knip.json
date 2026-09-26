@@ -6,5 +6,9 @@
     "src/student-main.tsx",
     "src/teacher-main.tsx"
   ],
-  "ignoreDependencies": ["@emnapi/core", "@emnapi/runtime"]
+  "ignoreDependencies": [
+    "@emnapi/core",
+    "@emnapi/runtime",
+    "@fontsource-variable/plus-jakarta-sans"
+  ]
 }

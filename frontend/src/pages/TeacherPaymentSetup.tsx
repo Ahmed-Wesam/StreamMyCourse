@@ -8,7 +8,9 @@ import {
   type MerchantSetupChecklist,
   type MerchantStatusResponse,
 } from '../lib/billing'
+import { BRAND_NAME } from '../lib/brand'
 import { privacyUrl, termsUrl } from '../lib/legalUrls'
+import { usePageTitle } from '../lib/page-title'
 
 const CHECKLIST_ORDER: (keyof MerchantSetupChecklist)[] = [
   'paytabsAccountCreated',
@@ -31,6 +33,7 @@ const CHECKLIST_LABELS: Record<keyof MerchantSetupChecklist, string> = {
 }
 
 export default function TeacherPaymentSetup() {
+  usePageTitle('Payments')
   const [status, setStatus] = useState<MerchantStatusResponse | null>(null)
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
@@ -68,7 +71,7 @@ export default function TeacherPaymentSetup() {
           <h1 className="text-2xl font-bold tracking-tight text-gray-900">Payment setup</h1>
           <p className="mt-2 text-sm text-gray-600">
             Student subscriptions are billed in Jordanian dinar (JOD) as a monthly all-access plan.
-            You are the merchant of record with PayTabs; SPSS Spectrum hosts the API and payment
+            You are the merchant of record with PayTabs; {BRAND_NAME} hosts the API and payment
             notifications only.
           </p>
         </div>

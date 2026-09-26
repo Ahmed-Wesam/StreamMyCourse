@@ -23,7 +23,7 @@ describe('HomePage', () => {
 
     expect(
       screen.getByRole('heading', {
-        name: /SPSS Spectrum/i,
+        name: /Research Spectrum/i,
         level: 1,
       }),
     ).toBeTruthy()

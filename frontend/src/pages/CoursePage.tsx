@@ -16,6 +16,8 @@ import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { PricingSection } from '../components/course/PricingSection'
 import { ImageWithFallback } from '../components/figma/ImageWithFallback'
+import { BRAND_NAME } from '../lib/brand'
+import { usePageTitle } from '../lib/page-title'
 
 const modules = [
   {
@@ -204,6 +206,8 @@ function ModuleAccordion({ mod }: { mod: (typeof modules)[number] }) {
 }
 
 export default function CoursePage() {
+  usePageTitle('Course')
+
   return (
     <div className="min-h-screen bg-background">
       <section className="bg-primary text-primary-foreground">
@@ -224,7 +228,7 @@ export default function CoursePage() {
                   lineHeight: 1.2,
                 }}
               >
-                SPSS Spectrum
+                {BRAND_NAME}
               </h1>
               <p className="opacity-90 mb-6 leading-relaxed">
                 A comprehensive, practical course designed to take you from complete

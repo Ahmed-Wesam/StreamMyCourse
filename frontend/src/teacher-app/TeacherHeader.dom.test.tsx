@@ -17,6 +17,12 @@ vi.mock('../lib/cognito-display-name', () => ({
   useCognitoDisplayName: (...args: unknown[]) => useCognitoDisplayNameMock(...args),
 }))
 
+async function openProfileMenu() {
+  const trigger = await screen.findByRole('button', { name: /Account menu/i })
+  fireEvent.click(trigger)
+  return screen.getByRole('menu')
+}
+
 describe('TeacherHeader', () => {
   async function loadHeader() {
     return (await import('./TeacherHeader')).TeacherHeader
@@ -47,16 +53,19 @@ describe('TeacherHeader', () => {
     vi.resetModules()
   })
 
-  it('shows Instructor badge and Dashboard link on home', async () => {
+  it('shows Instructor badge and Dashboard and Payments links on home', async () => {
     useAuthenticatorMock.mockReturnValue({
       user: { username: 'teacher@example.com' },
       signOut: vi.fn(),
       authStatus: 'authenticated',
     })
     await renderTestRoot()
-    expect(screen.getByText('Instructor')).toBeTruthy()
-    const main = screen.getByRole('navigation', { name: 'Main' })
+    expect(screen.getAllByText('Instructor').length).toBeGreaterThanOrEqual(1)
+    const main = screen.getByRole('navigation', { name: 'Primary' })
     expect(within(main).getByRole('link', { name: 'Dashboard' }).getAttribute('href')).toBe('/')
+    expect(within(main).getByRole('link', { name: 'Payments' }).getAttribute('href')).toBe(
+      '/settings/payments',
+    )
   })
 
   it('uses sticky positioning so page content is not hidden under the header', async () => {
@@ -67,7 +76,7 @@ describe('TeacherHeader', () => {
     })
     const { container } = await renderTestRoot()
     const header = container.querySelector('header')
-    expect(header?.className).toMatch(/sticky/)
+    expect(header?.className).toContain('rs-site-header')
     expect(header?.className).not.toMatch(/fixed/)
   })
 
@@ -82,6 +91,8 @@ describe('TeacherHeader', () => {
     await renderTestRoot()
     const link = screen.getByRole('link', { name: /View Student Site/i })
     expect(link.getAttribute('href')).toBe('https://student.example.test/')
+    expect(link.getAttribute('target')).toBe('_blank')
+    expect(link.getAttribute('rel')).toMatch(/noopener/)
   })
 
   it('uses researchspectrum.org fallback for student site link when VITE_STUDENT_SITE_URL is unset', async () => {
@@ -94,9 +105,11 @@ describe('TeacherHeader', () => {
     await renderTestRoot()
     const link = screen.getByRole('link', { name: /View Student Site/i })
     expect(link.getAttribute('href')).toBe('https://researchspectrum.org')
+    expect(link.getAttribute('target')).toBe('_blank')
+    expect(link.getAttribute('rel')).toMatch(/noopener/)
   })
 
-  it('calls signOut from desktop control', async () => {
+  it('calls signOut from desktop ProfileMenu', async () => {
     const signOut = vi.fn().mockResolvedValue(undefined)
     useAuthenticatorMock.mockReturnValue({
       user: { username: 't@example.com' },
@@ -104,7 +117,8 @@ describe('TeacherHeader', () => {
       authStatus: 'authenticated',
     })
     await renderTestRoot()
-    fireEvent.click(screen.getByRole('button', { name: 'Sign out' }))
+    const menu = await openProfileMenu()
+    fireEvent.click(within(menu).getByRole('menuitem', { name: 'Sign out' }))
     await waitFor(() => expect(signOut).toHaveBeenCalledTimes(1))
   })
 
@@ -134,10 +148,10 @@ describe('TeacherHeader', () => {
       </AuthenticatorProvider>,
     )
     fireEvent.click(screen.getByRole('button', { name: 'Open menu' }))
-    const mobileNav = screen.getByRole('navigation', { name: 'Mobile' })
+    const mobileNav = screen.getByRole('navigation', { name: /mobile/i })
     fireEvent.click(within(mobileNav).getByRole('link', { name: 'Dashboard' }))
     await waitFor(() => {
-      expect(screen.queryByRole('navigation', { name: 'Mobile' })).toBeNull()
+      expect(screen.queryByRole('navigation', { name: /mobile/i })).toBeNull()
     })
   })
 
@@ -150,11 +164,12 @@ describe('TeacherHeader', () => {
     const { container } = await renderTestRoot()
     const header = container.querySelector('header')
     expect(header).toBeTruthy()
-    expect(header?.className).not.toMatch(/shadow-sm/)
-    const scrollSpy = vi.spyOn(window, 'scrollY', 'get').mockReturnValue(10)
+    expect(header?.className).toContain('rs-site-header')
+    expect(header?.className).not.toContain('rs-site-header-scrolled')
+    const scrollSpy = vi.spyOn(window, 'scrollY', 'get').mockReturnValue(21)
     fireEvent.scroll(window)
     await waitFor(() => {
-      expect(header?.className).toMatch(/shadow-sm/)
+      expect(header?.className).toContain('rs-site-header-scrolled')
     })
     scrollSpy.mockRestore()
   })

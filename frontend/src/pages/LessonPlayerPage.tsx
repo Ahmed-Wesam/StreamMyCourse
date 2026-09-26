@@ -28,6 +28,7 @@ import {
   courseNotFoundMessage,
   incompleteLessonPlayerLinkMessage,
 } from '../lib/apiUserMessages'
+import { usePageTitle } from '../lib/page-title'
 import { useRevokeLessonPlaybackOnSessionSuperseded } from '../lib/use-revoke-lesson-playback-on-session-superseded'
 import { readMdUpMatch, useIsMdUp } from '../lib/useMediaQuery'
 import { LessonPlayerMobileView } from './lesson-player/LessonPlayerMobileView'
@@ -171,6 +172,7 @@ function LessonPrimaryColumn({
 
 
 export default function LessonPlayerPage() {
+  usePageTitle('Lesson')
   const params = useParams()
   const [searchParams] = useSearchParams()
   const courseId = useMemo(() => params.courseId ?? '', [params.courseId])

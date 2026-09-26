@@ -3,8 +3,10 @@ import { Navigate } from 'react-router-dom'
 
 import { SignIn } from '../components/auth/SignIn'
 import { isAuthConfigured } from '../lib/auth'
+import { usePageTitle } from '../lib/page-title'
 
 export default function StudentLoginPage() {
+  usePageTitle('Sign in')
   const authConfigured = isAuthConfigured()
   const { authStatus } = useAuthenticator((ctx) => [ctx.authStatus])
 

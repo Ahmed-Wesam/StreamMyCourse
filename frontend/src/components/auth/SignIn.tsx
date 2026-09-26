@@ -2,7 +2,9 @@ import { useAuthenticator } from '../../lib/auth-ui'
 import { signInWithRedirect } from 'aws-amplify/auth'
 import type { ReactNode } from 'react'
 
+import { BRAND_NAME } from '../../lib/brand'
 import { persistReturnPathBeforeHostedUi } from '../../lib/post-login-return'
+import { usePageTitle } from '../../lib/page-title'
 
 export const GOOGLE_SIGN_IN_LABEL = 'Continue with Google'
 
@@ -10,33 +12,26 @@ type SignInProps = {
   children?: ReactNode
 }
 
-/**
- * Google Hosted UI only: custom CTA (no Amplify Authenticator username/password subtree).
- */
-export function SignIn({ children }: SignInProps) {
-  const { authStatus } = useAuthenticator((ctx) => [ctx.authStatus])
-
-  if (authStatus === 'authenticated') {
-    return <>{children}</>
-  }
-
-  if (authStatus === 'configuring') {
-    return (
-      <div
-        className="mx-auto flex w-full max-w-md flex-col items-center justify-center px-4 py-12"
-        role="status"
-        aria-live="polite"
-      >
-        <div className="w-full rounded-2xl border border-slate-200/80 bg-white/90 p-8 shadow-sm shadow-slate-200/60 backdrop-blur-sm">
-          <p className="text-center text-sm font-medium text-slate-600">Signing you in…</p>
-          <div className="mx-auto mt-4 h-1.5 w-40 overflow-hidden rounded-full bg-slate-100">
-            <div className="h-full w-1/2 animate-pulse rounded-full bg-emerald-500/80" />
-          </div>
+function SignInConfiguring() {
+  usePageTitle('Sign in')
+  return (
+    <div
+      className="mx-auto flex w-full max-w-md flex-col items-center justify-center px-4 py-12"
+      role="status"
+      aria-live="polite"
+    >
+      <div className="w-full rounded-2xl border border-slate-200/80 bg-white/90 p-8 shadow-sm shadow-slate-200/60 backdrop-blur-sm">
+        <p className="text-center text-sm font-medium text-slate-600">Signing you in…</p>
+        <div className="mx-auto mt-4 h-1.5 w-40 overflow-hidden rounded-full bg-slate-100">
+          <div className="h-full w-1/2 animate-pulse rounded-full bg-emerald-500/80" />
         </div>
       </div>
-    )
-  }
+    </div>
+  )
+}
 
+function SignInForm() {
+  usePageTitle('Sign in')
   return (
     <div className="mx-auto w-full max-w-md px-4 py-12">
       <div className="relative overflow-hidden rounded-2xl border border-slate-200/80 bg-white/95 p-8 shadow-lg shadow-slate-300/30 backdrop-blur-sm">
@@ -46,7 +41,7 @@ export function SignIn({ children }: SignInProps) {
         />
         <div className="relative flex flex-col items-stretch gap-5">
           <div className="text-center">
-            <p className="text-xs font-semibold uppercase tracking-wide text-emerald-700">SPSS Spectrum</p>
+            <p className="text-xs font-semibold uppercase tracking-wide text-emerald-700">{BRAND_NAME}</p>
             <h1 className="mt-1 text-2xl font-semibold tracking-tight text-slate-900">Welcome!</h1>
             <p className="mt-2 text-sm text-slate-600">Sign in with Google to continue.</p>
           </div>
@@ -85,4 +80,21 @@ export function SignIn({ children }: SignInProps) {
       </div>
     </div>
   )
+}
+
+/**
+ * Google Hosted UI only: custom CTA (no Amplify Authenticator username/password subtree).
+ */
+export function SignIn({ children }: SignInProps) {
+  const { authStatus } = useAuthenticator((ctx) => [ctx.authStatus])
+
+  if (authStatus === 'authenticated') {
+    return <>{children}</>
+  }
+
+  if (authStatus === 'configuring') {
+    return <SignInConfiguring />
+  }
+
+  return <SignInForm />
 }

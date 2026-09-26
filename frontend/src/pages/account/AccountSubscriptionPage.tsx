@@ -16,6 +16,7 @@ import {
   setProviderCancelRetryFlag,
 } from '../../lib/billingProviderCancelRetry'
 import { catalogApiUserMessage } from '../../lib/apiUserMessages'
+import { usePageTitle } from '../../lib/page-title'
 import { shouldSuppressInlineSessionSupersededMessage } from '../../lib/session-superseded-inline'
 import { subscribeCtaLabel } from '../../lib/subscribeCopy'
 
@@ -53,6 +54,7 @@ function isCanceledAtPeriodEnd(summary: SubscriptionSummary): boolean {
 }
 
 export default function AccountSubscriptionPage() {
+  usePageTitle('Subscription')
   const [state, setState] = useState<PageState>({ status: 'loading' })
   const [actionBusy, setActionBusy] = useState<'cancel' | null>(null)
   const [actionError, setActionError] = useState<string | null>(null)

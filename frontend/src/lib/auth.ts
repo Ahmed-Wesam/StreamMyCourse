@@ -1,22 +1,13 @@
 import { Amplify } from 'aws-amplify'
 
-import { cognitoHostedUiEnvComplete } from './cognito-hosted-ui-env'
+import { isAuthConfigured } from './is-auth-configured'
+
+export { isAuthConfigured }
 
 /**
  * Public SPAs use Cognito Hosted UI / OAuth only. Native Amplify `loginWith.email`
  * is intentionally not configured.
  */
-
-/**
- * Returns true when pool id, SPA client id, and Hosted UI domain are all set (trimmed non-empty).
- * Matches the build-time contract in `scripts/check-cognito-spa-env.mjs`.
- */
-export function isAuthConfigured(): boolean {
-  const poolId = import.meta.env.VITE_COGNITO_USER_POOL_ID as string | undefined
-  const clientId = import.meta.env.VITE_COGNITO_USER_POOL_CLIENT_ID as string | undefined
-  const domain = import.meta.env.VITE_COGNITO_DOMAIN as string | undefined
-  return cognitoHostedUiEnvComplete(poolId, clientId, domain)
-}
 
 function isDevLoopbackHostname(hostname: string): boolean {
   return hostname === 'localhost' || hostname === '127.0.0.1'

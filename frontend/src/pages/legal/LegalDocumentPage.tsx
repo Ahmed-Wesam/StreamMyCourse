@@ -1,4 +1,5 @@
 import type { LegalDocumentContent } from '../../lib/legal/content/types'
+import { usePageTitle } from '../../lib/page-title'
 
 type LegalDocumentPageProps = {
   content: LegalDocumentContent
@@ -14,6 +15,8 @@ function formatLastUpdated(isoDate: string): string {
 }
 
 export function LegalDocumentPage({ content }: LegalDocumentPageProps) {
+  usePageTitle(content.title)
+
   return (
     <div className="mx-auto max-w-3xl px-4 py-10 sm:px-6 lg:px-8">
       <div className="mb-8">
