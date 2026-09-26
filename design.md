@@ -1,6 +1,6 @@
 # StreamMyCourse — MVP Design Document
 
-> **Status:** The **MVP defined in this document is shipped** and running in **prod**. Further product scope, Phase 2 work, and the **engineering quality bar** (clean, maintainable code—prefer supported APIs over brittle UI hacks) are tracked in **[roadmap.md](./roadmap.md)** and **[ImplementationHistory.md](./ImplementationHistory.md)**. **Last updated:** 2026-08-03 · **Stack:** React 19 + AWS (Serverless) · **Frontend tests:** Vitest (optional **`npm run test:coverage`** — v8 only when `--coverage`; see **`frontend/vitest.config.ts`**).
+> **Status:** The **MVP defined in this document is shipped** and running in **prod**. Further product scope, Phase 2 work, and the **engineering quality bar** (clean, maintainable code—prefer supported APIs over brittle UI hacks) are tracked in **[roadmap.md](./roadmap.md)** and **[ImplementationHistory.md](./ImplementationHistory.md)**. **Last updated:** 2026-09-25 · **Stack:** React 19 + AWS (Serverless) · **Frontend tests:** Vitest (optional **`npm run test:coverage`** — v8 only when `--coverage`; see **`frontend/vitest.config.ts`**).
 
 A free video course platform where instructors upload content and students stream it. No payments in MVP — all courses are free.
 
@@ -177,6 +177,8 @@ POST /webhooks/kinescope/drm-auth     // DRM auth callback; validates signed tok
 
 ## 8. React Frontend (MVP)
 
+**User-visible brand:** **Research Spectrum** (strings, titles/meta, logo/favicons via [`frontend/src/lib/brand.ts`](frontend/src/lib/brand.ts) and shared header/footer). Repo, stacks, and infra names remain **StreamMyCourse**. Shared visual foundation (Tailwind `rs-*` tokens, self-hosted Plus Jakarta Sans, UI primitives) is in place; page restyles and new marketing routes are later work.
+
 ### Tech Stack
 - **React 19** + **Vite**
 - **TypeScript** (strict)
@@ -203,10 +205,13 @@ frontend/                            # Vite project root
     │   └── TeacherHeader.tsx        # Teacher navigation (dashboard link, view student site)
     ├── style.css
     ├── components/
-    │   ├── layout/                  # Footer, Layout (gradient + main + footer; optional `chromeHeader` for fixed app nav)
+    │   ├── layout/                  # SiteHeader, ProfileMenu, Footer, Layout (optional `chromeHeader` for fixed app nav)
+    │   ├── ui/                      # Shared RS primitives (Button, Card, Eyebrow, Kicker, SectionHeader, Badge, Field, Reveal)
     │   └── course/                  # CourseCard, CourseGrid, PricingSection, skeletons, thumbnail editor
     ├── lib/
     │   ├── api.ts                   # API client (fetch + env base URL); typed error helpers
+    │   ├── brand.ts                 # User-visible Research Spectrum strings
+    │   ├── page-title.ts            # `usePageTitle` → `Page — Research Spectrum`
     │   └── lessonGrouping.ts        # Group lessons by module; orphan moduleIds → Unsorted (student UI)
     └── pages/
         ├── HomePage.tsx             # Student landing (`/`)
