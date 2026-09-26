@@ -6,6 +6,41 @@
 
 ---
 
+## 2026-09-25 — Research Spectrum design foundation (RS-1)
+
+### Decisions
+
+- Prototype is the **visual master**; site not live → seven prototype student nav links ship even when routes do not exist yet (catch-all → `/`).
+- Font **self-hosted** (`@fontsource-variable/plus-jakarta-sans`); no Google Fonts.
+- Instructor header uses the **same blue palette** (emerald removed; "Instructor" badge).
+- User-visible brand is **Research Spectrum**; repo/stack/infra names remain **StreamMyCourse**.
+- Not shipped from prototype: notification bell, Settings link, localStorage auth / Demo State.
+
+### What landed
+
+- Tokens / CSS: Tailwind `rs-*`, semantic vars remapped, root **16px**, body wash removed, reduced-motion-aware smooth scroll — [`frontend/tailwind.config.js`](frontend/tailwind.config.js), [`frontend/src/style.css`](frontend/src/style.css).
+- Assets: [`frontend/src/assets/brand/research-spectrum-mark.webp`](frontend/src/assets/brand/research-spectrum-mark.webp); favicons under [`frontend/public/`](frontend/public/).
+- Brand / titles: [`frontend/src/lib/brand.ts`](frontend/src/lib/brand.ts), [`frontend/src/lib/page-title.ts`](frontend/src/lib/page-title.ts); HTML entry titles/meta; no remaining `SPSS Spectrum` in `frontend/`.
+- Primitives: [`frontend/src/components/ui/`](frontend/src/components/ui/) (Button, Card, Eyebrow, Kicker, SectionHeader, Badge, Field, Reveal).
+- Chrome: [`SiteHeader`](frontend/src/components/layout/SiteHeader.tsx) + [`ProfileMenu`](frontend/src/components/layout/ProfileMenu.tsx); student/teacher headers; four-column [`Footer`](frontend/src/components/layout/Footer.tsx) (Instagram live; LinkedIn/YouTube `#` placeholders).
+- Bundle mitigations: CSS header classes (`rs-btn*`, `rs-site-*`), lazy `ProfileMenu`, dynamic Amplify `Hub`, [`is-auth-configured.ts`](frontend/src/lib/is-auth-configured.ts) so public header does not statically import `auth.ts`.
+
+### Verification / non-claims
+
+- Header fixes after review: profile menu no longer closes on Enter; display-name cache ignores sign-out races and does not stick a failed lookup; mobile menu returns focus to the menu button when it closes.
+- `frontend/tsconfig.json` includes Node types so `tsc` accepts `node:` imports in tests. Header class strings live in CSS so the student auth bundle stays under the cap.
+- [x] `npm run test` — 80 files / **610** tests passed (Vitest **5.0.2**).
+- [x] `npm run check:bundle` — student `firstLoadPublic` **78.53 KB**, `firstLoadWithAuth` **179.95 KB**; teacher **180.01 KB**.
+- [x] `npm run lint` / `npm run knip` — green (pre-existing warnings only).
+- [x] `npm audit` — **0** vulnerabilities after transitive updates and the Vitest 5 bump. Test setup stubs `matchMedia` because Vitest 5's jsdom does not.
+- [ ] Browser viewport QA — **not run**.
+
+### Docs
+
+- [`design.md`](design.md) §8 notes user-visible Research Spectrum brand + visual foundation (infra name unchanged). Page restyles stay out of this slice.
+
+---
+
 ## 2026-08-09 — Legal pages, prod pause/restore, SPA API base URL guard
 
 ### Legal (student SPA)
