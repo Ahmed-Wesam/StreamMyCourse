@@ -216,8 +216,16 @@ describe('TeacherPaymentSetup', () => {
     expect(screen.getByText(/one-time usd all-access bundle/i)).toBeTruthy()
     expect(screen.getByText(/merchant of record/i)).toBeTruthy()
 
+    await waitFor(() => {
+      expect(billing.getMerchantStatus).toHaveBeenCalledTimes(1)
+    })
+    const refreshButton = screen.getByRole('button', { name: /refresh status/i })
+    await waitFor(() => {
+      expect((refreshButton as HTMLButtonElement).disabled).toBe(false)
+    })
+
     billing.getMerchantStatus.mockClear()
-    fireEvent.click(screen.getByRole('button', { name: /refresh status/i }))
+    fireEvent.click(refreshButton)
 
     await waitFor(() => {
       expect(billing.getMerchantStatus).toHaveBeenCalledTimes(1)
