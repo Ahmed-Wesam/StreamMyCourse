@@ -12,8 +12,8 @@ from pathlib import Path
 import pytest
 
 # Workstream 6 implements the check; WS4 documents the response shape only.
-ALREADY_SUBSCRIBED_STATUS = 409
-ALREADY_SUBSCRIBED_CODE = "already_subscribed"
+ALREADY_OWNED_STATUS = 409
+ALREADY_OWNED_CODE = "already_owned"
 
 _FORBIDDEN_HANDLER_TOKENS = ("payout_not_ready", "PAYOUT_READY")
 _FORBIDDEN_EDGE_CONFIG_TOKENS = ("PAYOUT_READY",)
@@ -79,29 +79,29 @@ def test_billing_edge_python_tree_has_no_payout_not_ready() -> None:
     ("status", "code", "message"),
     [
         (
-            ALREADY_SUBSCRIBED_STATUS,
-            ALREADY_SUBSCRIBED_CODE,
-            "Active subscription exists",
+            ALREADY_OWNED_STATUS,
+            ALREADY_OWNED_CODE,
+            "You already own this course or bundle",
         ),
     ],
 )
-def test_already_subscribed_contract_shape(
+def test_already_owned_contract_shape(
     status: int,
     code: str,
     message: str,
 ) -> None:
-    """Document WS6 duplicate-subscribe response (not implemented on edge yet)."""
+    """RS-5: duplicate purchase checkout response."""
     assert status == 409
-    assert code == "already_subscribed"
-    assert message  # human-readable message required by _error_response pattern
+    assert code == "already_owned"
+    assert message
 
 
-def test_handler_emits_already_subscribed_gate() -> None:
-    """WS6: handler returns 409 already_subscribed when catalog blocks."""
+def test_handler_emits_already_owned_gate() -> None:
+    """RS-5: handler returns 409 already_owned when catalog blocks."""
     source = _read_billing_edge_source("handler.py")
-    assert "already_subscribed" in source
+    assert "already_owned" in source
     assert re.search(
-        r'_error_response\s*\(\s*409\s*,\s*["\']already_subscribed["\']',
+        r'_manage_conflict_response\s*\(\s*["\']already_owned["\']',
         source,
     )
 

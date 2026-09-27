@@ -222,9 +222,18 @@ def test_deploy_backend_sh_redeploys_payments_with_catalog_invoke() -> None:
     text = _deploy_backend_sh_text()
     assert "CATALOG_LAMBDA_ARN" in text
     assert "BILLING_RETURN_SUCCESS_URL" in text
+    assert "BILLING_IPN_CALLBACK_URL" in text
+    assert "webhooks/payments/paytabs" in text
     assert "StudentSiteUrl" in text
     assert "deploy-payments.sh" in text
     assert "EDGE_REGION" in text
+
+
+def test_deploy_payments_sh_passes_ipn_callback_url() -> None:
+    path = _repo_root() / "scripts" / "deploy-payments.sh"
+    text = path.read_text(encoding="utf-8")
+    assert "BILLING_IPN_CALLBACK_URL" in text
+    assert "BillingIpnCallbackUrl=" in text
 
 
 def test_api_stack_exposes_billing_and_paytabs_webhook_routes() -> None:

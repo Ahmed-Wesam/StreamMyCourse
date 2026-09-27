@@ -11,7 +11,12 @@ from config import load_config, AppConfig
 from services.auth.controller import handle_users_me
 from services.auth.session import check_student_session
 from services.billing_merchant.controller import handle_merchant_status
-from services.subscription.controller import handle_get_subscription
+from services.purchases.controller import (
+    handle_get_bundle_offer,
+    handle_get_purchases,
+    handle_patch_bundle_price,
+    handle_patch_course_price,
+)
 from services.common.http import apigw_routing_path, json_response, options_response, pick_origin
 from services.progress.controller import handle_progress_request
 from services.common.logging_setup import configure_logging
@@ -35,7 +40,6 @@ _student_session_guard_warned = False
 
 _INTERNAL_BILLING_CHECKOUT = "billing.checkout"
 _INTERNAL_BILLING_ROLLBACK = "billing.rollback_checkout"
-_INTERNAL_BILLING_CANCEL_AT_PERIOD_END = "billing.cancel_at_period_end"
 _INTERNAL_VIDEO_PREPARE = "video.prepare_upload"
 _INTERNAL_VIDEO_COMMIT = "video.commit_pending_upload"
 _INTERNAL_VIDEO_PREPARE_MARK_READY = "video.prepare_mark_ready"
@@ -46,7 +50,6 @@ _INTERNAL_EVENTS = frozenset(
     {
         _INTERNAL_BILLING_CHECKOUT,
         _INTERNAL_BILLING_ROLLBACK,
-        _INTERNAL_BILLING_CANCEL_AT_PERIOD_END,
         _INTERNAL_VIDEO_PREPARE,
         _INTERNAL_VIDEO_COMMIT,
         _INTERNAL_VIDEO_PREPARE_MARK_READY,
@@ -62,14 +65,6 @@ def _rds_config_complete(cfg: AppConfig) -> bool:
 
 def _handle_internal_billing_event(event: Dict[str, Any]) -> Dict[str, Any]:
     """Direct invoke only — not routed via API Gateway."""
-    from services.subscription.internal_checkout import (
-        handle_internal_billing_checkout,
-        handle_internal_billing_rollback,
-    )
-    from services.subscription.internal_manage import (
-        handle_internal_billing_cancel_at_period_end,
-    )
-
     cfg = load_config()
     if not _rds_config_complete(cfg):
         raise RuntimeError(
@@ -79,18 +74,19 @@ def _handle_internal_billing_event(event: Dict[str, Any]) -> Dict[str, Any]:
     deps = get_cached_aws_deps()
     if deps is None:
         raise RuntimeError("Catalog dependencies are not available")
+    from services.purchases.internal_checkout import (
+        handle_internal_purchase_checkout,
+        handle_internal_purchase_rollback,
+    )
+
     internal = event.get("internal")
     if internal == _INTERNAL_BILLING_CHECKOUT:
-        return handle_internal_billing_checkout(
-            event, checkout_service=deps.checkout_service
+        return handle_internal_purchase_checkout(
+            event, checkout_service=deps.purchase_checkout_service
         )
     if internal == _INTERNAL_BILLING_ROLLBACK:
-        return handle_internal_billing_rollback(
-            event, checkout_service=deps.checkout_service
-        )
-    if internal == _INTERNAL_BILLING_CANCEL_AT_PERIOD_END:
-        return handle_internal_billing_cancel_at_period_end(
-            event, manage_service=deps.subscription_manage_service
+        return handle_internal_purchase_rollback(
+            event, checkout_service=deps.purchase_checkout_service
         )
     raise ValueError(f"unknown internal billing event: {internal!r}")
 
@@ -153,7 +149,6 @@ def _handle_internal_event(event: Dict[str, Any]) -> Dict[str, Any]:
     if internal in (
         _INTERNAL_BILLING_CHECKOUT,
         _INTERNAL_BILLING_ROLLBACK,
-        _INTERNAL_BILLING_CANCEL_AT_PERIOD_END,
     ):
         return _handle_internal_billing_event(event)
     if internal in (
@@ -218,7 +213,7 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 progress_service,
                 question_bank_service,
                 merchant_service,
-                subscription_manage_service,
+                purchase_manage_service,
                 rate_limit_service,
             ) = lambda_bootstrap()
 
@@ -327,13 +322,47 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                         )
                     elif (
                         method == "GET"
-                        and parts == ["billing", "subscription"]
-                        and subscription_manage_service is not None
+                        and parts == ["billing", "bundle"]
+                        and purchase_manage_service is not None
                     ):
-                        route_response = handle_get_subscription(
+                        route_response = handle_get_bundle_offer(
                             event,
                             origin=origin,
-                            manage_svc=subscription_manage_service,
+                            manage_svc=purchase_manage_service,
+                        )
+                    elif (
+                        method == "PATCH"
+                        and parts == ["billing", "bundle"]
+                        and purchase_manage_service is not None
+                    ):
+                        route_response = handle_patch_bundle_price(
+                            event,
+                            origin=origin,
+                            manage_svc=purchase_manage_service,
+                        )
+                    elif (
+                        method == "GET"
+                        and parts == ["billing", "purchases"]
+                        and purchase_manage_service is not None
+                    ):
+                        route_response = handle_get_purchases(
+                            event,
+                            origin=origin,
+                            manage_svc=purchase_manage_service,
+                        )
+                    elif (
+                        method == "PATCH"
+                        and len(parts) == 4
+                        and parts[0] == "billing"
+                        and parts[1] == "courses"
+                        and parts[3] == "price"
+                        and purchase_manage_service is not None
+                    ):
+                        route_response = handle_patch_course_price(
+                            event,
+                            origin=origin,
+                            course_id=parts[2],
+                            manage_svc=purchase_manage_service,
                         )
                     elif method in ("POST", "OPTIONS") and parts == [
                         "webhooks",

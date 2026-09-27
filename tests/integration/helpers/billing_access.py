@@ -1,12 +1,13 @@
-"""Billing / subscription helpers for HTTPS integration tests (WS5 Phase C).
+"""Billing / purchase access helpers for HTTPS integration tests (RS-5).
 
 Uses the mock PayTabs adapter (``X-Mock-Signature: test``). Never log full JWTs
 or ``PAYTABS_SERVER_KEY`` values.
 
-**WS8 manage cancel:** ``POST /billing/cancel-subscription`` triggers billing-edge
-``cancel_agreement`` after catalog cancel-at-period-end. The mock adapter is a no-op
-(see ``tests/unit/billing/test_mock_adapter_cancel_resume.py``); HTTPS tests cannot
-spy provider calls—assert cancel **200** (not **502** ``provider_cancel_failed``).
+**Post migration 015:** grant access via ``post_mock_purchase_paid`` (v2 cart_id IPN) or
+full checkout → mock IPN; legacy subscription IPN helpers remain for stacks not yet on RS-5.
+
+Until prod has migration 015 + purchase fulfillment, prefer unit coverage in
+``tests/unit/catalog/test_purchase_access_service.py`` instead of RDS seeding here.
 """
 
 from __future__ import annotations
@@ -124,6 +125,66 @@ def post_mock_lapsed_subscription(
         )
 
 
+def build_mock_ipn_purchase_paid(
+    user_sub: str,
+    *,
+    environment: str | None = None,
+    product_type: str = "bundle",
+    course_id: str | None = None,
+    purchase_id: str | None = None,
+    amount_usd: float = 150.0,
+) -> dict[str, Any]:
+    """Build v2 cart mock IPN for one-time purchase fulfillment (requires migration 015 + pending row)."""
+    env = environment or billing_environment()
+    pid = purchase_id or str(uuid.uuid4())
+    if product_type == "course":
+        cid = course_id or str(uuid.uuid4())
+        cart_id = f"v2|{env}|{user_sub}|course|{cid}|{pid}"
+    else:
+        cart_id = f"v2|{env}|{user_sub}|bundle|{pid}"
+    return {
+        "tran_ref": f"MOCK-PUR-{uuid.uuid4().hex[:12]}",
+        "tran_type": "Sale",
+        "payment_result": "A",
+        "cart_id": cart_id,
+        "cart_amount": amount_usd,
+        "cart_currency": "USD",
+        "transaction_time": "2026-05-18T12:00:00Z",
+    }
+
+
+def post_mock_purchase_paid(
+    api_base_url: str,
+    user_sub: str,
+    *,
+    environment: str | None = None,
+    product_type: str = "bundle",
+    course_id: str | None = None,
+    purchase_id: str | None = None,
+    amount_usd: float | None = None,
+    timeout_sec: float = 30.0,
+) -> httpx.Response:
+    """POST mock purchase-paid IPN (RS-5). Requires matching pending purchase row in RDS."""
+    body = build_mock_ipn_purchase_paid(
+        user_sub,
+        environment=environment,
+        product_type=product_type,
+        course_id=course_id,
+        purchase_id=purchase_id,
+        amount_usd=amount_usd if amount_usd is not None else 150.0,
+    )
+    url = f"{api_base_url.rstrip('/')}{_WEBHOOK_PATH}"
+    with httpx.Client(timeout=timeout_sec) as client:
+        return client.post(
+            url,
+            json=body,
+            headers={
+                "Content-Type": "application/json",
+                "X-Mock-Signature": _MOCK_SIGNATURE,
+            },
+        )
+
+
 def post_mock_subscription_activated(
     api_base_url: str,
     user_sub: str,
@@ -155,7 +216,7 @@ def wait_for_subscription_access(
     timeout_sec: float = 30.0,
     poll_interval_sec: float = 1.0,
 ) -> None:
-    """Poll playback until access is granted (not 403 subscription_required)."""
+    """Poll playback until access is granted (not 403 purchase_required)."""
     deadline = time.monotonic() + timeout_sec
     last_status = 0
     last_code = ""
@@ -170,7 +231,7 @@ def wait_for_subscription_access(
                 last_code = str(resp.json().get("code") or "")
             except Exception:
                 last_code = ""
-            if last_code != "subscription_required":
+            if last_code not in ("purchase_required", "subscription_required"):
                 last_text = resp.text[:200]
                 break
         else:
@@ -183,7 +244,7 @@ def wait_for_subscription_access(
     )
 
 
-def wait_for_playback_subscription_required(
+def wait_for_playback_purchase_required(
     student_api: ApiClient,
     course_id: str,
     lesson_id: str,
@@ -191,7 +252,7 @@ def wait_for_playback_subscription_required(
     timeout_sec: float = 30.0,
     poll_interval_sec: float = 1.0,
 ) -> None:
-    """Poll playback until 403 subscription_required (async fulfillment after mock IPN)."""
+    """Poll playback until 403 purchase_required (async fulfillment after mock IPN)."""
     deadline = time.monotonic() + timeout_sec
     last_status = 0
     last_code = ""
@@ -205,15 +266,15 @@ def wait_for_playback_subscription_required(
                 last_code = str(resp.json().get("code") or "")
             except Exception:
                 last_code = ""
-            if last_code == "subscription_required":
+            if last_code in ("purchase_required", "subscription_required"):
                 return
             pytest.fail(
-                "Expected 403 subscription_required on playback, got "
+                "Expected 403 purchase_required on playback, got "
                 f"code={last_code!r} body={last_text!r}"
             )
         if resp.status_code != 200:
             pytest.fail(
-                f"Unexpected playback status while waiting for subscription_required: "
+                f"Unexpected playback status while waiting for purchase_required: "
                 f"{resp.status_code} body={last_text!r}"
             )
         time.sleep(poll_interval_sec)
@@ -233,38 +294,17 @@ def seed_lapsed_subscription_via_ipn(
     plan_id: str | None = None,
     timeout_sec: float = 30.0,
 ) -> None:
-    """Grant in-period access, lapse via mock IPN, wait until playback is denied.
-
-    Ensures fulfillment wrote a lapsed ``active`` row (not a cold 403) before re-subscribe checkout.
-    """
-    resolved_plan_id = plan_id or seed_plan_id()
-    grant_resp = post_mock_subscription_activated(
+    """Legacy subscription lapse helper — removed with RS-5 one-time purchases."""
+    _ = (
         api_base_url,
         user_sub,
-        plan_id=resolved_plan_id,
-        timeout_sec=timeout_sec,
-    )
-    skip_if_mock_ipn_unavailable(grant_resp)
-    wait_for_subscription_access(
         student_api,
         course_id,
         lesson_id,
-        timeout_sec=timeout_sec,
+        plan_id,
+        timeout_sec,
     )
-
-    lapsed_resp = post_mock_lapsed_subscription(
-        api_base_url,
-        user_sub,
-        plan_id=resolved_plan_id,
-        timeout_sec=timeout_sec,
-    )
-    skip_if_mock_ipn_unavailable(lapsed_resp)
-    wait_for_playback_subscription_required(
-        student_api,
-        course_id,
-        lesson_id,
-        timeout_sec=timeout_sec,
-    )
+    pytest.skip("subscription lapse seeding removed (RS-5 purchase model)")
 
 
 def skip_if_billing_webhook_unavailable() -> None:
@@ -346,23 +386,88 @@ def post_cancel_subscription(
     )
 
 
+def _pending_bundle_purchase(
+    student_api: ApiClient,
+    *,
+    timeout_sec: float = 30.0,
+) -> tuple[str, int]:
+    """Return ``(purchase_id, amount_minor)`` for the newest pending bundle checkout."""
+    resp = student_api.raw.get("/billing/purchases", timeout=timeout_sec)
+    if resp.status_code == 404:
+        pytest.skip("GET /billing/purchases not deployed (404)")
+    if resp.status_code != 200:
+        pytest.fail(
+            f"GET /billing/purchases failed: status={resp.status_code} body={resp.text[:200]!r}"
+        )
+    purchases = resp.json().get("purchases") or []
+    pending = [
+        p
+        for p in purchases
+        if p.get("productType") == "bundle" and p.get("status") == "pending"
+    ]
+    if not pending:
+        pytest.fail("no pending bundle purchase after checkout-session")
+    row = pending[-1]
+    return str(row["id"]), int(row["amountMinor"])
+
+
 def post_checkout_session(
     student_api: ApiClient,
     jwt: str,
     *,
+    product_type: str = "bundle",
+    course_id: str | None = None,
     plan_id: str | None = None,
     timeout_sec: float = 30.0,
 ) -> httpx.Response:
     """POST ``/billing/checkout-session`` as the student (``jwt`` is not logged)."""
     _ = jwt  # caller passes token for sub correlation in combined flows
-    body: dict[str, Any] = {}
-    if plan_id:
-        body["planId"] = plan_id
+    _ = plan_id  # legacy subscription param (ignored after RS-5)
+    body: dict[str, Any] = {"productType": product_type}
+    if product_type == "course":
+        if not course_id:
+            raise ValueError("course_id is required when product_type is course")
+        body["courseId"] = course_id
     return student_api.raw.post(
         "/billing/checkout-session",
         json=body,
         timeout=timeout_sec,
     )
+
+
+def _checkout_bundle_and_mock_ipn(
+    api_base_url: str,
+    student_api: ApiClient,
+    jwt: str,
+    user_sub: str,
+    *,
+    environment: str | None = None,
+    timeout_sec: float = 30.0,
+) -> None:
+    checkout_resp = post_checkout_session(
+        student_api, jwt, product_type="bundle", timeout_sec=timeout_sec
+    )
+    skip_if_checkout_unavailable(checkout_resp)
+    if checkout_resp.status_code != 200:
+        pytest.fail(
+            "checkout-session failed: "
+            f"status={checkout_resp.status_code} body={checkout_resp.text[:200]!r}"
+        )
+    redirect_url = str(checkout_resp.json().get("redirect_url") or "").strip()
+    if not redirect_url:
+        pytest.fail("checkout-session 200 missing redirect_url")
+
+    purchase_id, amount_minor = _pending_bundle_purchase(student_api, timeout_sec=timeout_sec)
+    amount_usd = amount_minor / 100.0
+    ipn_resp = post_mock_purchase_paid(
+        api_base_url,
+        user_sub,
+        environment=environment,
+        purchase_id=purchase_id,
+        amount_usd=amount_usd,
+        timeout_sec=timeout_sec,
+    )
+    skip_if_mock_ipn_unavailable(ipn_resp)
 
 
 def checkout_then_wait_for_access(
@@ -377,7 +482,8 @@ def checkout_then_wait_for_access(
     timeout_sec: float = 30.0,
     poll_interval_sec: float = 1.0,
 ) -> None:
-    """Mock checkout → optional mock IPN → poll playback until access is granted."""
+    """Mock bundle checkout → mock purchase IPN → poll playback until access is granted."""
+    _ = plan_id
     skip_if_billing_webhook_unavailable()
 
     user_sub = decode_jwt_sub(jwt)
@@ -385,27 +491,14 @@ def checkout_then_wait_for_access(
     if probe.status_code == 200:
         return
 
-    checkout_resp = post_checkout_session(
-        student_api, jwt, plan_id=plan_id, timeout_sec=timeout_sec
-    )
-    skip_if_checkout_unavailable(checkout_resp)
-    if checkout_resp.status_code != 200:
-        pytest.fail(
-            "checkout-session failed: "
-            f"status={checkout_resp.status_code} body={checkout_resp.text[:200]!r}"
-        )
-    redirect_url = str(checkout_resp.json().get("redirect_url") or "").strip()
-    if not redirect_url:
-        pytest.fail("checkout-session 200 missing redirect_url")
-
-    ipn_resp = post_mock_subscription_activated(
+    _checkout_bundle_and_mock_ipn(
         api_base_url,
+        student_api,
+        jwt,
         user_sub,
         environment=environment,
-        plan_id=plan_id,
         timeout_sec=timeout_sec,
     )
-    skip_if_mock_ipn_unavailable(ipn_resp)
 
     wait_for_subscription_access(
         student_api,
@@ -435,7 +528,7 @@ def ensure_student_subscription(
     *,
     environment: str | None = None,
 ) -> str:
-    """Grant platform subscription via mock IPN and wait until playback succeeds.
+    """Grant course access via bundle checkout + mock purchase IPN (RS-5).
 
     Returns the student's Cognito ``sub``. Skips when webhook prerequisites are missing.
     """
@@ -450,12 +543,13 @@ def ensure_student_subscription(
     if resp.status_code == 200:
         return user_sub
 
-    ipn_resp = post_mock_subscription_activated(
+    _checkout_bundle_and_mock_ipn(
         api_base_url,
+        student_api,
+        token,
         user_sub,
         environment=environment,
     )
-    skip_if_mock_ipn_unavailable(ipn_resp)
 
     wait_for_subscription_access(student_api, course_id, lesson_id)
     return user_sub

@@ -1,4 +1,4 @@
-"""W6-P4 — subscribe checkout gate order in handler source."""
+"""W6-P4 / RS-5 — purchase checkout gate order in handler source."""
 
 from __future__ import annotations
 
@@ -27,12 +27,12 @@ def test_handler_checkout_gate_order_billing_unconfigured_before_catalog() -> No
     assert unconfigured < catalog_invoke
 
 
-def test_handler_checkout_gate_order_already_subscribed_before_in_progress() -> None:
+def test_handler_checkout_gate_order_already_owned_before_in_progress() -> None:
     source = _handler_source()
     checkout_fn = source[source.find("def _handle_checkout") : source.find("def _webhook_signature_header")]
-    already = checkout_fn.find("already_subscribed")
+    already = checkout_fn.find("already_owned")
     in_progress = checkout_fn.find("checkout_in_progress")
-    create_session = checkout_fn.find("create_subscribe_session")
+    create_session = checkout_fn.find("create_sale_session")
     assert already != -1
     assert in_progress != -1
     assert create_session != -1
@@ -44,15 +44,15 @@ def test_handler_checkout_gate_order_catalog_before_paytabs() -> None:
     source = _handler_source()
     checkout_fn = source[source.find("def _handle_checkout") : source.find("def _webhook_signature_header")]
     catalog_invoke = checkout_fn.find("precheck = _invoke_billing_checkout")
-    create_session = checkout_fn.find("create_subscribe_session")
+    create_session = checkout_fn.find("create_sale_session")
     assert catalog_invoke < create_session
 
 
-def test_handler_emits_subscribe_contract_error_codes() -> None:
+def test_handler_emits_purchase_checkout_error_codes() -> None:
     source = _handler_source()
     for code in (
         "billing_unconfigured",
-        "already_subscribed",
+        "already_owned",
         "checkout_in_progress",
     ):
         assert code in source
@@ -62,7 +62,7 @@ def test_handler_emits_subscribe_contract_error_codes() -> None:
         source,
     )
     assert re.search(
-        r'_error_response\s*\(\s*409\s*,\s*["\']already_subscribed["\']',
+        r'_manage_conflict_response\s*\(\s*["\']already_owned["\']',
         source,
     )
     assert re.search(

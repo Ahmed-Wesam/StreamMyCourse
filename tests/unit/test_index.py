@@ -28,7 +28,7 @@ def _bootstrap_returning(
     progress_service: Optional[Any] = None,
     question_bank_service: Optional[Any] = None,
     merchant_service: Optional[Any] = None,
-    subscription_manage_service: Optional[Any] = None,
+    purchase_manage_service: Optional[Any] = None,
     rate_limit_service: Optional[Any] = None,
 ):
     """Factory: returns a `lambda_bootstrap` stand-in yielding fixed values."""
@@ -36,7 +36,6 @@ def _bootstrap_returning(
     def _stub() -> Tuple[
         AppConfig,
         Optional[CourseManagementService],
-        Optional[Any],
         Optional[Any],
         Optional[Any],
         Optional[Any],
@@ -52,7 +51,7 @@ def _bootstrap_returning(
             progress_service,
             question_bank_service,
             merchant_service,
-            subscription_manage_service,
+            purchase_manage_service,
             rate_limit_service,
         )
 

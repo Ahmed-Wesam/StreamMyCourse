@@ -1,4 +1,4 @@
-"""W6-P2 — checkout returns 409 already_subscribed when catalog blocks."""
+"""RS-5 — checkout returns 409 already_owned when catalog blocks."""
 
 from __future__ import annotations
 
@@ -12,7 +12,7 @@ from billing._imports import billing_handler
 from edge_config import BillingEdgeConfig
 from providers.mock_adapter import MockPayTabsAdapter
 
-_DEV_PLAN_ID = "a0000000-0000-4000-8000-000000000011"
+_COURSE_ID = "b0000000-0000-4000-8000-000000000001"
 
 
 def _edge_config(**overrides: Any) -> BillingEdgeConfig:
@@ -26,9 +26,9 @@ def _edge_config(**overrides: Any) -> BillingEdgeConfig:
         "paytabs_api_domain": None,
         "fulfillment_queue_url": "https://sqs.example.com/q",
         "catalog_lambda_arn": "arn:aws:lambda:eu-west-1:1:function:catalog",
-        "subscription_plan_id": _DEV_PLAN_ID,
         "billing_return_success_url": "https://student.example.com/billing/success",
         "billing_return_cancel_url": "https://student.example.com/billing/cancel",
+        "billing_ipn_callback_url": "https://api.example.com/webhooks/payments/paytabs",
     }
     base.update(overrides)
     return BillingEdgeConfig(**base)
@@ -43,7 +43,7 @@ def _checkout_event(**overrides: Any) -> Dict[str, Any]:
             "authorizer": {"claims": {"sub": "student-sub-1"}},
         },
         "headers": {"content-type": "application/json"},
-        "body": json.dumps({"planId": _DEV_PLAN_ID}),
+        "body": json.dumps({"productType": "course", "courseId": _COURSE_ID}),
     }
     evt.update(overrides)
     return evt
@@ -53,7 +53,7 @@ def _parse_body(resp: Dict[str, Any]) -> Dict[str, Any]:
     return json.loads(resp["body"])
 
 
-def test_checkout_already_subscribed_returns_409(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_checkout_already_owned_returns_409(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(billing_handler, "_load_config", lambda: _edge_config())
     monkeypatch.setattr(
         billing_handler,
@@ -63,17 +63,17 @@ def test_checkout_already_subscribed_returns_409(monkeypatch: pytest.MonkeyPatch
     monkeypatch.setattr(
         billing_handler,
         "_invoke_billing_checkout",
-        lambda **_kw: {"blockReason": "already_subscribed"},
+        lambda **_kw: {"blockReason": "already_owned"},
     )
 
     resp = billing_handler.lambda_handler(_checkout_event(), None)
     assert resp["statusCode"] == 409
     body = _parse_body(resp)
-    assert body["code"] == "already_subscribed"
+    assert body["code"] == "already_owned"
     assert body["message"]
 
 
-def test_checkout_already_subscribed_does_not_call_paytabs(
+def test_checkout_already_owned_does_not_call_paytabs(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     mock_provider = MagicMock()
@@ -82,8 +82,8 @@ def test_checkout_already_subscribed_does_not_call_paytabs(
     monkeypatch.setattr(
         billing_handler,
         "_invoke_billing_checkout",
-        lambda **_kw: {"blockReason": "already_subscribed"},
+        lambda **_kw: {"blockReason": "already_owned"},
     )
 
     billing_handler.lambda_handler(_checkout_event(), None)
-    mock_provider.create_subscribe_session.assert_not_called()
+    mock_provider.create_sale_session.assert_not_called()

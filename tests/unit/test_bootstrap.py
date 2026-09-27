@@ -82,7 +82,7 @@ class TestLambdaBootstrap:
             progress_service,
             question_bank_service,
             merchant_service,
-            subscription_manage_service,
+            purchase_manage_service,
             rate_limit_service,
         ) = bootstrap_mod.lambda_bootstrap()
         assert isinstance(cfg, AppConfig)
@@ -92,7 +92,7 @@ class TestLambdaBootstrap:
         assert progress_service is None
         assert question_bank_service is None
         assert merchant_service is None
-        assert subscription_manage_service is None
+        assert purchase_manage_service is None
         assert rate_limit_service is None
 
     def test_warm_cache_returns_same_service_instance(
@@ -106,8 +106,12 @@ class TestLambdaBootstrap:
         )
         monkeypatch.setenv("VIDEO_BUCKET", "my-bucket")
 
-        _cfg1, svc1, auth1, repo1, prog1, qb1, merch1, sub_manage1, rl1 = bootstrap_mod.lambda_bootstrap()
-        _cfg2, svc2, auth2, repo2, prog2, qb2, merch2, sub_manage2, rl2 = bootstrap_mod.lambda_bootstrap()
+        _cfg1, svc1, auth1, repo1, prog1, qb1, merch1, purchase_manage1, rl1 = (
+            bootstrap_mod.lambda_bootstrap()
+        )
+        _cfg2, svc2, auth2, repo2, prog2, qb2, merch2, purchase_manage2, rl2 = (
+            bootstrap_mod.lambda_bootstrap()
+        )
 
         assert svc1 is not None
         assert svc2 is not None
@@ -117,7 +121,7 @@ class TestLambdaBootstrap:
         assert prog1 is prog2
         assert qb1 is qb2
         assert merch1 is merch2
-        assert sub_manage1 is sub_manage2
+        assert purchase_manage1 is purchase_manage2
         assert rl1 is rl2
 
     def test_rds_complete_builds_progress_service(
@@ -137,7 +141,7 @@ class TestLambdaBootstrap:
             progress_service,
             question_bank_service,
             merchant_service,
-            subscription_manage_service,
+            purchase_manage_service,
             rate_limit_service,
         ) = bootstrap_mod.lambda_bootstrap()
         assert service is not None
@@ -146,7 +150,7 @@ class TestLambdaBootstrap:
         assert progress_service is not None
         assert question_bank_service is not None
         assert merchant_service is not None
-        assert subscription_manage_service is not None
+        assert purchase_manage_service is not None
         assert rate_limit_service is not None
 
 
@@ -171,7 +175,7 @@ class TestBuildAwsDeps:
         assert deps.progress_service is not None
         assert deps.question_bank_service is not None
         assert deps.merchant_service is not None
-        assert deps.subscription_manage_service is not None
+        assert deps.purchase_manage_service is not None
         assert deps.rate_limit_service is not None
 
 
@@ -218,16 +222,16 @@ class TestBuildAwsDepsWiresRdsRepos:
         from services.question_banks.rds_repo import QuestionBankRdsRepository
         from services.rate_limit.rds_repo import RateLimitRdsRepository
         from services.rate_limit.service import RateLimitService
-        from services.subscription.repo import SubscriptionRdsRepository
-        from services.subscription.service import CourseAccessService
+        from services.purchases.repo import PurchaseRdsRepository
+        from services.purchases.service import CourseAccessService
 
         cfg = _rds_cfg()
         deps = bootstrap_mod.build_aws_deps(cfg)
         assert isinstance(deps.service._repo, CourseCatalogRdsRepository)
         assert isinstance(deps.service._course_access, CourseAccessService)
         assert isinstance(
-            deps.service._course_access._subscription_repo,
-            SubscriptionRdsRepository,
+            deps.service._course_access._purchase_repo,
+            PurchaseRdsRepository,
         )
         assert isinstance(deps.auth_service._repo, UserProfileRdsRepository)
         assert deps.auth_repo is deps.auth_service._repo

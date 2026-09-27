@@ -5,11 +5,15 @@ import { Button } from '../../components/ui/Button'
 import { Card } from '../../components/ui/Card'
 import { Reveal } from '../../components/ui/Reveal'
 import { SectionHeader } from '../../components/ui/SectionHeader'
+import { Badge } from '../../components/ui/Badge'
+import type { BundleOffer } from '../../lib/api/types'
 import type { PublicCatalogCourse } from '../../lib/api/public-catalog'
+import { formatUsdMinor } from '../../lib/formatUsdMinor'
 import {
   coursesCatalogGrid,
 } from '../../lib/marketing/coursesCatalogCopy'
 import { homeBundle } from '../../lib/marketing/homeCopy'
+import { type OwnedCoursesScope, viewerOwnsCourse } from '../../lib/ownedFromPurchases'
 
 export type CatalogState =
   | { status: 'loading' }
@@ -19,6 +23,8 @@ export type CatalogState =
 type CoursesCatalogGridSectionProps = {
   catalog: CatalogState
   onRetry: () => void
+  bundleOffer: BundleOffer | null
+  ownership: OwnedCoursesScope | null
 }
 
 function CourseThumbnail({ course }: { course: PublicCatalogCourse }) {
@@ -39,7 +45,7 @@ function CourseThumbnail({ course }: { course: PublicCatalogCourse }) {
   )
 }
 
-export function CoursesCatalogGridSection({ catalog, onRetry }: CoursesCatalogGridSectionProps) {
+export function CoursesCatalogGridSection({ catalog, onRetry, bundleOffer, ownership }: CoursesCatalogGridSectionProps) {
   const courses = catalog.status === 'ready' ? catalog.courses : []
 
   return (
@@ -84,11 +90,18 @@ export function CoursesCatalogGridSection({ catalog, onRetry }: CoursesCatalogGr
                   <div className="mb-4 flex items-center gap-4">
                     <CourseThumbnail course={course} />
                     <div className="min-w-0">
-                      <h3 className="text-xl font-extrabold leading-snug tracking-tight text-rs-ink">
-                        {course.title}
-                      </h3>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <h3 className="text-xl font-extrabold leading-snug tracking-tight text-rs-ink">
+                          {course.title}
+                        </h3>
+                        {ownership && viewerOwnsCourse(ownership, course.id, course.hasAccess) ? (
+                          <Badge tone="success">Owned</Badge>
+                        ) : null}
+                      </div>
                       <p className="mt-1 text-[22px] font-extrabold leading-none tracking-tight text-rs-blue">
-                        {coursesCatalogGrid.pricingPrimary}
+                        {typeof course.amountMinor === 'number' && course.amountMinor > 0
+                          ? formatUsdMinor(course.amountMinor)
+                          : coursesCatalogGrid.pricingPrimary}
                         <span className="mt-0.5 block text-xs font-semibold tracking-normal text-rs-muted">
                           {coursesCatalogGrid.pricingSecondary}
                         </span>
@@ -144,8 +157,11 @@ export function CoursesCatalogGridSection({ catalog, onRetry }: CoursesCatalogGr
                   </div>
                 </div>
                 <div className="relative text-center">
+                  {bundleOffer ? (
+                    <p className="mb-3 text-2xl font-extrabold">{formatUsdMinor(bundleOffer.amountMinor)}</p>
+                  ) : null}
                   <Button
-                    href="#bundle"
+                    to="/checkout?productType=bundle"
                     arrow
                     className="!bg-white !text-rs-blue hover:!-translate-y-0.5 hover:!shadow-[0_20px_40px_-12px_rgba(0,0,0,.3)]"
                   >

@@ -27,7 +27,8 @@ const StudentModuleQuizAuth = lazy(() =>
 )
 const StudentLoginPage = lazy(() => import('../pages/StudentLoginPage'))
 const AccountProfilePage = lazy(() => import('../pages/account/AccountProfilePage'))
-const AccountSubscriptionPage = lazy(() => import('../pages/account/AccountSubscriptionPage'))
+const AccountPurchasesPage = lazy(() => import('../pages/account/AccountPurchasesPage'))
+const CheckoutPage = lazy(() => import('../pages/CheckoutPage'))
 const BillingSuccessPage = lazy(() => import('../pages/BillingSuccessPage'))
 const BillingCancelPage = lazy(() => import('../pages/BillingCancelPage'))
 const PrivacyPage = lazy(() => import('../pages/legal/PrivacyPage'))
@@ -145,15 +146,24 @@ function StudentApp() {
               }
             />
             <Route
-              path="subscription"
+              path="purchases"
               element={
                 <LazyRoute>
-                  <AccountSubscriptionPage />
+                  <AccountPurchasesPage />
                 </LazyRoute>
               }
             />
+            <Route path="subscription" element={<Navigate to="../purchases" replace />} />
           </Route>
         </Route>
+        <Route
+          path="/checkout"
+          element={
+            <LazyRoute>
+              <CheckoutPage />
+            </LazyRoute>
+          }
+        />
         <Route
           path="/billing/success"
           element={

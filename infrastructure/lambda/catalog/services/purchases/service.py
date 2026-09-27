@@ -1,4 +1,4 @@
-"""has_course_access domain rules (access-policy-v1)."""
+"""has_course_access domain rules (purchase-based access-policy RS-5)."""
 
 from __future__ import annotations
 
@@ -6,25 +6,22 @@ import logging
 
 from services.course_management.models import Course
 from services.course_management.ports import CourseCatalogRepositoryPort
-from services.subscription.ports import SubscriptionRepositoryPort
+from services.purchases.ports import PurchaseRepositoryPort
 
 
 logger = logging.getLogger(__name__)
 
 
 class CourseAccessService:
-    """Central subscription access checks; does not use enrollments for access."""
+    """Central purchase-based access checks; does not use enrollments or subscriptions."""
 
     def __init__(
         self,
-        subscription_repo: SubscriptionRepositoryPort,
+        purchase_repo: PurchaseRepositoryPort,
         course_repo: CourseCatalogRepositoryPort,
     ) -> None:
-        self._subscription_repo = subscription_repo
+        self._purchase_repo = purchase_repo
         self._course_repo = course_repo
-
-    def has_granting_subscription(self, user_sub: str) -> bool:
-        return self._subscription_repo.has_granting_subscription(user_sub)
 
     def has_course_access(
         self,
@@ -45,7 +42,11 @@ class CourseAccessService:
             return True
         if course.status != "PUBLISHED":
             return False
-        return self._subscription_repo.has_granting_subscription(normalized_sub)
+        if self._purchase_repo.has_paid_course_purchase(normalized_sub, course_id):
+            return True
+        if self._purchase_repo.has_paid_bundle(normalized_sub):
+            return True
+        return False
 
     def _norm_role(self, role: str) -> str:
         return (role or "").strip().lower()

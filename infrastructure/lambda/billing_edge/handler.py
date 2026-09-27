@@ -15,14 +15,13 @@ from domain.metadata import (
 )
 from catalog_invoke import (
     CatalogInvokeError,
-    invoke_billing_cancel_at_period_end,
     invoke_billing_checkout,
     invoke_billing_checkout_rollback,
 )
 from edge_config import BillingEdgeConfig, get_payment_provider, load_billing_edge_config
 from providers.mock_adapter import MockPayTabsAdapter
 from providers.paytabs_adapter import BillingUnconfiguredError, PayTabsAdapter
-from providers.port import CheckoutPlan, PaymentProviderPort
+from providers.port import CheckoutProduct, PaymentProviderPort
 from queue_shim import EnqueueError, enqueue_domain_events
 
 logger = logging.getLogger(__name__)
@@ -32,27 +31,14 @@ _get_payment_provider = get_payment_provider
 _enqueue_domain_events = enqueue_domain_events
 _invoke_billing_checkout = invoke_billing_checkout
 _invoke_billing_checkout_rollback = invoke_billing_checkout_rollback
-_invoke_billing_cancel_at_period_end = invoke_billing_cancel_at_period_end
 
 _MANAGE_CONFLICT_MESSAGES: Dict[str, str] = {
-    "already_canceled": "Subscription is already set to cancel at period end",
-    "not_subscribed": "No active subscription to manage",
-    "cannot_cancel": "Subscription cannot be canceled in its current state",
+    "already_owned": "You already own this course or bundle",
 }
 
-_BILLING_MANAGE_POST_PATHS = frozenset(
-    {
-        "/billing/checkout-session",
-        "/billing/cancel-subscription",
-    }
-)
+_BILLING_MANAGE_POST_PATHS = frozenset({"/billing/checkout-session"})
 
-_BILLING_MANAGE_OPTIONS_PATHS = frozenset(
-    {
-        "/billing/checkout-session",
-        "/billing/cancel-subscription",
-    }
-)
+_BILLING_MANAGE_OPTIONS_PATHS = frozenset({"/billing/checkout-session"})
 
 _CSP_API = "default-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'"
 
@@ -78,50 +64,9 @@ def _error_response(status_code: int, code: str, message: str) -> Dict[str, Any]
 def _manage_conflict_response(error_code: str) -> Dict[str, Any]:
     message = _MANAGE_CONFLICT_MESSAGES.get(
         error_code,
-        "Subscription cannot be updated in its current state",
+        "Checkout cannot proceed in the current state",
     )
     return _error_response(409, error_code, message)
-
-
-def _cancel_success_body(catalog_result: Dict[str, Any]) -> Dict[str, Any]:
-    return {
-        key: value
-        for key, value in catalog_result.items()
-        if key not in ("providerSubscriptionId", "errorCode")
-    }
-
-
-def _provider_cancel_agreement_or_error(
-    *,
-    user_sub: str,
-    provider: PaymentProviderPort | None,
-    provider_subscription_id: str,
-) -> Dict[str, Any] | None:
-    """Return an API Gateway error response on failure, or None when cancel succeeded."""
-    if provider is None:
-        return _error_response(503, "billing_unconfigured", "Billing is not configured")
-    try:
-        provider.cancel_agreement(provider_subscription_id)
-    except Exception:
-        logger.exception(
-            "provider_cancel_agreement_failed user_sub=%s provider_subscription_id=%s",
-            user_sub,
-            provider_subscription_id,
-        )
-        return _error_response(
-            502,
-            "provider_cancel_failed",
-            "Unable to cancel subscription with payment provider",
-        )
-    return None
-
-
-def _provider_agreement_missing_response() -> Dict[str, Any]:
-    return _error_response(
-        502,
-        "provider_agreement_missing",
-        "Subscription is canceled but no payment agreement is on file",
-    )
 
 
 def _options_response(event: Dict[str, Any]) -> Dict[str, Any]:
@@ -207,13 +152,24 @@ def _request_id(event: Dict[str, Any]) -> str:
     return ""
 
 
-def _parse_checkout_plan(plan_payload: Any) -> CheckoutPlan | None:
-    if not isinstance(plan_payload, dict):
+def _parse_checkout_product(
+    product_payload: Any,
+    *,
+    product_type: str,
+) -> tuple[CheckoutProduct, str, str | None] | None:
+    if not isinstance(product_payload, dict):
         return None
-    amount_raw = plan_payload.get("amount_minor")
-    currency = str(plan_payload.get("currency") or "").strip()
-    plan_key = str(plan_payload.get("plan_key") or "").strip()
-    if amount_raw is None or not currency or not plan_key:
+    normalized_type = (product_type or "").strip().lower()
+    if normalized_type not in ("course", "bundle"):
+        return None
+    amount_raw = product_payload.get("amount_minor")
+    currency = str(product_payload.get("currency") or "").strip().upper()
+    purchase_id = str(
+        product_payload.get("purchase_id") or product_payload.get("purchaseId") or ""
+    ).strip()
+    course_id_raw = product_payload.get("course_id") or product_payload.get("courseId")
+    course_id = str(course_id_raw).strip() if course_id_raw is not None else None
+    if amount_raw is None or currency != "USD" or not purchase_id:
         return None
     try:
         amount_minor = int(amount_raw)
@@ -221,11 +177,38 @@ def _parse_checkout_plan(plan_payload: Any) -> CheckoutPlan | None:
         return None
     if amount_minor <= 0:
         return None
-    return CheckoutPlan(
-        amount_minor=amount_minor,
-        currency=currency,
-        plan_key=plan_key,
+    description = normalized_type
+    if normalized_type == "course" and course_id:
+        description = f"course:{course_id}"
+    return (
+        CheckoutProduct(
+            amount_minor=amount_minor,
+            currency=currency,
+            description=description,
+        ),
+        purchase_id,
+        course_id if normalized_type == "course" else None,
     )
+
+
+def _parse_checkout_request(raw: bytes) -> tuple[str, str | None] | None:
+    if not raw:
+        return None
+    try:
+        payload = json.loads(raw.decode("utf-8"))
+    except (json.JSONDecodeError, UnicodeDecodeError):
+        return None
+    if not isinstance(payload, dict):
+        return None
+    product_type = str(payload.get("productType") or payload.get("product_type") or "").strip().lower()
+    if product_type not in ("course", "bundle"):
+        return None
+    course_id: str | None = None
+    if product_type == "course":
+        course_id = str(payload.get("courseId") or payload.get("course_id") or "").strip()
+        if not course_id:
+            return None
+    return product_type, course_id
 
 
 def _handle_checkout(
@@ -237,21 +220,21 @@ def _handle_checkout(
     if not user_sub:
         return _error_response(401, "unauthorized", "Missing authenticated user")
 
-    plan_id = ""
     raw = _raw_body_bytes(event)
-    if raw:
-        try:
-            payload = json.loads(raw.decode("utf-8"))
-            if isinstance(payload, dict):
-                plan_id = str(payload.get("planId") or payload.get("plan_id") or "").strip()
-        except (json.JSONDecodeError, UnicodeDecodeError):
-            return _error_response(400, "invalid_request", "Invalid JSON body")
+    parsed_request = _parse_checkout_request(raw)
+    if parsed_request is None:
+        if raw:
+            try:
+                json.loads(raw.decode("utf-8"))
+            except (json.JSONDecodeError, UnicodeDecodeError):
+                return _error_response(400, "invalid_request", "Invalid JSON body")
+        return _error_response(
+            400,
+            "invalid_request",
+            "productType is required (course or bundle); courseId required for course",
+        )
 
-    if not plan_id:
-        plan_id = str(cfg.subscription_plan_id or "").strip()
-
-    if not plan_id:
-        return _error_response(400, "invalid_request", "planId is required")
+    product_type, course_id = parsed_request
 
     catalog_arn = str(cfg.catalog_lambda_arn or "").strip()
     if not catalog_arn:
@@ -259,26 +242,23 @@ def _handle_checkout(
 
     if isinstance(provider, PayTabsAdapter):
         if not (cfg.billing_return_success_url or "").strip() or not (
-            cfg.billing_return_cancel_url or ""
+            cfg.billing_ipn_callback_url or ""
         ).strip():
             return _error_response(503, "billing_unconfigured", "Billing is not configured")
 
     try:
         precheck = _invoke_billing_checkout(
             user_sub=user_sub,
-            plan_id=plan_id,
+            product_type=product_type,
+            course_id=course_id,
             catalog_lambda_arn=catalog_arn,
         )
     except CatalogInvokeError:
         return _error_response(503, "billing_unconfigured", "Billing is not configured")
 
     block_reason = precheck.get("blockReason")
-    if block_reason == "already_subscribed":
-        return _error_response(
-            409,
-            "already_subscribed",
-            "Active subscription exists",
-        )
+    if block_reason == "already_owned":
+        return _manage_conflict_response("already_owned")
     if block_reason == "checkout_in_progress":
         return _error_response(
             409,
@@ -289,93 +269,48 @@ def _handle_checkout(
             ),
         )
 
-    checkout_plan = _parse_checkout_plan(precheck.get("plan"))
-    if checkout_plan is None:
+    parsed_product = _parse_checkout_product(
+        precheck.get("product"),
+        product_type=product_type,
+    )
+    if parsed_product is None:
         _invoke_billing_checkout_rollback(
             user_sub=user_sub,
+            product_type=product_type,
+            course_id=course_id,
             catalog_lambda_arn=catalog_arn,
         )
         return _error_response(503, "billing_unconfigured", "Billing is not configured")
 
+    checkout_product, purchase_id, product_course_id = parsed_product
+    sale_course_id = course_id or product_course_id
+
     try:
-        session = provider.create_subscribe_session(
+        session = provider.create_sale_session(
             user_sub=user_sub,
-            plan_id=plan_id,
-            plan=checkout_plan,
+            purchase_id=purchase_id,
+            product_type=product_type,
+            course_id=sale_course_id,
+            product=checkout_product,
         )
     except BillingUnconfiguredError:
         _invoke_billing_checkout_rollback(
             user_sub=user_sub,
+            product_type=product_type,
+            course_id=course_id,
             catalog_lambda_arn=catalog_arn,
         )
         return _error_response(503, "billing_unconfigured", "Billing is not configured")
     except NotImplementedError:
         _invoke_billing_checkout_rollback(
             user_sub=user_sub,
+            product_type=product_type,
+            course_id=course_id,
             catalog_lambda_arn=catalog_arn,
         )
         return _error_response(501, "not_implemented", "Checkout is not implemented yet")
 
     return _json_response(200, {"redirect_url": session.redirect_url})
-
-
-def _handle_cancel_subscription(
-    event: Dict[str, Any],
-    provider: PaymentProviderPort,
-    cfg: BillingEdgeConfig,
-) -> Dict[str, Any]:
-    user_sub = _claims_sub(event)
-    if not user_sub:
-        return _error_response(401, "unauthorized", "Missing authenticated user")
-
-    catalog_arn = str(cfg.catalog_lambda_arn or "").strip()
-    if not catalog_arn:
-        return _error_response(503, "billing_unconfigured", "Billing is not configured")
-
-    try:
-        result = _invoke_billing_cancel_at_period_end(
-            user_sub=user_sub,
-            catalog_lambda_arn=catalog_arn,
-        )
-    except CatalogInvokeError:
-        return _error_response(503, "billing_unconfigured", "Billing is not configured")
-
-    error_code = result.get("errorCode")
-    provider_subscription_id = str(
-        result.get("providerSubscriptionId") or ""
-    ).strip()
-
-    if error_code == "already_canceled":
-        if provider_subscription_id:
-            provider_error = _provider_cancel_agreement_or_error(
-                user_sub=user_sub,
-                provider=provider,
-                provider_subscription_id=provider_subscription_id,
-            )
-            if provider_error is not None:
-                return provider_error
-            return _json_response(200, _cancel_success_body(result))
-        return _provider_agreement_missing_response()
-
-    if isinstance(error_code, str) and error_code:
-        return _manage_conflict_response(error_code)
-
-    if provider_subscription_id:
-        provider_error = _provider_cancel_agreement_or_error(
-            user_sub=user_sub,
-            provider=provider,
-            provider_subscription_id=provider_subscription_id,
-        )
-        if provider_error is not None:
-            return provider_error
-    else:
-        logger.error(
-            "cancel_missing_provider_subscription_id user_sub=%s",
-            user_sub,
-        )
-        return _provider_agreement_missing_response()
-
-    return _json_response(200, _cancel_success_body(result))
 
 
 def _webhook_signature_header(event: Dict[str, Any], provider: PaymentProviderPort) -> str:
@@ -469,8 +404,6 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
 
     if method == "POST" and path == "/billing/checkout-session":
         return _handle_checkout(event, provider, cfg)
-    if method == "POST" and path == "/billing/cancel-subscription":
-        return _handle_cancel_subscription(event, provider, cfg)
     if method == "POST" and path == "/webhooks/payments/paytabs":
         return _handle_webhook(event, provider, cfg)
 

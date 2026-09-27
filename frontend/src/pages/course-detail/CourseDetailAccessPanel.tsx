@@ -82,7 +82,18 @@ export function CourseDetailAccessPanel({
           </div>
         ) : null}
         {needsAccess ? (
-          <p className="text-sm text-rs-body">{courseDetailNoAccessPrompt}</p>
+          <div className="space-y-3">
+            <p className="text-sm text-rs-body">{courseDetailNoAccessPrompt}</p>
+            <Button to={`/checkout?productType=course&courseId=${encodeURIComponent(courseId)}`} className="w-full">
+              Buy this course
+            </Button>
+            <Button to="/checkout?productType=bundle" variant="ghost" className="w-full">
+              Buy full bundle
+            </Button>
+          </div>
+        ) : null}
+        {!previewOnly && !needsAccess && course?.hasAccess ? (
+          <p className="text-sm font-semibold text-[#0d6f3e]">You own this course.</p>
         ) : null}
         {canPlay ? (
           <ResumeLearningButton

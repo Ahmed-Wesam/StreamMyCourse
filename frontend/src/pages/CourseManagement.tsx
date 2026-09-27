@@ -31,7 +31,9 @@ import {
   CourseManagementLoadingSkeleton,
   CourseManagementNotFound,
 } from '../components/course/CourseManagementPageStates'
+import { setCoursePrice } from '../lib/api/pricing'
 import { usePageTitle } from '../lib/page-title'
+import { parseUsdInputToMinor, usdMinorToInputValue } from '../lib/usdPriceInput'
 import { Badge } from '../components/ui/Badge'
 import { Button } from '../components/ui/Button'
 import { Card } from '../components/ui/Card'
@@ -54,6 +56,9 @@ export default function CourseManagement() {
 
   const [editTitle, setEditTitle] = useState('')
   const [editDescription, setEditDescription] = useState('')
+  const [editPriceUsd, setEditPriceUsd] = useState('')
+  const [savingPrice, setSavingPrice] = useState(false)
+  const [priceError, setPriceError] = useState<string | null>(null)
 
   const [showAddLesson, setShowAddLesson] = useState(false)
   const [newLessonTitle, setNewLessonTitle] = useState('')
@@ -93,6 +98,7 @@ export default function CourseManagement() {
         setQuestionBankSummaries([])
         setEditTitle('')
         setEditDescription('')
+        setEditPriceUsd('')
         setSelectedModuleId('')
         setNotFound(true)
         setError(null)
@@ -104,6 +110,12 @@ export default function CourseManagement() {
         setQuestionBankSummaries(questionBanksData)
         setEditTitle(courseData.title)
         setEditDescription(courseData.description)
+        setEditPriceUsd(
+          typeof courseData.amountMinor === 'number' && courseData.amountMinor > 0
+            ? usdMinorToInputValue(courseData.amountMinor)
+            : '',
+        )
+        setPriceError(null)
         if (modulesData.length > 0) {
           setSelectedModuleId((prev) => (prev && modulesData.some((m) => m.id === prev) ? prev : modulesData[0].id))
         } else {
@@ -119,6 +131,7 @@ export default function CourseManagement() {
       setQuestionBankSummaries([])
       setEditTitle('')
       setEditDescription('')
+      setEditPriceUsd('')
       setSelectedModuleId('')
       const is404 = err instanceof ApiError && err.status === 404
       setNotFound(is404)
@@ -151,6 +164,32 @@ export default function CourseManagement() {
       setError(catalogApiUserMessage(err, 'updateCourse'))
     } finally {
       setSaving(false)
+    }
+  }
+
+  const handleSaveCoursePrice = async () => {
+    if (!courseId) return
+
+    const amountMinor = parseUsdInputToMinor(editPriceUsd)
+    if (amountMinor == null) {
+      setPriceError('Enter a positive USD amount (for example 49.00).')
+      return
+    }
+
+    setSavingPrice(true)
+    setPriceError(null)
+    setError(null)
+
+    try {
+      const result = await setCoursePrice(courseId, amountMinor)
+      setEditPriceUsd(usdMinorToInputValue(result.amountMinor))
+      setCourse((prev) =>
+        prev ? { ...prev, amountMinor: result.amountMinor, currency: result.currency } : prev,
+      )
+    } catch (err) {
+      setPriceError(catalogApiUserMessage(err, 'updateCourse'))
+    } finally {
+      setSavingPrice(false)
     }
   }
 
@@ -399,6 +438,24 @@ export default function CourseManagement() {
         <Field label="Description" className="mb-4">
           <textarea value={editDescription} onChange={(e) => setEditDescription(e.target.value)} rows={3} />
         </Field>
+        <Field
+          label="Price (USD)"
+          hint="One-time purchase price in US dollars. Saved separately from title and description."
+          type="text"
+          inputMode="decimal"
+          autoComplete="off"
+          value={editPriceUsd}
+          error={priceError ?? undefined}
+          onChange={(e) => {
+            setEditPriceUsd(e.target.value)
+            if (priceError) setPriceError(null)
+          }}
+        />
+        <div className="mb-4 flex flex-wrap gap-3">
+          <Button type="button" onClick={() => void handleSaveCoursePrice()} disabled={savingPrice}>
+            {savingPrice ? 'Saving price…' : 'Save price'}
+          </Button>
+        </div>
         <div className="flex gap-3">
           <Button type="button" onClick={() => void handleSaveCourse()} disabled={saving}>
             {saving ? 'Saving...' : 'Save Changes'}

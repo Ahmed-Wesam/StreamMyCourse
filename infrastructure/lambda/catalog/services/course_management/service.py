@@ -44,7 +44,7 @@ from services.course_management.video_providers.port import (
     VideoPlayback,
     VideoProviderPort,
 )
-from services.subscription.ports import CourseAccessPort
+from services.purchases.ports import CourseAccessPort
 
 logger = logging.getLogger(__name__)
 
@@ -216,6 +216,9 @@ class CourseManagementService:
     def _public_course_dict(self, course: Course) -> Dict[str, Any]:
         data = asdict(course)
         thumb_key = (data.pop("thumbnailKey", None) or "").strip()
+        price_minor = data.pop("priceAmountMinor", None)
+        if price_minor is not None:
+            data["priceAmountMinor"] = int(price_minor)
         if thumb_key and self._image_storage is not None:
             url = self._safe_presign_get(thumb_key, media="course_thumbnail")
             if url:
@@ -346,8 +349,8 @@ class CourseManagementService:
         if self.viewer_has_lesson_access(course, course_id=course_id, cognito_sub=cognito_sub, role=role):
             return course
         raise Forbidden(
-            "Subscription required to view this course",
-            code="subscription_required",
+            "Purchase required to view this course",
+            code="purchase_required",
         )
 
     def get_course_detail_with_enrollment(
@@ -382,8 +385,8 @@ class CourseManagementService:
         if not course or course.status != "PUBLISHED":
             raise NotFound("Course not found")
         raise Forbidden(
-            "Subscription required to access this course",
-            code="subscription_required",
+            "Purchase required to access this course",
+            code="purchase_required",
         )
 
     def enroll_in_published_course_with_profile(

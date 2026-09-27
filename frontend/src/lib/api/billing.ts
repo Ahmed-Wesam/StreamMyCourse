@@ -1,22 +1,30 @@
 import { httpGet, httpPost } from './client'
 import type {
-  CancelSubscriptionResponse,
+  BundleOffer,
   CheckoutSessionResponse,
-  SubscriptionSummary,
+  CreateCheckoutSessionBody,
+  PurchaseRecord,
+  PurchasesListResponse,
 } from './types'
 
-/** Load the signed-in student's manageable subscription summary. */
-export async function getSubscription(): Promise<SubscriptionSummary> {
-  return httpGet<SubscriptionSummary>('/billing/subscription')
+/** Public bundle list price (GET /billing/bundle). */
+export async function getBundle(): Promise<BundleOffer> {
+  return httpGet<BundleOffer>('/billing/bundle')
 }
 
-/** Cancel subscription at period end (billing edge). */
-export async function cancelSubscription(): Promise<CancelSubscriptionResponse> {
-  return httpPost<CancelSubscriptionResponse>('/billing/cancel-subscription', {})
+/** Signed-in student's purchase history. */
+export async function getPurchases(): Promise<PurchaseRecord[]> {
+  const body = await httpGet<PurchasesListResponse>('/billing/purchases')
+  return body.purchases ?? []
 }
 
-/** Start PayTabs hosted checkout for platform subscription (amount from server plan row). */
-export async function createCheckoutSession(planId?: string): Promise<CheckoutSessionResponse> {
-  const body = planId ? { planId } : {}
+/** Start PayTabs hosted checkout for a course or bundle (amount from server). */
+export async function createCheckoutSession(
+  params: CreateCheckoutSessionBody,
+): Promise<CheckoutSessionResponse> {
+  const body: Record<string, string> = { productType: params.productType }
+  if (params.courseId) {
+    body.courseId = params.courseId
+  }
   return httpPost<CheckoutSessionResponse>('/billing/checkout-session', body)
 }

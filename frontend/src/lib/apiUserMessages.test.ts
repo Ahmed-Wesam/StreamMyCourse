@@ -114,7 +114,10 @@ describe('catalogApiUserMessage', () => {
 
   it('maps checkout session billing codes', () => {
     expect(catalogApiUserMessage(new ApiError('x', 503, 'billing_unconfigured'), 'subscribe')).toBe(
-      'Subscriptions are not available right now. Please try again later.',
+      'Purchases are not available right now. Please try again later.',
+    )
+    expect(catalogApiUserMessage(new ApiError('x', 409, 'already_owned'), 'checkout')).toBe(
+      'You already own this course or bundle.',
     )
     expect(catalogApiUserMessage(new ApiError('x', 409, 'already_subscribed'), 'subscribe')).toBe(
       'You already have an active subscription.',
@@ -124,22 +127,10 @@ describe('catalogApiUserMessage', () => {
     )
   })
 
-  it('maps subscription manage billing codes', () => {
-    expect(catalogApiUserMessage(new ApiError('x', 404, 'not_subscribed'), 'loadSubscription')).toBe(
-      'You do not have a subscription to manage yet.',
+  it('maps loadPurchases fallback', () => {
+    expect(catalogApiUserMessage(new Error('x'), 'loadPurchases')).toBe(
+      'Your purchases could not be loaded. Please try again.',
     )
-    expect(catalogApiUserMessage(new ApiError('x', 409, 'already_canceled'), 'cancelSubscription')).toBe(
-      'Your subscription is already set to cancel at the end of the billing period.',
-    )
-    expect(catalogApiUserMessage(new ApiError('x', 409, 'cannot_cancel'), 'cancelSubscription')).toBe(
-      'Your subscription cannot be canceled in its current state.',
-    )
-    expect(
-      catalogApiUserMessage(new ApiError('x', 502, 'provider_cancel_failed'), 'cancelSubscription'),
-    ).toContain('Try again')
-    expect(
-      catalogApiUserMessage(new ApiError('x', 502, 'provider_agreement_missing'), 'cancelSubscription'),
-    ).toMatch(/contact support/i)
   })
 
   it('maps session_superseded to friendly copy', () => {

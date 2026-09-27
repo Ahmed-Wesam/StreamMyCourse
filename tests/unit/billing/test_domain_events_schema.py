@@ -62,3 +62,14 @@ def test_from_sqs_dict_round_trip() -> None:
 def test_rejects_unknown_event_type() -> None:
     with pytest.raises(ValueError, match="event_type"):
         _sample_event(event_type="subscription.unknown")
+
+
+def test_purchase_paid_event_type_allowed() -> None:
+    event = _sample_event(
+        event_type="purchase.paid",
+        plan_id="",
+        purchase_id="c0000000-0000-4000-8000-000000000001",
+    )
+    assert event.event_type == "purchase.paid"
+    data = event.to_sqs_dict()
+    assert data["purchase_id"] == "c0000000-0000-4000-8000-000000000001"

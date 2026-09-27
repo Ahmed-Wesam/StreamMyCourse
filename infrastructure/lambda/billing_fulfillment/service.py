@@ -16,6 +16,7 @@ logger = logging.getLogger(__name__)
 class FulfillmentResult:
     recorded: bool = False
     subscription_updated: bool = False
+    purchase_updated: bool = False
     skipped_environment: bool = False
 
 

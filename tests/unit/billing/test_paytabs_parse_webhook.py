@@ -10,8 +10,11 @@ from domain.metadata import EnvironmentMismatchError, InvalidCartMetadataError
 from providers.paytabs_adapter import IGNORED_TRAN_TYPES, PayTabsAdapter, parse_paytabs_webhook
 
 _PLAN_ID = "00000000-0000-4000-8000-000000000001"
+_PURCHASE_ID = "c0000000-0000-4000-8000-000000000001"
+_COURSE_ID = "b0000000-0000-4000-8000-000000000001"
 _USER_SUB = "student-sub-1"
 _CART_DEV = f"v1|dev|{_USER_SUB}|{_PLAN_ID}"
+_CART_V2_COURSE = f"v2|dev|{_USER_SUB}|course|{_COURSE_ID}|{_PURCHASE_ID}"
 _DIGEST = "d" * 64
 
 
@@ -25,6 +28,59 @@ def _parse(payload: dict, *, deployment: str = "dev") -> list:
         deployment_environment=deployment,
         payload_digest=_DIGEST,
     )
+
+
+def test_v2_sale_authorized_maps_to_purchase_paid() -> None:
+    events = _parse(
+        {
+            "tran_ref": "TST-PUR-100",
+            "tran_type": "Sale",
+            "payment_result": "A",
+            "cart_id": _CART_V2_COURSE,
+            "cart_amount": 99.0,
+            "cart_currency": "USD",
+            "transaction_time": "2026-05-18T12:00:00Z",
+        }
+    )
+    assert len(events) == 1
+    event = events[0]
+    assert event.event_type == "purchase.paid"
+    assert event.purchase_id == _PURCHASE_ID
+    assert event.amount_minor == 9900
+    assert event.currency == "USD"
+
+
+def test_v2_recurring_sale_is_ignored() -> None:
+    events = _parse(
+        {
+            "tran_ref": "TST-REC-100",
+            "tran_type": "Sale",
+            "payment_result": "A",
+            "cart_id": _CART_V2_COURSE,
+            "cart_amount": 99.0,
+            "cart_currency": "USD",
+            "is_recurring": True,
+            "recurring_count": 1,
+        }
+    )
+    assert events == []
+
+
+def test_refund_maps_to_purchase_revoked() -> None:
+    events = _parse(
+        {
+            "tran_ref": "TST-REF-100",
+            "tran_type": "Refund",
+            "payment_result": "A",
+            "previous_tran_ref": "TST-PUR-100",
+            "cart_id": _CART_V2_COURSE,
+            "cart_amount": 99.0,
+            "cart_currency": "USD",
+        }
+    )
+    assert len(events) == 1
+    assert events[0].event_type == "purchase.revoked"
+    assert events[0].provider_tran_ref == "TST-PUR-100"
 
 
 def test_sale_authorized_maps_to_activated() -> None:

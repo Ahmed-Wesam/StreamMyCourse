@@ -17,8 +17,8 @@ export function AccountLayout() {
           <NavLink to="/account/profile" className={navItemClass} end>
             Profile
           </NavLink>
-          <NavLink to="/account/subscription" className={navItemClass}>
-            Manage subscription
+          <NavLink to="/account/purchases" className={navItemClass}>
+            My purchases
           </NavLink>
         </nav>
       </aside>

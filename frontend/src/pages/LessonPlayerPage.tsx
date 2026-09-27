@@ -4,11 +4,9 @@ import {
   useMemo,
   useRef,
   useState,
-  type ReactNode,
   type RefObject,
 } from 'react'
 import { Link, useParams, useSearchParams, type To } from 'react-router-dom'
-import { createCheckoutSession } from '../lib/api/billing'
 import {
   getCourse,
   getCourseProgress,
@@ -193,11 +191,9 @@ export default function LessonPlayerPage() {
   const [modules, setModules] = useState<CourseModule[]>([])
   const [playback, setPlayback] = useState<Playback | null>(null)
   const [error, setError] = useState<string | null>(null)
-  const [subscribeError, setSubscribeError] = useState<ReactNode | null>(null)
   const [loading, setLoading] = useState(true)
   const [needsSubscription, setNeedsSubscription] = useState(false)
   const [needsSignIn, setNeedsSignIn] = useState(false)
-  const [subscribing, setSubscribing] = useState(false)
   const [courseProgress, setCourseProgress] = useState<CourseProgress | null>(null)
   const lastAttemptRef = useRef<number>(0) // Track last attempt time (initialized to 0 to allow first update)
   const consecutiveFailuresRef = useRef<number>(0)
@@ -747,19 +743,6 @@ export default function LessonPlayerPage() {
     }
   }, [handleVisibilityChange, handlePageHide])
 
-  const handleSubscribe = useCallback(async () => {
-    setSubscribing(true)
-    setSubscribeError(null)
-    try {
-      const { redirect_url } = await createCheckoutSession()
-      window.location.href = redirect_url
-    } catch (err) {
-      setSubscribeError(catalogApiUserMessage(err, 'subscribe'))
-    } finally {
-      setSubscribing(false)
-    }
-  }, [])
-
   const isMdUp = useIsMdUp()
   const [sidebarOpen, setSidebarOpen] = useState(readMdUpMatch)
   const desktopSidebarDismissedRef = useRef(false)
@@ -802,10 +785,7 @@ export default function LessonPlayerPage() {
         onPlaybackPause={handlePlaybackPause}
         needsSignIn={needsSignIn}
         needsSubscription={needsSubscription}
-        subscribing={subscribing}
-        subscribeError={subscribeError}
         error={error}
-        onSubscribe={() => void handleSubscribe()}
         playbackNavLocked={playbackNavLocked}
         courseProgress={courseProgress}
         courseDescription={course?.description}
@@ -936,11 +916,8 @@ export default function LessonPlayerPage() {
             <LessonPlayerAlerts
               needsSignIn={needsSignIn}
               needsSubscription={needsSubscription}
-              subscribing={subscribing}
-              subscribeError={subscribeError}
               error={error}
               courseId={courseId}
-              onSubscribe={handleSubscribe}
             />
 
             <LessonPrimaryColumn

@@ -55,7 +55,7 @@ class TestViewerHasLessonAccessUsesSubscription:
 
 
 class TestEnsureCanViewLessonsAndPlayback:
-    def test_without_access_raises_subscription_required(self) -> None:
+    def test_without_access_raises_purchase_required(self) -> None:
         svc, course_access = _service(has_access=False)
         svc._repo.get_course.return_value = _course()
         course_access.has_course_access.return_value = False
@@ -65,7 +65,7 @@ class TestEnsureCanViewLessonsAndPlayback:
                 _VID, cognito_sub="student-sub", role="student"
             )
 
-        assert exc_info.value.code == "subscription_required"
+        assert exc_info.value.code == "purchase_required"
 
     def test_with_access_returns_course(self) -> None:
         svc, course_access = _service(has_access=True)
@@ -81,14 +81,14 @@ class TestEnsureCanViewLessonsAndPlayback:
 
 
 class TestEnrollBlocked:
-    def test_enroll_raises_subscription_required_without_put(self) -> None:
+    def test_enroll_raises_purchase_required_without_put(self) -> None:
         svc, _ = _service()
         svc._repo.get_course.return_value = _course(status="PUBLISHED")
 
         with pytest.raises(Forbidden) as exc_info:
             svc.enroll_in_published_course(_VID, cognito_sub="student-sub")
 
-        assert exc_info.value.code == "subscription_required"
+        assert exc_info.value.code == "purchase_required"
 
     def test_enroll_with_profile_does_not_provision_user(self) -> None:
         svc, _ = _service()

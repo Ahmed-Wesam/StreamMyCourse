@@ -161,6 +161,7 @@ class TestCourseCatalogRdsRepository:
                 "",
                 now,
                 now,
+                None,
             )
         )
         return cid
@@ -180,7 +181,7 @@ class TestCourseCatalogRdsRepository:
         cid = uuid.UUID("11111111-2222-3333-4444-555555555555")
         now = datetime(2026, 5, 3, 12, 0, 0, tzinfo=timezone.utc)
         fake_conn.cursor_obj.bulk_rows_to_return = [
-            (cid, "T", "D", "PUBLISHED", "owner", "thumbs/x.png", now, now),
+            (cid, "T", "D", "PUBLISHED", "owner", "thumbs/x.png", now, now, None),
         ]
         courses = repo.list_courses()
         assert len(courses) == 1
@@ -240,7 +241,7 @@ class TestCourseCatalogRdsRepository:
         now = datetime(2026, 5, 3, 12, 0, 0, tzinfo=timezone.utc)
         # INSERT courses RETURNING … then INSERT default course_modules.
         fake_conn.cursor_obj.rows_to_return.append(
-            (new_id, "My Course", "Body", "DRAFT", "creator", "", now, now)
+            (new_id, "My Course", "Body", "DRAFT", "creator", "", now, now, None)
         )
         course = repo.create_course(
             title="My Course", description="Body", created_by="creator"
@@ -529,7 +530,7 @@ class TestCourseCatalogRdsRepository:
         new_id = uuid.UUID("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee")
         now = datetime(2026, 5, 3, 12, 0, 0, tzinfo=timezone.utc)
         fake_conn.cursor_obj.rows_to_return.append(
-            (new_id, "T", "D", "DRAFT", "creator", "", now, now)
+            (new_id, "T", "D", "DRAFT", "creator", "", now, now, None)
         )
         repo.create_course(title="T", description="D", created_by="creator")
         # Autocommit was flipped False then back to True (full toggle).
@@ -571,7 +572,7 @@ class TestCourseCatalogRdsRepository:
         cid = uuid.UUID("11111111-2222-3333-4444-555555555555")
         now = datetime(2026, 5, 3, 12, 0, 0, tzinfo=timezone.utc)
         good.cursor_obj.bulk_rows_to_return = [
-            (cid, "Title", "Desc", "DRAFT", "teacher", "", now, now),
+            (cid, "Title", "Desc", "DRAFT", "teacher", "", now, now, None),
         ]
         attempt = {"n": 0}
 

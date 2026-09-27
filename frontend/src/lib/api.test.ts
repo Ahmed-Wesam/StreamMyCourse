@@ -28,8 +28,9 @@ vi.mock('./student-session-refresh', async (importOriginal) => {
 
 import {
   ApiError,
-  cancelSubscription,
   createCheckoutSession,
+  getBundle,
+  getPurchases,
   createCourse,
   createCourseModule,
   createLesson,
@@ -41,7 +42,6 @@ import {
   getCourse,
   getCourseProgress,
   getPlaybackUrl,
-  getSubscription,
   getUploadUrl,
   isAlreadyCanceledError,
   isAlreadySubscribedError,
@@ -223,7 +223,8 @@ describe('isEnrollmentRequiredError', () => {
 })
 
 describe('isSubscriptionRequiredError', () => {
-  it('matches subscription_required code', () => {
+  it('matches purchase_required and legacy subscription_required codes', () => {
+    expect(isSubscriptionRequiredError(new ApiError('x', 403, 'purchase_required'))).toBe(true)
     expect(isSubscriptionRequiredError(new ApiError('x', 403, 'subscription_required'))).toBe(true)
   })
 
@@ -234,6 +235,7 @@ describe('isSubscriptionRequiredError', () => {
 
 describe('isCourseAccessDeniedError', () => {
   it('matches subscription or enrollment codes', () => {
+    expect(isCourseAccessDeniedError(new ApiError('x', 403, 'purchase_required'))).toBe(true)
     expect(isCourseAccessDeniedError(new ApiError('x', 403, 'subscription_required'))).toBe(true)
     expect(isCourseAccessDeniedError(new ApiError('x', 403, 'enrollment_required'))).toBe(true)
     expect(isCourseAccessDeniedError(new ApiError('Forbidden', 403))).toBe(false)
@@ -437,32 +439,20 @@ describe('subscription manage error helpers', () => {
   })
 })
 
-const sampleSubscriptionSummary = {
-  status: 'active' as const,
-  currentPeriodEnd: '2026-06-18T00:00:00.000Z',
-  cancelAtPeriodEnd: false,
-  canCancel: true,
-  nextBillingDate: '2026-06-18T00:00:00.000Z',
-  amountMinor: 50000,
-  currency: 'JOD',
-  planLabel: '50 JOD / month',
-  pastDue: false,
-}
-
-describe('getSubscription', () => {
+describe('getBundle', () => {
   const originalEnv = import.meta.env.VITE_API_BASE_URL
 
   beforeEach(() => {
     vi.stubGlobal(
       'fetch',
       vi.fn(async () => {
-        return new Response(JSON.stringify(sampleSubscriptionSummary), {
+        return new Response(JSON.stringify({ amountMinor: 15000, currency: 'USD' }), {
           status: 200,
           headers: { 'Content-Type': 'application/json' },
         })
       }),
     )
-    fetchAuthSessionMock.mockResolvedValue({ tokens: { idToken: 't' } })
+    fetchAuthSessionMock.mockResolvedValue({ tokens: undefined })
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     ;(import.meta as any).env.VITE_API_BASE_URL = 'https://api.example/v1'
   })
@@ -474,49 +464,37 @@ describe('getSubscription', () => {
     vi.clearAllMocks()
   })
 
-  it('GETs /billing/subscription with Bearer token', async () => {
-    const result = await getSubscription()
-    expect(result).toEqual(sampleSubscriptionSummary)
-    expect(fetch).toHaveBeenCalledTimes(1)
-    const [url, init] = vi.mocked(fetch).mock.calls[0]
-    expect(String(url)).toContain('/billing/subscription')
-    expect(init?.method).toBeUndefined()
-    const h = new Headers(init?.headers as HeadersInit)
-    expect(h.get('Authorization')).toBe('Bearer t')
+  it('GETs /billing/bundle', async () => {
+    const result = await getBundle()
+    expect(result).toEqual({ amountMinor: 15000, currency: 'USD' })
+    const [url] = vi.mocked(fetch).mock.calls[0]
+    expect(String(url)).toContain('/billing/bundle')
   })
+})
 
-  it('throws ApiError with not_subscribed on 404', async () => {
+describe('getPurchases', () => {
+  const originalEnv = import.meta.env.VITE_API_BASE_URL
+
+  beforeEach(() => {
     vi.stubGlobal(
       'fetch',
       vi.fn(async () => {
         return new Response(
-          JSON.stringify({ message: 'No active subscription to manage', code: 'not_subscribed' }),
-          { status: 404, headers: { 'Content-Type': 'application/json' } },
+          JSON.stringify({
+            purchases: [
+              {
+                id: 'p1',
+                productType: 'course',
+                courseId: 'c1',
+                status: 'paid',
+                amountMinor: 4900,
+                currency: 'USD',
+                createdAt: '2026-03-01T00:00:00.000Z',
+              },
+            ],
+          }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } },
         )
-      }),
-    )
-    const err = await getSubscription().catch((e: unknown) => e)
-    expect(err).toMatchObject({ status: 404, code: 'not_subscribed' })
-    expect(isNotSubscribedError(err)).toBe(true)
-  })
-})
-
-describe('cancelSubscription', () => {
-  const originalEnv = import.meta.env.VITE_API_BASE_URL
-  const cancelBody = {
-    status: 'canceled',
-    cancelAtPeriodEnd: true,
-    currentPeriodEnd: '2026-06-18T00:00:00.000Z',
-  }
-
-  beforeEach(() => {
-    vi.stubGlobal(
-      'fetch',
-      vi.fn(async () => {
-        return new Response(JSON.stringify(cancelBody), {
-          status: 200,
-          headers: { 'Content-Type': 'application/json' },
-        })
       }),
     )
     fetchAuthSessionMock.mockResolvedValue({ tokens: { idToken: 't' } })
@@ -531,13 +509,14 @@ describe('cancelSubscription', () => {
     vi.clearAllMocks()
   })
 
-  it('POSTs to /billing/cancel-subscription with empty body', async () => {
-    const result = await cancelSubscription()
-    expect(result).toEqual(cancelBody)
+  it('GETs /billing/purchases with Bearer token', async () => {
+    const rows = await getPurchases()
+    expect(rows).toHaveLength(1)
+    expect(rows[0]?.productType).toBe('course')
     const [url, init] = vi.mocked(fetch).mock.calls[0]
-    expect(String(url)).toContain('/billing/cancel-subscription')
-    expect(init?.method).toBe('POST')
-    expect(JSON.parse((init?.body as string) ?? '{}')).toEqual({})
+    expect(String(url)).toContain('/billing/purchases')
+    const h = new Headers(init?.headers as HeadersInit)
+    expect(h.get('Authorization')).toBe('Bearer t')
   })
 })
 
@@ -566,35 +545,35 @@ describe('createCheckoutSession', () => {
     vi.clearAllMocks()
   })
 
-  it('POSTs to /billing/checkout-session with empty body when planId omitted', async () => {
-    const result = await createCheckoutSession()
+  it('POSTs bundle checkout body', async () => {
+    const result = await createCheckoutSession({ productType: 'bundle' })
     expect(result).toEqual({ redirect_url: 'https://pay.example/checkout' })
-    expect(fetch).toHaveBeenCalledTimes(1)
-    const [url, init] = vi.mocked(fetch).mock.calls[0]
-    expect(String(url)).toContain('/billing/checkout-session')
-    expect(init?.method).toBe('POST')
-    expect(JSON.parse((init?.body as string) ?? '{}')).toEqual({})
-  })
-
-  it('POSTs with planId when provided', async () => {
-    await createCheckoutSession('plan-monthly')
     const [, init] = vi.mocked(fetch).mock.calls[0]
-    expect(JSON.parse((init?.body as string) ?? '{}')).toEqual({ planId: 'plan-monthly' })
+    expect(JSON.parse((init?.body as string) ?? '{}')).toEqual({ productType: 'bundle' })
   })
 
-  it('throws ApiError with billing codes from failed responses', async () => {
+  it('POSTs course checkout with courseId', async () => {
+    await createCheckoutSession({ productType: 'course', courseId: 'c1' })
+    const [, init] = vi.mocked(fetch).mock.calls[0]
+    expect(JSON.parse((init?.body as string) ?? '{}')).toEqual({
+      productType: 'course',
+      courseId: 'c1',
+    })
+  })
+
+  it('throws ApiError with already_owned from failed responses', async () => {
     vi.stubGlobal(
       'fetch',
       vi.fn(async () => {
-        return new Response(JSON.stringify({ message: 'Already subscribed', code: 'already_subscribed' }), {
+        return new Response(JSON.stringify({ message: 'Already owned', code: 'already_owned' }), {
           status: 409,
           headers: { 'Content-Type': 'application/json' },
         })
       }),
     )
-    await expect(createCheckoutSession()).rejects.toMatchObject({
+    await expect(createCheckoutSession({ productType: 'bundle' })).rejects.toMatchObject({
       status: 409,
-      code: 'already_subscribed',
+      code: 'already_owned',
     })
   })
 })

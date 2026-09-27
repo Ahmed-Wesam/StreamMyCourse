@@ -7,10 +7,13 @@ export type Course = {
   updatedAt?: string
   /** Presigned GET URL when the course has a thumbnail; omit if none. */
   thumbnailUrl?: string
-  /** True when the viewer may access lessons (subscription or owner/admin). */
+  /** True when the viewer may access lessons (purchase or owner/admin). */
   hasAccess?: boolean
   /** Deprecated alias of `hasAccess` for older clients. */
   enrolled?: boolean
+  /** One-time price in USD cents when configured (RS-5). */
+  amountMinor?: number
+  currency?: string
 }
 
 export type CourseModule = {
@@ -201,21 +204,28 @@ export type CheckoutSessionResponse = {
   redirect_url: string
 }
 
-/** Manage-contract-v1 read model for GET /billing/subscription. */
-export type SubscriptionSummary = {
-  status: 'active' | 'past_due' | 'canceled'
-  currentPeriodEnd: string
-  cancelAtPeriodEnd: boolean
-  canCancel: boolean
-  nextBillingDate: string | null
-  amountMinor: number
-  currency: string
-  planLabel: string
-  pastDue: boolean
+export type CheckoutProductType = 'course' | 'bundle'
+
+export type CreateCheckoutSessionBody = {
+  productType: CheckoutProductType
+  courseId?: string
 }
 
-export type CancelSubscriptionResponse = {
+export type BundleOffer = {
+  amountMinor: number
+  currency: string
+}
+
+export type PurchaseRecord = {
+  id: string
+  productType: CheckoutProductType
   status: string
-  cancelAtPeriodEnd: boolean
-  currentPeriodEnd: string
+  amountMinor: number
+  currency: string
+  createdAt: string
+  courseId?: string
+}
+
+export type PurchasesListResponse = {
+  purchases: PurchaseRecord[]
 }

@@ -6,6 +6,33 @@
 
 ---
 
+## 2026-09-27 — Research Spectrum one-time purchases (RS-5)
+
+### Decisions
+
+- **USD** list prices in **cents** on RDS; PayTabs HPP **`cart_currency=USD`**. Do not disable mock on a JOD-only PayTabs profile.
+- **Bundle** = all **published** courses now and later (read-time check on paid bundle row). Full bundle price even when the student already owns some courses.
+- **Signed-in checkout** only; IPN is source of truth (browser return does not grant access). **`callback`** on the sale request is the webhook URL (`BILLING_IPN_CALLBACK_URL`).
+
+### What landed
+
+- **Schema:** [`015_one_time_purchases.sql`](infrastructure/database/migrations/015_one_time_purchases.sql) — `purchases`, `bundle_offers`, course price column; drops subscription tables.
+- **Catalog:** [`services/purchases/`](infrastructure/lambda/catalog/services/purchases/) — access, checkout precheck (30‑min pending TTL), price/bundle APIs; subscription module removed.
+- **Billing edge / fulfillment:** one-time sale session, v2 cart metadata, `purchase.paid|failed|revoked` events; cancel-subscription route removed.
+- **Frontend:** [`/checkout`](frontend/src/pages/CheckoutPage.tsx), [`/account/purchases`](frontend/src/pages/account/AccountPurchasesPage.tsx), catalog/detail pricing, instructor course + bundle price UI ([`lib/api/pricing.ts`](frontend/src/lib/api/pricing.ts)).
+
+### Verification
+
+- [x] `python -m pytest tests/unit/catalog tests/unit/billing` (210 passed; bash deploy guard excluded on Windows), `python scripts/check_lambda_boundaries.py`
+- [x] `frontend/` `npm run test` — **676** tests
+- [ ] `./scripts/run-local-integration-tests.sh` against prod — run **after** migration **015** is applied on prod RDS (subscription access removed)
+
+### Docs
+
+- [`design.md`](design.md) §13 #6; [`plans/ui-overhaul/research-spectrum-mega-plan.md`](plans/ui-overhaul/research-spectrum-mega-plan.md) RS-5 status; [`plans/billing/access-policy-v1.md`](plans/billing/access-policy-v1.md) superseded note.
+
+---
+
 ## 2026-09-26 — Research Spectrum instructor app restyle (RS-4)
 
 ### Decisions

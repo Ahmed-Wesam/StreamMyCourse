@@ -14,13 +14,18 @@ from fulfillment_config import FulfillmentConfig
 
 def _event_dict(**overrides: object) -> BillingDomainEvent:
     base = dict(
-        event_type="subscription.activated",
+        event_type="purchase.paid",
         provider="paytabs",
         provider_event_id="paytabs:W1:A",
         environment="dev",
         user_sub="sub-1",
-        plan_id="a0000000-0000-4000-8000-000000000011",
+        plan_id="",
         payload_digest="a" * 64,
+        purchase_id="c0000000-0000-4000-8000-000000000001",
+        product_type="course",
+        amount_minor=9900,
+        currency="USD",
+        provider_tran_ref="TST1",
     )
     base.update(overrides)
     return BillingDomainEvent(**base)  # type: ignore[arg-type]

@@ -10,7 +10,7 @@ import BillingSuccessPage from './BillingSuccessPage'
 import {
   billingCancelMessage,
   billingSuccessMessage,
-} from '../lib/subscribeCopy'
+} from '../lib/purchaseCopy'
 
 function renderBillingRoute(path: '/billing/success' | '/billing/cancel') {
   return render(

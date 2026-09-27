@@ -28,7 +28,7 @@ def _service(*, has_access: bool = False) -> tuple[LessonProgressService, MagicM
 
 
 class TestProgressSubscriptionAccess:
-    def test_get_course_progress_without_access_raises_subscription_required(self) -> None:
+    def test_get_course_progress_without_access_raises_purchase_required(self) -> None:
         svc, course_access = _service(has_access=False)
         course_access.has_course_access.return_value = False
 
@@ -39,7 +39,7 @@ class TestProgressSubscriptionAccess:
                 role="student",
             )
 
-        assert exc_info.value.code == "subscription_required"
+        assert exc_info.value.code == "purchase_required"
         course_access.has_course_access.assert_called_once_with(
             "student-sub", _COURSE_ID, "student"
         )
@@ -56,7 +56,7 @@ class TestProgressSubscriptionAccess:
             "admin-sub", _COURSE_ID, "admin"
         )
 
-    def test_update_lesson_progress_without_access_raises_subscription_required(self) -> None:
+    def test_update_lesson_progress_without_access_raises_purchase_required(self) -> None:
         svc, course_access = _service(has_access=False)
         course_access.has_course_access.return_value = False
 
@@ -70,7 +70,7 @@ class TestProgressSubscriptionAccess:
                 role="student",
             )
 
-        assert exc_info.value.code == "subscription_required"
+        assert exc_info.value.code == "purchase_required"
 
     def test_update_lesson_progress_with_access_succeeds(self) -> None:
         svc, course_access = _service(has_access=True)

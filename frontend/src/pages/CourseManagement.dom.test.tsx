@@ -56,6 +56,10 @@ function expectRsPaletteOnRoot(root: Element | null) {
   expect(violations).toEqual([])
 }
 
+const pricingApi = vi.hoisted(() => ({
+  setCoursePrice: vi.fn(),
+}))
+
 const api = vi.hoisted(() => ({
   getCourse: vi.fn(),
   updateCourse: vi.fn(),
@@ -127,6 +131,10 @@ vi.mock('../lib/videoThumbnail', () => ({
   }),
 }))
 
+vi.mock('../lib/api/pricing', () => ({
+  setCoursePrice: (...args: unknown[]) => pricingApi.setCoursePrice(...args),
+}))
+
 // Mock window.confirm
 Object.defineProperty(window, 'confirm', {
   writable: true,
@@ -180,6 +188,12 @@ describe('CourseManagement', () => {
     api.listCourseModuleQuizzes.mockReset()
     api.listCourseQuestionBanks.mockReset()
     api.createModuleQuiz.mockReset()
+    pricingApi.setCoursePrice.mockReset()
+    pricingApi.setCoursePrice.mockResolvedValue({
+      courseId: 'c1',
+      amountMinor: 5999,
+      currency: 'USD',
+    })
     mockNavigate.mockReset()
     mockConfirm.mockReset()
     mockRouteParams.courseId = 'c1'
@@ -326,6 +340,30 @@ describe('CourseManagement', () => {
         description: 'Test Description',
       })
     })
+  })
+
+  it('loads USD course price and saves via setCoursePrice', async () => {
+    api.getCourse.mockResolvedValue({
+      id: 'c1',
+      title: 'Test Course',
+      description: 'Test Description',
+      status: 'DRAFT',
+      amountMinor: 4900,
+      currency: 'USD',
+    })
+
+    renderCourseManagement()
+
+    const priceInput = await screen.findByLabelText(/price \(usd\)/i)
+    expect(priceInput).toHaveProperty('value', '49.00')
+
+    fireEvent.change(priceInput, { target: { value: '59.99' } })
+    fireEvent.click(screen.getByRole('button', { name: /save price/i }))
+
+    await waitFor(() => {
+      expect(pricingApi.setCoursePrice).toHaveBeenCalledWith('c1', 5999)
+    })
+    expect(priceInput).toHaveProperty('value', '59.99')
   })
 
   it('shows Publish Course button for draft with ready lessons', async () => {

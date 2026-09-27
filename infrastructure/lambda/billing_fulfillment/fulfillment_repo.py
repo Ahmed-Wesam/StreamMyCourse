@@ -8,7 +8,7 @@ from typing import Any, Callable, Optional
 
 from domain_events import BillingDomainEvent
 from fulfillment_config import FulfillmentConfig
-from models import SubscriptionUpdate, subscription_update_for_event
+from models import PurchaseFulfillmentTarget, purchase_fulfillment_for_event
 from service import FulfillmentResult
 
 try:  # pragma: no cover - optional until first DB call
@@ -21,9 +21,6 @@ except Exception:  # pragma: no cover
 logger = logging.getLogger(__name__)
 
 ConnectionFactory = Callable[[], Any]
-
-_GRANTING_STATUSES = ("active", "past_due", "incomplete")
-
 
 def _secretsmanager_client() -> Any:
     import boto3
@@ -102,107 +99,63 @@ def _insert_webhook_event(cur: Any, event: BillingDomainEvent) -> Optional[str]:
     return str(row[0])
 
 
-def _find_subscription_row_id(cur: Any, *, user_sub: str, environment: str) -> Optional[str]:
-    cur.execute(
-        """
-        SELECT id::text
-        FROM user_subscriptions
-        WHERE user_sub = %s
-          AND environment = %s
-          AND status = ANY(%s)
-        ORDER BY updated_at DESC
-        LIMIT 1
-        """,
-        (user_sub, environment, list(_GRANTING_STATUSES)),
-    )
-    row = cur.fetchone()
-    if row is not None:
-        return str(row[0])
-
-    cur.execute(
-        """
-        SELECT id::text
-        FROM user_subscriptions
-        WHERE user_sub = %s
-          AND environment = %s
-        ORDER BY updated_at DESC
-        LIMIT 1
-        """,
-        (user_sub, environment),
-    )
-    row = cur.fetchone()
-    if row is None:
-        return None
-    return str(row[0])
-
-
-def _apply_subscription_update(
-    cur: Any,
-    *,
-    event: BillingDomainEvent,
-    update: SubscriptionUpdate,
-) -> None:
-    row_id = _find_subscription_row_id(
-        cur, user_sub=event.user_sub, environment=event.environment
-    )
-    if row_id is not None:
+def _apply_purchase_update(cur: Any, *, event: BillingDomainEvent, target: PurchaseFulfillmentTarget) -> bool:
+    if event.event_type in ("purchase.paid", "purchase.failed"):
         cur.execute(
             """
-            UPDATE user_subscriptions
-            SET plan_id = %s,
-                provider = %s,
-                provider_subscription_id = COALESCE(%s, provider_subscription_id),
-                status = %s,
-                current_period_start = COALESCE(%s::timestamptz, current_period_start),
-                current_period_end = COALESCE(%s::timestamptz, current_period_end),
-                cancel_at_period_end = %s,
-                canceled_at = %s::timestamptz,
+            SELECT amount_minor, currency, status
+            FROM purchases
+            WHERE id = %s::uuid
+              AND user_sub = %s
+              AND environment = %s
+            FOR UPDATE
+            """,
+            (target.purchase_id, event.user_sub, event.environment),
+        )
+        row = cur.fetchone()
+        if row is None:
+            raise ValueError(f"purchase not found: {target.purchase_id}")
+        amount_minor, currency, status = row
+        if status != "pending":
+            return False
+        if event.event_type == "purchase.paid":
+            if event.amount_minor is None or not event.currency:
+                raise ValueError("purchase.paid IPN must include USD amount and currency")
+        if event.amount_minor is not None and int(amount_minor) != int(event.amount_minor):
+            raise ValueError("purchase amount_minor mismatch")
+        if event.currency is not None and str(currency).upper() != str(event.currency).upper():
+            raise ValueError("purchase currency mismatch")
+        cur.execute(
+            """
+            UPDATE purchases
+            SET status = %s,
+                provider_tran_ref = COALESCE(%s, provider_tran_ref),
                 updated_at = NOW()
             WHERE id = %s::uuid
             """,
-            (
-                update.plan_id,
-                update.provider,
-                update.provider_subscription_id,
-                update.status,
-                update.current_period_start,
-                update.current_period_end,
-                update.cancel_at_period_end,
-                update.canceled_at,
-                row_id,
-            ),
+            (target.status, target.provider_tran_ref, target.purchase_id),
         )
-        return
+        return cur.rowcount > 0
 
-    cur.execute(
-        """
-        INSERT INTO user_subscriptions (
-            user_sub,
-            environment,
-            plan_id,
-            provider,
-            provider_subscription_id,
-            status,
-            current_period_start,
-            current_period_end,
-            cancel_at_period_end,
-            canceled_at
+    if event.event_type == "purchase.revoked":
+        tran_ref = (target.provider_tran_ref or "").strip()
+        if not tran_ref:
+            raise ValueError("provider_tran_ref is required for purchase.revoked")
+        cur.execute(
+            """
+            UPDATE purchases
+            SET status = 'revoked',
+                updated_at = NOW()
+            WHERE user_sub = %s
+              AND environment = %s
+              AND provider_tran_ref = %s
+              AND status = 'paid'
+            """,
+            (event.user_sub, event.environment, tran_ref),
         )
-        VALUES (%s, %s, %s::uuid, %s, %s, %s, %s::timestamptz, %s::timestamptz, %s, %s::timestamptz)
-        """,
-        (
-            event.user_sub,
-            event.environment,
-            update.plan_id,
-            update.provider,
-            update.provider_subscription_id,
-            update.status,
-            update.current_period_start,
-            update.current_period_end,
-            update.cancel_at_period_end,
-            update.canceled_at,
-        ),
-    )
+        return cur.rowcount > 0
+
+    raise ValueError(f"unsupported purchase event: {event.event_type!r}")
 
 
 def _mark_webhook_processed(cur: Any, webhook_id: str) -> None:
@@ -227,21 +180,24 @@ def process_event_in_transaction(conn: Any, event: BillingDomainEvent) -> Fulfil
             conn.commit()
             return FulfillmentResult(recorded=False, subscription_updated=False)
 
-        subscription_updated = False
-        if event.is_subscription_event():
-            update = subscription_update_for_event(event)
-            _apply_subscription_update(cur, event=event, update=update)
-            subscription_updated = True
+        purchase_updated = False
+        if event.is_purchase_event():
+            target = purchase_fulfillment_for_event(event)
+            purchase_updated = _apply_purchase_update(cur, event=event, target=target)
         else:
             logger.info(
-                "billing_fulfillment skip subscription for event_type=%s provider_event_id=%s",
+                "billing_fulfillment skip non-purchase event_type=%s provider_event_id=%s",
                 event.event_type,
                 event.provider_event_id,
             )
 
         _mark_webhook_processed(cur, webhook_id)
         conn.commit()
-        return FulfillmentResult(recorded=True, subscription_updated=subscription_updated)
+        return FulfillmentResult(
+            recorded=True,
+            subscription_updated=False,
+            purchase_updated=purchase_updated,
+        )
     except Exception as exc:
         conn.rollback()
         if psycopg2 is not None and isinstance(exc, Psycopg2IntegrityError):
