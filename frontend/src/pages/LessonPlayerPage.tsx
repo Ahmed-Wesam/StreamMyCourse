@@ -43,6 +43,7 @@ import {
   sortModulesByOrder,
   VideoSkeleton,
 } from './lesson-player/lessonPlayerUi'
+import { LessonPlayerTabs } from './lesson-player/LessonPlayerTabs'
 import { VideoPlayer } from './lesson-player/VideoPlayer'
 
 // Progress tracking constants
@@ -115,15 +116,15 @@ function LessonPrimaryColumn({
         </div>
       )}
 
-      <div className="rounded-2xl border border-slate-200/90 bg-gradient-to-br from-white via-white to-blue-50/40 p-6 shadow-md shadow-slate-200/50 backdrop-blur-sm ring-1 ring-blue-50">
+      <div className="rounded-rs border border-rs-line bg-white p-6 shadow-rs-sm">
         <div className="flex items-start justify-between gap-4">
           <div className="min-w-0">
             {activeModuleLabel ? (
-              <div className="inline-flex max-w-full items-center rounded-full bg-gradient-to-r from-blue-50 to-slate-50 px-3 py-1 text-xs font-semibold text-blue-800 ring-1 ring-blue-100/80">
+              <div className="inline-flex max-w-full items-center rounded-full border border-rs-line bg-rs-sky-2 px-3 py-1 text-xs font-semibold text-rs-navy">
                 <span className="truncate">{activeModuleLabel}</span>
               </div>
             ) : null}
-            <h1 className="mt-1 bg-gradient-to-r from-slate-900 via-blue-900 to-slate-800 bg-clip-text text-2xl font-bold tracking-tight text-transparent">
+            <h1 className="mt-1 text-2xl font-extrabold tracking-tight text-rs-navy">
               {activeLessonTitle}
             </h1>
           </div>
@@ -134,8 +135,8 @@ function LessonPrimaryColumn({
             onClick={isLessonCompleted ? onMarkIncomplete : onMarkComplete}
             className={`inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold transition-all disabled:cursor-not-allowed disabled:opacity-60 ${
               isLessonCompleted
-                ? 'border border-slate-200 bg-slate-100 text-slate-700 shadow-sm hover:bg-slate-200/80'
-                : 'bg-gradient-to-r from-blue-600 to-blue-700 text-white shadow-md shadow-blue-900/10 hover:from-blue-700 hover:to-blue-800'
+                ? 'border border-rs-line bg-rs-sky-2 text-rs-navy shadow-rs-sm hover:bg-white'
+                : 'bg-rs-grad-cta text-white shadow-rs-sm hover:opacity-95'
             }`}
           >
             <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" aria-hidden="true">
@@ -145,9 +146,11 @@ function LessonPrimaryColumn({
           </button>
         </div>
 
-        {courseDescription ? (
-          <p className="mt-2 text-slate-600">{courseDescription}</p>
-        ) : null}
+        <LessonPlayerTabs
+          courseDescription={courseDescription}
+          activeModuleLabel={activeModuleLabel}
+          activeLessonTitle={activeLessonTitle}
+        />
 
         {upNextTitle ? (
           <LessonUpNextCard
@@ -805,6 +808,7 @@ export default function LessonPlayerPage() {
         onSubscribe={() => void handleSubscribe()}
         playbackNavLocked={playbackNavLocked}
         courseProgress={courseProgress}
+        courseDescription={course?.description}
         isLessonCompleted={isLessonCompleted}
         onMarkComplete={() => void handleMarkComplete()}
         onMarkIncomplete={() => void handleMarkIncomplete()}
@@ -817,7 +821,7 @@ export default function LessonPlayerPage() {
   }
 
   return (
-    <div className="flex min-h-[calc(100vh-64px)] bg-gradient-to-br from-slate-100 via-white to-blue-50/70">
+    <div className="flex min-h-[calc(100vh-64px)] bg-rs-sky-2">
       <CourseLessonsSidebar
         error={error}
         lessons={lessons}
@@ -832,16 +836,13 @@ export default function LessonPlayerPage() {
 
       <div className="flex min-w-0 flex-1 flex-col">
         <div className="flex shrink-0 flex-col">
-          <div
-            className="h-1 w-full shrink-0 bg-gradient-to-r from-blue-400 via-blue-600 to-sky-500"
-            aria-hidden
-          />
-          <div className="flex shrink-0 items-center gap-3 border-b border-slate-200 bg-gradient-to-r from-white via-white to-blue-50/60 px-4 py-3 shadow-sm shadow-slate-200/40">
+          <div className="h-1 w-full shrink-0 bg-rs-grad-cta" aria-hidden />
+          <div className="flex shrink-0 flex-wrap items-center gap-3 border-b border-rs-line bg-white px-4 py-3 shadow-rs-sm">
           {!sidebarOpen ? (
             <button
               type="button"
               onClick={openDesktopSidebar}
-              className="rounded-lg p-2 text-slate-600 transition-colors hover:bg-slate-100 hover:text-slate-900"
+              className="rounded-lg p-2 text-rs-body transition-colors hover:bg-rs-sky-2 hover:text-rs-navy"
               aria-label="Show sidebar"
               title="Show sidebar"
             >
@@ -851,15 +852,37 @@ export default function LessonPlayerPage() {
             </button>
           ) : null}
 
+          <Link
+            to={`/courses/${courseId}`}
+            className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-rs-line bg-white px-3 py-2 text-sm font-semibold text-rs-navy shadow-rs-sm transition-colors hover:border-rs-blue/30 hover:bg-rs-sky-2"
+          >
+            <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+              <path
+                d="M15 18l-6-6 6-6"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </svg>
+            Back to course
+          </Link>
+
           <div className="min-w-0 flex-1">
-            <p className="truncate text-xs font-medium uppercase tracking-wide text-slate-500">
-              <Link to={`/courses/${courseId}`} className="text-blue-700 hover:text-blue-800 hover:underline">
-                {course?.title ?? 'Course'}
-              </Link>
-            </p>
-            <p className="truncate text-sm font-semibold tracking-tight text-slate-900">
-              {activeLessonTitle}
-            </p>
+            <p className="truncate text-sm font-semibold tracking-tight text-rs-navy">{activeLessonTitle}</p>
+            {courseProgress != null ? (
+              <div className="mt-1.5 flex max-w-md items-center gap-2">
+                <div className="h-1.5 min-w-[80px] flex-1 overflow-hidden rounded-full bg-rs-line">
+                  <div
+                    className="h-full rounded-full bg-rs-grad-cta transition-all"
+                    style={{ width: `${courseProgress.percentComplete}%` }}
+                  />
+                </div>
+                <span className="shrink-0 text-xs font-semibold tabular-nums text-rs-blue">
+                  {courseProgress.percentComplete}%
+                </span>
+              </div>
+            ) : null}
           </div>
 
           <div className="flex items-center gap-2 shrink-0">
@@ -908,7 +931,7 @@ export default function LessonPlayerPage() {
         </div>
         </div>
 
-        <div className="bg-gradient-to-b from-transparent via-white/50 to-blue-50/30">
+        <div className="bg-rs-sky-2/50">
           <main className="mx-auto max-w-4xl px-6 py-8">
             <LessonPlayerAlerts
               needsSignIn={needsSignIn}

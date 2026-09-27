@@ -33,4 +33,18 @@ describe('AccountLayout', () => {
     const subscription = screen.getByRole('link', { name: 'Manage subscription' })
     expect(subscription.getAttribute('href')).toBe('/account/subscription')
   })
+
+  it('layout root uses text-rs-ink', () => {
+    const { container } = render(
+      <MemoryRouter initialEntries={['/account/profile']}>
+        <Routes>
+          <Route path="/account" element={<AccountLayout />}>
+            <Route path="profile" element={<div>Profile content</div>} />
+          </Route>
+        </Routes>
+      </MemoryRouter>,
+    )
+
+    expect(container.firstElementChild?.className).toMatch(/text-rs-ink/)
+  })
 })

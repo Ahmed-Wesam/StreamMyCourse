@@ -36,17 +36,14 @@ vi.mock('../pages/ContactPage', () => ({
 vi.mock('../pages/ResearchTeamPage', () => ({
   default: () => <div data-testid="student-page-research-team" />,
 }))
-vi.mock('../pages/CoursePage', () => ({
-  default: () => <div data-testid="student-page-course" />,
-}))
 vi.mock('../pages/CourseDetailPage', () => ({
   default: () => <div data-testid="student-page-detail" />,
 }))
 vi.mock('../pages/LearnRedirectPage', () => ({
   default: () => <div data-testid="student-page-learn" />,
 }))
-vi.mock('../pages/MyCoursePage', () => ({
-  default: () => <div data-testid="student-page-my-course" />,
+vi.mock('../pages/CoursesCatalogPage', () => ({
+  default: () => <div data-testid="student-page-catalog" />,
 }))
 vi.mock('../pages/StudentLoginPage', () => ({
   default: () => <div data-testid="student-page-login" />,
@@ -143,11 +140,20 @@ describe('StudentApp', () => {
     })
   })
 
-  it('mounts the course page at /details', async () => {
+  it('redirects /details to the courses catalog', async () => {
     renderAt('/details')
     await waitFor(() => {
-      expect(screen.getByTestId('student-page-course')).toBeTruthy()
+      expect(screen.getByTestId('student-page-catalog')).toBeTruthy()
     })
+    expect(screen.queryByTestId('student-page-course')).toBeNull()
+  })
+
+  it('redirects /course to the courses catalog', async () => {
+    renderAt('/course')
+    await waitFor(() => {
+      expect(screen.getByTestId('student-page-catalog')).toBeTruthy()
+    })
+    expect(screen.queryByTestId('student-page-course')).toBeNull()
   })
 
   it('mounts the learn redirect at /learn', async () => {
@@ -157,24 +163,25 @@ describe('StudentApp', () => {
     })
   })
 
-  it('mounts the courses list route at /courses', async () => {
+  it('mounts the courses catalog at /courses without AuthShell', async () => {
     renderAt('/courses')
-    await waitFor(() => {
-      expect(screen.getByTestId('student-page-my-course')).toBeTruthy()
-    })
+    expect(await screen.findByTestId('student-page-catalog')).toBeTruthy()
+    expect(screen.queryByTestId('student-page-my-course')).toBeNull()
+    expect(AuthShellMock).not.toHaveBeenCalled()
+    expect(screen.queryByTestId('auth-shell')).toBeNull()
   })
 
-  it('redirects /catalog to the courses list', async () => {
+  it('redirects /catalog to the courses catalog', async () => {
     renderAt('/catalog')
     await waitFor(() => {
-      expect(screen.getByTestId('student-page-my-course')).toBeTruthy()
+      expect(screen.getByTestId('student-page-catalog')).toBeTruthy()
     })
   })
 
-  it('redirects /my-course to the courses list', async () => {
+  it('redirects /my-course to the courses catalog', async () => {
     renderAt('/my-course')
     await waitFor(() => {
-      expect(screen.getByTestId('student-page-my-course')).toBeTruthy()
+      expect(screen.getByTestId('student-page-catalog')).toBeTruthy()
     })
   })
 

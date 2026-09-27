@@ -16,10 +16,9 @@ const AboutInstructorPage = lazy(() => import('../pages/AboutInstructorPage'))
 const FaqPage = lazy(() => import('../pages/FaqPage'))
 const ContactPage = lazy(() => import('../pages/ContactPage'))
 const ResearchTeamPage = lazy(() => import('../pages/ResearchTeamPage'))
-const CoursePage = lazy(() => import('../pages/CoursePage'))
+const CoursesCatalogPage = lazy(() => import('../pages/CoursesCatalogPage'))
 const CourseDetailPage = lazy(() => import('../pages/CourseDetailPage'))
 const LearnRedirectPage = lazy(() => import('../pages/LearnRedirectPage'))
-const MyCoursePage = lazy(() => import('../pages/MyCoursePage'))
 const StudentLessonAuth = lazy(() =>
   import('../components/auth/StudentLessonAuth').then((m) => ({ default: m.StudentLessonAuth })),
 )
@@ -90,15 +89,8 @@ function StudentApp() {
             </LazyRoute>
           }
         />
-        <Route
-          path="/details"
-          element={
-            <LazyRoute>
-              <CoursePage />
-            </LazyRoute>
-          }
-        />
-        <Route path="/course" element={<LegacyPathRedirect to="/details" />} />
+        <Route path="/details" element={<LegacyPathRedirect to="/courses" />} />
+        <Route path="/course" element={<LegacyPathRedirect to="/courses" />} />
         <Route
           path="/learn"
           element={
@@ -111,7 +103,7 @@ function StudentApp() {
           path="/courses"
           element={
             <LazyRoute>
-              <MyCoursePage />
+              <CoursesCatalogPage />
             </LazyRoute>
           }
         />

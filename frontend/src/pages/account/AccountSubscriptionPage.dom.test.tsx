@@ -4,7 +4,7 @@
 
  */
 
-import { cleanup, render, screen, waitFor } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 
 import { MemoryRouter } from 'react-router-dom'
 
@@ -36,6 +36,8 @@ const api = vi.hoisted(() => ({
 
   cancelSubscription: vi.fn(),
 
+  createCheckoutSession: vi.fn(),
+
 }))
 
 
@@ -56,6 +58,8 @@ vi.mock('../../lib/api/billing', async (importOriginal) => {
       api.getSubscription(...args) as ReturnType<typeof mod.getSubscription>,
     cancelSubscription: (...args: unknown[]) =>
       api.cancelSubscription(...args) as ReturnType<typeof mod.cancelSubscription>,
+    createCheckoutSession: (...args: unknown[]) =>
+      api.createCheckoutSession(...args) as ReturnType<typeof mod.createCheckoutSession>,
   }
 })
 
@@ -125,6 +129,8 @@ describe('AccountSubscriptionPage', () => {
 
     api.cancelSubscription.mockReset()
 
+    api.createCheckoutSession.mockReset()
+
     billingRetry.readCognitoSubFromSession.mockResolvedValue(USER_SUB)
 
     clearProviderCancelRetryFlag(USER_SUB)
@@ -132,6 +138,20 @@ describe('AccountSubscriptionPage', () => {
   })
 
 
+
+  it('subscription section root uses text-rs-ink', async () => {
+    api.getSubscription.mockRejectedValue(new ApiError('No active subscription to manage', 404, 'not_subscribed'))
+
+    const { container } = render(
+      <MemoryRouter>
+        <AccountSubscriptionPage />
+      </MemoryRouter>,
+    )
+
+    await screen.findByTestId('subscription-not-subscribed')
+    const section = container.querySelector('section')
+    expect(section?.className).toMatch(/text-rs-ink/)
+  })
 
   it('shows not subscribed state on 404 not_subscribed', async () => {
 
@@ -154,6 +174,60 @@ describe('AccountSubscriptionPage', () => {
     expect(await screen.findByTestId('subscription-not-subscribed')).toBeTruthy()
 
     expect(screen.getByRole('link', { name: /browse courses/i }).getAttribute('href')).toBe('/courses')
+
+    expect(screen.queryByRole('link', { name: /subscribe/i })).toBeNull()
+
+    expect(screen.getByTestId('subscription-subscribe-btn')).toBeTruthy()
+
+  })
+
+
+
+  it('redirects to checkout when subscribe is clicked on not subscribed card', async () => {
+
+    api.getSubscription.mockRejectedValue(new ApiError('No active subscription to manage', 404, 'not_subscribed'))
+
+    api.createCheckoutSession.mockResolvedValue({ redirect_url: 'https://pay.example/checkout' })
+
+    const hrefSetter = vi.fn()
+
+    Object.defineProperty(window, 'location', {
+
+      configurable: true,
+
+      value: { ...window.location, set href(v: string) { hrefSetter(v) }, get href() { return '' } },
+
+    })
+
+
+
+    render(
+
+      <MemoryRouter>
+
+        <AccountSubscriptionPage />
+
+      </MemoryRouter>,
+
+    )
+
+
+
+    await screen.findByTestId('subscription-not-subscribed')
+
+    fireEvent.click(screen.getByTestId('subscription-subscribe-btn'))
+
+
+
+    await waitFor(() => {
+
+      expect(api.createCheckoutSession).toHaveBeenCalledWith()
+
+      expect(hrefSetter).toHaveBeenCalledWith('https://pay.example/checkout')
+
+    })
+
+    expect(screen.queryByRole('link', { name: /details/i })).toBeNull()
 
   })
 

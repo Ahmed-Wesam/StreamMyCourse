@@ -207,7 +207,7 @@ frontend/                            # Vite project root
     ├── components/
     │   ├── layout/                  # SiteHeader, ProfileMenu, Footer, Layout (optional `chromeHeader` for fixed app nav)
     │   ├── ui/                      # Shared RS primitives (Button, Card, Eyebrow, Kicker, SectionHeader, Badge, Field, Reveal)
-    │   └── course/                  # CourseCard, CourseGrid, PricingSection, skeletons, thumbnail editor
+    │   └── course/                  # CourseCard, CourseGrid, skeletons, thumbnail editor
     ├── lib/
     │   ├── api.ts                   # API client (fetch + env base URL); typed error helpers
     │   ├── brand.ts                 # User-visible Research Spectrum strings
@@ -215,8 +215,7 @@ frontend/                            # Vite project root
     │   └── lessonGrouping.ts        # Group lessons by module; orphan moduleIds → Unsorted (student UI)
     └── pages/
         ├── HomePage.tsx             # Student landing (`/`)
-        ├── CoursePage.tsx           # Course marketing / details (`/details`)
-        ├── MyCoursePage.tsx         # Enrolled courses hub (`/courses`)
+        ├── CoursesCatalogPage.tsx   # Published course catalog (`/courses`)
         ├── CourseDetailPage.tsx
         ├── LessonPlayerPage.tsx
         ├── InstructorDashboard.tsx  # Teacher dashboard
@@ -228,7 +227,7 @@ The frontend is built as **two separate SPAs** deployed to different subdomains:
 
 | Site | Domain | Purpose | Routes |
 |------|--------|---------|--------|
-| **Student** | `streammycourse.com` | Browse and watch courses | `/`, `/about`, `/faq`, `/contact`, `/research-team`, `/details`, `/courses`, `/login`, `/privacy`, `/terms`, `/refund`, `/delivery`, `/educational-disclaimer`, `/courses/:id`, `/courses/:id/lessons/:id`, `/courses/:id/modules/:moduleId/quiz` |
+| **Student** | `streammycourse.com` | Browse and watch courses | `/`, `/about`, `/faq`, `/contact`, `/research-team`, `/courses`, `/login`, `/privacy`, `/terms`, `/refund`, `/delivery`, `/educational-disclaimer`, `/courses/:id`, `/courses/:id/lessons/:id`, `/courses/:id/modules/:moduleId/quiz` (legacy `/details`, `/course`, `/catalog`, `/my-course` redirect to `/courses`) |
 | **Teacher** | `teach.streammycourse.com` | Create, edit, upload content | `/`, `/courses/:id` |
 
 ### Student Site Routes (View-Only)
@@ -238,8 +237,8 @@ The frontend is built as **two separate SPAs** deployed to different subdomains:
 /faq                                 # FAQ (public)
 /contact                             # Contact shell (no submit API yet)
 /research-team                       # Research Team explainer (no application yet)
-/details                             # Legacy course marketing / pricing (Figma parity; `/course` redirects here)
-/courses                             # Enrolled courses hub (resume / progress; `/catalog` and `/my-course` redirect here)
+/details                             # Legacy path → redirects to `/courses` (same as `/course`, `/catalog`, `/my-course`)
+/courses                             # Published course catalog (public `GET /courses`; no prices until RS-5)
 /login                               # Student sign-in (Hosted UI / auth shell)
 /courses/:courseId                   # Course detail
 /courses/:courseId/lessons/:lessonId # Video player

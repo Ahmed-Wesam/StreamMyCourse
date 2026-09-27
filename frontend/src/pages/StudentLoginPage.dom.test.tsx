@@ -58,6 +58,18 @@ describe('StudentLoginPage', () => {
     expect(await screen.findByRole('button', { name: GOOGLE_SIGN_IN_LABEL })).toBeTruthy()
   })
 
+  it('renders RS login hero grid with Create Account link to /register', async () => {
+    useAuthenticatorMock.mockReturnValue({ authStatus: 'unauthenticated' })
+
+    render(<TestRoot />)
+
+    const root = screen.getByTestId('student-page-login')
+    expect(root.className).toMatch(/text-rs-ink/)
+    expect(screen.getByTestId('login-hero-column')).toBeTruthy()
+    expect(screen.getByTestId('login-auth-card')).toBeTruthy()
+    expect(screen.getByRole('link', { name: /create account/i }).getAttribute('href')).toBe('/register')
+  })
+
   it('shows unavailable message when Cognito env is incomplete', async () => {
     vi.unstubAllEnvs()
     vi.stubEnv('VITE_COGNITO_USER_POOL_ID', 'pool')

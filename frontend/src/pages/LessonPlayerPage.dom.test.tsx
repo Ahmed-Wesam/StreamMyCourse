@@ -292,7 +292,7 @@ describe('LessonPlayerPage', () => {
     expect(api.getPlaybackUrl).not.toHaveBeenCalled()
   })
 
-  it('shows Sign in to watch and locks sidebar when playback returns 401', async () => {
+  it('shows Sign in to watch and keeps sidebar lessons non-navigable when playback returns 401', async () => {
     api.getPlaybackUrl.mockRejectedValue(new ApiError('Authentication required', 401, 'unauthorized'))
 
     renderLessonPlayer()
@@ -300,7 +300,11 @@ describe('LessonPlayerPage', () => {
     const signInHeading = await screen.findByRole('heading', { name: /Sign in to watch/i })
     expect(signInHeading.isConnected).toBe(true)
     expect(screen.getByRole('link', { name: /^Sign in$/i }).getAttribute('href')).toBe('/login')
-    expect(screen.getAllByText('Locked').length).toBeGreaterThan(0)
+    await waitFor(() => {
+      expect(screen.getAllByText('Alpha').length).toBeGreaterThan(0)
+    })
+    expect(screen.queryByRole('link', { name: 'Alpha' })).toBeNull()
+    expect(screen.queryByText('Locked')).toBeNull()
   })
 
   it('redirects to checkout when subscribe is clicked on subscription paywall', async () => {
@@ -391,7 +395,7 @@ describe('LessonPlayerPage', () => {
     renderLessonPlayer()
 
     await waitFor(() => {
-      expect(screen.getByText('50%')).toBeTruthy()
+      expect(screen.getAllByText('50%').length).toBeGreaterThanOrEqual(1)
     })
   })
 
@@ -1142,7 +1146,7 @@ describe('LessonPlayerPage', () => {
     await waitFor(() => {
       expect(screen.getByRole('heading', { level: 1, name: 'Alpha' })).toBeTruthy()
     })
-    expect(screen.getByRole('link', { name: 'Stale Breadcrumb Course' })).toBeTruthy()
+    expect(screen.getByRole('link', { name: /Back to course/i })).toBeTruthy()
 
     const videoBeforeNav = await waitFor(() => {
       const el = document.querySelector('video')
@@ -1157,7 +1161,7 @@ describe('LessonPlayerPage', () => {
       expect(screen.getByText(/This lesson could not be loaded/i)).toBeTruthy()
     })
     await waitFor(() => {
-      expect(screen.queryByRole('link', { name: 'Stale Breadcrumb Course' })).toBeNull()
+      expect(screen.getByRole('link', { name: /Back to course/i }).getAttribute('href')).toBe('/courses/c2')
     })
     await waitFor(() => {
       expect(screen.queryByRole('heading', { level: 1, name: 'Alpha' })).toBeNull()
@@ -1168,7 +1172,7 @@ describe('LessonPlayerPage', () => {
     expect(videoAfter === null || srcAfter === null || srcAfter === '').toBe(true)
   })
 
-  it('does not render an empty course description paragraph on desktop', async () => {
+  it('does not render an empty course description in the Overview tab on desktop', async () => {
     api.getCourse.mockResolvedValue({
       id: 'c1',
       title: 'Course',
@@ -1180,7 +1184,9 @@ describe('LessonPlayerPage', () => {
     await waitFor(() => {
       expect(screen.getByRole('heading', { level: 1, name: 'Alpha' })).toBeTruthy()
     })
-    expect(document.querySelectorAll('p.mt-2.text-slate-600').length).toBe(0)
+    const panel = screen.getByRole('tabpanel')
+    expect(panel.textContent).toMatch(/Section 1 · Alpha/)
+    expect(panel.textContent?.trim()).not.toBe('')
   })
 
   it('keeps the desktop sidebar closed after returning to md', async () => {
@@ -1291,6 +1297,39 @@ describe('LessonPlayerPage', () => {
       expect(screen.getByRole('button', { name: 'Show sidebar' })).toBeTruthy()
     })
     expect(screen.queryByRole('button', { name: 'Close curriculum' })).toBeNull()
+  })
+
+  it('shows five accessible lesson content tabs on desktop', async () => {
+    renderLessonPlayer()
+
+    await waitFor(() => {
+      expect(document.querySelector('video')).toBeTruthy()
+    })
+
+    for (const label of ['Overview', 'Resources', 'Downloads', 'Notes', 'Assignments']) {
+      expect(screen.getByRole('tab', { name: label })).toBeTruthy()
+    }
+    expect(screen.getByRole('tabpanel').textContent).toMatch(/Desc/)
+  })
+
+  it('Resources tab shows a placeholder without fetch or links', async () => {
+    const fetchSpy = vi.spyOn(globalThis, 'fetch')
+
+    renderLessonPlayer()
+
+    await waitFor(() => {
+      expect(screen.getByRole('tab', { name: 'Resources' })).toBeTruthy()
+    })
+
+    const callsBefore = fetchSpy.mock.calls.length
+    fireEvent.click(screen.getByRole('tab', { name: 'Resources' }))
+
+    expect(screen.getByTestId('lesson-player-tab-placeholder').textContent).toMatch(/not available yet/i)
+    const panel = screen.getByTestId('lesson-player-tab-panel')
+    expect(panel.querySelector('a')).toBeNull()
+    expect(fetchSpy.mock.calls.length).toBe(callsBefore)
+
+    fetchSpy.mockRestore()
   })
 
   it('renders mobile layout with a curriculum bottom sheet', async () => {

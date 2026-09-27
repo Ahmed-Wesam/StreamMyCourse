@@ -163,27 +163,9 @@ function LessonItem({
   }`
   const inner = (
     <>
-      <div className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center text-slate-400">
-        {linkDisabled ? (
-          <>
-            <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-              <path
-                d="M7 10V8a5 5 0 0 1 10 0v2"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-              />
-              <path
-                d="M7 10h10v10H7V10Z"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinejoin="round"
-              />
-            </svg>
-            <span className="sr-only">Locked</span>
-          </>
-        ) : active ? (
-          <svg className="h-4 w-4 text-blue-600" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+      <div className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center text-rs-muted">
+        {active ? (
+          <svg className="h-4 w-4 text-rs-blue" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
             <path d="M8 5v14l11-7z" />
           </svg>
         ) : (

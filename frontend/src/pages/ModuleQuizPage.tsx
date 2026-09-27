@@ -1,5 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link, useLocation, useParams } from 'react-router-dom'
+import { Button } from '../components/ui/Button'
+import { Card } from '../components/ui/Card'
+import { SectionHeader } from '../components/ui/SectionHeader'
 import { getCourseProgress, listLessons } from '../lib/api/catalog'
 import { isProgressRdsUnavailableError } from '../lib/api/client'
 import { startModuleQuiz, submitModuleQuiz } from '../lib/api/questionBanks'
@@ -181,8 +184,8 @@ export default function ModuleQuizPage() {
     taking.questions.every((q) => Boolean(selectedByQuestionId[q.id]))
 
   return (
-    <div className="space-y-8 py-6 sm:py-8">
-      <div className="overflow-hidden rounded-xl border border-gray-100 bg-white shadow-sm">
+    <div className="space-y-8 py-6 text-rs-ink sm:py-8">
+      <Card className="overflow-hidden shadow-rs-sm">
         <ModuleQuizCardHeader backTo={backTo} taking={taking} results={results} />
 
         <ModuleQuizCardMain
@@ -198,7 +201,7 @@ export default function ModuleQuizPage() {
           onSubmit={handleSubmit}
           onTryAgain={handleTryAgain}
         />
-      </div>
+      </Card>
     </div>
   )
 }
@@ -215,36 +218,31 @@ function ModuleQuizCardHeader({
   const showTaking = taking !== null
   const showResults = results !== null && taking === null
 
+  let lead: string | undefined
+  if (showTaking && taking) {
+    lead = `${taking.questions.length} of ${taking.servedCountN} questions · If you leave this page before submitting, your selected answers will be lost.`
+  } else if (showResults && results) {
+    lead = `Attempt ${results.attemptNumber} · Score ${results.correctCount} / ${results.totalCount} · These are your latest submitted results.`
+  }
+
   return (
-    <div className="border-b border-gray-100 px-6 py-4">
+    <div className="border-b border-rs-line bg-rs-grad-soft px-6 py-5 sm:px-8 sm:py-6">
       <Link
         to={backTo}
-        className="mb-3 inline-flex items-center text-sm text-gray-500 transition-colors hover:text-gray-900"
+        className="mb-4 inline-flex items-center gap-1 text-sm font-semibold text-rs-muted no-underline transition-colors hover:text-rs-navy"
       >
-        <svg className="mr-1 h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <svg className="h-4 w-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
         </svg>
         {moduleQuizBackLabel(backTo)}
       </Link>
-      <h1 className="text-lg font-semibold text-gray-900">Module quiz</h1>
-      {showTaking && taking && (
-        <>
-          <p className="mt-1 text-sm text-gray-500">
-            {taking.questions.length} of {taking.servedCountN} questions
-          </p>
-          <p className="mt-2 text-sm text-gray-600">
-            If you leave this page before submitting, your selected answers will be lost.
-          </p>
-        </>
-      )}
-      {showResults && results && (
-        <>
-          <p className="mt-1 text-sm text-gray-500">
-            Attempt {results.attemptNumber} · Score {results.correctCount} / {results.totalCount}
-          </p>
-          <p className="mt-2 text-sm text-gray-600">These are your latest submitted results.</p>
-        </>
-      )}
+      <SectionHeader
+        kicker="Knowledge check"
+        title="Module quiz"
+        lead={lead}
+        align="start"
+        level={2}
+      />
     </div>
   )
 }
@@ -281,18 +279,18 @@ function ModuleQuizCardMain({
   return (
     <>
       {pageLoading && (
-        <div className="px-6 py-12 text-center text-sm text-gray-500">Loading quiz…</div>
+        <div className="px-6 py-12 text-center text-sm font-semibold text-rs-muted sm:px-8">Loading quiz…</div>
       )}
 
       {error && !pageLoading && (
-        <div className="mx-6 my-6 rounded-lg border border-red-200 bg-red-50 p-4">
-          <p className="text-sm text-red-700">{error}</p>
+        <div className="mx-6 my-6 rounded-rs-sm border border-red-200 bg-red-50 p-4 sm:mx-8">
+          <p className="text-sm font-semibold text-red-700">{error}</p>
         </div>
       )}
 
       {!pageLoading && showTaking && taking && (
         <>
-          <div className="divide-y divide-gray-100">
+          <div className="divide-y divide-rs-line">
             {taking.questions.map((question, index) => (
               <QuizQuestionBlock
                 key={question.id}
@@ -303,18 +301,18 @@ function ModuleQuizCardMain({
               />
             ))}
           </div>
-          <div className="border-t border-gray-100 px-6 py-4">
-            <button
+          <div className="border-t border-rs-line bg-rs-sky-2/50 px-6 py-5 sm:px-8">
+            <Button
               type="button"
               onClick={onSubmit}
               disabled={!allAnswered || submitting}
               aria-describedby={!allAnswered ? submitHelperId : undefined}
-              className="rounded-lg bg-indigo-600 px-4 py-2.5 text-sm font-medium text-white transition-colors hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-50"
+              className="disabled:cursor-not-allowed disabled:opacity-50"
             >
               {submitting ? 'Submitting…' : 'Submit answers'}
-            </button>
+            </Button>
             {!allAnswered && (
-              <p id={submitHelperId} className="mt-2 text-sm text-gray-500">
+              <p id={submitHelperId} className="mt-3 text-sm font-semibold text-rs-muted">
                 Answer every question before submitting.
               </p>
             )}
@@ -323,20 +321,15 @@ function ModuleQuizCardMain({
       )}
 
       {!pageLoading && showResults && results && (
-        <div className="space-y-4 px-6 py-6">
+        <div className="space-y-6 px-6 py-6 sm:px-8 sm:py-8">
           <QuizResultsBreakdown questions={results.questions} />
-          <div className="space-y-2">
-            <p className="text-sm text-gray-600">
+          <div className="space-y-3 rounded-rs-sm border border-rs-line bg-rs-sky-2/40 p-5">
+            <p className="text-sm font-semibold text-rs-body">
               Trying again draws a new set of questions from the bank and reshuffles them.
             </p>
-            <button
-              type="button"
-              onClick={onTryAgain}
-              disabled={retakeBusy}
-              className="rounded-lg border border-gray-200 bg-white px-4 py-2.5 text-sm font-medium text-gray-900 transition-colors hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
-            >
+            <Button type="button" variant="ghost" onClick={onTryAgain} disabled={retakeBusy}>
               {retakeBusy ? 'Starting…' : 'Try again'}
-            </button>
+            </Button>
           </div>
         </div>
       )}
@@ -346,27 +339,31 @@ function ModuleQuizCardMain({
 
 function QuizResultsBreakdown({ questions }: { questions: ModuleQuizResultQuestion[] }) {
   return (
-    <ul className="space-y-6">
+    <ul className="space-y-4">
       {questions.map((q, index) => (
         <li
           key={q.id}
-          className={`rounded-lg border px-4 py-3 ${
-            q.isCorrect ? 'border-emerald-200 bg-emerald-50/60' : 'border-amber-200 bg-amber-50/60'
+          className={`rounded-rs-sm border px-4 py-4 sm:px-5 ${
+            q.isCorrect
+              ? 'border-emerald-200/80 bg-emerald-50/70'
+              : 'border-amber-200/80 bg-amber-50/70'
           }`}
         >
-          <p className="text-sm font-medium text-gray-900">
-            <span className="mr-2 font-normal text-gray-500">Question {index + 1}</span>
+          <p className="text-sm font-extrabold text-rs-ink">
+            <span className="mr-2 text-xs font-bold uppercase tracking-wide text-rs-muted">
+              Question {index + 1}
+            </span>
             {q.promptText}
           </p>
-          <p className="mt-2 text-sm text-gray-700">
-            Your answer: <span className="font-medium">{q.selectedOptionKey}</span>
+          <p className="mt-2 text-sm font-semibold text-rs-body">
+            Your answer: <span className="font-extrabold text-rs-ink">{q.selectedOptionKey}</span>
             {' · '}
-            Correct answer: <span className="font-medium">{q.correctOptionKey}</span>
+            Correct answer: <span className="font-extrabold text-rs-ink">{q.correctOptionKey}</span>
             {' · '}
             {q.isCorrect ? (
-              <span className="text-emerald-800">Correct</span>
+              <span className="font-extrabold text-emerald-800">Correct</span>
             ) : (
-              <span className="text-amber-900">Incorrect</span>
+              <span className="font-extrabold text-amber-900">Incorrect</span>
             )}
           </p>
         </li>
@@ -389,30 +386,38 @@ function QuizQuestionBlock({
   const options = Array.isArray(question.optionsJson) ? question.optionsJson : []
 
   return (
-    <fieldset className="px-6 py-6">
-      <legend className="mb-4 text-base font-medium text-gray-900">
-        <span className="mr-2 text-sm font-normal text-gray-500">Question {index + 1}</span>
+    <fieldset className="px-6 py-6 sm:px-8 sm:py-7">
+      <legend className="mb-4 text-base font-extrabold leading-snug text-rs-navy">
+        <span className="mb-1 block text-xs font-bold uppercase tracking-wide text-rs-muted">
+          Question {index + 1}
+        </span>
         {question.promptText}
       </legend>
-      <div className="space-y-2">
+      <div className="space-y-2.5">
         {options.map((option) => {
           const inputId = `${question.id}-${option.key}`
+          const checked = selectedKey === option.key
           return (
             <label
               key={option.key}
               htmlFor={inputId}
-              className="flex cursor-pointer items-center gap-3 rounded-lg border border-gray-200 px-4 py-3 transition-colors hover:border-indigo-200 hover:bg-indigo-50/50 has-[:checked]:border-indigo-300 has-[:checked]:bg-indigo-50"
+              className={[
+                'flex min-h-[44px] cursor-pointer items-center gap-3 rounded-rs-sm border px-4 py-3 transition duration-300 ease-rs',
+                checked
+                  ? 'border-rs-blue bg-rs-sky shadow-rs-sm'
+                  : 'border-rs-line bg-white hover:border-rs-blue/35 hover:bg-rs-sky-2',
+              ].join(' ')}
             >
               <input
                 id={inputId}
                 type="radio"
                 name={question.id}
                 value={option.key}
-                checked={selectedKey === option.key}
+                checked={checked}
                 onChange={() => onSelect(option.key)}
-                className="h-4 w-4 border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                className="size-4 shrink-0 border-rs-line text-rs-blue focus:ring-rs-blue"
               />
-              <span className="text-sm text-gray-900">{option.text}</span>
+              <span className="text-sm font-semibold text-rs-ink">{option.text}</span>
             </label>
           )
         })}

@@ -6,6 +6,30 @@
 
 ---
 
+## 2026-09-26 — Research Spectrum student app restyle (RS-3)
+
+### Decisions
+
+- **`/courses`** is the published catalog (`CoursesCatalogPage` + public `GET /courses`); legacy **`/details`**, **`/course`**, **`/catalog`**, and **`/my-course`** redirect there (no separate Figma marketing or enrolled-hub pages).
+- No mock pricing, instructor name from deleted `figma-mocks.data`, or **`PricingSection`** in student flows until RS-5 / RS-7.
+- Course detail keeps RS-7 placeholder sections; lesson player shows all five tabs with dummy panels where APIs are not wired yet (per RS-3 Q&A).
+
+### What landed
+
+- Student routes and restyled pages in [`frontend/src/student-app/App.tsx`](frontend/src/student-app/App.tsx); removed dead **`CoursePage`**, **`MyCoursePage`**, **`PricingSection`**, and **`figma-mocks.data`**.
+- Aggregation cleanup: test mocks/imports updated in [`frontend/src/student-app/App.dom.test.tsx`](frontend/src/student-app/App.dom.test.tsx) and [`frontend/src/pages/CourseDetailPage.dom.test.tsx`](frontend/src/pages/CourseDetailPage.dom.test.tsx).
+
+### Verification
+
+- [x] `npm run lint` (0 errors, 7 pre-existing warnings) / `npm run knip` / `npm run test` (84 files, **665** tests) / `npm run build:all` / `npm run check:bundle` — student `firstLoadPublic` **75.88 KB**, `firstLoadWithAuth` **177.29 KB**; teacher `firstLoadWithAuth` **180.01 KB**.
+- [ ] Browser viewport QA — not run.
+
+### Docs
+
+- [`plans/ui-overhaul/research-spectrum-mega-plan.md`](plans/ui-overhaul/research-spectrum-mega-plan.md) RS-3 status; [`design.md`](design.md) student route table aligned with catalog redirects.
+
+---
+
 ## 2026-09-26 — Research Spectrum marketing pages (RS-2)
 
 ### Decisions
