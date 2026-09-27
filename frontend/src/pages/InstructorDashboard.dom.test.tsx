@@ -54,6 +54,41 @@ function renderDashboard() {
   )
 }
 
+const FORBIDDEN_CLASS_SUBSTRINGS = [
+  'emerald-',
+  'blue-600',
+  'green-',
+  'gray-',
+  'slate-',
+  'amber-',
+] as const
+
+function collectClassNames(root: Element): string[] {
+  const names: string[] = []
+  const walk = (el: Element) => {
+    if (typeof el.className === 'string' && el.className.length > 0) {
+      names.push(el.className)
+    }
+    for (const child of el.children) {
+      walk(child)
+    }
+  }
+  walk(root)
+  return names
+}
+
+function findForbiddenPaletteClasses(classNames: string[]): string[] {
+  const hits: string[] = []
+  for (const cn of classNames) {
+    for (const forbidden of FORBIDDEN_CLASS_SUBSTRINGS) {
+      if (cn.includes(forbidden)) {
+        hits.push(`${forbidden} → ${cn}`)
+      }
+    }
+  }
+  return hits
+}
+
 describe('InstructorDashboard', () => {
   beforeEach(() => {
     api.listInstructorCourses.mockReset()
@@ -302,5 +337,20 @@ describe('InstructorDashboard', () => {
 
     const submitButton = screen.getByText('Create Course')
     expect(submitButton.hasAttribute('disabled')).toBe(true)
+  })
+
+  it('uses RS palette on the settled dashboard (no legacy Tailwind color utilities)', async () => {
+    const { container } = renderDashboard()
+
+    await waitFor(() => {
+      expect(screen.getByText('Python Basics')).toBeTruthy()
+    })
+
+    const pageRoot = container.firstElementChild
+    expect(pageRoot).toBeTruthy()
+    expect(pageRoot!.className).toMatch(/text-rs-ink/)
+
+    const violations = findForbiddenPaletteClasses(collectClassNames(pageRoot!))
+    expect(violations).toEqual([])
   })
 })

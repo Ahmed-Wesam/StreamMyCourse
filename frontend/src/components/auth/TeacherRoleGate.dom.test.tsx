@@ -30,6 +30,41 @@ vi.mock('../../lib/auth', () => ({
 
 import { TeacherRoleGate } from './TeacherRoleGate'
 
+const FORBIDDEN_CLASS_SUBSTRINGS = [
+  'emerald-',
+  'blue-600',
+  'green-',
+  'gray-',
+  'slate-',
+  'amber-',
+] as const
+
+function collectClassNames(root: Element): string[] {
+  const names: string[] = []
+  const walk = (el: Element) => {
+    if (typeof el.className === 'string' && el.className.length > 0) {
+      names.push(el.className)
+    }
+    for (const child of el.children) {
+      walk(child)
+    }
+  }
+  walk(root)
+  return names
+}
+
+function findForbiddenPaletteClasses(classNames: string[]): string[] {
+  const hits: string[] = []
+  for (const cn of classNames) {
+    for (const forbidden of FORBIDDEN_CLASS_SUBSTRINGS) {
+      if (cn.includes(forbidden)) {
+        hits.push(`${forbidden} → ${cn}`)
+      }
+    }
+  }
+  return hits
+}
+
 function renderGate() {
   return render(
     <AuthenticatorProvider>
@@ -159,5 +194,22 @@ describe('TeacherRoleGate', () => {
     renderGate()
     expect(screen.getByText(/Loading profile/i)).toBeTruthy()
     expect(screen.queryByTestId('teacher-shell-inner')).toBeNull()
+  })
+
+  it('uses RS palette on instructor access denied view (no legacy Tailwind color utilities)', async () => {
+    useAuthenticatorMock.mockReturnValue({ authStatus: 'authenticated', signOut: vi.fn() })
+    fetchMeMock.mockRejectedValue(new ApiError('Forbidden', 403))
+    const { container } = renderGate()
+
+    await waitFor(() => {
+      expect(screen.getByText(/Instructor access required/i)).toBeTruthy()
+    })
+
+    const panelRoot = container.firstElementChild
+    expect(panelRoot).toBeTruthy()
+    expect(panelRoot!.className).toMatch(/text-rs-ink/)
+
+    const violations = findForbiddenPaletteClasses(collectClassNames(panelRoot!))
+    expect(violations).toEqual([])
   })
 })

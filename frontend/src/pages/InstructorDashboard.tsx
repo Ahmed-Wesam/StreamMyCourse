@@ -10,6 +10,10 @@ import {
 import type { Course } from '../lib/api/types'
 import { catalogApiUserMessage } from '../lib/apiUserMessages'
 import { usePageTitle } from '../lib/page-title'
+import { Badge } from '../components/ui/Badge'
+import { Button } from '../components/ui/Button'
+import { Card } from '../components/ui/Card'
+import { Field } from '../components/ui/Field'
 
 export default function InstructorDashboard() {
   usePageTitle('Dashboard')
@@ -70,7 +74,6 @@ export default function InstructorDashboard() {
       setShowCreateModal(false)
       setNewCourseTitle('')
       setNewCourseDescription('')
-      // Navigate to course management page
       navigate(`/courses/${result.id}`)
     } catch (err) {
       setError(catalogApiUserMessage(err, 'createCourse'))
@@ -111,171 +114,150 @@ export default function InstructorDashboard() {
 
   if (loading) {
     return (
-      <div className="animate-pulse">
-        <div className="mb-8 h-8 w-1/4 rounded bg-gray-200" />
-        <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
-          {[1, 2, 3].map((i) => (
-            <div key={i} className="h-56 rounded-lg bg-gray-200" />
-          ))}
+      <div className="mx-auto w-full max-w-5xl px-4 py-8 text-rs-ink sm:px-6 lg:px-8">
+        <div className="animate-pulse">
+          <div className="mb-8 h-8 w-1/4 rounded bg-rs-sky-2" />
+          <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
+            {[1, 2, 3].map((i) => (
+              <div key={i} className="h-56 rounded-lg bg-rs-sky-2" />
+            ))}
+          </div>
         </div>
       </div>
     )
   }
 
   return (
-    <>
-        <div className="flex justify-between items-center mb-8">
-          <div>
-            <h1 className="text-3xl font-bold text-gray-900">Instructor Dashboard</h1>
-            <p className="text-gray-600 mt-1">Manage your courses and content</p>
-          </div>
-          <button
-            onClick={() => setShowCreateModal(true)}
-            className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium"
-          >
-            + Create New Course
-          </button>
+    <div className="mx-auto w-full max-w-5xl px-4 py-8 text-rs-ink sm:px-6 lg:px-8">
+      <div className="mb-8 flex items-center justify-between">
+        <div>
+          <h1 className="text-3xl font-extrabold tracking-tight text-rs-navy">Instructor Dashboard</h1>
+          <p className="mt-1 text-rs-body">Manage your courses and content</p>
         </div>
+        <Button type="button" onClick={() => setShowCreateModal(true)}>
+          + Create New Course
+        </Button>
+      </div>
 
-        {error && (
-          <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg text-red-700">
-            {error}
-          </div>
-        )}
+      {error && (
+        <div className="mb-6 rounded-lg border border-red-200 bg-red-50 p-4 text-red-700">{error}</div>
+      )}
 
-        {courses.length === 0 ? (
-          <div className="rounded-lg bg-white py-16 text-center shadow-sm">
-            <h3 className="mb-2 text-xl font-semibold text-gray-900">No courses yet</h3>
-            <p className="text-gray-600 mb-6">Create your first course to get started</p>
-            <button
-              onClick={() => setShowCreateModal(true)}
-              className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium"
-            >
-              Create Your First Course
-            </button>
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
-            {courses.map((course) => (
-              <div
-                key={course.id}
-                className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm transition-shadow hover:shadow-md"
-              >
-                <div className="aspect-video overflow-hidden bg-slate-800">
-                  {course.thumbnailUrl ? (
-                    <img
-                      src={course.thumbnailUrl}
-                      alt=""
-                      className="h-full w-full object-cover"
-                    />
-                  ) : (
-                    <div className="flex h-full items-center justify-center text-sm text-slate-500">
-                      No thumbnail
-                    </div>
-                  )}
+      {courses.length === 0 ? (
+        <Card className="py-16 text-center">
+          <h3 className="mb-2 text-xl font-extrabold text-rs-navy">No courses yet</h3>
+          <p className="mb-6 text-rs-body">Create your first course to get started</p>
+          <Button type="button" onClick={() => setShowCreateModal(true)}>
+            Create Your First Course
+          </Button>
+        </Card>
+      ) : (
+        <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
+          {courses.map((course) => (
+            <Card key={course.id} className="overflow-hidden transition-shadow hover:shadow-md">
+              <div className="aspect-video overflow-hidden bg-rs-navy">
+                {course.thumbnailUrl ? (
+                  <img src={course.thumbnailUrl} alt="" className="h-full w-full object-cover" />
+                ) : (
+                  <div className="flex h-full items-center justify-center text-sm text-rs-muted">
+                    No thumbnail
+                  </div>
+                )}
+              </div>
+              <div className="p-6">
+                <div className="mb-4 flex items-start justify-between">
+                  <Badge tone={course.status === 'PUBLISHED' ? 'success' : 'neutral'}>
+                    {course.status}
+                  </Badge>
+                  <span className="text-sm font-semibold text-rs-muted">
+                    {lessonCounts[course.id] ?? '—'} lessons
+                  </span>
                 </div>
-                <div className="p-6">
-                  <div className="mb-4 flex items-start justify-between">
-                    <span
-                      className={`px-3 py-1 rounded-full text-xs font-medium ${
-                        course.status === 'PUBLISHED'
-                          ? 'bg-green-100 text-green-800'
-                          : 'bg-yellow-100 text-yellow-800'
-                      }`}
+
+                <h3 className="mb-2 text-xl font-extrabold text-rs-navy">{course.title}</h3>
+                <p className="mb-4 line-clamp-2 text-sm text-rs-body">{course.description}</p>
+
+                <div className="flex gap-2">
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="flex-1"
+                    onClick={() => navigate(`/courses/${course.id}`)}
+                  >
+                    Manage
+                  </Button>
+
+                  {course.status === 'DRAFT' && (
+                    <Button
+                      type="button"
+                      size="sm"
+                      className="flex-1"
+                      disabled={publishing === course.id}
+                      onClick={() => handlePublish(course.id)}
                     >
-                      {course.status}
-                    </span>
-                    <span className="text-sm text-gray-500">
-                      {lessonCounts[course.id] ?? '—'} lessons
-                    </span>
-                  </div>
+                      {publishing === course.id ? 'Publishing...' : 'Publish'}
+                    </Button>
+                  )}
 
-                  <h3 className="text-xl font-semibold text-gray-900 mb-2">{course.title}</h3>
-                  <p className="text-gray-600 text-sm mb-4 line-clamp-2">{course.description}</p>
-
-                  <div className="flex gap-2">
-                    <button
-                      onClick={() => navigate(`/courses/${course.id}`)}
-                      className="flex-1 px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors text-sm font-medium"
-                    >
-                      Manage
-                    </button>
-
-                    {course.status === 'DRAFT' && (
-                      <button
-                        onClick={() => handlePublish(course.id)}
-                        disabled={publishing === course.id}
-                        className="flex-1 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors text-sm font-medium disabled:opacity-50"
-                      >
-                        {publishing === course.id ? 'Publishing...' : 'Publish'}
-                      </button>
-                    )}
-
-                    <button
-                      onClick={() => handleDelete(course.id)}
-                      disabled={deleting === course.id}
-                      className="px-4 py-2 bg-red-100 text-red-700 rounded-lg hover:bg-red-200 transition-colors text-sm font-medium disabled:opacity-50"
-                    >
-                      {deleting === course.id ? '...' : 'Delete'}
-                    </button>
-                  </div>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    disabled={deleting === course.id}
+                    className="!text-red-700 hover:!bg-red-50"
+                    onClick={() => handleDelete(course.id)}
+                  >
+                    {deleting === course.id ? '...' : 'Delete'}
+                  </Button>
                 </div>
               </div>
-            ))}
-          </div>
-        )}
+            </Card>
+          ))}
+        </div>
+      )}
 
-        {/* Create Course Modal */}
-        {showCreateModal && (
-          <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
-            <div className="bg-white rounded-lg max-w-md w-full p-6">
-              <h2 className="text-2xl font-bold text-gray-900 mb-4">Create New Course</h2>
-              <form onSubmit={handleCreateCourse}>
-                <div className="mb-4">
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Course Title *
-                  </label>
-                  <input
-                    type="text"
-                    value={newCourseTitle}
-                    onChange={(e) => setNewCourseTitle(e.target.value)}
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    placeholder="e.g., Introduction to Python"
-                    required
-                  />
-                </div>
-                <div className="mb-6">
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Description
-                  </label>
-                  <textarea
-                    value={newCourseDescription}
-                    onChange={(e) => setNewCourseDescription(e.target.value)}
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    rows={3}
-                    placeholder="Brief description of your course..."
-                  />
-                </div>
-                <div className="flex gap-3">
-                  <button
-                    type="button"
-                    onClick={() => setShowCreateModal(false)}
-                    className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="submit"
-                    disabled={creating || !newCourseTitle.trim()}
-                    className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50"
-                  >
-                    {creating ? 'Creating...' : 'Create Course'}
-                  </button>
-                </div>
-              </form>
-            </div>
-          </div>
-        )}
-    </>
+      {showCreateModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <Card className="max-w-md w-full p-6">
+            <h2 className="mb-4 text-2xl font-extrabold text-rs-navy">Create New Course</h2>
+            <form onSubmit={handleCreateCourse}>
+              <Field
+                label="Course Title *"
+                value={newCourseTitle}
+                onChange={(e) => setNewCourseTitle(e.target.value)}
+                placeholder="e.g., Introduction to Python"
+                required
+              />
+              <Field label="Description" className="mb-6">
+                <textarea
+                  value={newCourseDescription}
+                  onChange={(e) => setNewCourseDescription(e.target.value)}
+                  rows={3}
+                  placeholder="Brief description of your course..."
+                />
+              </Field>
+              <div className="flex gap-3">
+                <Button
+                  type="button"
+                  variant="ghost"
+                  className="flex-1"
+                  onClick={() => setShowCreateModal(false)}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  type="submit"
+                  className="flex-1"
+                  disabled={creating || !newCourseTitle.trim()}
+                >
+                  {creating ? 'Creating...' : 'Create Course'}
+                </Button>
+              </div>
+            </form>
+          </Card>
+        </div>
+      )}
+    </div>
   )
 }

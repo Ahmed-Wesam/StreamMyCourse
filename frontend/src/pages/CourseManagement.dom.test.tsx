@@ -8,6 +8,53 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import CourseManagement from './CourseManagement'
 import { ApiError } from '../lib/api/client'
 import { questionBankUserMessage } from '../lib/questionBankErrors'
+import {
+  CourseManagementLoadError,
+  CourseManagementLoadingSkeleton,
+  CourseManagementNotFound,
+} from '../components/course/CourseManagementPageStates'
+
+const FORBIDDEN_CLASS_SUBSTRINGS = [
+  'emerald-',
+  'blue-600',
+  'green-',
+  'gray-',
+  'slate-',
+  'amber-',
+] as const
+
+function collectClassNames(root: Element): string[] {
+  const names: string[] = []
+  const walk = (el: Element) => {
+    if (typeof el.className === 'string' && el.className.length > 0) {
+      names.push(el.className)
+    }
+    for (const child of el.children) {
+      walk(child)
+    }
+  }
+  walk(root)
+  return names
+}
+
+function findForbiddenPaletteClasses(classNames: string[]): string[] {
+  const hits: string[] = []
+  for (const cn of classNames) {
+    for (const forbidden of FORBIDDEN_CLASS_SUBSTRINGS) {
+      if (cn.includes(forbidden)) {
+        hits.push(`${forbidden} → ${cn}`)
+      }
+    }
+  }
+  return hits
+}
+
+function expectRsPaletteOnRoot(root: Element | null) {
+  expect(root).toBeTruthy()
+  expect(root!.className).toMatch(/text-rs-ink/)
+  const violations = findForbiddenPaletteClasses(collectClassNames(root!))
+  expect(violations).toEqual([])
+}
 
 const api = vi.hoisted(() => ({
   getCourse: vi.fn(),
@@ -682,6 +729,38 @@ describe('CourseManagement', () => {
 
     await waitFor(() => {
       expect(api.createLesson).toHaveBeenCalledWith('c1', { title: 'New Lesson', moduleId: 'm1' })
+    })
+  })
+
+  it('uses RS palette on settled course management view (no legacy Tailwind color utilities)', async () => {
+    const { container } = renderCourseManagement()
+
+    await waitFor(() => {
+      expect(screen.getByText('Manage Course')).toBeTruthy()
+    })
+    expect(document.querySelector('.animate-pulse')).toBeNull()
+
+    expectRsPaletteOnRoot(container.firstElementChild)
+  })
+
+  describe('CourseManagementPageStates RS palette', () => {
+    it('loading skeleton uses RS palette', () => {
+      const { container } = render(<CourseManagementLoadingSkeleton />)
+      expectRsPaletteOnRoot(container.firstElementChild)
+    })
+
+    it('not-found state uses RS palette', () => {
+      const onBack = vi.fn()
+      const { container } = render(<CourseManagementNotFound onBack={onBack} />)
+      expectRsPaletteOnRoot(container.firstElementChild)
+    })
+
+    it('load-error state uses RS palette', () => {
+      const onBack = vi.fn()
+      const { container } = render(
+        <CourseManagementLoadError error="This course could not be loaded." onBack={onBack} />,
+      )
+      expectRsPaletteOnRoot(container.firstElementChild)
     })
   })
 

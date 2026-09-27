@@ -8,6 +8,9 @@ import {
   questionsPerAttemptLabel,
   UNTITLED_QUESTION_BANK_LABEL,
 } from '../../lib/questionBankDisplay'
+import { Button } from '../ui/Button'
+import { Card } from '../ui/Card'
+import { Field } from '../ui/Field'
 
 type Props = {
   courseId: string
@@ -66,24 +69,23 @@ export function CourseManagementModuleQuizPanel({
   }, [moduleIdsKey])
 
   return (
-    <section
-      className="mb-6 rounded-lg border border-gray-200 bg-white p-6 shadow-sm"
+    <Card
+      className="mb-6 p-6"
       data-testid="course-management-module-quizzes"
       data-question-bank-count={questionBankSummaries.length}
       aria-labelledby="course-management-module-quizzes-heading"
     >
-      <h2 id="course-management-module-quizzes-heading" className="mb-4 text-xl font-semibold text-gray-900">
+      <h2 id="course-management-module-quizzes-heading" className="mb-4 text-xl font-extrabold text-rs-navy">
         Module quizzes
       </h2>
 
       {sortedModules.length === 0 ? (
-        <p className="text-sm text-gray-600">Add a module first to attach bank quizzes.</p>
+        <p className="text-sm text-rs-body">Add a module first to attach bank quizzes.</p>
       ) : (
         <ul className="space-y-3">
           {sortedModules.map((m) => {
             const row = moduleQuizRows.find((r) => r.moduleId === m.id)
             const showAttach = needsAttachUi(row)
-            const selectId = `course-management-module-qb-${m.id}`
             const selectedBankId = selectedBankByModuleId[m.id] ?? ''
             const busy = attachingModuleId === m.id
             const linkedBank = row?.questionBankId
@@ -94,23 +96,23 @@ export function CourseManagementModuleQuizPanel({
             return (
               <li
                 key={m.id}
-                className="flex flex-col gap-3 rounded-lg border border-gray-100 bg-gray-50 px-4 py-3 text-sm sm:flex-row sm:items-start sm:justify-between"
+                className="flex flex-col gap-3 rounded-lg border border-rs-line bg-rs-sky-2/40 px-4 py-3 text-sm sm:flex-row sm:items-start sm:justify-between"
               >
                 <div className="min-w-0">
-                  <div className="font-medium text-gray-900">{m.title}</div>
+                  <div className="font-semibold text-rs-navy">{m.title}</div>
                   {!showAttach && row?.questionBankId ? (
-                    <div className="mt-2 space-y-1 text-gray-700">
+                    <div className="mt-2 space-y-1 text-rs-body">
                       <div>
-                        <span className="text-gray-500">Question bank: </span>
-                        <span className="font-medium">
+                        <span className="text-rs-muted">Question bank: </span>
+                        <span className="font-semibold">
                           {linkedBank ? questionBankDisplayName(linkedBank) : UNTITLED_QUESTION_BANK_LABEL}
                         </span>
                       </div>
                       <div>
-                        <span className="text-gray-500">Questions per attempt: </span>
+                        <span className="text-rs-muted">Questions per attempt: </span>
                         <span>{questionsPerAttemptLabel(row.servedCountN) ?? 'Not set yet'}</span>
                       </div>
-                      <p className="text-xs text-gray-500">
+                      <p className="text-xs text-rs-muted">
                         The linked question bank cannot be changed after a quiz is attached.
                       </p>
                     </div>
@@ -120,28 +122,24 @@ export function CourseManagementModuleQuizPanel({
                 <div className="flex shrink-0 flex-col gap-2 sm:items-end">
                   {showAttach ? (
                     questionBankSummaries.length === 0 ? (
-                      <div className="max-w-md text-right text-gray-600">
+                      <div className="max-w-md text-right text-rs-body">
                         <p className="mb-1">No question banks for this course yet.</p>
-                        <Link to={banksLink} className="text-blue-600 hover:text-blue-800">
+                        <Link to={banksLink} className="font-semibold text-rs-blue hover:underline">
                           Create or open question banks
                         </Link>
                       </div>
                     ) : availableBanks.length === 0 ? (
-                      <div className="max-w-md text-right text-gray-600">
+                      <div className="max-w-md text-right text-rs-body">
                         <p className="mb-1">All question banks are already linked to other modules.</p>
-                        <Link to={banksLink} className="text-blue-600 hover:text-blue-800">
+                        <Link to={banksLink} className="font-semibold text-rs-blue hover:underline">
                           Open question banks
                         </Link>
                       </div>
                     ) : (
                       <div className="flex flex-col items-stretch gap-2 sm:items-end">
-                        <div className="flex flex-col gap-1">
-                          <label htmlFor={selectId} className="text-left text-xs font-medium text-gray-700">
-                            Question bank
-                          </label>
+                        <Field label="Question bank" className="mb-0 min-w-[12rem]">
                           <select
-                            id={selectId}
-                            className="min-w-[12rem] rounded-md border border-gray-300 bg-white px-2 py-2 text-sm text-gray-900"
+                            className="!py-2 !text-sm"
                             value={selectedBankId}
                             disabled={busy}
                             onChange={(e) =>
@@ -155,10 +153,10 @@ export function CourseManagementModuleQuizPanel({
                               </option>
                             ))}
                           </select>
-                        </div>
-                        <button
+                        </Field>
+                        <Button
                           type="button"
-                          className="rounded-md bg-blue-600 px-3 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
+                          size="sm"
                           disabled={!selectedBankId || busy}
                           onClick={() => {
                             if (!selectedBankId) return
@@ -166,11 +164,11 @@ export function CourseManagementModuleQuizPanel({
                           }}
                         >
                           Attach quiz
-                        </button>
+                        </Button>
                       </div>
                     )
                   ) : (
-                    <span className="self-start text-gray-600 sm:self-end">Quiz linked</span>
+                    <span className="self-start text-rs-body sm:self-end">Quiz linked</span>
                   )}
                 </div>
               </li>
@@ -178,6 +176,6 @@ export function CourseManagementModuleQuizPanel({
           })}
         </ul>
       )}
-    </section>
+    </Card>
   )
 }

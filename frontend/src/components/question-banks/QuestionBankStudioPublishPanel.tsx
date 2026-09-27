@@ -1,5 +1,8 @@
 import { useState } from 'react'
 
+import { Button } from '../ui/Button'
+import { Card } from '../ui/Card'
+import { Field } from '../ui/Field'
 import type { ModuleQuizRow, PublishQuestionBankBody, QuestionBankStatus } from '../../lib/api/types'
 
 type Props = {
@@ -10,6 +13,9 @@ type Props = {
   publishing?: boolean
   onPublish: (body: PublishQuestionBankBody) => void | Promise<void>
 }
+
+const noticeClass =
+  'mb-4 rounded-lg border border-rs-line bg-rs-sky-2 px-3 py-2 text-sm font-semibold text-rs-navy'
 
 export function QuestionBankStudioPublishPanel({
   bankStatus,
@@ -27,51 +33,42 @@ export function QuestionBankStudioPublishPanel({
   const countValid = Number.isFinite(questionsPerAttempt) && questionsPerAttempt >= 1
 
   return (
-    <div className="rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
-      <h3 className="mb-2 text-lg font-semibold text-gray-900">Publish bank</h3>
-      <p className="mb-4 text-sm text-gray-600">
+    <Card className="p-4">
+      <h3 className="mb-2 text-lg font-extrabold text-rs-navy">Publish bank</h3>
+      <p className="mb-4 text-sm text-rs-body">
         Publishing makes questions available to students and sets how many questions each quiz attempt
         includes.
       </p>
       {linkedModuleRows.length === 0 ? (
-        <p className="mb-4 rounded border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900" role="status">
+        <p className={noticeClass} role="status">
           No module quiz is linked to this bank yet. Create or attach a module quiz that uses this bank in course
           management, then return here to publish.
         </p>
       ) : null}
       {linkedModuleRows.length > 1 ? (
-        <p
-          className="mb-4 rounded border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900"
-          role="status"
-          data-testid="studio-publish-multiple-modules-warning"
-        >
+        <p className={noticeClass} role="status" data-testid="studio-publish-multiple-modules-warning">
           This bank is linked to more than one module quiz. Publishing will apply to the first linked module only.
           Remove extra links in course management if that is not intended.
         </p>
       ) : null}
-      <div>
-        <label className="mb-1 block text-sm font-medium text-gray-700" htmlFor="studio-publish-n">
-          Questions per attempt
-        </label>
-        <input
-          id="studio-publish-n"
-          type="number"
-          min={1}
-          value={questionsPerAttempt}
-          onChange={(e) => setQuestionsPerAttempt(Number.parseInt(e.target.value, 10) || 1)}
-          disabled={linkedModuleRows.length === 0 || disabled || publishing}
-          className="min-h-[44px] w-28 rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-transparent focus:ring-2 focus:ring-blue-500"
-        />
-      </div>
-      <button
+      <Field
+        label="Questions per attempt"
+        type="number"
+        min={1}
+        value={questionsPerAttempt}
+        onChange={(e) => setQuestionsPerAttempt(Number.parseInt(e.target.value, 10) || 1)}
+        disabled={linkedModuleRows.length === 0 || disabled || publishing}
+        className="mb-0 w-28"
+      />
+      <Button
         type="button"
         data-testid="studio-publish-submit"
         disabled={!canPublish || !countValid}
         onClick={() => void onPublish({ n: questionsPerAttempt, moduleId: linkedModuleId })}
-        className="mt-4 rounded-lg bg-green-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-green-700 disabled:cursor-not-allowed disabled:opacity-60"
+        className="mt-4"
       >
         {publishing ? 'Publishing…' : 'Publish bank'}
-      </button>
-    </div>
+      </Button>
+    </Card>
   )
 }
