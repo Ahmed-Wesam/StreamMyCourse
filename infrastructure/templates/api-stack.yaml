@@ -728,24 +728,6 @@ Resources:
       ParentId: !Ref BillingMerchantResource
       PathPart: status
 
-  # API Gateway Resource: /billing/subscription
-  BillingSubscriptionResource:
-    Type: AWS::ApiGateway::Resource
-    Condition: HasBillingEdgeLambdaArn
-    Properties:
-      RestApiId: !Ref CatalogApi
-      ParentId: !Ref BillingResource
-      PathPart: subscription
-
-  # API Gateway Resource: /billing/cancel-subscription
-  BillingCancelSubscriptionResource:
-    Type: AWS::ApiGateway::Resource
-    Condition: HasBillingEdgeLambdaArn
-    Properties:
-      RestApiId: !Ref CatalogApi
-      ParentId: !Ref BillingResource
-      PathPart: cancel-subscription
-
   # API Gateway Resource: /webhooks (catalog + billing IPN)
   WebhooksResource:
     Type: AWS::ApiGateway::Resource
@@ -1693,64 +1675,6 @@ Resources:
     Properties:
       RestApiId: !Ref CatalogApi
       ResourceId: !Ref BillingCheckoutSessionResource
-      HttpMethod: OPTIONS
-      AuthorizationType: NONE
-      Integration:
-        IntegrationHttpMethod: POST
-        Type: AWS_PROXY
-        Uri: !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${BillingEdgeLambdaArn}/invocations'
-
-  # API Gateway Method: GET /billing/subscription
-  BillingSubscriptionGetMethod:
-    Type: AWS::ApiGateway::Method
-    Condition: HasBillingEdgeLambdaArn
-    Properties:
-      RestApiId: !Ref CatalogApi
-      ResourceId: !Ref BillingSubscriptionResource
-      HttpMethod: GET
-      AuthorizationType: COGNITO_USER_POOLS
-      AuthorizerId: !Ref CatalogApiTokenAuthorizer
-      Integration:
-        IntegrationHttpMethod: POST
-        Type: AWS_PROXY
-        Uri: !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${CatalogLambda.Arn}/invocations'
-
-  # API Gateway Method: OPTIONS /billing/subscription (CORS preflight)
-  BillingSubscriptionOptionsMethod:
-    Type: AWS::ApiGateway::Method
-    Condition: HasBillingEdgeLambdaArn
-    Properties:
-      RestApiId: !Ref CatalogApi
-      ResourceId: !Ref BillingSubscriptionResource
-      HttpMethod: OPTIONS
-      AuthorizationType: NONE
-      Integration:
-        IntegrationHttpMethod: POST
-        Type: AWS_PROXY
-        Uri: !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${CatalogLambda.Arn}/invocations'
-
-  # API Gateway Method: POST /billing/cancel-subscription
-  BillingCancelSubscriptionPostMethod:
-    Type: AWS::ApiGateway::Method
-    Condition: HasBillingEdgeLambdaArn
-    Properties:
-      RestApiId: !Ref CatalogApi
-      ResourceId: !Ref BillingCancelSubscriptionResource
-      HttpMethod: POST
-      AuthorizationType: COGNITO_USER_POOLS
-      AuthorizerId: !Ref CatalogApiTokenAuthorizer
-      Integration:
-        IntegrationHttpMethod: POST
-        Type: AWS_PROXY
-        Uri: !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${BillingEdgeLambdaArn}/invocations'
-
-  # API Gateway Method: OPTIONS /billing/cancel-subscription (CORS preflight)
-  BillingCancelSubscriptionOptionsMethod:
-    Type: AWS::ApiGateway::Method
-    Condition: HasBillingEdgeLambdaArn
-    Properties:
-      RestApiId: !Ref CatalogApi
-      ResourceId: !Ref BillingCancelSubscriptionResource
       HttpMethod: OPTIONS
       AuthorizationType: NONE
       Integration:

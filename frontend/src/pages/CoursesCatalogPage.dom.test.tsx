@@ -9,6 +9,8 @@ import type { PublicCatalogCourse } from '../lib/api/public-catalog'
 
 const listPublishedCourses = vi.fn()
 const listCourses = vi.fn()
+const getBundle = vi.fn()
+const getPurchases = vi.fn()
 
 vi.mock('../lib/api/public-catalog', () => ({
   listPublishedCourses: (...args: unknown[]) => listPublishedCourses(...args),
@@ -16,6 +18,15 @@ vi.mock('../lib/api/public-catalog', () => ({
 
 vi.mock('../lib/api/catalog', () => ({
   listCourses: (...args: unknown[]) => listCourses(...args),
+}))
+
+vi.mock('../lib/api/billing', () => ({
+  getBundle: (...args: unknown[]) => getBundle(...args),
+  getPurchases: (...args: unknown[]) => getPurchases(...args),
+}))
+
+vi.mock('../lib/api/session', () => ({
+  hasSignedInIdToken: vi.fn().mockResolvedValue(false),
 }))
 
 import CoursesCatalogPage from './CoursesCatalogPage'
@@ -39,7 +50,11 @@ describe('CoursesCatalogPage', () => {
   beforeEach(() => {
     listPublishedCourses.mockReset()
     listCourses.mockReset()
+    getBundle.mockReset()
+    getPurchases.mockReset()
     listPublishedCourses.mockResolvedValue([])
+    getBundle.mockResolvedValue({ amountMinor: 15000, currency: 'USD' })
+    getPurchases.mockResolvedValue([])
   })
 
   afterEach(() => {
@@ -102,18 +117,19 @@ describe('CoursesCatalogPage', () => {
     expect(screen.getAllByText('Gamma Writing').length).toBeGreaterThan(0)
   })
 
-  it('renders no dollar amounts in the document', async () => {
+  it('shows course and bundle USD prices from API', async () => {
     listPublishedCourses.mockResolvedValue([
-      course({ id: 'methodology', title: 'Research Methodology' }),
+      course({ id: 'methodology', title: 'Research Methodology', amountMinor: 9900 }),
     ])
 
-    const { container } = renderCatalog()
+    renderCatalog()
 
     await waitFor(() => {
       expect(screen.getByText('Research Methodology')).toBeTruthy()
     })
 
-    expect(container.textContent ?? '').not.toMatch(/\$/)
+    expect(screen.getByText('$99.00')).toBeTruthy()
+    expect(screen.getAllByText('$150.00').length).toBeGreaterThan(0)
   })
 
   it('has no Continue Learning or Resume controls', async () => {

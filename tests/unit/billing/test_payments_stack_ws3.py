@@ -41,6 +41,16 @@ def test_payments_stack_fulfillment_db_env_and_deployment_environment() -> None:
     assert "${RdsStackName}-DbSecretArn" in block
 
 
+def test_payments_stack_billing_edge_ipn_callback_env() -> None:
+    text = _payments_stack_text()
+    assert "BillingIpnCallbackUrl:" in text
+    start = text.index("  BillingEdge:")
+    end = text.index("  BillingFulfillmentRole:", start)
+    block = text[start:end]
+    assert "BILLING_IPN_CALLBACK_URL:" in block
+    assert "BillingIpnCallbackUrl" in block
+
+
 def test_payments_stack_fulfillment_role_can_read_db_secret() -> None:
     text = _payments_stack_text()
     start = text.index("  BillingFulfillmentRole:")

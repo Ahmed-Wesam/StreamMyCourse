@@ -24,7 +24,7 @@ from services.progress.ports import LessonProgressRepositoryPort, LessonProgress
 
 if TYPE_CHECKING:
     from services.course_management.ports import CourseCatalogRepositoryPort
-    from services.subscription.ports import CourseAccessPort
+    from services.purchases.ports import CourseAccessPort
 
 
 logger = logging.getLogger(__name__)
@@ -127,8 +127,8 @@ class LessonProgressService:
 
         if not self._check_authorization(user_sub, course_id, role):
             raise Forbidden(
-                "Subscription required to view course progress",
-                code="subscription_required",
+                "Purchase required to view course progress",
+                code="purchase_required",
             )
 
         # Get all lessons in the course
@@ -238,8 +238,8 @@ class LessonProgressService:
 
         if not self._check_authorization(user_sub, course_id, role):
             raise Forbidden(
-                "Subscription required to update lesson progress",
-                code="subscription_required",
+                "Purchase required to update lesson progress",
+                code="purchase_required",
             )
 
         # Validate position

@@ -2,6 +2,7 @@ import { BookOpen, Clock } from 'lucide-react'
 import { Badge } from '../../components/ui/Badge'
 import { Reveal } from '../../components/ui/Reveal'
 import { isHttpsUrl } from '../../lib/isHttpsUrl'
+import { formatUsdMinor } from '../../lib/formatUsdMinor'
 import { courseDetailLifetimePill } from '../../lib/marketing/courseDetailShellCopy'
 import type { Course } from '../../lib/api/types'
 import { CourseDetailBreadcrumb } from './CourseDetailBreadcrumb'
@@ -50,6 +51,12 @@ export function CourseDetailHeroSection({
               <Reveal>
                 <div className="mt-6 flex flex-wrap items-center gap-2.5">
                   <Badge tone="blue">{courseDetailLifetimePill}</Badge>
+                  {typeof course.amountMinor === 'number' && course.amountMinor > 0 ? (
+                    <span className="inline-flex items-center rounded-full border border-rs-line bg-white px-3.5 py-1.5 text-xs font-bold text-rs-blue">
+                      {formatUsdMinor(course.amountMinor)}
+                    </span>
+                  ) : null}
+                  {course.hasAccess ? <Badge tone="success">Owned</Badge> : null}
                   <span className="inline-flex items-center gap-2 rounded-full border border-rs-line bg-white px-3.5 py-1.5 text-xs font-bold text-rs-navy">
                     <BookOpen className="h-3.5 w-3.5 text-rs-blue" aria-hidden />
                     {lessonsCount} {lessonsCount === 1 ? 'lesson' : 'lessons'}

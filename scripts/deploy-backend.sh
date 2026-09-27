@@ -500,11 +500,15 @@ if [[ -n "${STUDENT_SITE_URL}" && "${STUDENT_SITE_URL}" != "None" ]]; then
   BILLING_RETURN_SUCCESS_URL="${STUDENT_SITE_URL%/}/billing/success"
   BILLING_RETURN_CANCEL_URL="${STUDENT_SITE_URL%/}/billing/cancel"
 fi
+if [[ -n "${API_ENDPOINT}" && "${API_ENDPOINT}" != "None" ]]; then
+  BILLING_IPN_CALLBACK_URL="${API_ENDPOINT%/}/webhooks/payments/paytabs"
+fi
 
 if [[ -n "${CATALOG_LAMBDA_ARN:-}" && "${CATALOG_LAMBDA_ARN}" != "None" ]]; then
   export CATALOG_LAMBDA_ARN
   export BILLING_RETURN_SUCCESS_URL="${BILLING_RETURN_SUCCESS_URL:-}"
   export BILLING_RETURN_CANCEL_URL="${BILLING_RETURN_CANCEL_URL:-}"
+  export BILLING_IPN_CALLBACK_URL="${BILLING_IPN_CALLBACK_URL:-}"
   PAY_SCRIPT="${ROOT}/scripts/deploy-payments.sh"
   chmod +x "$PAY_SCRIPT"
   echo "Updating payments stack with catalog invoke + billing return URLs"

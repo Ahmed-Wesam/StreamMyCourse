@@ -12,13 +12,13 @@ describe('AccountLayout', () => {
     cleanup()
   })
 
-  it('renders sidebar links for Profile and Manage subscription', () => {
+  it('renders sidebar links for Profile and My purchases', () => {
     render(
       <MemoryRouter initialEntries={['/account/profile']}>
         <Routes>
           <Route path="/account" element={<AccountLayout />}>
             <Route path="profile" element={<div>Profile content</div>} />
-            <Route path="subscription" element={<div>Subscription content</div>} />
+            <Route path="purchases" element={<div>Purchases content</div>} />
           </Route>
         </Routes>
       </MemoryRouter>,
@@ -30,8 +30,8 @@ describe('AccountLayout', () => {
     const profile = screen.getByRole('link', { name: 'Profile' })
     expect(profile.getAttribute('href')).toBe('/account/profile')
 
-    const subscription = screen.getByRole('link', { name: 'Manage subscription' })
-    expect(subscription.getAttribute('href')).toBe('/account/subscription')
+    const purchases = screen.getByRole('link', { name: 'My purchases' })
+    expect(purchases.getAttribute('href')).toBe('/account/purchases')
   })
 
   it('layout root uses text-rs-ink', () => {

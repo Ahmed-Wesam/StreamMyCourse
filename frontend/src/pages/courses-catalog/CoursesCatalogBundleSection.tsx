@@ -2,9 +2,15 @@ import { Check, Star } from 'lucide-react'
 
 import { Button } from '../../components/ui/Button'
 import { Reveal } from '../../components/ui/Reveal'
+import type { BundleOffer } from '../../lib/api/types'
+import { formatUsdMinor } from '../../lib/formatUsdMinor'
 import { coursesCatalogBundle } from '../../lib/marketing/coursesCatalogCopy'
 
-export function CoursesCatalogBundleSection() {
+type CoursesCatalogBundleSectionProps = {
+  bundleOffer: BundleOffer | null
+}
+
+export function CoursesCatalogBundleSection({ bundleOffer }: CoursesCatalogBundleSectionProps) {
   return (
     <section
       id="bundle"
@@ -42,10 +48,10 @@ export function CoursesCatalogBundleSection() {
                 {coursesCatalogBundle.programLabel}
               </p>
               <p className="mt-3 text-[clamp(28px,4vw,40px)] font-extrabold leading-none tracking-tight">
-                {coursesCatalogBundle.accessLabel}
+                {bundleOffer ? formatUsdMinor(bundleOffer.amountMinor) : coursesCatalogBundle.accessLabel}
               </p>
               <Button
-                href="#courses-catalog"
+                to="/checkout?productType=bundle"
                 arrow
                 className="mt-6 !bg-white !text-rs-blue hover:!-translate-y-0.5 hover:!shadow-[0_20px_40px_-12px_rgba(0,0,0,.3)]"
               >

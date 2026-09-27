@@ -1,9 +1,11 @@
-# Billing ops runbook (WS8 — pre-go-live, mock on)
+# Billing ops runbook (pre-go-live, mock on)
 
 **Stack:** `StreamMyCourse-Payments-prod` ([`payments-stack.yaml`](../templates/payments-stack.yaml))  
-**Scope:** Subscription billing edge + fulfillment while **`PAYTABS_USE_MOCK=true`** on prod. Live PayTabs flip is [WS9](../../plans/billing-workstream-9-paytabs-live-go-live.md).
+**Scope:** **One-time purchase** billing edge + fulfillment while **`PAYTABS_USE_MOCK=true`** on prod. Checkout body: `{ "productType": "course"|"bundle", "courseId"? }`. Access follows RDS **`purchases`** (`paid` / `revoked`), not subscriptions (tables dropped by migration **015**).
 
-**Contracts:** [manage-contract-v1](../../plans/billing/manage-contract-v1.md), [subscribe-contract-v1](../../plans/billing/subscribe-contract-v1.md), [access-policy-v1](../../plans/billing/access-policy-v1.md).
+**Env (edge):** `BILLING_RETURN_SUCCESS_URL`, `BILLING_RETURN_CANCEL_URL` (browser return), **`BILLING_IPN_CALLBACK_URL`** (PayTabs sale **`callback`** → `POST /webhooks/payments/paytabs`). Do **not** set `PAYTABS_USE_MOCK=false` until a **USD** PayTabs profile is verified — a JOD charge with USD grant rules will not grant access.
+
+**Contracts (legacy subscription docs may be stale):** [access-policy-v1](../../plans/billing/access-policy-v1.md) (superseded note at top).
 
 ---
 

@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode, type RefObject } from 'react'
+import { useEffect, useState, type RefObject } from 'react'
 import { Link, type To } from 'react-router-dom'
 import type { CourseModule, CourseProgress, Lesson, Playback } from '../../lib/api/types'
 import { DraggableBottomSheet } from '../../components/layout/DraggableBottomSheet'
@@ -29,10 +29,7 @@ type LessonPlayerMobileViewProps = {
   onPlaybackPause: (positionSec: number) => void
   needsSignIn: boolean
   needsSubscription: boolean
-  subscribing: boolean
-  subscribeError?: ReactNode | null
   error: string | null
-  onSubscribe: () => void
   playbackNavLocked: boolean
   courseProgress: CourseProgress | null
   courseDescription?: string
@@ -62,10 +59,7 @@ export function LessonPlayerMobileView({
   onPlaybackPause,
   needsSignIn,
   needsSubscription,
-  subscribing,
-  subscribeError,
   error,
-  onSubscribe,
   playbackNavLocked,
   courseProgress,
   courseDescription,
@@ -157,11 +151,8 @@ export function LessonPlayerMobileView({
             <LessonPlayerAlerts
               needsSignIn={needsSignIn}
               needsSubscription={needsSubscription}
-              subscribing={subscribing}
-              subscribeError={subscribeError}
               error={error}
               courseId={courseId}
-              onSubscribe={onSubscribe}
               compact
             />
 

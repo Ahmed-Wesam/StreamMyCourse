@@ -11,11 +11,11 @@ vi.mock('../../lib/api/session', () => ({
 }))
 
 const billingApi = vi.hoisted(() => ({
-  getSubscription: vi.fn(),
+  getPurchases: vi.fn(),
 }))
 
 vi.mock('../../lib/api/billing', () => ({
-  getSubscription: (...args: unknown[]) => billingApi.getSubscription(...args),
+  getPurchases: (...args: unknown[]) => billingApi.getPurchases(...args),
 }))
 
 import AccountProfilePage from './AccountProfilePage'
@@ -37,7 +37,7 @@ describe('AccountProfilePage', () => {
 
   beforeEach(() => {
     fetchMeMock.mockReset()
-    billingApi.getSubscription.mockReset()
+    billingApi.getPurchases.mockReset()
   })
 
   it('shows profile email from fetchMe', async () => {
@@ -73,6 +73,6 @@ describe('AccountProfilePage', () => {
       expect(screen.getByText('student@example.com')).toBeTruthy()
     })
 
-    expect(billingApi.getSubscription).not.toHaveBeenCalled()
+    expect(billingApi.getPurchases).not.toHaveBeenCalled()
   })
 })

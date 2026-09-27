@@ -24,11 +24,9 @@ PAYMENTS_STACK="StreamMyCourse-Payments-${ENV}"
 RDS_STACK="${RDS_STACK_NAME:-StreamMyCourse-Rds-${ENV}}"
 
 CATALOG_LAMBDA_ARN="${CATALOG_LAMBDA_ARN:-}"
-SUBSCRIPTION_PLAN_ID="${SUBSCRIPTION_PLAN_ID:-}"
 BILLING_RETURN_SUCCESS_URL="${BILLING_RETURN_SUCCESS_URL:-}"
 BILLING_RETURN_CANCEL_URL="${BILLING_RETURN_CANCEL_URL:-}"
-
-SUBSCRIPTION_PLAN_ID="${SUBSCRIPTION_PLAN_ID:-a0000000-0000-4000-8000-000000000012}"
+BILLING_IPN_CALLBACK_URL="${BILLING_IPN_CALLBACK_URL:-}"
 
 EDGE_ZIP="/tmp/billing-edge-${ENV}-$$.zip"
 FULFILL_ZIP="/tmp/billing-fulfillment-${ENV}-$$.zip"
@@ -242,9 +240,9 @@ aws cloudformation deploy \
   "PaytabsUseMock=${PAYTABS_USE_MOCK}" \
   "BillingFulfillmentAlertEmail=${BILLING_FULFILLMENT_ALERT_EMAIL}" \
   "CatalogLambdaArn=${CATALOG_LAMBDA_ARN}" \
-  "SubscriptionPlanId=${SUBSCRIPTION_PLAN_ID}" \
   "BillingReturnSuccessUrl=${BILLING_RETURN_SUCCESS_URL}" \
-  "BillingReturnCancelUrl=${BILLING_RETURN_CANCEL_URL}"
+  "BillingReturnCancelUrl=${BILLING_RETURN_CANCEL_URL}" \
+  "BillingIpnCallbackUrl=${BILLING_IPN_CALLBACK_URL}"
 
 # W4-P4: sync teacher_merchant_accounts when teacher sub is configured (skip if RDS unreachable).
 if [[ -n "${BILLING_TEACHER_SUB:-}" ]]; then

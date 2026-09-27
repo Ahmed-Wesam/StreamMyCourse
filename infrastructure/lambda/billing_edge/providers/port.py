@@ -1,4 +1,4 @@
-"""Payment provider port (WS2)."""
+"""Payment provider port (WS2 + RS-5 one-time sale)."""
 
 from __future__ import annotations
 
@@ -18,17 +18,25 @@ class CheckoutPlan:
     plan_key: str
 
 
+@dataclass(frozen=True)
+class CheckoutProduct:
+    amount_minor: int
+    currency: str
+    description: str
+
+
 @runtime_checkable
 class PaymentProviderPort(Protocol):
-    def create_subscribe_session(
+    def create_sale_session(
         self,
         *,
         user_sub: str,
-        plan_id: str,
-        plan: CheckoutPlan | None = None,
-        return_url: str | None = None,
+        purchase_id: str,
+        product_type: str,
+        course_id: str | None,
+        product: CheckoutProduct,
     ) -> SubscribeSessionResult:
-        """Start HPP subscribe flow; returns redirect URL for the student SPA."""
+        """Start HPP one-time sale; returns redirect URL for the student SPA."""
 
     def verify_webhook(
         self,

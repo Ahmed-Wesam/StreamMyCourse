@@ -438,6 +438,71 @@ def test_deploy_ps1_lists_migration_014() -> None:
     assert chunk.index("013_student_active_session.sql") < chunk.index(needle)
 
 
+def test_deploy_backend_bundles_migration_015() -> None:
+    """deploy-backend.yml must cat 015 after 014 in the prod schema bundle."""
+    path = _ROOT / ".github" / "workflows" / "deploy-backend.yml"
+    text = path.read_text(encoding="utf-8")
+    needle = "015_one_time_purchases.sql"
+    marker = "rds-schema-apply-prod-"
+    start = text.index(marker)
+    end = text.index('> "$PKG/schema.sql"', start)
+    chunk = text[start:end]
+    assert needle in chunk
+    assert "014_rate_limit_counters.sql" in chunk
+    assert chunk.index("014_rate_limit_counters.sql") < chunk.index(needle)
+
+
+def test_deploy_rds_stack_sh_bundles_migration_015() -> None:
+    """scripts/deploy-rds-stack.sh must cat 015 after 014."""
+    path = _ROOT / "scripts" / "deploy-rds-stack.sh"
+    text = path.read_text(encoding="utf-8")
+    needle = "015_one_time_purchases.sql"
+    start = text.index("cat \\")
+    end = text.index('> "$PKG/schema.sql"', start)
+    chunk = text[start:end]
+    assert needle in chunk
+    assert "014_rate_limit_counters.sql" in chunk
+    assert chunk.index("014_rate_limit_counters.sql") < chunk.index(needle)
+
+
+def test_deploy_ps1_lists_migration_015() -> None:
+    """infrastructure/deploy.ps1 schema bundle must include 015 after 014."""
+    path = _ROOT / "infrastructure" / "deploy.ps1"
+    text = path.read_text(encoding="utf-8")
+    needle = "015_one_time_purchases.sql"
+    start = text.index("$schemaSqlFiles = @(")
+    end = text.index(")", start)
+    chunk = text[start:end]
+    assert needle in chunk
+    assert "014_rate_limit_counters.sql" in chunk
+    assert chunk.index("014_rate_limit_counters.sql") < chunk.index(needle)
+
+
+def test_split_real_migration_015_contains_expected_purchases_ddl(schema_apply):
+    """015_one_time_purchases.sql adds purchase DDL and drops subscription tables."""
+    path = (
+        _ROOT
+        / "infrastructure"
+        / "database"
+        / "migrations"
+        / "015_one_time_purchases.sql"
+    )
+    sql = path.read_text(encoding="utf-8")
+    parts = schema_apply._split_sql_statements(sql)
+    joined = "\n".join(parts)
+    assert "price_amount_minor" in joined
+    assert "CREATE TABLE IF NOT EXISTS bundle_offers" in joined
+    assert "CREATE TABLE IF NOT EXISTS purchases" in joined
+    assert "CHECK (product_type IN ('course', 'bundle'))" in joined
+    assert "CHECK (status IN ('pending', 'paid', 'revoked', 'failed'))" in joined
+    assert "uq_purchases_one_paid_course_per_user_course_env" in joined
+    assert "uq_purchases_one_paid_bundle_per_user_env" in joined
+    assert "FOREIGN KEY (course_id) REFERENCES courses (id)" in joined
+    assert "DROP TABLE IF EXISTS user_subscriptions" in joined
+    assert "DROP TABLE IF EXISTS subscription_plans" in joined
+    assert len(parts) >= 10
+
+
 def test_concatenated_001_003_004_006_007_008_bundle_is_splittable_and_complete(schema_apply):
     """Deploy script and CI concatenate 001, 003, 004, 006, 007, and 008 into schema.sql."""
     migrations_dir = _ROOT / "infrastructure" / "database" / "migrations"
@@ -483,8 +548,8 @@ def test_concatenated_001_003_004_006_007_008_bundle_is_splittable_and_complete(
     assert len(parts) >= 32
 
 
-def test_concatenated_deploy_schema_bundle_through_014_is_splittable(schema_apply):
-    """CI deploy-backend.yml concatenates 001–014 (skipping 002/005) into schema.sql."""
+def test_concatenated_deploy_schema_bundle_through_015_is_splittable(schema_apply):
+    """CI deploy-backend.yml concatenates 001–015 (skipping 002/005) into schema.sql."""
     migrations_dir = _ROOT / "infrastructure" / "database" / "migrations"
     names = (
         "001_initial_schema.sql",
@@ -499,13 +564,16 @@ def test_concatenated_deploy_schema_bundle_through_014_is_splittable(schema_appl
         "012_billing_plan_price_50_jod.sql",
         "013_student_active_session.sql",
         "014_rate_limit_counters.sql",
+        "015_one_time_purchases.sql",
     )
     bundle = "".join((migrations_dir / n).read_text(encoding="utf-8") for n in names)
     parts = schema_apply._split_sql_statements(bundle)
     joined = "\n".join(parts)
     assert "student_active_session_id" in joined
     assert "CREATE TABLE IF NOT EXISTS rate_limit_counters" in joined
-    assert len(parts) >= 42
+    assert "CREATE TABLE IF NOT EXISTS purchases" in joined
+    assert "DROP TABLE IF EXISTS subscription_plans" in joined
+    assert len(parts) >= 50
 
 
 def test_handler_returns_error_when_secret_arn_missing(schema_apply, monkeypatch) -> None:

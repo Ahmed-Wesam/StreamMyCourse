@@ -12,17 +12,12 @@ from helpers.api import ApiClient
 from helpers.billing_access import (
     billing_environment,
     checkout_then_wait_for_access,
-    decode_jwt_sub,
     ensure_student_subscription,
     post_checkout_session,
-    post_mock_subscription_activated,
-    seed_lapsed_subscription_via_ipn,
-    seed_plan_id,
     skip_if_billing_webhook_unavailable,
     skip_if_checkout_unavailable,
     skip_if_mock_ipn_unavailable,
     skip_if_student_has_subscription,
-    wait_for_subscription_access,
 )
 
 
@@ -121,10 +116,6 @@ def test_checkout_session_then_ipn_grants_playback(
     skip_if_billing_webhook_unavailable()
     skip_if_mock_ipn_unavailable(_probe_mock_webhook(api_base_url))
     jwt = _student_jwt_or_skip()
-    user_sub = decode_jwt_sub(jwt)
-    plan_id = seed_plan_id()
-    # Clear stale incomplete rows from prior runs without reserving a new checkout (POST 200 would).
-    post_mock_subscription_activated(api_base_url, user_sub, plan_id=plan_id)
 
     course_id, lesson_id = _publish_course_with_lesson(
         api, course_factory, lesson_factory, label="billing-checkout-e2e"
@@ -137,7 +128,6 @@ def test_checkout_session_then_ipn_grants_playback(
         jwt,
         course_id,
         lesson_id,
-        plan_id=plan_id,
     )
 
     playback_resp = student_api.get_playback(course_id, lesson_id)
@@ -146,14 +136,14 @@ def test_checkout_session_then_ipn_grants_playback(
     assert isinstance(body.get("url"), str) and body["url"]
 
 
-def test_checkout_session_already_subscribed_returns_409(
+def test_checkout_session_already_owned_returns_409(
     api_base_url: str,
     api: ApiClient,
     student_api: ApiClient,
     course_factory,
     lesson_factory,
 ) -> None:
-    """Student with granting subscription row receives 409 already_subscribed on checkout."""
+    """Student with a paid bundle receives 409 already_owned on another bundle checkout."""
     skip_if_billing_webhook_unavailable()
     jwt = _student_jwt_or_skip()
 
@@ -162,14 +152,14 @@ def test_checkout_session_already_subscribed_returns_409(
     )
     ensure_student_subscription(api_base_url, student_api, course_id, lesson_id)
 
-    checkout_resp = post_checkout_session(student_api, jwt, plan_id=seed_plan_id())
+    checkout_resp = post_checkout_session(student_api, jwt, product_type="bundle")
     skip_if_checkout_unavailable(checkout_resp)
 
     assert checkout_resp.status_code == 409, (
-        f"Expected 409 already_subscribed, got {checkout_resp.status_code}: "
+        f"Expected 409 already_owned, got {checkout_resp.status_code}: "
         f"{checkout_resp.text[:200]}"
     )
-    assert checkout_resp.json().get("code") == "already_subscribed"
+    assert checkout_resp.json().get("code") == "already_owned"
 
 
 def test_zz_second_checkout_while_incomplete_returns_checkout_in_progress(
@@ -188,25 +178,13 @@ def test_zz_second_checkout_while_incomplete_returns_checkout_in_progress(
     )
     skip_if_student_has_subscription(student_api, course_id, lesson_id)
 
-    plan_id = seed_plan_id()
-    first = post_checkout_session(student_api, jwt, plan_id=plan_id)
+    first = post_checkout_session(student_api, jwt, product_type="bundle")
     skip_if_checkout_unavailable(first)
     if first.status_code == 409 and first.json().get("code") == "checkout_in_progress":
-        # Shared dev student may still have a fresh incomplete row from a prior run or test.
-        user_sub = decode_jwt_sub(jwt)
-        seed_lapsed_subscription_via_ipn(
-            api_base_url,
-            user_sub,
-            student_api,
-            course_id,
-            lesson_id,
-            plan_id=plan_id,
-        )
-        first = post_checkout_session(student_api, jwt, plan_id=plan_id)
-        skip_if_checkout_unavailable(first)
+        pytest.skip("fresh pending bundle checkout from a prior run — retry later")
     assert first.status_code == 200, first.text[:200]
 
-    second = post_checkout_session(student_api, jwt, plan_id=seed_plan_id())
+    second = post_checkout_session(student_api, jwt, product_type="bundle")
     skip_if_checkout_unavailable(second)
     assert second.status_code == 409, (
         f"Expected 409 checkout_in_progress, got {second.status_code}: {second.text[:200]}"
@@ -214,47 +192,5 @@ def test_zz_second_checkout_while_incomplete_returns_checkout_in_progress(
     assert second.json().get("code") == "checkout_in_progress"
 
 
-def test_z_checkout_after_lapsed_active_subscription_returns_200(
-    api_base_url: str,
-    api: ApiClient,
-    student_api: ApiClient,
-    course_factory,
-    lesson_factory,
-) -> None:
-    """Lapsed active row (period ended) reopens to incomplete; checkout is 200 not 409/503."""
-    skip_if_billing_webhook_unavailable()
-    jwt = _student_jwt_or_skip()
-    user_sub = decode_jwt_sub(jwt)
-    plan_id = seed_plan_id()
-
-    # Skip before creating an incomplete row when mock IPN is unavailable (breaks test_zz_second_*).
-    skip_if_mock_ipn_unavailable(_probe_mock_webhook(api_base_url))
-
-    course_id, lesson_id = _publish_course_with_lesson(
-        api, course_factory, lesson_factory, label="billing-checkout-lapsed"
-    )
-
-    seed_lapsed_subscription_via_ipn(
-        api_base_url,
-        user_sub,
-        student_api,
-        course_id,
-        lesson_id,
-        plan_id=plan_id,
-    )
-
-    try:
-        checkout_resp = post_checkout_session(student_api, jwt, plan_id=plan_id)
-        skip_if_checkout_unavailable(checkout_resp)
-        assert checkout_resp.status_code == 200, (
-            f"Expected 200 checkout for lapsed active re-subscribe, got "
-            f"{checkout_resp.status_code}: {checkout_resp.text[:200]}"
-        )
-        body = checkout_resp.json()
-        assert isinstance(body.get("redirect_url"), str) and body["redirect_url"].strip()
-    finally:
-        restore_resp = post_mock_subscription_activated(
-            api_base_url, user_sub, plan_id=plan_id
-        )
-        if restore_resp.status_code == 200:
-            wait_for_subscription_access(student_api, course_id, lesson_id)
+def test_z_checkout_after_lapsed_active_subscription_returns_200() -> None:
+    pytest.skip("subscription lapse re-checkout removed (RS-5 one-time purchases)")

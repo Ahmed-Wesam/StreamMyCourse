@@ -5,11 +5,11 @@ import { formatModuleQuizQuestionCount, quizScorePercentPillClass } from '../../
 import { groupLessonsByModule } from '../../lib/lessonGrouping'
 import { lessonPlayerPath, moduleQuizLinkTo } from '../../lib/moduleQuizNavigation'
 import {
-  subscribeCtaLabel,
-  subscribeCtaLoadingLabel,
-  subscribePaywallBody,
-  subscribePaywallTitle,
-} from '../../lib/subscribeCopy'
+  purchaseBundleCtaLabel,
+  purchaseCourseCtaLabel,
+  purchasePaywallBody,
+  purchasePaywallTitle,
+} from '../../lib/purchaseCopy'
 
 /** Progress fills — layered blues (professional). */
 export const PRO_BLUE_STRIP =
@@ -359,23 +359,23 @@ export function LessonUpNextCard({
   )
 }
 
+function checkoutCourseTo(courseId: string): string {
+  return `/checkout?productType=course&courseId=${encodeURIComponent(courseId)}`
+}
+
+const checkoutBundleTo = '/checkout?productType=bundle'
+
 export function LessonPlayerAlerts({
   needsSignIn,
   needsSubscription,
-  subscribing,
-  subscribeError,
   error,
   courseId,
-  onSubscribe,
   compact = false,
 }: {
   needsSignIn: boolean
   needsSubscription: boolean
-  subscribing: boolean
-  subscribeError?: React.ReactNode | null
   error: string | null
   courseId: string
-  onSubscribe: () => void
   compact?: boolean
 }) {
   const cardClass = compact
@@ -415,19 +415,23 @@ export function LessonPlayerAlerts({
               : 'mb-6 rounded-2xl border border-slate-200/90 bg-gradient-to-br from-white via-blue-50/30 to-slate-50/80 p-5 shadow-sm shadow-slate-200/60 ring-1 ring-slate-100'
           }
         >
-          <h3 className="text-sm font-semibold text-slate-900">{subscribePaywallTitle}</h3>
+          <h3 className="text-sm font-semibold text-slate-900">{purchasePaywallTitle}</h3>
           <p className="mt-1 text-sm text-slate-600">
-            {subscribePaywallBody}
+            {purchasePaywallBody}
           </p>
           <div className="mt-4 flex flex-wrap gap-3">
-            <button
-              type="button"
-              disabled={subscribing}
-              onClick={onSubscribe}
-              className="min-h-11 rounded-lg bg-gradient-to-r from-blue-600 to-blue-700 px-4 py-2 text-sm font-semibold text-white shadow-md shadow-blue-900/15 transition-all hover:from-blue-700 hover:to-blue-800 disabled:opacity-60"
+            <Link
+              to={checkoutCourseTo(courseId)}
+              className="inline-flex min-h-11 items-center rounded-lg bg-gradient-to-r from-blue-600 to-blue-700 px-4 py-2 text-sm font-semibold text-white shadow-md shadow-blue-900/15 transition-all hover:from-blue-700 hover:to-blue-800"
             >
-              {subscribing ? subscribeCtaLoadingLabel : subscribeCtaLabel}
-            </button>
+              {purchaseCourseCtaLabel}
+            </Link>
+            <Link
+              to={checkoutBundleTo}
+              className="inline-flex min-h-11 items-center rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 shadow-sm transition-colors hover:border-blue-200 hover:bg-blue-50/60"
+            >
+              {purchaseBundleCtaLabel}
+            </Link>
             <Link
               to={`/courses/${courseId}`}
               className="inline-flex min-h-11 items-center rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 shadow-sm transition-colors hover:border-blue-200 hover:bg-blue-50/60"
@@ -435,11 +439,6 @@ export function LessonPlayerAlerts({
               Course page
             </Link>
           </div>
-          {subscribeError ? (
-            <p className="mt-3 text-sm text-red-700" role="alert">
-              {subscribeError}
-            </p>
-          ) : null}
         </div>
       )}
 

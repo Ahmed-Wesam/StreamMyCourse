@@ -1,6 +1,7 @@
 import {
   ApiError,
   isAlreadyCanceledError,
+  isAlreadyOwnedError,
   isAlreadySubscribedError,
   isCannotCancelError,
   isCheckoutInProgressError,
@@ -54,8 +55,8 @@ type ApiUserMessageContext =
   | 'uploadThumbnail'
   | 'enroll'
   | 'subscribe'
-  | 'loadSubscription'
-  | 'cancelSubscription'
+  | 'loadPurchases'
+  | 'checkout'
   | 'loadLesson'
   | 'loadProfile'
   | 'learnRedirect'
@@ -85,8 +86,8 @@ const CONTEXT_FALLBACKS: Record<ApiUserMessageContext, string> = {
   uploadThumbnail: 'The thumbnail could not be uploaded. Try another image.',
   enroll: 'Enrollment in this course could not be completed. Please try again.',
   subscribe: 'Checkout could not be started. Please try again.',
-  loadSubscription: 'Your subscription could not be loaded. Please try again.',
-  cancelSubscription: 'Your subscription could not be canceled. Please try again.',
+  checkout: 'Checkout could not be started. Please try again.',
+  loadPurchases: 'Your purchases could not be loaded. Please try again.',
   loadLesson: 'This lesson could not be loaded. Please try again.',
   loadProfile: 'Your profile could not be loaded. Please try again.',
   learnRedirect: 'Your course could not be opened. Please try again.',
@@ -323,7 +324,10 @@ function mapByApiErrorCode(err: ApiError): string | null {
     return watermarkProfileIncompletePlaybackMessage
   }
   if (isBillingUnconfiguredError(err)) {
-    return 'Subscriptions are not available right now. Please try again later.'
+    return 'Purchases are not available right now. Please try again later.'
+  }
+  if (isAlreadyOwnedError(err)) {
+    return 'You already own this course or bundle.'
   }
   if (isAlreadySubscribedError(err)) {
     return 'You already have an active subscription.'

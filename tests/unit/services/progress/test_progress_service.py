@@ -89,7 +89,7 @@ class TestAuthorization:
         course_access: MagicMock,
         course_repo: MagicMock,
     ) -> None:
-        """No subscription access → Forbidden with subscription_required code."""
+        """No subscription access → Forbidden with purchase_required code."""
         course_access.has_course_access.return_value = False
         course_repo.get_course.return_value = MagicMock(createdBy="other-teacher")
 
@@ -103,7 +103,7 @@ class TestAuthorization:
                 role="student",
             )
 
-        assert exc_info.value.code == "subscription_required"
+        assert exc_info.value.code == "purchase_required"
 
     def test_allows_course_owner_without_subscription_row(
         self,

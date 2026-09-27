@@ -13,6 +13,14 @@ const billing = vi.hoisted(() => ({
   getMerchantStatus: vi.fn(),
 }))
 
+const billingApi = vi.hoisted(() => ({
+  getBundle: vi.fn(),
+}))
+
+const pricingApi = vi.hoisted(() => ({
+  setBundlePrice: vi.fn(),
+}))
+
 vi.mock('../lib/billing', async (importOriginal) => {
   const mod = (await importOriginal()) as typeof import('../lib/billing')
   return {
@@ -21,6 +29,18 @@ vi.mock('../lib/billing', async (importOriginal) => {
       billing.getMerchantStatus(...args) as ReturnType<typeof mod.getMerchantStatus>,
   }
 })
+
+vi.mock('../lib/api/billing', async (importOriginal) => {
+  const mod = (await importOriginal()) as typeof import('../lib/api/billing')
+  return {
+    ...mod,
+    getBundle: (...args: unknown[]) => billingApi.getBundle(...args) as ReturnType<typeof mod.getBundle>,
+  }
+})
+
+vi.mock('../lib/api/pricing', () => ({
+  setBundlePrice: (...args: unknown[]) => pricingApi.setBundlePrice(...args),
+}))
 
 const pendingStatus: MerchantStatusResponse = {
   provider: 'paytabs',
@@ -103,6 +123,10 @@ describe('TeacherPaymentSetup', () => {
   beforeEach(() => {
     billing.getMerchantStatus.mockReset()
     billing.getMerchantStatus.mockResolvedValue(pendingStatus)
+    billingApi.getBundle.mockReset()
+    billingApi.getBundle.mockResolvedValue({ amountMinor: 15000, currency: 'USD' })
+    pricingApi.setBundlePrice.mockReset()
+    pricingApi.setBundlePrice.mockResolvedValue({ amountMinor: 12000, currency: 'USD' })
   })
 
   afterEach(() => {
@@ -118,7 +142,7 @@ describe('TeacherPaymentSetup', () => {
     })
 
     expect(screen.getByTestId('merchant-payout-status').textContent).toMatch(/setup in progress/i)
-    expect(screen.getByTestId('checklist-repeatBillingEnabled').textContent).toMatch(/pending/i)
+    expect(screen.queryByTestId('checklist-repeatBillingEnabled')).toBeNull()
     expect(screen.getByTestId('checklist-payoutMarkedReady').textContent).toMatch(/pending/i)
     expect(screen.getByTestId('checklist-profileIdConfigured').textContent).toMatch(/complete/i)
     expect(screen.getByTestId('checklist-paytabsAccountCreated').textContent).toMatch(/pending/i)
@@ -135,7 +159,7 @@ describe('TeacherPaymentSetup', () => {
     expect(screen.getByTestId('checklist-payoutMarkedReady').textContent).toMatch(/complete/i)
     expect(screen.getByTestId('checklist-profileIdConfigured').textContent).toMatch(/complete/i)
     expect(screen.getByTestId('checklist-testChargeSucceeded').textContent).toMatch(/pending/i)
-    expect(screen.getByTestId('checklist-repeatBillingEnabled').textContent).toMatch(/pending/i)
+    expect(screen.queryByTestId('checklist-repeatBillingEnabled')).toBeNull()
   })
 
   it('shows a permission message when merchant status returns 403', async () => {
@@ -189,7 +213,7 @@ describe('TeacherPaymentSetup', () => {
     expect(apiKeys.getAttribute('target')).toBe('_blank')
     expect(apiKeys.getAttribute('rel')).toBe('noopener noreferrer')
 
-    expect(screen.getByText(/jordanian dinar \(jod\)/i)).toBeTruthy()
+    expect(screen.getByText(/one-time usd all-access bundle/i)).toBeTruthy()
     expect(screen.getByText(/merchant of record/i)).toBeTruthy()
 
     billing.getMerchantStatus.mockClear()
@@ -198,6 +222,21 @@ describe('TeacherPaymentSetup', () => {
     await waitFor(() => {
       expect(billing.getMerchantStatus).toHaveBeenCalledTimes(1)
     })
+  })
+
+  it('loads bundle price and saves via setBundlePrice', async () => {
+    renderPaymentSetup()
+
+    const input = await screen.findByLabelText(/bundle price \(usd\)/i)
+    expect(input).toHaveProperty('value', '150.00')
+
+    fireEvent.change(input, { target: { value: '120.00' } })
+    fireEvent.click(screen.getByRole('button', { name: /save bundle price/i }))
+
+    await waitFor(() => {
+      expect(pricingApi.setBundlePrice).toHaveBeenCalledWith(12000)
+    })
+    expect(input).toHaveProperty('value', '120.00')
   })
 
   it('uses RS palette on settled payment setup view (no legacy Tailwind color utilities)', async () => {

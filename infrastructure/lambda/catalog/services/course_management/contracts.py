@@ -13,6 +13,7 @@ class CourseDto(TypedDict):
     thumbnailUrl: NotRequired[str]
     hasAccess: NotRequired[bool]
     enrolled: NotRequired[bool]
+    priceAmountMinor: NotRequired[int]
 
 
 class LessonDto(TypedDict):
@@ -141,6 +142,8 @@ def as_course_dto(obj: Dict[str, Any]) -> CourseDto:
         dto["hasAccess"] = bool(obj.get("hasAccess"))
     if "enrolled" in obj and obj.get("enrolled") is not None:
         dto["enrolled"] = bool(obj.get("enrolled"))
+    if obj.get("priceAmountMinor") is not None:
+        dto["priceAmountMinor"] = int(obj.get("priceAmountMinor"))
     return dto
 
 

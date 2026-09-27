@@ -263,7 +263,7 @@ export const faqCategories: readonly FaqCategory[] = [
       {
         id: "purchases-do-i-need-an-account-before-purchasing",
         question: "Do I need an account before purchasing?",
-        answer: "No. You can complete checkout with only your email address. Your course access is linked to that email. After purchase is confirmed, you can either create a new Research Spectrum account or sign in to an existing account — your purchased course access will be applied to your account automatically.",
+        answer: "Yes. Sign in with your Research Spectrum account before checkout so your purchase is linked to the same profile you use for lessons and progress. After payment is confirmed, access appears on that account—create an account first if you are new, then complete checkout while signed in.",
       },
       {
         id: "purchases-what-payment-methods-are-supported",

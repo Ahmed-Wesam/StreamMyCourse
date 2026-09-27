@@ -21,6 +21,33 @@ describe('listPublishedCourses', () => {
     vi.clearAllMocks()
   })
 
+  it('maps amountMinor and hasAccess when present', async () => {
+    vi.mocked(fetch).mockResolvedValue(
+      new Response(
+        JSON.stringify([
+          {
+            id: 'priced',
+            title: 'Priced',
+            description: 'x',
+            status: 'PUBLISHED',
+            amountMinor: 4900,
+            currency: 'USD',
+            hasAccess: true,
+          },
+        ]),
+        { status: 200, headers: { 'Content-Type': 'application/json' } },
+      ),
+    )
+
+    const courses = await listPublishedCourses()
+    expect(courses[0]).toMatchObject({
+      id: 'priced',
+      amountMinor: 4900,
+      currency: 'USD',
+      hasAccess: true,
+    })
+  })
+
   it('returns a PUBLISHED course from 200 JSON', async () => {
     vi.mocked(fetch).mockResolvedValue(
       new Response(

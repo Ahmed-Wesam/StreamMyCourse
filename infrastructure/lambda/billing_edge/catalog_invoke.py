@@ -1,4 +1,4 @@
-"""Catalog Lambda invoke for billing.checkout precheck (WS6)."""
+"""Catalog Lambda invoke for billing.checkout precheck (WS6 + RS-5 purchases)."""
 
 from __future__ import annotations
 
@@ -13,9 +13,6 @@ logger = logging.getLogger(__name__)
 
 _INTERNAL_CHECKOUT = "billing.checkout"
 _INTERNAL_ROLLBACK = "billing.rollback_checkout"
-_INTERNAL_CANCEL_AT_PERIOD_END = "billing.cancel_at_period_end"
-
-
 class CatalogInvokeError(Exception):
     """Catalog invoke failed or is not configured."""
 
@@ -81,40 +78,37 @@ def _invoke_catalog_internal(
 def invoke_billing_checkout(
     *,
     user_sub: str,
-    plan_id: str,
+    product_type: str,
+    course_id: str | None,
     catalog_lambda_arn: str,
 ) -> Dict[str, Any]:
-    """Invoke catalog internal billing.checkout; returns blockReason + plan payload."""
+    """Invoke catalog internal billing.checkout for one-time purchase precheck."""
+    extra: Dict[str, Any] = {"productType": product_type}
+    if course_id:
+        extra["courseId"] = course_id
     return _invoke_catalog_internal(
         internal=_INTERNAL_CHECKOUT,
         user_sub=user_sub,
         catalog_lambda_arn=catalog_lambda_arn,
-        extra={"planId": plan_id},
-    )
-
-
-def invoke_billing_cancel_at_period_end(
-    *,
-    user_sub: str,
-    catalog_lambda_arn: str,
-) -> Dict[str, Any]:
-    """Invoke catalog internal billing.cancel_at_period_end."""
-    return _invoke_catalog_internal(
-        internal=_INTERNAL_CANCEL_AT_PERIOD_END,
-        user_sub=user_sub,
-        catalog_lambda_arn=catalog_lambda_arn,
+        extra=extra,
     )
 
 
 def invoke_billing_checkout_rollback(
     *,
     user_sub: str,
+    product_type: str,
+    course_id: str | None,
     catalog_lambda_arn: str,
 ) -> None:
     """Best-effort: remove incomplete checkout row after edge could not create HPP session."""
+    extra: Dict[str, Any] = {"productType": product_type}
+    if course_id:
+        extra["courseId"] = course_id
     payload = {
         "internal": _INTERNAL_ROLLBACK,
         "userSub": user_sub,
+        **extra,
     }
     client = boto3.client("lambda")
     try:

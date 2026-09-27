@@ -4,8 +4,12 @@ import { Button } from '../../components/ui/Button'
 import { Card } from '../../components/ui/Card'
 import { Reveal } from '../../components/ui/Reveal'
 import { SectionHeader } from '../../components/ui/SectionHeader'
+import type { BundleOffer } from '../../lib/api/types'
 import type { PublicCatalogCourse } from '../../lib/api/public-catalog'
+import { formatUsdMinor } from '../../lib/formatUsdMinor'
 import { homeBundle, homeCourses } from '../../lib/marketing/homeCopy'
+import { type OwnedCoursesScope, viewerOwnsCourse } from '../../lib/ownedFromPurchases'
+import { Badge } from '../../components/ui/Badge'
 
 type CatalogState =
   | { status: 'loading' }
@@ -15,9 +19,11 @@ type CatalogState =
 type HomeCoursesSectionProps = {
   catalog: CatalogState
   onRetry: () => void
+  bundleOffer: BundleOffer | null
+  ownership: OwnedCoursesScope | null
 }
 
-export function HomeCoursesSection({ catalog, onRetry }: HomeCoursesSectionProps) {
+export function HomeCoursesSection({ catalog, onRetry, bundleOffer, ownership }: HomeCoursesSectionProps) {
   const courses = catalog.status === 'ready' ? catalog.courses : []
 
   return (
@@ -64,9 +70,17 @@ export function HomeCoursesSection({ catalog, onRetry }: HomeCoursesSectionProps
                       />
                     </div>
                     <div className="min-w-0 flex-1">
-                      <h3 className="mb-1 text-[17px] font-extrabold leading-snug tracking-tight text-rs-ink">
-                        {course.title}
-                      </h3>
+                      <div className="mb-1 flex flex-wrap items-center gap-2">
+                        <h3 className="text-[17px] font-extrabold leading-snug tracking-tight text-rs-ink">
+                          {course.title}
+                        </h3>
+                        {ownership && viewerOwnsCourse(ownership, course.id, course.hasAccess) ? (
+                          <Badge tone="success">Owned</Badge>
+                        ) : null}
+                      </div>
+                      {typeof course.amountMinor === 'number' && course.amountMinor > 0 ? (
+                        <p className="mb-2 text-sm font-bold text-rs-blue">{formatUsdMinor(course.amountMinor)}</p>
+                      ) : null}
                       {course.description ? (
                         <p className="mb-3 text-[13.5px] leading-snug text-rs-body">
                           {course.description}
@@ -113,8 +127,11 @@ export function HomeCoursesSection({ catalog, onRetry }: HomeCoursesSectionProps
                     </div>
                   </div>
                   <div className="relative text-center">
+                    {bundleOffer ? (
+                      <p className="mb-3 text-3xl font-extrabold">{formatUsdMinor(bundleOffer.amountMinor)}</p>
+                    ) : null}
                     <Button
-                      to="/courses"
+                      to="/checkout?productType=bundle"
                       arrow
                       className="!bg-white !text-rs-blue hover:!-translate-y-0.5 hover:!shadow-[0_20px_40px_-12px_rgba(0,0,0,.3)]"
                     >

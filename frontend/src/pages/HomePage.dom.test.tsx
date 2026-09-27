@@ -13,6 +13,15 @@ vi.mock('../lib/api/public-catalog', () => ({
   listPublishedCourses: (...args: unknown[]) => listPublishedCourses(...args),
 }))
 
+vi.mock('../lib/api/billing', () => ({
+  getBundle: vi.fn().mockResolvedValue({ amountMinor: 15000, currency: 'USD' }),
+  getPurchases: vi.fn().mockResolvedValue([]),
+}))
+
+vi.mock('../lib/api/session', () => ({
+  hasSignedInIdToken: vi.fn().mockResolvedValue(false),
+}))
+
 import HomePage from './HomePage'
 
 const COURSES_HEADING = 'Four Courses. One Complete Research Skill Set.'
@@ -84,18 +93,19 @@ describe('HomePage', () => {
     expect(screen.queryByRole('link', { name: /View Course & Pricing/i })).toBeNull()
   })
 
-  it('renders no dollar amounts in the document', async () => {
+  it('shows bundle USD price from getBundle', async () => {
     listPublishedCourses.mockResolvedValue([
-      course({ id: 'methodology', title: 'Research Methodology' }),
+      course({ id: 'methodology', title: 'Research Methodology', amountMinor: 4900 }),
     ])
 
-    const { container } = renderHome()
+    renderHome()
 
     await waitFor(() => {
       expect(screen.getAllByText('Research Methodology').length).toBeGreaterThan(0)
     })
 
-    expect(container.textContent ?? '').not.toMatch(/\$/)
+    expect(screen.getAllByText('$49.00').length).toBeGreaterThan(0)
+    expect(screen.getAllByText('$150.00').length).toBeGreaterThan(0)
   })
 
   it('shows empty catalog message when there are no published courses', async () => {
@@ -147,7 +157,9 @@ describe('HomePage', () => {
       name: /^Explore courses$/i,
     })
     expect(exploreInCourses.length).toBeGreaterThan(0)
-    expect(exploreInCourses.every((link) => link.getAttribute('href') === '/courses')).toBe(true)
+    const hrefs = exploreInCourses.map((link) => link.getAttribute('href'))
+    expect(hrefs).toContain('/checkout?productType=bundle')
+    expect(hrefs).toContain('/courses')
   })
 
   it('shows a retryable error and refetches when retry is clicked', async () => {

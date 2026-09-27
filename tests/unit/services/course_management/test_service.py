@@ -1631,7 +1631,7 @@ class TestEnsureCanViewLessonsAndPlayback:
             service.ensure_can_view_lessons_and_playback(
                 _VID, cognito_sub="", role=""
             )
-        assert ei.value.code == "subscription_required"
+        assert ei.value.code == "purchase_required"
         enrollments.has_enrollment.assert_not_called()
 
     def test_published_requires_subscription_when_auth_on(
@@ -1647,7 +1647,7 @@ class TestEnsureCanViewLessonsAndPlayback:
             service.ensure_can_view_lessons_and_playback(
                 _VID, cognito_sub="sub1", role="student"
             )
-        assert ei.value.code == "subscription_required"
+        assert ei.value.code == "purchase_required"
         enrollments.has_enrollment.assert_not_called()
 
     def test_admin_bypasses_subscription_check_via_port(
@@ -1715,13 +1715,13 @@ class TestEnsureCanViewLessonsAndPlayback:
 
 
 class TestEnrollInPublishedCourse:
-    def test_raises_subscription_required_without_put(
+    def test_raises_purchase_required_without_put(
         self, service: CourseManagementService, repo: MagicMock, enrollments: MagicMock
     ) -> None:
         repo.get_course.return_value = _course(id_=_VID, status="PUBLISHED")
         with pytest.raises(Forbidden) as ei:
             service.enroll_in_published_course(_VID, cognito_sub="u1")
-        assert ei.value.code == "subscription_required"
+        assert ei.value.code == "purchase_required"
         enrollments.put_enrollment.assert_not_called()
 
 

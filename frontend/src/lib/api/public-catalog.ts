@@ -9,6 +9,11 @@ export type PublicCatalogCourse = {
   description: string
   /** Present only when the API returned an https: URL. */
   thumbnailUrl?: string
+  /** USD cents when the API includes pricing (RS-5). */
+  amountMinor?: number
+  currency?: string
+  /** Present when the authenticated catalog includes access flags. */
+  hasAccess?: boolean
 }
 
 function requirePublicApiBaseUrl(): string {
@@ -42,6 +47,19 @@ function mapPublishedRow(row: unknown): PublicCatalogCourse | null {
   const course: PublicCatalogCourse = { id, title, description }
   if (isHttpsUrl(record.thumbnailUrl)) {
     course.thumbnailUrl = record.thumbnailUrl
+  }
+  const amountRaw = record.amountMinor ?? record.amount_minor
+  if (typeof amountRaw === 'number' && Number.isFinite(amountRaw) && amountRaw > 0) {
+    course.amountMinor = amountRaw
+  }
+  const currency = record.currency
+  if (typeof currency === 'string' && currency.trim()) {
+    course.currency = currency.trim()
+  }
+  if (record.hasAccess === true || record.enrolled === true) {
+    course.hasAccess = true
+  } else if (record.hasAccess === false || record.enrolled === false) {
+    course.hasAccess = false
   }
   return course
 }

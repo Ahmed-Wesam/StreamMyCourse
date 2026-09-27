@@ -60,10 +60,11 @@ export function isSessionSupersededError(e: unknown): boolean {
 }
 
 /**
- * True when the catalog API refused lesson/playback access because the user lacks a subscription.
+ * True when the catalog API refused lesson/playback access because the user lacks a purchase.
  */
 export function isSubscriptionRequiredError(e: unknown): boolean {
   if (!(e instanceof ApiError)) return false
+  if (e.code === 'purchase_required') return true
   if (e.code === 'subscription_required') return true
   return false
 }
@@ -138,6 +139,12 @@ export function isAlreadySubscribedError(e: unknown): boolean {
 export function isCheckoutInProgressError(e: unknown): boolean {
   if (!(e instanceof ApiError)) return false
   return e.status === 409 && e.code === 'checkout_in_progress'
+}
+
+/** True when checkout is blocked because the student already owns the course or bundle. */
+export function isAlreadyOwnedError(e: unknown): boolean {
+  if (!(e instanceof ApiError)) return false
+  return e.status === 409 && e.code === 'already_owned'
 }
 
 /** True when GET /billing/subscription has no manageable subscription (WS7 manage contract). */

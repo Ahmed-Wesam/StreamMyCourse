@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from providers.mock_adapter import MockPayTabsAdapter
-from providers.port import PaymentProviderPort, SubscribeSessionResult
+from providers.port import CheckoutProduct, PaymentProviderPort, SubscribeSessionResult
 
 
 def test_mock_adapter_satisfies_port_protocol() -> None:
@@ -11,13 +11,14 @@ def test_mock_adapter_satisfies_port_protocol() -> None:
     assert isinstance(adapter, PaymentProviderPort)
 
 
-def test_mock_create_subscribe_session_returns_redirect_url() -> None:
+def test_mock_create_sale_session_returns_redirect_url() -> None:
     adapter = MockPayTabsAdapter()
-    result = adapter.create_subscribe_session(
+    result = adapter.create_sale_session(
         user_sub="user-abc",
-        plan_id="plan-monthly",
-        plan=None,
-        return_url="https://student.example.com/billing/return",
+        purchase_id="c0000000-0000-4000-8000-000000000001",
+        product_type="course",
+        course_id="b0000000-0000-4000-8000-000000000001",
+        product=CheckoutProduct(amount_minor=9900, currency="USD", description="course"),
     )
     assert isinstance(result, SubscribeSessionResult)
     assert result.redirect_url.startswith("https://")
@@ -27,4 +28,3 @@ def test_mock_create_subscribe_session_returns_redirect_url() -> None:
 def test_mock_parse_webhook_returns_empty_list() -> None:
     adapter = MockPayTabsAdapter()
     assert adapter.parse_webhook(b"{}", deployment_environment="dev") == []
-

@@ -73,9 +73,25 @@ def _row_to_course(row: Tuple[Any, ...]) -> Course:
 
     Column order must match the SELECT used by all query sites in this module::
 
-        id, title, description, status, created_by, thumbnail_key, created_at, updated_at
+        id, title, description, status, created_by, thumbnail_key, created_at, updated_at,
+        price_amount_minor
     """
-    (cid, title, description, status, created_by, thumbnail_key, created_at, updated_at) = row
+    (
+        cid,
+        title,
+        description,
+        status,
+        created_by,
+        thumbnail_key,
+        created_at,
+        updated_at,
+        price_amount_minor,
+    ) = row
+    price_minor: int | None
+    if price_amount_minor is None:
+        price_minor = None
+    else:
+        price_minor = int(price_amount_minor)
     return Course(
         id=str(cid),
         title=str(title or ""),
@@ -85,6 +101,7 @@ def _row_to_course(row: Tuple[Any, ...]) -> Course:
         updatedAt=_to_iso(updated_at),
         thumbnailKey=str(thumbnail_key or ""),
         createdBy=str(created_by or ""),
+        priceAmountMinor=price_minor,
     )
 
 
@@ -133,7 +150,8 @@ def _row_to_lesson(row: Tuple[Any, ...]) -> Lesson:
 
 
 _COURSE_COLUMNS = (
-    "id, title, description, status, created_by, thumbnail_key, created_at, updated_at"
+    "id, title, description, status, created_by, thumbnail_key, created_at, updated_at, "
+    "price_amount_minor"
 )
 _MODULE_COLUMNS = "id, course_id, title, description, module_order, created_at, updated_at"
 _LESSON_SELECT = (

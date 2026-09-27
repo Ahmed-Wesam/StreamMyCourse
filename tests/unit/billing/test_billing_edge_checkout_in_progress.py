@@ -13,7 +13,7 @@ from edge_config import BillingEdgeConfig
 from providers.mock_adapter import MockPayTabsAdapter
 
 _CATALOG_ARN = "arn:aws:lambda:eu-west-1:1:function:catalog"
-_PLAN_ID = "a0000000-0000-4000-8000-000000000011"
+_COURSE_ID = "b0000000-0000-4000-8000-000000000001"
 
 
 def _edge_config() -> BillingEdgeConfig:
@@ -27,9 +27,9 @@ def _edge_config() -> BillingEdgeConfig:
         paytabs_api_domain=None,
         fulfillment_queue_url="https://sqs.eu-west-1.amazonaws.com/1/q",
         catalog_lambda_arn=_CATALOG_ARN,
-        subscription_plan_id=_PLAN_ID,
         billing_return_success_url="https://student.example.com/billing/success",
         billing_return_cancel_url="https://student.example.com/billing/cancel",
+        billing_ipn_callback_url="https://api.example.com/webhooks/payments/paytabs",
     )
 
 
@@ -42,7 +42,7 @@ def _checkout_event() -> Dict[str, Any]:
             "authorizer": {"claims": {"sub": "student-sub-1"}},
         },
         "headers": {"content-type": "application/json"},
-        "body": json.dumps({"planId": _PLAN_ID}),
+        "body": json.dumps({"productType": "course", "courseId": _COURSE_ID}),
     }
 
 
@@ -61,4 +61,4 @@ def test_checkout_in_progress_returns_409(monkeypatch: pytest.MonkeyPatch) -> No
     body = json.loads(resp["body"])
     assert resp["statusCode"] == 409
     assert body["code"] == "checkout_in_progress"
-    mock_provider.create_subscribe_session.assert_not_called()
+    mock_provider.create_sale_session.assert_not_called()

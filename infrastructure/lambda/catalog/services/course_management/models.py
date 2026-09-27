@@ -13,6 +13,7 @@ class Course:
     createdAt: str = ""
     updatedAt: str = ""
     thumbnailKey: str = ""
+    priceAmountMinor: int | None = None
 
 
 @dataclass(frozen=True)

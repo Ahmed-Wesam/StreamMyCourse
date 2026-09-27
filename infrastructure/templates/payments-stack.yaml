@@ -85,12 +85,6 @@ Parameters:
       ARN of the catalog Lambda (checkout precheck invoke). Empty skips invoke IAM
       and leaves CATALOG_LAMBDA_ARN unset until a follow-up deploy.
 
-  SubscriptionPlanId:
-    Type: String
-    Default: ''
-    Description: >-
-      Default subscription_plans.id for checkout (seed UUID from migration 011).
-
   BillingReturnSuccessUrl:
     Type: String
     Default: ''
@@ -102,6 +96,12 @@ Parameters:
     Default: ''
     Description: >-
       PayTabs return URL when checkout is canceled (student edge /billing/cancel).
+
+  BillingIpnCallbackUrl:
+    Type: String
+    Default: ''
+    Description: >-
+      PayTabs IPN webhook URL (BILLING_IPN_CALLBACK_URL) for server-to-server callbacks.
 
 Conditions:
   HasBillingFulfillmentAlertEmail: !Not [!Equals [!Ref BillingFulfillmentAlertEmail, '']]
@@ -238,9 +238,9 @@ Resources:
           PAYTABS_SECRET_ARN: !Ref PaytabsSecretArn
           PAYTABS_USE_MOCK: !Ref PaytabsUseMock
           CATALOG_LAMBDA_ARN: !Ref CatalogLambdaArn
-          SUBSCRIPTION_PLAN_ID: !Ref SubscriptionPlanId
           BILLING_RETURN_SUCCESS_URL: !Ref BillingReturnSuccessUrl
           BILLING_RETURN_CANCEL_URL: !Ref BillingReturnCancelUrl
+          BILLING_IPN_CALLBACK_URL: !Ref BillingIpnCallbackUrl
           LOG_LEVEL: INFO
       Tags:
         - Key: Project

@@ -307,28 +307,23 @@ describe('LessonPlayerPage', () => {
     expect(screen.queryByText('Locked')).toBeNull()
   })
 
-  it('redirects to checkout when subscribe is clicked on subscription paywall', async () => {
+  it('links purchase paywall to checkout routes', async () => {
     api.getPlaybackUrl.mockRejectedValueOnce(
       new ApiError('Subscription required', 403, 'subscription_required'),
     )
-    api.createCheckoutSession.mockResolvedValue({ redirect_url: 'https://pay.example/checkout' })
-    const hrefSetter = vi.fn()
-    Object.defineProperty(window, 'location', {
-      configurable: true,
-      value: { ...window.location, set href(v: string) { hrefSetter(v) }, get href() { return '' } },
-    })
 
     renderLessonPlayer()
 
-    expect((await screen.findByRole('heading', { name: /Subscribe to unlock all courses/i })).isConnected).toBe(
+    expect((await screen.findByRole('heading', { name: /Purchase to unlock this course/i })).isConnected).toBe(
       true,
     )
-    fireEvent.click(screen.getByRole('button', { name: /Subscribe — 50 JOD \/ month/i }))
-
-    await waitFor(() => {
-      expect(api.createCheckoutSession).toHaveBeenCalledWith()
-      expect(hrefSetter).toHaveBeenCalledWith('https://pay.example/checkout')
-    })
+    const buyCourse = screen.getByRole('link', { name: /Buy this course/i })
+    expect(buyCourse.getAttribute('href')).toContain('/checkout?productType=course')
+    expect(buyCourse.getAttribute('href')).toContain('courseId=c1')
+    expect(screen.getByRole('link', { name: /Buy full bundle/i }).getAttribute('href')).toBe(
+      '/checkout?productType=bundle',
+    )
+    expect(api.createCheckoutSession).not.toHaveBeenCalled()
   })
 
   it('loads progress after playback URL succeeds', async () => {
@@ -794,7 +789,7 @@ describe('LessonPlayerPage', () => {
 
       renderLessonPlayer('/courses/c1/lessons/l2')
 
-      expect((await screen.findByRole('heading', { name: /Subscribe to unlock all courses/i })).isConnected).toBe(
+      expect((await screen.findByRole('heading', { name: /Purchase to unlock this course/i })).isConnected).toBe(
         true,
       )
       expect(screen.queryByRole('link', { name: /Module quiz/i })).toBeNull()

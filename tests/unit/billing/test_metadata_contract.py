@@ -34,3 +34,22 @@ def test_invalid_format_raises_value_error() -> None:
 
     with pytest.raises(ValueError):
         parse_cart_metadata("v1|dev|only-three", "dev")
+
+
+def test_parse_v2_course_purchase_metadata() -> None:
+    purchase_id = "c0000000-0000-4000-8000-000000000001"
+    course_id = "b0000000-0000-4000-8000-000000000001"
+    cart_id = f"v2|dev|{_USER_SUB}|course|{course_id}|{purchase_id}"
+    meta = parse_cart_metadata(cart_id, "dev")
+    assert meta.is_purchase is True
+    assert meta.product_type == "course"
+    assert meta.course_id == course_id
+    assert meta.purchase_id == purchase_id
+
+
+def test_parse_v2_bundle_purchase_metadata() -> None:
+    purchase_id = "c0000000-0000-4000-8000-000000000002"
+    cart_id = f"v2|dev|{_USER_SUB}|bundle|{purchase_id}"
+    meta = parse_cart_metadata(cart_id, "dev")
+    assert meta.product_type == "bundle"
+    assert meta.purchase_id == purchase_id

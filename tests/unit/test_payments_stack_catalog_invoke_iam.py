@@ -23,8 +23,9 @@ def test_payments_stack_billing_edge_env_catalog_and_return_urls() -> None:
     end = text.index("  BillingFulfillmentRole:", start)
     block = text[start:end]
     assert "CATALOG_LAMBDA_ARN:" in block
-    assert "SUBSCRIPTION_PLAN_ID:" in block
     assert "BILLING_RETURN_SUCCESS_URL:" in block
+    assert "BILLING_IPN_CALLBACK_URL:" in block
+    assert "SUBSCRIPTION_PLAN_ID:" not in block
     assert "BILLING_RETURN_CANCEL_URL:" in block
     assert "CatalogLambdaArn" in block
 

@@ -1,4 +1,4 @@
-"""Neutral billing domain events for SQS fulfillment (WS3)."""
+"""Neutral billing domain events for SQS fulfillment (WS3 + RS-5 purchases)."""
 
 from __future__ import annotations
 
@@ -7,15 +7,24 @@ from typing import Any, Dict, Optional
 
 SCHEMA_VERSION = 1
 
-_DOMAIN_EVENT_TYPES = frozenset(
+_SUBSCRIPTION_EVENT_TYPES = frozenset(
     {
         "subscription.activated",
         "subscription.renewed",
         "subscription.payment_failed",
         "subscription.canceled",
-        "payout.ready",
     }
 )
+
+_PURCHASE_EVENT_TYPES = frozenset(
+    {
+        "purchase.paid",
+        "purchase.failed",
+        "purchase.revoked",
+    }
+)
+
+_DOMAIN_EVENT_TYPES = _SUBSCRIPTION_EVENT_TYPES | _PURCHASE_EVENT_TYPES | frozenset({"payout.ready"})
 
 
 @dataclass(frozen=True)
@@ -33,6 +42,12 @@ class BillingDomainEvent:
     current_period_end: Optional[str] = None
     cancel_at_period_end: Optional[bool] = None
     canceled_at: Optional[str] = None
+    purchase_id: Optional[str] = None
+    product_type: Optional[str] = None
+    course_id: Optional[str] = None
+    amount_minor: Optional[int] = None
+    currency: Optional[str] = None
+    provider_tran_ref: Optional[str] = None
 
     def __post_init__(self) -> None:
         if self.schema_version != SCHEMA_VERSION:
@@ -61,6 +76,18 @@ class BillingDomainEvent:
             data["cancel_at_period_end"] = self.cancel_at_period_end
         if self.canceled_at is not None:
             data["canceled_at"] = self.canceled_at
+        if self.purchase_id is not None:
+            data["purchase_id"] = self.purchase_id
+        if self.product_type is not None:
+            data["product_type"] = self.product_type
+        if self.course_id is not None:
+            data["course_id"] = self.course_id
+        if self.amount_minor is not None:
+            data["amount_minor"] = self.amount_minor
+        if self.currency is not None:
+            data["currency"] = self.currency
+        if self.provider_tran_ref is not None:
+            data["provider_tran_ref"] = self.provider_tran_ref
         return data
 
     @classmethod
@@ -79,6 +106,12 @@ class BillingDomainEvent:
             current_period_end=_optional_str(data, "current_period_end"),
             cancel_at_period_end=_optional_bool(data, "cancel_at_period_end"),
             canceled_at=_optional_str(data, "canceled_at"),
+            purchase_id=_optional_str(data, "purchase_id"),
+            product_type=_optional_str(data, "product_type"),
+            course_id=_optional_str(data, "course_id"),
+            amount_minor=_optional_int(data, "amount_minor"),
+            currency=_optional_str(data, "currency"),
+            provider_tran_ref=_optional_str(data, "provider_tran_ref"),
         )
 
 
@@ -92,3 +125,9 @@ def _optional_bool(data: Dict[str, Any], key: str) -> Optional[bool]:
     if key not in data or data[key] is None:
         return None
     return bool(data[key])
+
+
+def _optional_int(data: Dict[str, Any], key: str) -> Optional[int]:
+    if key not in data or data[key] is None:
+        return None
+    return int(data[key])

@@ -131,9 +131,9 @@ def test_billing_edge_config_is_frozen_dataclass() -> None:
         paytabs_api_domain=None,
         fulfillment_queue_url=None,
         catalog_lambda_arn=None,
-        subscription_plan_id=None,
         billing_return_success_url=None,
         billing_return_cancel_url=None,
+        billing_ipn_callback_url=None,
     )
     with pytest.raises(AttributeError):
         cfg.deployment_environment = "prod"  # type: ignore[misc]

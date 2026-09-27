@@ -63,8 +63,11 @@ vi.mock('../pages/BillingCancelPage', () => ({
 vi.mock('../pages/account/AccountProfilePage', () => ({
   default: () => <div data-testid="student-page-account-profile" />,
 }))
-vi.mock('../pages/account/AccountSubscriptionPage', () => ({
-  default: () => <div data-testid="student-page-account-subscription" />,
+vi.mock('../pages/account/AccountPurchasesPage', () => ({
+  default: () => <div data-testid="student-page-account-purchases" />,
+}))
+vi.mock('../pages/CheckoutPage', () => ({
+  default: () => <div data-testid="student-page-checkout" />,
 }))
 vi.mock('../components/auth/StudentAccountAuth', () => ({
   StudentAccountAuth: () => <Outlet />,
