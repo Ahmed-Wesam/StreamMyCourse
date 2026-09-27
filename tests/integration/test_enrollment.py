@@ -1,6 +1,6 @@
 """Enrollment endpoint tests — subscription-only access (WS5).
 
-POST /courses/{id}/enroll is deprecated for access; returns 403 subscription_required.
+POST /courses/{id}/enroll is deprecated for access; returns 403 purchase_required.
 """
 
 from __future__ import annotations
@@ -9,10 +9,10 @@ from helpers.api import ApiClient
 from helpers.billing_access import ensure_student_subscription, skip_if_student_has_subscription
 
 
-def test_enroll_in_published_course_returns_subscription_required(
+def test_enroll_in_published_course_returns_purchase_required(
     student_api: ApiClient, api: ApiClient, course_factory, lesson_factory
 ) -> None:
-    """POST /courses/{id}/enroll returns 403 subscription_required for published course."""
+    """POST /courses/{id}/enroll returns 403 purchase_required for published course."""
     course = course_factory(label="enrollment-blocked")
     lesson = lesson_factory(course.course_id, label="enrollment-blocked-lesson")
 
@@ -28,13 +28,13 @@ def test_enroll_in_published_course_returns_subscription_required(
     resp = student_api.enroll_course(course.course_id)
     assert resp.status_code == 403, f"Expected 403, got {resp.status_code}: {resp.text}"
     body = resp.json()
-    assert body.get("code") == "subscription_required"
+    assert body.get("code") == "purchase_required"
 
 
 def test_enroll_is_consistently_blocked(
     student_api: ApiClient, api: ApiClient, course_factory, lesson_factory
 ) -> None:
-    """Repeated enroll attempts remain 403 subscription_required."""
+    """Repeated enroll attempts remain 403 purchase_required."""
     course = course_factory(label="enrollment-idempotent-blocked")
     lesson = lesson_factory(course.course_id, label="idempotent-blocked-lesson")
 
@@ -46,7 +46,7 @@ def test_enroll_is_consistently_blocked(
     for _ in range(2):
         resp = student_api.enroll_course(course.course_id)
         assert resp.status_code == 403, resp.text
-        assert resp.json().get("code") == "subscription_required"
+        assert resp.json().get("code") == "purchase_required"
 
 
 def test_enroll_in_draft_course_fails(

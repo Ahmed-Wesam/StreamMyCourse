@@ -34,11 +34,11 @@ def test_api_stack_billing_checkout_on_edge() -> None:
     assert "${BillingEdgeLambdaArn}/invocations" in post_block
 
 
-def test_api_stack_billing_manage_deployment_v36() -> None:
+def test_api_stack_billing_manage_deployment_v37() -> None:
     text = _api_stack_text()
-    assert "CatalogApiDeploymentV36:" in text
-    assert "CatalogApiDeploymentV33:" not in text
-    deployment_block = text.split("CatalogApiDeploymentV36:")[1].split("CatalogApiStage:")[0]
+    assert "CatalogApiDeploymentV37:" in text
+    assert "CatalogApiDeploymentV36:" not in text
+    deployment_block = text.split("CatalogApiDeploymentV37:")[1].split("CatalogApiStage:")[0]
     for legacy in (
         "BillingSubscriptionGetMethod",
         "BillingSubscriptionOptionsMethod",
@@ -46,4 +46,11 @@ def test_api_stack_billing_manage_deployment_v36() -> None:
         "BillingCancelSubscriptionOptionsMethod",
     ):
         assert legacy not in deployment_block
-    assert "DeploymentId: !Ref CatalogApiDeploymentV36" in text
+    for required in (
+        "BillingPurchasesGetMethod",
+        "BillingBundleGetMethod",
+        "BillingBundlePatchMethod",
+        "BillingCoursesCourseIdPricePatchMethod",
+    ):
+        assert required in deployment_block
+    assert "DeploymentId: !Ref CatalogApiDeploymentV37" in text

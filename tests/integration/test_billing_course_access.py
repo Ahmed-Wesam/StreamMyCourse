@@ -46,7 +46,7 @@ def test_playback_without_subscription_returns_subscription_required(
 
     resp = student_api.get_playback(course_id, lesson_id)
     assert resp.status_code == 403, f"Expected 403, got {resp.status_code}: {resp.text}"
-    assert resp.json().get("code") == "subscription_required"
+    assert resp.json().get("code") == "purchase_required"
 
 
 def test_playback_after_mock_ipn_returns_200(

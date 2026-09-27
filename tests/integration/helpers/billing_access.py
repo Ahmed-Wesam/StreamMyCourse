@@ -448,14 +448,24 @@ def _checkout_bundle_and_mock_ipn(
         student_api, jwt, product_type="bundle", timeout_sec=timeout_sec
     )
     skip_if_checkout_unavailable(checkout_resp)
-    if checkout_resp.status_code != 200:
+    if checkout_resp.status_code == 409:
+        code = str(checkout_resp.json().get("code") or "")
+        if code == "already_owned":
+            return
+        if code != "checkout_in_progress":
+            pytest.fail(
+                "checkout-session failed: "
+                f"status={checkout_resp.status_code} body={checkout_resp.text[:200]!r}"
+            )
+    elif checkout_resp.status_code != 200:
         pytest.fail(
             "checkout-session failed: "
             f"status={checkout_resp.status_code} body={checkout_resp.text[:200]!r}"
         )
-    redirect_url = str(checkout_resp.json().get("redirect_url") or "").strip()
-    if not redirect_url:
-        pytest.fail("checkout-session 200 missing redirect_url")
+    else:
+        redirect_url = str(checkout_resp.json().get("redirect_url") or "").strip()
+        if not redirect_url:
+            pytest.fail("checkout-session 200 missing redirect_url")
 
     purchase_id, amount_minor = _pending_bundle_purchase(student_api, timeout_sec=timeout_sec)
     amount_usd = amount_minor / 100.0
