@@ -64,7 +64,8 @@ LIMIT 1
 _LIST_PURCHASES_FOR_USER_SQL = """
 SELECT id, product_type, course_id, status, amount_minor, currency, created_at
 FROM purchases
-WHERE user_sub = %s AND environment = %s AND status = 'paid'
+WHERE user_sub = %s AND environment = %s
+  AND status IN ('paid', 'pending', 'failed')
 ORDER BY created_at DESC
 """
 

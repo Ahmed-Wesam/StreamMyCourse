@@ -110,7 +110,7 @@ class TestPurchasePricingSql:
 
 
 class TestPurchaseListSql:
-    def test_list_purchases_paid_only(self) -> None:
+    def test_list_purchases_includes_paid_and_pending(self) -> None:
         repo, conn = _repo()
         created = datetime(2026, 1, 2, tzinfo=timezone.utc)
         conn.cursor_obj.fetchall_results = [
@@ -132,7 +132,7 @@ class TestPurchaseListSql:
         assert len(records) == 1
         assert records[0].product_type == "course"
         sql, params = conn.cursor_obj.executions[0]
-        assert "status = 'paid'" in sql
+        assert "status IN ('paid', 'pending', 'failed')" in sql
         assert params == ("student-sub", "dev")
 
 

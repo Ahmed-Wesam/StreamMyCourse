@@ -287,6 +287,9 @@ def test_checkout_mock_returns_200_with_redirect(monkeypatch: pytest.MonkeyPatch
     body = _parse_body(resp)
     assert "redirect_url" in body
     assert body["redirect_url"].startswith("https://")
+    assert body.get("purchaseId") == _PURCHASE_ID
+    assert body.get("amountMinor") == 9900
+    assert body.get("currency") == "USD"
 
 
 def test_webhook_returns_503_when_unconfigured(monkeypatch: pytest.MonkeyPatch) -> None:

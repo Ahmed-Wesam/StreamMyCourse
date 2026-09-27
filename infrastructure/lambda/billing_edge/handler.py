@@ -310,7 +310,15 @@ def _handle_checkout(
         )
         return _error_response(501, "not_implemented", "Checkout is not implemented yet")
 
-    return _json_response(200, {"redirect_url": session.redirect_url})
+    return _json_response(
+        200,
+        {
+            "redirect_url": session.redirect_url,
+            "purchaseId": purchase_id,
+            "amountMinor": checkout_product.amount_minor,
+            "currency": checkout_product.currency,
+        },
+    )
 
 
 def _webhook_signature_header(event: Dict[str, Any], provider: PaymentProviderPort) -> str:
