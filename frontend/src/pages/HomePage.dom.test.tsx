@@ -65,7 +65,9 @@ describe('HomePage', () => {
           screen.getByRole('heading', { name: COURSES_HEADING }),
         ).toBeTruthy()
       })
-      expect(screen.getAllByText(courses[0]!.title).length).toBeGreaterThan(0)
+      await waitFor(() => {
+        expect(screen.getAllByText(courses[0]!.title).length).toBeGreaterThan(0)
+      })
     },
   )
 
@@ -116,7 +118,7 @@ describe('HomePage', () => {
     renderHome()
 
     expect((await screen.findAllByText('Statistics & SPSS')).length).toBeGreaterThan(0)
-    expect(screen.getByText('Hands-on SPSS training.')).toBeTruthy()
+    expect(await screen.findByText('Hands-on SPSS training.')).toBeTruthy()
 
     const viewLink = screen.getByRole('link', { name: /View Course/i })
     expect(viewLink.getAttribute('href')).toBe('/courses/stats-spss')
