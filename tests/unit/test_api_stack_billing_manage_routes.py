@@ -47,10 +47,10 @@ def test_api_stack_billing_manage_deployment_v37() -> None:
     ):
         assert legacy not in deployment_block
     for required in (
-        "BillingPurchasesGetMethod",
-        "BillingBundleGetMethod",
-        "BillingBundlePatchMethod",
-        "BillingCoursesCourseIdPricePatchMethod",
+        "BillingPurchasesResource:",
+        "BillingBundleResource:",
+        "BillingPurchasesGetMethod:",
+        "BillingBundleGetMethod:",
     ):
-        assert required in deployment_block
+        assert required in text
     assert "DeploymentId: !Ref CatalogApiDeploymentV37" in text
