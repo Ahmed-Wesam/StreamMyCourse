@@ -1,22 +1,20 @@
-import { Link } from 'react-router-dom'
-
-import { billingSuccessMessage } from '../lib/subscribeCopy'
-import { usePageTitle } from '../lib/page-title'
-
-export default function BillingSuccessPage() {
-  usePageTitle('Payment')
-  return (
-    <div className="mx-auto max-w-lg px-6 py-16 text-center">
-      <h1 className="text-2xl font-bold text-foreground">Payment received</h1>
-      <p className="mt-4 text-muted-foreground">{billingSuccessMessage}</p>
-      <div className="mt-8 flex flex-wrap justify-center gap-3">
-        <Link
-          to="/courses"
-          className="inline-flex min-h-11 items-center rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition hover:opacity-90"
-        >
-          Browse courses
-        </Link>
-      </div>
-    </div>
-  )
-}
+import { Button } from '../components/ui/Button'
+import { billingSuccessMessage } from '../lib/subscribeCopy'
+import { usePageTitle } from '../lib/page-title'
+
+export default function BillingSuccessPage() {
+  usePageTitle('Payment')
+  return (
+    <div className="min-h-[calc(100vh-4rem)] bg-white text-rs-ink">
+      <div className="mx-auto max-w-lg px-6 py-16 text-center">
+        <h1 className="text-2xl font-extrabold text-rs-ink">Payment received</h1>
+        <p className="mt-4 text-[17px] leading-relaxed text-rs-body">{billingSuccessMessage}</p>
+        <div className="mt-8 flex flex-wrap justify-center gap-3">
+          <Button to="/courses" arrow>
+            Browse courses
+          </Button>
+        </div>
+      </div>
+    </div>
+  )
+}

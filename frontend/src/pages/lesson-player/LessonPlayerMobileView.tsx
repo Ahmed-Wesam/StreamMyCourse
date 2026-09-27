@@ -9,6 +9,7 @@ import {
   PRO_BLUE_STRIP,
   VideoSkeleton,
 } from './lessonPlayerUi'
+import { LessonPlayerTabs } from './LessonPlayerTabs'
 import { VideoPlayer } from './VideoPlayer'
 
 type LessonPlayerMobileViewProps = {
@@ -34,6 +35,7 @@ type LessonPlayerMobileViewProps = {
   onSubscribe: () => void
   playbackNavLocked: boolean
   courseProgress: CourseProgress | null
+  courseDescription?: string
   isLessonCompleted: boolean
   onMarkComplete: () => void
   onMarkIncomplete: () => void
@@ -66,6 +68,7 @@ export function LessonPlayerMobileView({
   onSubscribe,
   playbackNavLocked,
   courseProgress,
+  courseDescription,
   isLessonCompleted,
   onMarkComplete,
   onMarkIncomplete,
@@ -98,13 +101,10 @@ export function LessonPlayerMobileView({
   const percent = courseProgress?.percentComplete ?? 0
 
   return (
-    <div className="flex min-h-[calc(100dvh-4rem)] flex-col bg-gradient-to-br from-slate-100 via-white to-blue-50/70">
+    <div className="flex min-h-[calc(100dvh-4rem)] flex-col bg-rs-sky-2">
       <div className="sticky top-16 z-40 shrink-0">
-        <div
-          className="h-1 w-full shrink-0 bg-gradient-to-r from-blue-400 via-blue-600 to-sky-500"
-          aria-hidden
-        />
-        <header className="flex items-center justify-between gap-2 border-b border-slate-200 bg-gradient-to-r from-white via-white to-blue-50/60 px-3 py-2.5 shadow-sm shadow-slate-200/40">
+        <div className="h-1 w-full shrink-0 bg-rs-grad-cta" aria-hidden />
+        <header className="flex items-center justify-between gap-2 border-b border-rs-line bg-white px-3 py-2.5 shadow-rs-sm">
         <Link
           to={`/courses/${courseId}`}
           className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-lg text-slate-600 transition-colors hover:bg-slate-100 hover:text-slate-900"
@@ -210,6 +210,12 @@ export function LessonPlayerMobileView({
               </svg>
               {isLessonCompleted ? 'Mark as Incomplete' : 'Mark as Complete'}
             </button>
+
+            <LessonPlayerTabs
+              courseDescription={courseDescription}
+              activeModuleLabel={activeModuleLabel}
+              activeLessonTitle={activeLessonTitle}
+            />
 
             {upNextTitle ? (
               <LessonUpNextCard

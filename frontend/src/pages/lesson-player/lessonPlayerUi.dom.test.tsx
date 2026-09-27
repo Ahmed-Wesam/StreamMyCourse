@@ -1,9 +1,9 @@
 /**
  * @vitest-environment jsdom
  */
-import { cleanup, render, screen } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import type { CourseModule, CourseProgress, Lesson } from '../../lib/api/types'
 import {
@@ -14,6 +14,7 @@ import {
   resolveNextModuleQuizHref,
   resolvePrevModuleQuizHref,
 } from './lessonPlayerUi'
+import { LessonPlayerTabs } from './LessonPlayerTabs'
 
 const lessons: Lesson[] = [
   {
@@ -294,6 +295,41 @@ describe('LessonPlaybackNavigation', () => {
 
     const next = screen.getByRole('link', { name: 'Next' })
     expect(next.getAttribute('href')).toBe('/courses/c1/modules/m1/quiz')
+  })
+})
+
+describe('LessonPlayerTabs', () => {
+  it('lists five tabs and shows overview course description', () => {
+    render(
+      <LessonPlayerTabs
+        courseDescription="Course overview copy"
+        activeModuleLabel="Module A"
+        activeLessonTitle="Lesson One"
+      />,
+    )
+
+    for (const label of ['Overview', 'Resources', 'Downloads', 'Notes', 'Assignments']) {
+      expect(screen.getByRole('tab', { name: label })).toBeTruthy()
+    }
+    expect(screen.getByRole('tabpanel').textContent).toMatch(/Course overview copy/)
+  })
+
+  it('placeholder tabs have no anchors and do not call fetch on select', () => {
+    const fetchSpy = vi.spyOn(globalThis, 'fetch')
+    render(
+      <LessonPlayerTabs
+        courseDescription=""
+        activeModuleLabel="Module A"
+        activeLessonTitle="Lesson One"
+      />,
+    )
+
+    fireEvent.click(screen.getByRole('tab', { name: 'Notes' }))
+    const panel = screen.getByTestId('lesson-player-tab-panel')
+    expect(panel.textContent).toMatch(/not available yet/i)
+    expect(panel.querySelector('a')).toBeNull()
+    expect(fetchSpy).not.toHaveBeenCalled()
+    fetchSpy.mockRestore()
   })
 })
 

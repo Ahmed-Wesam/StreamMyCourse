@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Button } from '../../components/ui/Button'
 
-import { cancelSubscription, getSubscription } from '../../lib/api/billing'
+import { cancelSubscription, createCheckoutSession, getSubscription } from '../../lib/api/billing'
 import {
   isAlreadyCanceledError,
   isNotSubscribedError,
@@ -18,7 +18,7 @@ import {
 import { catalogApiUserMessage } from '../../lib/apiUserMessages'
 import { usePageTitle } from '../../lib/page-title'
 import { shouldSuppressInlineSessionSupersededMessage } from '../../lib/session-superseded-inline'
-import { subscribeCtaLabel } from '../../lib/subscribeCopy'
+import { subscribeCtaLabel, subscribeCtaLoadingLabel } from '../../lib/subscribeCopy'
 
 type PageState =
   | { status: 'loading' }
@@ -159,24 +159,24 @@ export default function AccountSubscriptionPage() {
     providerCancelRetryNeeded
 
   return (
-    <section aria-labelledby="account-subscription-heading">
-      <h2 id="account-subscription-heading" className="text-xl font-semibold text-gray-900">
+    <section aria-labelledby="account-subscription-heading" className="text-rs-ink">
+      <h2 id="account-subscription-heading" className="text-xl font-extrabold text-rs-ink">
         Manage subscription
       </h2>
-      <p className="mt-1 text-sm text-gray-600">
+      <p className="mt-1 text-sm font-semibold text-rs-body">
         View status and cancel at period end before your access ends.
       </p>
 
       {showPastDue ? <PastDueBanner /> : null}
 
       {state.status === 'loading' ? (
-        <p className="mt-6 text-sm text-gray-500" role="status">
+        <p className="mt-6 text-sm font-semibold text-rs-muted" role="status">
           Loading subscription…
         </p>
       ) : null}
 
       {state.status === 'superseded' ? (
-        <p className="mt-6 text-sm text-gray-500" role="status">
+        <p className="mt-6 text-sm font-semibold text-rs-muted" role="status">
           Sign in again using the message above to manage your subscription.
         </p>
       ) : null}
@@ -215,16 +215,16 @@ function SubscriptionSummaryCard(props: {
 }) {
   const { subscription, actionBusy, showProviderCancelRetry, onCancel } = props
   return (
-    <div className="mt-6 space-y-6 rounded-xl border border-gray-200 bg-white p-6">
+    <div className="mt-6 space-y-6 rounded-[22px] border border-rs-line bg-white p-6 shadow-rs-sm">
       <div>
-        <h3 className="text-sm font-medium text-gray-500">Status</h3>
-        <p className="mt-1 text-base font-semibold text-gray-900" data-testid="subscription-status">
+        <h3 className="text-sm font-bold text-rs-muted">Status</h3>
+        <p className="mt-1 text-base font-extrabold text-rs-ink" data-testid="subscription-status">
           {formatStatusLabel(subscription)}
         </p>
-        <p className="mt-1 text-sm text-gray-600" data-testid="subscription-amount">
+        <p className="mt-1 text-sm font-semibold text-rs-body" data-testid="subscription-amount">
           {subscription.planLabel}
         </p>
-        <p className="mt-1 text-sm text-gray-600" data-testid="subscription-period-end">
+        <p className="mt-1 text-sm font-semibold text-rs-body" data-testid="subscription-period-end">
           {renewalLine(subscription)}
         </p>
       </div>
@@ -240,27 +240,55 @@ function SubscriptionSummaryCard(props: {
 }
 
 function NotSubscribedCard() {
+  const [subscribing, setSubscribing] = useState(false)
+  const [subscribeError, setSubscribeError] = useState<string | null>(null)
+
+  async function onSubscribe() {
+    setSubscribing(true)
+    setSubscribeError(null)
+    try {
+      const { redirect_url } = await createCheckoutSession()
+      window.location.href = redirect_url
+    } catch (err) {
+      setSubscribeError(catalogApiUserMessage(err, 'subscribe'))
+    } finally {
+      setSubscribing(false)
+    }
+  }
+
   return (
-    <div className="mt-6 rounded-xl border border-gray-200 bg-white p-6" data-testid="subscription-not-subscribed">
-      <h3 className="text-base font-semibold text-gray-900">No subscription yet</h3>
-      <p className="mt-2 text-sm text-gray-600">
+    <div
+      className="mt-6 rounded-[22px] border border-rs-line bg-white p-6 shadow-rs-sm"
+      data-testid="subscription-not-subscribed"
+    >
+      <h3 className="text-base font-extrabold text-rs-ink">No subscription yet</h3>
+      <p className="mt-2 text-sm font-semibold text-rs-body">
         Subscribe to unlock every published course, or browse the catalog while you decide.
       </p>
+      {subscribeError ? (
+        <p
+          className="mt-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800"
+          role="alert"
+        >
+          {subscribeError}
+        </p>
+      ) : null}
       <div className="mt-4 flex flex-wrap gap-3">
-        <Link
-          to="/courses"
-          className="inline-flex rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-semibold text-gray-800 hover:bg-gray-50"
-        >
+        <Button to="/courses" variant="ghost" size="sm">
           Browse courses
-        </Link>
-        <Link
-          to="/details#pricing"
-          className="inline-flex rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700"
+        </Button>
+        <Button
+          type="button"
+          size="sm"
+          arrow
+          disabled={subscribing}
+          onClick={() => void onSubscribe()}
+          data-testid="subscription-subscribe-btn"
         >
-          {subscribeCtaLabel}
-        </Link>
+          {subscribing ? subscribeCtaLoadingLabel : subscribeCtaLabel}
+        </Button>
       </div>
-      </div>
+    </div>
   )
 }
 
@@ -278,26 +306,29 @@ function SubscriptionActions({
   return (
     <div className="flex flex-wrap gap-3">
       {subscription.canCancel ? (
-        <button
+        <Button
           type="button"
+          variant="ghost"
+          size="sm"
           onClick={onCancel}
           disabled={actionBusy !== null}
-          className="rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-semibold text-gray-800 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60"
           data-testid="subscription-cancel-btn"
         >
           {actionBusy === 'cancel' ? 'Canceling…' : 'Cancel at period end'}
-        </button>
+        </Button>
       ) : null}
       {showProviderCancelRetry ? (
-        <button
+        <Button
           type="button"
+          variant="ghost"
+          size="sm"
           onClick={onCancel}
           disabled={actionBusy !== null}
-          className="rounded-lg border border-amber-300 bg-amber-50 px-4 py-2 text-sm font-semibold text-amber-950 hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-60"
+          className="border-amber-300 bg-amber-50 text-amber-950 hover:border-amber-400 hover:text-amber-950"
           data-testid="subscription-retry-provider-cancel-btn"
         >
           {actionBusy === 'cancel' ? 'Retrying…' : 'Retry stopping renewal'}
-        </button>
+        </Button>
       ) : null}
     </div>
   )

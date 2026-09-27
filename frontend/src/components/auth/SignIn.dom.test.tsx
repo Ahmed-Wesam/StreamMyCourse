@@ -5,6 +5,7 @@ import { afterEach } from 'vitest'
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { Amplify } from 'aws-amplify'
 import { AuthenticatorProvider } from '@aws-amplify/ui-react-core'
+import { MemoryRouter } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { POST_LOGIN_RETURN_TO_KEY } from '../../lib/post-login-return'
@@ -17,7 +18,11 @@ vi.mock('aws-amplify/auth', () => ({
 }))
 
 function TestRoot({ children }: { children: React.ReactNode }) {
-  return <AuthenticatorProvider>{children}</AuthenticatorProvider>
+  return (
+    <MemoryRouter>
+      <AuthenticatorProvider>{children}</AuthenticatorProvider>
+    </MemoryRouter>
+  )
 }
 
 describe('SignIn', () => {
@@ -53,6 +58,7 @@ describe('SignIn', () => {
     const button = await waitFor(() => screen.getByRole('button', { name: GOOGLE_SIGN_IN_LABEL }))
 
     expect(button.tagName).toBe('BUTTON')
+    expect(button.className).toMatch(/rs-btn/)
     expect(document.querySelector('input[type="password"]')).toBeNull()
     expect(document.querySelector('input[type="email"]')).toBeNull()
     expect(screen.queryByRole('textbox')).toBeNull()

@@ -286,6 +286,7 @@ describe('ModuleQuizPage', () => {
     fireEvent.click(screen.getByRole('button', { name: /submit answers/i }))
 
     await waitFor(() => {
+      expect(api.submitModuleQuiz).toHaveBeenCalledTimes(1)
       expect(api.submitModuleQuiz).toHaveBeenCalledWith('c1', 'm1', {
         attemptId: 'att-1',
         answers: { q2: 'B', q1: 'B' },
@@ -297,6 +298,37 @@ describe('ModuleQuizPage', () => {
       expect(screen.getByRole('button', { name: /^Try again$/i })).toBeTruthy()
     })
     expect(screen.queryAllByRole('radio')).toHaveLength(0)
+  })
+
+  it('does not surface pass-mark or 70% copy while taking or reviewing results', async () => {
+    renderModuleQuiz()
+
+    await waitFor(() => {
+      expect(screen.getByText('Capital of France?')).toBeTruthy()
+    })
+
+    expect(document.body.textContent ?? '').not.toMatch(/70\s*%/i)
+    expect(document.body.textContent ?? '').not.toMatch(/pass mark/i)
+
+    const fieldsets = screen.getAllByRole('group')
+    fireEvent.click(within(fieldsets[0]!).getAllByRole('radio')[0]!)
+    fireEvent.click(within(fieldsets[1]!).getAllByRole('radio')[0]!)
+
+    api.submitModuleQuiz.mockResolvedValue({
+      attemptId: 'att-1',
+      attemptNumber: 1,
+      correctCount: 2,
+      totalCount: 2,
+      questions: LATEST_RESULTS_RESPONSE.latestSubmission.questions,
+    })
+    fireEvent.click(screen.getByRole('button', { name: /submit answers/i }))
+
+    await waitFor(() => {
+      expect(screen.getAllByText(/Your answer:/)).toHaveLength(2)
+    })
+
+    expect(document.body.textContent ?? '').not.toMatch(/70\s*%/i)
+    expect(document.body.textContent ?? '').not.toMatch(/pass mark/i)
   })
 
   it('shows Back to lesson when returnTo points at a lesson player URL', async () => {

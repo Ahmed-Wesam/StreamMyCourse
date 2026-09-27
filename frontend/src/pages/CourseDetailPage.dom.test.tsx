@@ -6,6 +6,12 @@ import { createMemoryRouter, MemoryRouter, Route, RouterProvider, Routes } from 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { ApiError } from '../lib/api/client'
+import {
+  courseDetailLifetimePill,
+  courseDetailNoAccessPrompt,
+  courseDetailShellSections,
+  courseDetailSignInPrompt,
+} from '../lib/marketing/courseDetailShellCopy'
 import CourseDetailPage from './CourseDetailPage'
 
 const api = vi.hoisted(() => ({
@@ -14,7 +20,6 @@ const api = vi.hoisted(() => ({
   listCourseModules: vi.fn(),
   getCourseProgress: vi.fn(),
   hasSignedInIdToken: vi.fn(),
-  createCheckoutSession: vi.fn(),
   updateLessonProgress: vi.fn(),
 }))
 
@@ -30,15 +35,6 @@ vi.mock('../lib/api/catalog', async (importOriginal) => {
       api.getCourseProgress(...args) as ReturnType<typeof mod.getCourseProgress>,
     updateLessonProgress: (...args: unknown[]) =>
       api.updateLessonProgress(...args) as ReturnType<typeof mod.updateLessonProgress>,
-  }
-})
-
-vi.mock('../lib/api/billing', async (importOriginal) => {
-  const mod = (await importOriginal()) as typeof import('../lib/api/billing')
-  return {
-    ...mod,
-    createCheckoutSession: (...args: unknown[]) =>
-      api.createCheckoutSession(...args) as ReturnType<typeof mod.createCheckoutSession>,
   }
 })
 
@@ -68,7 +64,6 @@ describe('CourseDetailPage', () => {
     api.listCourseModules.mockReset()
     api.getCourseProgress.mockReset()
     api.hasSignedInIdToken.mockReset()
-    api.createCheckoutSession.mockReset()
     api.updateLessonProgress.mockReset()
 
     api.getCourse.mockResolvedValue({
@@ -113,7 +108,6 @@ describe('CourseDetailPage', () => {
       ],
     })
     api.hasSignedInIdToken.mockResolvedValue(true)
-    api.createCheckoutSession.mockResolvedValue({ redirect_url: 'https://pay.example/checkout' })
     api.updateLessonProgress.mockResolvedValue({
       ok: true,
       lessonProgress: { lessonId: 'l1', completed: true, lastPositionSec: 0 },
@@ -129,7 +123,7 @@ describe('CourseDetailPage', () => {
     renderCourseDetail()
 
     await waitFor(() => {
-      expect(screen.getByText('Test Course')).toBeTruthy()
+      expect(screen.getByRole('heading', { level: 1, name: 'Test Course' })).toBeTruthy()
     })
   })
 
@@ -246,7 +240,7 @@ describe('CourseDetailPage', () => {
     })
   })
 
-  it('shows Subscribe paywall when user has no access', async () => {
+  it('shows neutral no-access copy without checkout when signed in without access', async () => {
     api.getCourse.mockResolvedValue({
       id: 'c1',
       title: 'Test Course',
@@ -258,9 +252,10 @@ describe('CourseDetailPage', () => {
     renderCourseDetail()
 
     await waitFor(() => {
-      expect(screen.getByText('Subscribe — 50 JOD / month')).toBeTruthy()
-      expect(screen.getByText('Subscribe to unlock all courses')).toBeTruthy()
+      expect(screen.getByText(courseDetailNoAccessPrompt)).toBeTruthy()
     })
+    expect(screen.queryByText(/Subscribe/i)).toBeNull()
+    expect(screen.queryByRole('button', { name: /checkout|subscribe/i })).toBeNull()
   })
 
   it('shows lesson action menu trigger when enrolled', async () => {
@@ -334,39 +329,15 @@ describe('CourseDetailPage', () => {
     })
   })
 
-  it('redirects to checkout when Subscribe is clicked', async () => {
-    api.getCourse.mockResolvedValue({
-      id: 'c1',
-      title: 'Test Course',
-      description: 'Test Description',
-      status: 'PUBLISHED',
-      hasAccess: false,
-    })
-    const hrefSetter = vi.fn()
-    Object.defineProperty(window, 'location', {
-      configurable: true,
-      value: { ...window.location, set href(v: string) { hrefSetter(v) }, get href() { return '' } },
-    })
-
-    renderCourseDetail()
-
-    const subscribeButton = await waitFor(() => screen.getByText('Subscribe — 50 JOD / month'))
-    fireEvent.click(subscribeButton)
-
-    await waitFor(() => {
-      expect(api.createCheckoutSession).toHaveBeenCalledWith()
-      expect(hrefSetter).toHaveBeenCalledWith('https://pay.example/checkout')
-    })
-  })
-
   it('shows Sign in prompt for anonymous users', async () => {
     api.hasSignedInIdToken.mockResolvedValue(false)
 
     renderCourseDetail()
 
     await waitFor(() => {
-      expect(screen.getByText(/Sign in/i)).toBeTruthy()
+      expect(screen.getByText(courseDetailSignInPrompt)).toBeTruthy()
     })
+    expect(screen.getByRole('link', { name: /^Sign in$/i })).toBeTruthy()
   })
 
   it('links to first lesson when Start Learning clicked', async () => {
@@ -416,38 +387,61 @@ describe('CourseDetailPage', () => {
     })
   })
 
-  it('renders pricing section with selectable plans', async () => {
+  it('renders breadcrumb Home > Courses > course title', async () => {
     renderCourseDetail()
 
-    const pricing = await waitFor(() => screen.getByTestId('course-pricing'))
-    expect(pricing).toBeTruthy()
-    expect(screen.getByRole('heading', { level: 2, name: 'Choose Your Plan' })).toBeTruthy()
-
-    const popularBadge = screen.getByText('Most Popular')
-    expect(popularBadge).toBeTruthy()
-
-    const threeMonth = screen.getByTestId('pricing-plan-3month')
-    expect(threeMonth.getAttribute('aria-checked')).toBe('true')
-
-    const oneMonth = screen.getByTestId('pricing-plan-1month')
-    fireEvent.click(oneMonth)
-    expect(oneMonth.getAttribute('aria-checked')).toBe('true')
+    await waitFor(() => {
+      expect(screen.getByRole('navigation', { name: /breadcrumb/i })).toBeTruthy()
+    })
+    expect(screen.getByRole('link', { name: 'Home' }).getAttribute('href')).toBe('/')
+    expect(screen.getByRole('link', { name: 'Courses' }).getAttribute('href')).toBe('/courses')
+    const breadcrumb = screen.getByRole('navigation', { name: /breadcrumb/i })
+    expect(breadcrumb.textContent).toContain('Test Course')
   })
 
-  it('renders the hero and key page regions', async () => {
+  it('renders RS-7 placeholder sections with generic copy', async () => {
+    renderCourseDetail()
+
+    await waitFor(() => {
+      expect(screen.getByRole('heading', { level: 1, name: 'Test Course' })).toBeTruthy()
+    })
+
+    for (const section of courseDetailShellSections) {
+      expect(screen.getByRole('heading', { level: 2, name: section.title })).toBeTruthy()
+      expect(screen.getByText(section.lead)).toBeTruthy()
+    }
+  })
+
+  it('renders lifetime access pill and no dollar amounts', async () => {
+    const { container } = renderCourseDetail()
+
+    await waitFor(() => {
+      expect(screen.getByText(courseDetailLifetimePill)).toBeTruthy()
+    })
+    expect(container.textContent ?? '').not.toMatch(/\$/)
+  })
+
+  it('does not render mock instructor name or pricing band', async () => {
+    renderCourseDetail()
+
+    await waitFor(() => {
+      expect(screen.getByRole('heading', { level: 1, name: 'Test Course' })).toBeTruthy()
+    })
+    expect(screen.queryByText('Dr. Bahaa Aburayya')).toBeNull()
+    expect(screen.queryByTestId('course-pricing')).toBeNull()
+    expect(screen.queryByRole('region', { name: /pricing/i })).toBeNull()
+  })
+
+  it('renders the hero and curriculum with id curriculum', async () => {
     renderCourseDetail()
 
     const heroHeading = await waitFor(() => screen.getByRole('heading', { level: 1, name: 'Test Course' }))
     expect(heroHeading).toBeTruthy()
 
-    expect(screen.getByRole('region', { name: /course stats/i })).toBeTruthy()
-
-    const curriculum = screen.getByRole('region', { name: /curriculum/i })
+    const curriculum = document.getElementById('curriculum')
     expect(curriculum).toBeTruthy()
     expect(screen.getByRole('heading', { level: 2, name: 'Curriculum' })).toBeTruthy()
-
-    const pricingRegion = screen.getByRole('region', { name: /pricing/i })
-    expect(pricingRegion).toBeTruthy()
+    expect(screen.queryByRole('region', { name: /course stats/i })).toBeNull()
   })
 
   it('shows loading state initially', () => {
@@ -503,11 +497,48 @@ describe('CourseDetailPage', () => {
     })
   })
 
-  it('links back to all courses', async () => {
+  it('omits non-https course and lesson thumbnail images', async () => {
+    api.getCourse.mockResolvedValue({
+      id: 'c1',
+      title: 'Test Course',
+      description: 'Test Description',
+      status: 'PUBLISHED',
+      enrolled: true,
+      thumbnailUrl: 'http://insecure.example/thumb.jpg',
+    })
+    api.listLessons.mockResolvedValue([
+      {
+        id: 'l1',
+        title: 'First Lesson',
+        order: 1,
+        moduleId: 'm1',
+        moduleOrder: 0,
+        videoStatus: 'ready',
+        duration: 100,
+        thumbnailUrl: 'javascript:alert(1)',
+      },
+      {
+        id: 'l2',
+        title: 'Second Lesson',
+        order: 1,
+        moduleId: 'm2',
+        moduleOrder: 1,
+        videoStatus: 'ready',
+        duration: 200,
+        thumbnailUrl: 'https://cdn.example/lesson-2.jpg',
+      },
+    ])
+
     renderCourseDetail()
 
-    const back = await waitFor(() => screen.getByRole('link', { name: /Back to all courses/i }))
-    expect(back.getAttribute('href')).toBe('/courses')
+    await waitFor(() => {
+      expect(screen.getByText('First Lesson')).toBeTruthy()
+    })
+
+    const imgs = Array.from(document.querySelectorAll('img'))
+    expect(imgs.some((img) => img.getAttribute('src') === 'http://insecure.example/thumb.jpg')).toBe(false)
+    expect(imgs.some((img) => img.getAttribute('src')?.startsWith('javascript:'))).toBe(false)
+    expect(imgs.some((img) => img.getAttribute('src') === 'https://cdn.example/lesson-2.jpg')).toBe(true)
   })
 
   describe('module quiz badge', () => {
