@@ -75,7 +75,7 @@ describe('CoursesCatalogPage', () => {
     renderCatalog()
 
     expect(await screen.findByText('Statistics & SPSS')).toBeTruthy()
-    expect(screen.getByText('Hands-on SPSS training.')).toBeTruthy()
+    expect(await screen.findByText('Hands-on SPSS training.')).toBeTruthy()
 
     const viewCourse = screen.getByRole('link', { name: /^View Course$/i })
     expect(viewCourse.getAttribute('href')).toBe('/courses/stats-spss')
