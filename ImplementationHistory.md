@@ -6,6 +6,29 @@
 
 ---
 
+## 2026-09-26 — Research Spectrum instructor app restyle (RS-4)
+
+### Decisions
+
+- **Visual restyle only** — same routes, copy, API calls, and `confirm()` / `window.confirm` before destructive deletes. No new instructor features.
+- Instructor tool pages use RS-1 **Card**, **Field**, **Button**, **Badge**, and shared page shell (`max-w-5xl`, `text-rs-ink`). Shared [`SignIn`](frontend/src/components/auth/SignIn.tsx) unchanged (including Create Account → `/register` on the teacher SPA).
+
+### What landed
+
+- Restyled instructor surfaces: [`InstructorDashboard`](frontend/src/pages/InstructorDashboard.tsx), [`CourseManagement`](frontend/src/pages/CourseManagement.tsx) and teacher [`components/course/`](frontend/src/components/course/) (except unused [`PricingSection`](frontend/src/components/course/PricingSection.tsx)), question bank list/studio pages and [`components/question-banks/`](frontend/src/components/question-banks/), [`TeacherPaymentSetup`](frontend/src/pages/TeacherPaymentSetup.tsx), [`TeacherRoleGate`](frontend/src/components/auth/TeacherRoleGate.tsx), [`RouteChunkFallback`](frontend/src/components/layout/RouteChunkFallback.tsx).
+- Palette contract DOM tests on settled views (forbidden legacy color utility prefixes on instructor pages).
+
+### Verification
+
+- [x] `npm run lint` (0 errors, 6 pre-existing warnings) / `npm run knip` / `npm run test` (84 files, **677** tests) / `npm run build:all` / `npm run check:bundle` — student `firstLoadPublic` **75.84 KB**, `firstLoadWithAuth` **177.26 KB**; teacher `firstLoadWithAuth` **180.01 KB** (under 181 KB cap; dashboard not lazy-loaded).
+- [ ] Browser viewport QA — not run.
+
+### Docs
+
+- [`plans/ui-overhaul/research-spectrum-mega-plan.md`](plans/ui-overhaul/research-spectrum-mega-plan.md) RS-4 status; [`design.md`](design.md) §8 and teacher route table.
+
+---
+
 ## 2026-09-26 — Research Spectrum student app restyle (RS-3)
 
 ### Decisions
