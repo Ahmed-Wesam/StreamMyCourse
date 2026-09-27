@@ -1969,18 +1969,6 @@ Resources:
       - WebhooksKinescopeOptionsMethod
       - WebhooksKinescopeDrmAuthPostMethod
       - WebhooksKinescopeDrmAuthOptionsMethod
-      - BillingMerchantStatusGetMethod
-      - BillingMerchantStatusOptionsMethod
-      - BillingCheckoutSessionPostMethod
-      - BillingCheckoutSessionOptionsMethod
-      - BillingBundleGetMethod
-      - BillingBundleOptionsMethod
-      - BillingBundlePatchMethod
-      - BillingPurchasesGetMethod
-      - BillingPurchasesOptionsMethod
-      - BillingCoursesCourseIdPricePatchMethod
-      - BillingCoursesCourseIdPriceOptionsMethod
-      - WebhooksPaytabsPostMethod
     Properties:
       RestApiId: !Ref CatalogApi
       Description: !Sub 'catalog-${LambdaCodeS3Key}'
