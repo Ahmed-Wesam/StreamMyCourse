@@ -177,7 +177,7 @@ POST /webhooks/kinescope/drm-auth     // DRM auth callback; validates signed tok
 
 ## 8. React Frontend (MVP)
 
-**User-visible brand:** **Research Spectrum** (strings, titles/meta, logo/favicons via [`frontend/src/lib/brand.ts`](frontend/src/lib/brand.ts) and shared header/footer). Repo, stacks, and infra names remain **StreamMyCourse**. Shared visual foundation (Tailwind `rs-*` tokens, self-hosted Plus Jakarta Sans, UI primitives) is in place. Public marketing routes (`/`, `/about`, `/faq`, `/contact`, `/research-team`) use that system. Student app flows (catalog, player, quiz) and the instructor app are still the older layouts.
+**User-visible brand:** **Research Spectrum** (strings, titles/meta, logo/favicons via [`frontend/src/lib/brand.ts`](frontend/src/lib/brand.ts) and shared header/footer). Repo, stacks, and infra names remain **StreamMyCourse**. Shared visual foundation (Tailwind `rs-*` tokens, self-hosted Plus Jakarta Sans, UI primitives) is in place. Public marketing routes (`/`, `/about`, `/faq`, `/contact`, `/research-team`), student app flows (catalog, detail, player, quiz, login, account), and instructor app pages (dashboard, course management, question banks, payment setup) use that system. Legacy student paths (`/learn`, unrouted Figma pages) may still use older styling until cleaned up.
 
 ### Tech Stack
 - **React 19** + **Vite**
@@ -228,7 +228,7 @@ The frontend is built as **two separate SPAs** deployed to different subdomains:
 | Site | Domain | Purpose | Routes |
 |------|--------|---------|--------|
 | **Student** | `streammycourse.com` | Browse and watch courses | `/`, `/about`, `/faq`, `/contact`, `/research-team`, `/courses`, `/login`, `/privacy`, `/terms`, `/refund`, `/delivery`, `/educational-disclaimer`, `/courses/:id`, `/courses/:id/lessons/:id`, `/courses/:id/modules/:moduleId/quiz` (legacy `/details`, `/course`, `/catalog`, `/my-course` redirect to `/courses`) |
-| **Teacher** | `teach.streammycourse.com` | Create, edit, upload content | `/`, `/courses/:id` |
+| **Teacher** | `teach.streammycourse.com` | Create, edit, upload content | `/`, `/courses/:id`, `/courses/:id/question-banks`, `/courses/:id/question-banks/:bankId`, `/settings/payments` |
 
 ### Student Site Routes (View-Only)
 ```
@@ -250,7 +250,10 @@ The frontend is built as **two separate SPAs** deployed to different subdomains:
 ### Teacher Site Routes
 ```
 /                                    # Instructor dashboard (create/list courses)
-/courses/:courseId                   # Course management (edit, lessons, upload, publish)
+/courses/:courseId                   # Course management (edit, modules, lessons, upload, publish)
+/courses/:courseId/question-banks    # Question bank list + create
+/courses/:courseId/question-banks/:bankId # Question bank studio (draft/publish)
+/settings/payments                   # PayTabs merchant setup checklist (JOD subscription copy until RS-5)
 ```
 
 ### Build Configuration
