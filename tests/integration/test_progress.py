@@ -544,7 +544,7 @@ def test_unenrolled_non_owner_cannot_update_progress(
     course_factory,
     lesson_factory,
 ) -> None:
-    """Student without subscription (and not owner) cannot update progress (403 subscription_required)."""
+    """Student without subscription (and not owner) cannot update progress (403 purchase_required)."""
     _require_jwts()
 
     course_id, lesson_id = _create_published_course_with_lesson(
@@ -564,7 +564,7 @@ def test_unenrolled_non_owner_cannot_update_progress(
     )
     assert resp.status_code == 403, f"Expected 403, got {resp.status_code}: {resp.text}"
     body = resp.json()
-    assert body.get("code") == "subscription_required"
+    assert body.get("code") == "purchase_required"
 
 
 def test_random_lesson_id_returns_not_found(
@@ -718,7 +718,7 @@ def test_get_course_progress_unenrolled_returns_403(
     course_factory,
     lesson_factory,
 ) -> None:
-    """Student without subscription (and not owner) cannot read progress (403 subscription_required)."""
+    """Student without subscription (and not owner) cannot read progress (403 purchase_required)."""
     _require_jwts()
 
     course_id, lesson_id = _create_published_course_with_lesson(
@@ -732,7 +732,7 @@ def test_get_course_progress_unenrolled_returns_403(
 
     resp = student_api.get_course_progress(course_id)
     assert resp.status_code == 403, f"Expected 403, got {resp.status_code}: {resp.text}"
-    assert resp.json().get("code") == "subscription_required"
+    assert resp.json().get("code") == "purchase_required"
 
 
 def test_get_course_progress_for_random_course_returns_4xx(
@@ -744,7 +744,7 @@ def test_get_course_progress_for_random_course_returns_4xx(
     random_course_id = "00000000-0000-0000-0000-000000000199"
     resp = student_api.get_course_progress(random_course_id)
     assert resp.status_code == 403, f"Expected 403, got {resp.status_code}: {resp.text}"
-    assert resp.json().get("code") == "subscription_required"
+    assert resp.json().get("code") == "purchase_required"
 
 
 def test_owner_can_view_own_course_progress(

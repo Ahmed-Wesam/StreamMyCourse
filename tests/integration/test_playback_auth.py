@@ -78,8 +78,8 @@ def test_non_subscribed_user_gets_403(
         f"Expected 403, got {playback_resp.status_code}: {playback_resp.text}"
     )
     body = playback_resp.json()
-    assert body.get("code") in ["forbidden", "subscription_required"], (
-        f"Expected code 'forbidden' or 'subscription_required', got {body.get('code')}"
+    assert body.get("code") in ["forbidden", "purchase_required"], (
+        f"Expected code 'forbidden' or 'purchase_required', got {body.get('code')}"
     )
 
     api.delete_course(course_id)
@@ -152,8 +152,8 @@ def test_draft_lesson_playback_returns_404(
     )
     if alt_playback.status_code == 403:
         alt_body = alt_playback.json()
-        assert alt_body.get("code") in ["forbidden", "subscription_required"], (
-            f"Expected 'forbidden' or 'subscription_required', got {alt_body.get('code')}"
+        assert alt_body.get("code") in ["forbidden", "purchase_required"], (
+            f"Expected 'forbidden' or 'purchase_required', got {alt_body.get('code')}"
         )
 
     api.delete_course(course_id)

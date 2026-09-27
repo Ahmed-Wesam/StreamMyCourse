@@ -728,6 +728,49 @@ Resources:
       ParentId: !Ref BillingMerchantResource
       PathPart: status
 
+  # API Gateway Resource: /billing/bundle (RS-5 public list price + teacher PATCH)
+  BillingBundleResource:
+    Type: AWS::ApiGateway::Resource
+    Condition: HasBillingEdgeLambdaArn
+    Properties:
+      RestApiId: !Ref CatalogApi
+      ParentId: !Ref BillingResource
+      PathPart: bundle
+
+  # API Gateway Resource: /billing/purchases (RS-5 signed-in purchase history)
+  BillingPurchasesResource:
+    Type: AWS::ApiGateway::Resource
+    Condition: HasBillingEdgeLambdaArn
+    Properties:
+      RestApiId: !Ref CatalogApi
+      ParentId: !Ref BillingResource
+      PathPart: purchases
+
+  # API Gateway Resource: /billing/courses/{courseId}/price (RS-5 instructor course price)
+  BillingCoursesResource:
+    Type: AWS::ApiGateway::Resource
+    Condition: HasBillingEdgeLambdaArn
+    Properties:
+      RestApiId: !Ref CatalogApi
+      ParentId: !Ref BillingResource
+      PathPart: courses
+
+  BillingCoursesCourseIdResource:
+    Type: AWS::ApiGateway::Resource
+    Condition: HasBillingEdgeLambdaArn
+    Properties:
+      RestApiId: !Ref CatalogApi
+      ParentId: !Ref BillingCoursesResource
+      PathPart: '{courseId}'
+
+  BillingCoursesCourseIdPriceResource:
+    Type: AWS::ApiGateway::Resource
+    Condition: HasBillingEdgeLambdaArn
+    Properties:
+      RestApiId: !Ref CatalogApi
+      ParentId: !Ref BillingCoursesCourseIdResource
+      PathPart: price
+
   # API Gateway Resource: /webhooks (catalog + billing IPN)
   WebhooksResource:
     Type: AWS::ApiGateway::Resource
@@ -1682,6 +1725,101 @@ Resources:
         Type: AWS_PROXY
         Uri: !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${BillingEdgeLambdaArn}/invocations'
 
+  # API Gateway Method: GET /billing/bundle (public list price)
+  BillingBundleGetMethod:
+    Type: AWS::ApiGateway::Method
+    Condition: HasBillingEdgeLambdaArn
+    Properties:
+      RestApiId: !Ref CatalogApi
+      ResourceId: !Ref BillingBundleResource
+      HttpMethod: GET
+      AuthorizationType: NONE
+      Integration:
+        IntegrationHttpMethod: POST
+        Type: AWS_PROXY
+        Uri: !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${CatalogLambda.Arn}/invocations'
+
+  BillingBundleOptionsMethod:
+    Type: AWS::ApiGateway::Method
+    Condition: HasBillingEdgeLambdaArn
+    Properties:
+      RestApiId: !Ref CatalogApi
+      ResourceId: !Ref BillingBundleResource
+      HttpMethod: OPTIONS
+      AuthorizationType: NONE
+      Integration:
+        IntegrationHttpMethod: POST
+        Type: AWS_PROXY
+        Uri: !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${CatalogLambda.Arn}/invocations'
+
+  BillingBundlePatchMethod:
+    Type: AWS::ApiGateway::Method
+    Condition: HasBillingEdgeLambdaArn
+    Properties:
+      RestApiId: !Ref CatalogApi
+      ResourceId: !Ref BillingBundleResource
+      HttpMethod: PATCH
+      AuthorizationType: COGNITO_USER_POOLS
+      AuthorizerId: !Ref CatalogApiTokenAuthorizer
+      Integration:
+        IntegrationHttpMethod: POST
+        Type: AWS_PROXY
+        Uri: !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${CatalogLambda.Arn}/invocations'
+
+  BillingPurchasesGetMethod:
+    Type: AWS::ApiGateway::Method
+    Condition: HasBillingEdgeLambdaArn
+    Properties:
+      RestApiId: !Ref CatalogApi
+      ResourceId: !Ref BillingPurchasesResource
+      HttpMethod: GET
+      AuthorizationType: COGNITO_USER_POOLS
+      AuthorizerId: !Ref CatalogApiTokenAuthorizer
+      Integration:
+        IntegrationHttpMethod: POST
+        Type: AWS_PROXY
+        Uri: !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${CatalogLambda.Arn}/invocations'
+
+  BillingPurchasesOptionsMethod:
+    Type: AWS::ApiGateway::Method
+    Condition: HasBillingEdgeLambdaArn
+    Properties:
+      RestApiId: !Ref CatalogApi
+      ResourceId: !Ref BillingPurchasesResource
+      HttpMethod: OPTIONS
+      AuthorizationType: NONE
+      Integration:
+        IntegrationHttpMethod: POST
+        Type: AWS_PROXY
+        Uri: !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${CatalogLambda.Arn}/invocations'
+
+  BillingCoursesCourseIdPricePatchMethod:
+    Type: AWS::ApiGateway::Method
+    Condition: HasBillingEdgeLambdaArn
+    Properties:
+      RestApiId: !Ref CatalogApi
+      ResourceId: !Ref BillingCoursesCourseIdPriceResource
+      HttpMethod: PATCH
+      AuthorizationType: COGNITO_USER_POOLS
+      AuthorizerId: !Ref CatalogApiTokenAuthorizer
+      Integration:
+        IntegrationHttpMethod: POST
+        Type: AWS_PROXY
+        Uri: !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${CatalogLambda.Arn}/invocations'
+
+  BillingCoursesCourseIdPriceOptionsMethod:
+    Type: AWS::ApiGateway::Method
+    Condition: HasBillingEdgeLambdaArn
+    Properties:
+      RestApiId: !Ref CatalogApi
+      ResourceId: !Ref BillingCoursesCourseIdPriceResource
+      HttpMethod: OPTIONS
+      AuthorizationType: NONE
+      Integration:
+        IntegrationHttpMethod: POST
+        Type: AWS_PROXY
+        Uri: !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${CatalogLambda.Arn}/invocations'
+
   # API Gateway Method: POST /webhooks/payments/paytabs (public IPN — no authorizer)
   WebhooksPaytabsPostMethod:
     Type: AWS::ApiGateway::Method
@@ -1762,7 +1900,7 @@ Resources:
   # Bump logical id when API methods/resources change so CloudFormation always
   # creates a new deployment; otherwise the stage can keep serving an old snapshot
   # (symptom: GET /courses/{id}/lessons returns API GW 403 Missing Authentication Token).
-  CatalogApiDeploymentV36:
+  CatalogApiDeploymentV37:
     Type: AWS::ApiGateway::Deployment
     DependsOn:
       - CatalogLambdaApiPermission
@@ -1831,6 +1969,18 @@ Resources:
       - WebhooksKinescopeOptionsMethod
       - WebhooksKinescopeDrmAuthPostMethod
       - WebhooksKinescopeDrmAuthOptionsMethod
+      - BillingMerchantStatusGetMethod
+      - BillingMerchantStatusOptionsMethod
+      - BillingCheckoutSessionPostMethod
+      - BillingCheckoutSessionOptionsMethod
+      - BillingBundleGetMethod
+      - BillingBundleOptionsMethod
+      - BillingBundlePatchMethod
+      - BillingPurchasesGetMethod
+      - BillingPurchasesOptionsMethod
+      - BillingCoursesCourseIdPricePatchMethod
+      - BillingCoursesCourseIdPriceOptionsMethod
+      - WebhooksPaytabsPostMethod
     Properties:
       RestApiId: !Ref CatalogApi
       Description: !Sub 'catalog-${LambdaCodeS3Key}'
@@ -1840,7 +1990,7 @@ Resources:
     Type: AWS::ApiGateway::Stage
     Properties:
       RestApiId: !Ref CatalogApi
-      DeploymentId: !Ref CatalogApiDeploymentV36
+      DeploymentId: !Ref CatalogApiDeploymentV37
       StageName: !Ref Environment
       Description: !Sub '${Environment} stage for Catalog API'
       MethodSettings:
