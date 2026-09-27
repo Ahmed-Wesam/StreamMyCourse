@@ -2,6 +2,10 @@ import { useEffect, useRef, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 
 import { CourseManagementLoadingSkeleton } from '../components/course/CourseManagementPageStates'
+import { Badge } from '../components/ui/Badge'
+import { Button } from '../components/ui/Button'
+import { Card } from '../components/ui/Card'
+import { Field } from '../components/ui/Field'
 import { createQuestionBank, listCourseQuestionBanks } from '../lib/api/questionBanks'
 import type { QuestionBankSummary } from '../lib/api/types'
 import { questionBankDisplayName, questionBankStatusLabel } from '../lib/questionBankDisplay'
@@ -87,7 +91,7 @@ export default function QuestionBanksListPage() {
 
   if (!courseId) {
     return (
-      <div className="mx-auto max-w-4xl">
+      <div className="mx-auto w-full max-w-5xl px-4 py-8 text-rs-ink sm:px-6 lg:px-8">
         <div className="mb-6 rounded-lg border border-red-200 bg-red-50 p-4 text-red-700" role="alert">
           {incompleteQuestionBanksListLinkMessage}
         </div>
@@ -100,38 +104,36 @@ export default function QuestionBanksListPage() {
   }
 
   return (
-    <div className="mx-auto max-w-4xl">
+    <div className="mx-auto w-full max-w-5xl px-4 py-8 text-rs-ink sm:px-6 lg:px-8">
       <div className="mb-8">
         <button
           type="button"
           onClick={() => navigate(`/courses/${encodeURIComponent(courseId)}`)}
-          className="mb-2 text-sm text-blue-600 hover:text-blue-800"
+          className="mb-2 text-sm font-semibold text-rs-blue hover:underline"
         >
           ← Back to course
         </button>
         <div className="flex flex-wrap items-center justify-between gap-4">
-          <h1 className="text-3xl font-bold text-gray-900">Question banks</h1>
+          <h1 className="text-3xl font-extrabold tracking-tight text-rs-navy">Question banks</h1>
           <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
-            <label className="flex flex-col gap-1 text-sm font-medium text-gray-700">
-              New bank name
-              <input
-                type="text"
+            <div className="min-w-[200px] sm:min-w-[240px]">
+              <Field
+                label="New bank name"
                 value={newBankName}
                 maxLength={MAX_BANK_NAME_LENGTH}
                 onChange={(e) => setNewBankName(e.target.value)}
-                className="min-h-[44px] rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-transparent focus:ring-2 focus:ring-blue-500"
                 placeholder="e.g. Chapter 1 quiz"
+                className="mb-0"
               />
-            </label>
-            <button
+            </div>
+            <Button
               type="button"
               data-testid="question-banks-create"
               disabled={creating}
               onClick={() => void handleCreate()}
-              className="min-h-[44px] rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
             >
               {creating ? 'Creating…' : 'Create bank'}
-            </button>
+            </Button>
           </div>
         </div>
       </div>
@@ -143,24 +145,30 @@ export default function QuestionBanksListPage() {
       )}
 
       {banks.length === 0 ? (
-        <p className="text-gray-600">No question banks yet. Create one to get started.</p>
+        <p className="text-rs-body">No question banks yet. Create one to get started.</p>
       ) : (
-        <ul className="divide-y divide-gray-200 rounded-lg border border-gray-200 bg-white shadow-sm">
-          {banks.map((bank) => {
-            const to = `/courses/${encodeURIComponent(courseId)}/question-banks/${encodeURIComponent(bank.questionBankId)}`
-            return (
-              <li key={bank.questionBankId}>
-                <Link
-                  to={to}
-                  className="flex items-center justify-between gap-4 px-4 py-3 text-gray-900 hover:bg-gray-50"
-                >
-                  <span className="min-w-0 truncate font-medium">{questionBankDisplayName(bank)}</span>
-                  <span className="text-sm text-gray-600">{questionBankStatusLabel(bank.status)}</span>
-                </Link>
-              </li>
-            )
-          })}
-        </ul>
+        <Card className="overflow-hidden">
+          <ul className="divide-y divide-rs-line">
+            {banks.map((bank) => {
+              const to = `/courses/${encodeURIComponent(courseId)}/question-banks/${encodeURIComponent(bank.questionBankId)}`
+              return (
+                <li key={bank.questionBankId}>
+                  <Link
+                    to={to}
+                    className="flex items-center justify-between gap-4 px-4 py-3 transition-colors hover:bg-rs-sky-2/40"
+                  >
+                    <span className="min-w-0 truncate font-semibold text-rs-navy">
+                      {questionBankDisplayName(bank)}
+                    </span>
+                    <Badge tone={bank.status === 'PUBLISHED' ? 'success' : 'neutral'}>
+                      {questionBankStatusLabel(bank.status)}
+                    </Badge>
+                  </Link>
+                </li>
+              )
+            })}
+          </ul>
+        </Card>
       )}
     </div>
   )

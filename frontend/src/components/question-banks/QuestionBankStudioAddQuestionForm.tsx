@@ -1,5 +1,8 @@
 import { type FormEvent, useCallback, useState } from 'react'
 
+import { Button } from '../ui/Button'
+import { Card } from '../ui/Card'
+import { Field } from '../ui/Field'
 import type { CreateQuestionBankQuestionBody } from '../../lib/api/types'
 
 type OptionRow = { key: string; text: string }
@@ -8,6 +11,9 @@ const initialRows = (): OptionRow[] => [
   { key: '', text: '' },
   { key: '', text: '' },
 ]
+
+const rsControl =
+  'min-h-[44px] w-full border-[1.5px] border-solid border-rs-line rounded-xl bg-white px-[14px] py-[11px] font-inherit text-[15px] text-rs-ink outline-none transition duration-200 ease-rs leading-normal focus:border-rs-blue focus:shadow-[0_0_0_3px_rgba(30,94,255,.10)] placeholder:text-rs-muted disabled:cursor-not-allowed disabled:opacity-60'
 
 type Props = {
   disabled?: boolean
@@ -62,26 +68,27 @@ export function QuestionBankStudioAddQuestionForm({
   }
 
   return (
-    <form onSubmit={handleSubmit} className="rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
-      <h3 className="mb-3 text-lg font-semibold text-gray-900">Add question</h3>
+    <form onSubmit={handleSubmit}>
+      <Card className="p-4">
+      <h3 className="mb-3 text-lg font-extrabold text-rs-navy">Add question</h3>
       {localError ? (
-        <div className="mb-3 rounded border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900" role="alert">
+        <div
+          className="mb-3 rounded-lg border border-rs-line bg-rs-sky-2 px-3 py-2 text-sm font-semibold text-rs-navy"
+          role="alert"
+        >
           {localError}
         </div>
       ) : null}
-      <label className="mb-1 block text-sm font-medium text-gray-700" htmlFor="studio-question-prompt">
-        Prompt
-      </label>
-      <textarea
-        id="studio-question-prompt"
-        data-testid="studio-question-prompt"
-        value={promptText}
-        onChange={(e) => setPromptText(e.target.value)}
-        rows={3}
-        className="mb-4 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-transparent focus:ring-2 focus:ring-blue-500"
-        disabled={disabled || submitting}
-      />
-      <div className="mb-2 text-sm font-medium text-gray-700">Options</div>
+      <Field label="Prompt" className="mb-4">
+        <textarea
+          data-testid="studio-question-prompt"
+          value={promptText}
+          onChange={(e) => setPromptText(e.target.value)}
+          rows={3}
+          disabled={disabled || submitting}
+        />
+      </Field>
+      <div className="mb-2 text-[13px] font-bold text-rs-navy">Options</div>
       <div className="space-y-2">
         {rows.map((row, i) => (
           <div key={i} className="flex flex-wrap gap-2">
@@ -93,7 +100,7 @@ export function QuestionBankStudioAddQuestionForm({
                 setRows((prev) => prev.map((r, j) => (j === i ? { ...r, key: e.target.value } : r)))
               }
               placeholder="A"
-              className="w-24 min-h-[44px] rounded-lg border border-gray-300 px-2 py-2 text-sm font-mono focus:border-transparent focus:ring-2 focus:ring-blue-500"
+              className={`${rsControl} w-24 font-mono text-sm`}
               disabled={disabled || submitting}
             />
             <input
@@ -104,7 +111,7 @@ export function QuestionBankStudioAddQuestionForm({
                 setRows((prev) => prev.map((r, j) => (j === i ? { ...r, text: e.target.value } : r)))
               }
               placeholder="Answer text"
-              className="min-h-[44px] min-w-[200px] flex-1 rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-transparent focus:ring-2 focus:ring-blue-500"
+              className={`${rsControl} min-w-[200px] flex-1`}
               disabled={disabled || submitting}
             />
           </div>
@@ -115,21 +122,17 @@ export function QuestionBankStudioAddQuestionForm({
         data-testid="studio-add-option"
         onClick={() => setRows((prev) => [...prev, { key: '', text: '' }])}
         disabled={disabled || submitting || rows.length >= 10}
-        className="mt-2 text-sm font-medium text-blue-600 hover:text-blue-800 disabled:cursor-not-allowed disabled:opacity-50"
+        className="mt-2 text-sm font-semibold text-rs-blue hover:underline disabled:cursor-not-allowed disabled:opacity-50"
       >
         Add option row
       </button>
-      <div className="mt-4">
-        <label className="mb-1 block text-sm font-medium text-gray-700" htmlFor="studio-correct-select">
-          Correct answer (required)
-        </label>
+      <Field label="Correct answer (required)" className="mb-0 mt-4">
         <select
-          id="studio-correct-select"
           data-testid="studio-correct-select"
           value={correctKey}
           onChange={(e) => setCorrectKey(e.target.value)}
           disabled={disabled || submitting}
-          className="min-h-[44px] w-full max-w-xs rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-transparent focus:ring-2 focus:ring-blue-500"
+          className="max-w-xs"
         >
           <option value="">—</option>
           {optionKeysForSelect.map((k) => (
@@ -138,15 +141,16 @@ export function QuestionBankStudioAddQuestionForm({
             </option>
           ))}
         </select>
-      </div>
-      <button
+      </Field>
+      <Button
         type="submit"
         data-testid="studio-add-question-submit"
         disabled={disabled || submitting}
-        className="mt-4 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
+        className="mt-4"
       >
         {submitting ? 'Saving…' : 'Add question'}
-      </button>
+      </Button>
+      </Card>
     </form>
   )
 }

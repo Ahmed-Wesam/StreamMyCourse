@@ -15,6 +15,48 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import QuestionBankStudioPage from './QuestionBankStudioPage'
 
+const FORBIDDEN_CLASS_SUBSTRINGS = [
+  'emerald-',
+  'blue-600',
+  'green-',
+  'gray-',
+  'slate-',
+  'amber-',
+] as const
+
+function collectClassNames(root: Element): string[] {
+  const names: string[] = []
+  const walk = (el: Element) => {
+    if (typeof el.className === 'string' && el.className.length > 0) {
+      names.push(el.className)
+    }
+    for (const child of el.children) {
+      walk(child)
+    }
+  }
+  walk(root)
+  return names
+}
+
+function findForbiddenPaletteClasses(classNames: string[]): string[] {
+  const hits: string[] = []
+  for (const cn of classNames) {
+    for (const forbidden of FORBIDDEN_CLASS_SUBSTRINGS) {
+      if (cn.includes(forbidden)) {
+        hits.push(`${forbidden} → ${cn}`)
+      }
+    }
+  }
+  return hits
+}
+
+function expectRsPaletteOnRoot(root: Element | null) {
+  expect(root).toBeTruthy()
+  expect(root!.className).toMatch(/text-rs-ink/)
+  const violations = findForbiddenPaletteClasses(collectClassNames(root!))
+  expect(violations).toEqual([])
+}
+
 const api = vi.hoisted(() => ({
   listCourseQuestionBanks: vi.fn(),
   listQuestionBankQuestions: vi.fn(),
@@ -399,5 +441,14 @@ describe('QuestionBankStudioPage', () => {
     await new Promise((resolve) => setTimeout(resolve, 0))
 
     expect(screen.queryByText('Stale QB1 prompt only')).toBeNull()
+  })
+
+  it('uses RS palette on settled question bank studio view (no legacy Tailwind color utilities)', async () => {
+    const { container } = renderStudio()
+
+    await screen.findByTestId('question-bank-studio-loaded')
+    expect(document.querySelector('.animate-pulse')).toBeNull()
+
+    expectRsPaletteOnRoot(container.firstElementChild)
   })
 })

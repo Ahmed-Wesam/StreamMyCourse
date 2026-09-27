@@ -7,6 +7,48 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import QuestionBanksListPage from './QuestionBanksListPage'
 
+const FORBIDDEN_CLASS_SUBSTRINGS = [
+  'emerald-',
+  'blue-600',
+  'green-',
+  'gray-',
+  'slate-',
+  'amber-',
+] as const
+
+function collectClassNames(root: Element): string[] {
+  const names: string[] = []
+  const walk = (el: Element) => {
+    if (typeof el.className === 'string' && el.className.length > 0) {
+      names.push(el.className)
+    }
+    for (const child of el.children) {
+      walk(child)
+    }
+  }
+  walk(root)
+  return names
+}
+
+function findForbiddenPaletteClasses(classNames: string[]): string[] {
+  const hits: string[] = []
+  for (const cn of classNames) {
+    for (const forbidden of FORBIDDEN_CLASS_SUBSTRINGS) {
+      if (cn.includes(forbidden)) {
+        hits.push(`${forbidden} → ${cn}`)
+      }
+    }
+  }
+  return hits
+}
+
+function expectRsPaletteOnRoot(root: Element | null) {
+  expect(root).toBeTruthy()
+  expect(root!.className).toMatch(/text-rs-ink/)
+  const violations = findForbiddenPaletteClasses(collectClassNames(root!))
+  expect(violations).toEqual([])
+}
+
 const api = vi.hoisted(() => ({
   listCourseQuestionBanks: vi.fn(),
   createQuestionBank: vi.fn(),
@@ -91,5 +133,14 @@ describe('QuestionBanksListPage', () => {
       expect(api.createQuestionBank).toHaveBeenCalledWith('c1', { name: 'Chapter 1 quiz' })
     })
     expect(mockNavigate).toHaveBeenCalledWith('/courses/c1/question-banks/qb-new')
+  })
+
+  it('uses RS palette on settled question banks list (no legacy Tailwind color utilities)', async () => {
+    const { container } = renderQuestionBanksList()
+
+    await screen.findByText('Midterm bank')
+    expect(document.querySelector('.animate-pulse')).toBeNull()
+
+    expectRsPaletteOnRoot(container.firstElementChild)
   })
 })

@@ -54,6 +54,41 @@ const readyStatus: MerchantStatusResponse = {
   },
 }
 
+const FORBIDDEN_CLASS_SUBSTRINGS = [
+  'emerald-',
+  'blue-600',
+  'green-',
+  'gray-',
+  'slate-',
+  'amber-',
+] as const
+
+function collectClassNames(root: Element): string[] {
+  const names: string[] = []
+  const walk = (el: Element) => {
+    if (typeof el.className === 'string' && el.className.length > 0) {
+      names.push(el.className)
+    }
+    for (const child of el.children) {
+      walk(child)
+    }
+  }
+  walk(root)
+  return names
+}
+
+function findForbiddenPaletteClasses(classNames: string[]): string[] {
+  const hits: string[] = []
+  for (const cn of classNames) {
+    for (const forbidden of FORBIDDEN_CLASS_SUBSTRINGS) {
+      if (cn.includes(forbidden)) {
+        hits.push(`${forbidden} → ${cn}`)
+      }
+    }
+  }
+  return hits
+}
+
 function renderPaymentSetup(initialEntries: string[] = ['/settings/payments']) {
   return render(
     <MemoryRouter initialEntries={initialEntries}>
@@ -147,9 +182,12 @@ describe('TeacherPaymentSetup', () => {
     const goingLive = screen.getByRole('link', { name: /going live/i })
     expect(goingLive.getAttribute('href')).toContain('paytabs.com')
     expect(goingLive.getAttribute('target')).toBe('_blank')
+    expect(goingLive.getAttribute('rel')).toBe('noopener noreferrer')
 
     const apiKeys = screen.getByRole('link', { name: /api keys/i })
     expect(apiKeys.getAttribute('href')).toContain('paytabs.com')
+    expect(apiKeys.getAttribute('target')).toBe('_blank')
+    expect(apiKeys.getAttribute('rel')).toBe('noopener noreferrer')
 
     expect(screen.getByText(/jordanian dinar \(jod\)/i)).toBeTruthy()
     expect(screen.getByText(/merchant of record/i)).toBeTruthy()
@@ -160,5 +198,20 @@ describe('TeacherPaymentSetup', () => {
     await waitFor(() => {
       expect(billing.getMerchantStatus).toHaveBeenCalledTimes(1)
     })
+  })
+
+  it('uses RS palette on settled payment setup view (no legacy Tailwind color utilities)', async () => {
+    const { container } = renderPaymentSetup()
+
+    await waitFor(() => {
+      expect(screen.getByTestId('merchant-payout-status')).toBeTruthy()
+    })
+
+    const pageRoot = container.firstElementChild
+    expect(pageRoot).toBeTruthy()
+    expect(pageRoot!.className).toMatch(/text-rs-ink/)
+
+    const violations = findForbiddenPaletteClasses(collectClassNames(pageRoot!))
+    expect(violations).toEqual([])
   })
 })

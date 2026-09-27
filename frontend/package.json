@@ -15,8 +15,8 @@
     "build:all": "npm run build:student && npm run build:teacher",
     "check:bundle": "node ../scripts/check-frontend-bundle-size.mjs",
     "preview": "npx --no-install vite preview --config vite.student.config.ts",
-    "lint": "eslint .",
-    "knip": "knip",
+    "lint": "npx --no-install eslint .",
+    "knip": "npx --no-install knip",
     "test": "vitest run",
     "test:coverage": "vitest run --coverage"
   },

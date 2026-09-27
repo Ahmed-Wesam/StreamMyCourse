@@ -6,6 +6,41 @@ import type { UserProfile } from '../../lib/api/types'
 import { catalogApiUserMessage } from '../../lib/apiUserMessages'
 import { isAuthConfigured } from '../../lib/auth'
 import { legalConfig } from '../../lib/legalConfig'
+import { Button } from '../ui/Button'
+import { Card } from '../ui/Card'
+
+function InstructorAccessPanel({
+  title,
+  body,
+  signOut,
+}: {
+  title: string
+  body: ReactNode
+  signOut: () => void
+}) {
+  return (
+    <div className="mx-auto max-w-lg px-4 py-8 text-rs-ink sm:px-6">
+      <Card className="p-8 text-center">
+        <h1 className="text-xl font-extrabold text-rs-navy">{title}</h1>
+        <p className="mt-2 text-rs-body">{body}</p>
+        <Button type="button" variant="ghost" className="mt-6" onClick={() => void signOut()}>
+          Sign out
+        </Button>
+      </Card>
+    </div>
+  )
+}
+
+function SupportMailtoLink() {
+  return (
+    <a
+      className="font-semibold text-rs-blue hover:underline"
+      href={`mailto:${legalConfig.supportEmail}`}
+    >
+      {legalConfig.supportEmail}
+    </a>
+  )
+}
 
 /**
  * After Cognito sign-in, loads `/users/me` and allows only teacher or admin roles.
@@ -39,11 +74,11 @@ export function TeacherRoleGate({ children }: { children: ReactNode }) {
 
   if (!isAuthConfigured()) {
     return (
-      <div className="mx-auto max-w-lg p-8 text-center text-gray-700">
+      <div className="mx-auto max-w-lg p-8 text-center text-rs-body">
         Cognito is not configured for this build. Set{' '}
-        <code className="rounded bg-gray-100 px-1">VITE_COGNITO_USER_POOL_ID</code>,{' '}
-        <code className="rounded bg-gray-100 px-1">VITE_COGNITO_USER_POOL_CLIENT_ID</code>, and{' '}
-        <code className="rounded bg-gray-100 px-1">VITE_COGNITO_DOMAIN</code> for Google sign-in.
+        <code className="rounded bg-rs-sky-2 px-1">VITE_COGNITO_USER_POOL_ID</code>,{' '}
+        <code className="rounded bg-rs-sky-2 px-1">VITE_COGNITO_USER_POOL_CLIENT_ID</code>, and{' '}
+        <code className="rounded bg-rs-sky-2 px-1">VITE_COGNITO_DOMAIN</code> for Google sign-in.
       </div>
     )
   }
@@ -58,46 +93,31 @@ export function TeacherRoleGate({ children }: { children: ReactNode }) {
     // - 403: signed in but not allowed → show instructor access message.
     if (err instanceof ApiError && err.status === 401) {
       return (
-        <div className="mx-auto max-w-lg p-8 text-center">
-          <h1 className="text-xl font-semibold text-gray-900">Sign-in required</h1>
-          <p className="mt-2 text-gray-600">
-            Your session may have expired. Please sign out and sign in again. If the problem continues, contact{' '}
-            <a className="font-medium text-emerald-700 hover:text-emerald-800" href={`mailto:${legalConfig.supportEmail}`}>
-              {legalConfig.supportEmail}
-            </a>
-            .
-          </p>
-          <button
-            type="button"
-            className="mt-6 inline-flex min-h-[44px] items-center justify-center rounded-md border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-emerald-700 hover:bg-emerald-50 active:bg-emerald-100"
-            onClick={() => void signOut()}
-          >
-            Sign out
-          </button>
-        </div>
+        <InstructorAccessPanel
+          title="Sign-in required"
+          signOut={signOut}
+          body={
+            <>
+              Your session may have expired. Please sign out and sign in again. If the problem continues, contact{' '}
+              <SupportMailtoLink />.
+            </>
+          }
+        />
       )
     }
 
     if (err instanceof ApiError && err.status === 403) {
       return (
-        <div className="mx-auto max-w-lg p-8 text-center">
-          <h1 className="text-xl font-semibold text-gray-900">Instructor access required</h1>
-          <p className="mt-2 text-gray-600">
-            This account doesn’t have access to the Instructor Dashboard. If you believe this is a mistake, please
-            contact{' '}
-            <a className="font-medium text-emerald-700 hover:text-emerald-800" href={`mailto:${legalConfig.supportEmail}`}>
-              {legalConfig.supportEmail}
-            </a>
-            .
-          </p>
-          <button
-            type="button"
-            className="mt-6 inline-flex min-h-[44px] items-center justify-center rounded-md border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-emerald-700 hover:bg-emerald-50 active:bg-emerald-100"
-            onClick={() => void signOut()}
-          >
-            Sign out
-          </button>
-        </div>
+        <InstructorAccessPanel
+          title="Instructor access required"
+          signOut={signOut}
+          body={
+            <>
+              This account doesn’t have access to the Instructor Dashboard. If you believe this is a mistake, please
+              contact <SupportMailtoLink />.
+            </>
+          }
+        />
       )
     }
 
@@ -106,30 +126,22 @@ export function TeacherRoleGate({ children }: { children: ReactNode }) {
   }
 
   if (!profile) {
-    return <div className="p-8 text-center text-gray-600">Loading profile…</div>
+    return <div className="p-8 text-center text-rs-muted">Loading profile…</div>
   }
 
   const r = profile.role.toLowerCase()
   if (r !== 'teacher' && r !== 'admin') {
     return (
-      <div className="mx-auto max-w-lg p-8 text-center">
-        <h1 className="text-xl font-semibold text-gray-900">Instructor access required</h1>
-        <p className="mt-2 text-gray-600">
-          This account doesn’t have access to the Instructor Dashboard. If you believe this is a mistake, please
-          contact{' '}
-          <a className="font-medium text-emerald-700 hover:text-emerald-800" href={`mailto:${legalConfig.supportEmail}`}>
-            {legalConfig.supportEmail}
-          </a>
-          .
-        </p>
-        <button
-          type="button"
-          className="mt-6 inline-flex min-h-[44px] items-center justify-center rounded-md border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-emerald-700 hover:bg-emerald-50 active:bg-emerald-100"
-          onClick={() => void signOut()}
-        >
-          Sign out
-        </button>
-      </div>
+      <InstructorAccessPanel
+        title="Instructor access required"
+        signOut={signOut}
+        body={
+          <>
+            This account doesn’t have access to the Instructor Dashboard. If you believe this is a mistake, please
+            contact <SupportMailtoLink />.
+          </>
+        }
+      />
     )
   }
 

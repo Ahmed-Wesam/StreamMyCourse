@@ -32,6 +32,10 @@ import {
   CourseManagementNotFound,
 } from '../components/course/CourseManagementPageStates'
 import { usePageTitle } from '../lib/page-title'
+import { Badge } from '../components/ui/Badge'
+import { Button } from '../components/ui/Button'
+import { Card } from '../components/ui/Card'
+import { Field } from '../components/ui/Field'
 
 export default function CourseManagement() {
   usePageTitle('Course')
@@ -344,40 +348,34 @@ export default function CourseManagement() {
   }
 
   return (
-    <div className="mx-auto max-w-4xl">
+    <div className="mx-auto w-full max-w-5xl px-4 py-8 text-rs-ink sm:px-6 lg:px-8">
       <div className="mb-8 flex items-center justify-between">
         <div>
           <div className="mb-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm">
             <button
               type="button"
               onClick={() => navigate('/')}
-              className="text-blue-600 hover:text-blue-800"
+              className="font-semibold text-rs-blue hover:underline"
             >
               ← Back to Dashboard
             </button>
             {courseId ? (
               <Link
                 to={`/courses/${encodeURIComponent(courseId)}/question-banks`}
-                className="text-blue-600 hover:text-blue-800"
+                className="font-semibold text-rs-blue hover:underline"
               >
                 Question banks
               </Link>
             ) : null}
           </div>
-          <h1 className="text-3xl font-bold text-gray-900">Manage Course</h1>
+          <h1 className="text-3xl font-extrabold tracking-tight text-rs-navy">Manage Course</h1>
         </div>
-        <span
-          className={`px-4 py-2 rounded-full text-sm font-medium ${
-            course.status === 'PUBLISHED' ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'
-          }`}
-        >
-          {course.status}
-        </span>
+        <Badge tone={course.status === 'PUBLISHED' ? 'success' : 'neutral'}>{course.status}</Badge>
       </div>
 
       {error && (
         <div
-          className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg text-red-700"
+          className="mb-6 rounded-lg border border-red-200 bg-red-50 p-4 text-red-700"
           data-testid="course-management-inline-error"
           role="alert"
         >
@@ -387,7 +385,7 @@ export default function CourseManagement() {
 
       {info && (
         <div
-          className="mb-6 rounded-lg border border-blue-200 bg-blue-50 p-4 text-blue-700"
+          className="mb-6 rounded-lg border border-rs-line bg-rs-sky-2 p-4 text-rs-navy"
           data-testid="course-management-inline-info"
           role="status"
         >
@@ -395,48 +393,23 @@ export default function CourseManagement() {
         </div>
       )}
 
-      <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6 mb-6">
-        <h2 className="text-xl font-semibold text-gray-900 mb-4">Course Information</h2>
-        <div className="space-y-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Title</label>
-            <input
-              type="text"
-              value={editTitle}
-              onChange={(e) => setEditTitle(e.target.value)}
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Description</label>
-            <textarea
-              value={editDescription}
-              onChange={(e) => setEditDescription(e.target.value)}
-              rows={3}
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-            />
-          </div>
-          <div className="flex gap-3">
-            <button
-              type="button"
-              onClick={() => void handleSaveCourse()}
-              disabled={saving}
-              className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50"
-            >
-              {saving ? 'Saving...' : 'Save Changes'}
-            </button>
-            {canPublish && (
-              <button
-                type="button"
-                onClick={() => void handlePublishCourse()}
-                className="px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
-              >
-                Publish Course
-              </button>
-            )}
-          </div>
+      <Card className="mb-6 p-6">
+        <h2 className="mb-4 text-xl font-extrabold text-rs-navy">Course Information</h2>
+        <Field label="Title" value={editTitle} onChange={(e) => setEditTitle(e.target.value)} />
+        <Field label="Description" className="mb-4">
+          <textarea value={editDescription} onChange={(e) => setEditDescription(e.target.value)} rows={3} />
+        </Field>
+        <div className="flex gap-3">
+          <Button type="button" onClick={() => void handleSaveCourse()} disabled={saving}>
+            {saving ? 'Saving...' : 'Save Changes'}
+          </Button>
+          {canPublish && (
+            <Button type="button" onClick={() => void handlePublishCourse()}>
+              Publish Course
+            </Button>
+          )}
         </div>
-      </div>
+      </Card>
 
       <CourseThumbnailEditor
         course={course}

@@ -1,4 +1,7 @@
 import type { CourseModule } from '../../lib/api/types'
+import { Button } from '../ui/Button'
+import { Card } from '../ui/Card'
+import { Field } from '../ui/Field'
 
 type Props = {
   sortedModules: CourseModule[]
@@ -20,66 +23,51 @@ export function CourseManagementModulesPanel({
   onDeleteModule,
 }: Props) {
   return (
-    <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6 mb-6">
-      <h2 className="text-xl font-semibold text-gray-900 mb-4">Modules / Sections</h2>
+    <Card className="mb-6 p-6">
+      <h2 className="mb-4 text-xl font-extrabold text-rs-navy">Modules / Sections</h2>
 
-      <div className="space-y-3 mb-6">
+      <div className="mb-6 space-y-3">
         {sortedModules.map((m) => (
-          <div key={m.id} className="flex items-start justify-between gap-4 rounded-lg border border-gray-200 p-4">
+          <div key={m.id} className="flex items-start justify-between gap-4 rounded-lg border border-rs-line p-4">
             <div>
-              <div className="font-medium text-gray-900">{m.title}</div>
-              {m.description && <div className="mt-1 text-sm text-gray-600">{m.description}</div>}
+              <div className="font-semibold text-rs-navy">{m.title}</div>
+              {m.description && <div className="mt-1 text-sm text-rs-body">{m.description}</div>}
             </div>
-            <button
+            <Button
               type="button"
+              variant="ghost"
+              size="sm"
               aria-label="Delete Module"
+              className="!text-red-700 hover:!bg-red-50"
               onClick={() => void onDeleteModule(m.id)}
-              className="text-red-600 hover:text-red-800 text-sm px-3 py-1 hover:bg-red-50 rounded transition-colors"
             >
               Delete
-            </button>
+            </Button>
           </div>
         ))}
       </div>
 
-      <form onSubmit={onCreateModule} className="rounded-lg border border-gray-200 p-4">
+      <form onSubmit={onCreateModule} className="rounded-lg border border-rs-line p-4">
         <div className="grid gap-4 sm:grid-cols-2">
-          <div>
-            <label htmlFor="new-module-title" className="block text-sm font-medium text-gray-700 mb-1">
-              Module Title *
-            </label>
-            <input
-              id="new-module-title"
-              type="text"
-              value={newModuleTitle}
-              onChange={(e) => onNewModuleTitleChange(e.target.value)}
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              required
-            />
-          </div>
-          <div>
-            <label htmlFor="new-module-description" className="block text-sm font-medium text-gray-700 mb-1">
-              Description
-            </label>
-            <input
-              id="new-module-description"
-              type="text"
-              value={newModuleDescription}
-              onChange={(e) => onNewModuleDescriptionChange(e.target.value)}
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-            />
-          </div>
+          <Field
+            label="Module Title *"
+            value={newModuleTitle}
+            onChange={(e) => onNewModuleTitleChange(e.target.value)}
+            required
+          />
+          <Field
+            label="Description"
+            value={newModuleDescription}
+            onChange={(e) => onNewModuleDescriptionChange(e.target.value)}
+          />
         </div>
 
         <div className="mt-4 flex justify-end">
-          <button
-            type="submit"
-            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm font-medium"
-          >
+          <Button type="submit" size="sm">
             Create Module
-          </button>
+          </Button>
         </div>
       </form>
-    </div>
+    </Card>
   )
 }

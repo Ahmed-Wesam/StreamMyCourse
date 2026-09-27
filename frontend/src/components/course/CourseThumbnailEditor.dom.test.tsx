@@ -8,6 +8,41 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { Course } from '../../lib/api/types'
 import { CourseThumbnailEditor } from './CourseThumbnailEditor'
 
+const FORBIDDEN_CLASS_SUBSTRINGS = [
+  'emerald-',
+  'blue-600',
+  'green-',
+  'gray-',
+  'slate-',
+  'amber-',
+] as const
+
+function collectClassNames(root: Element): string[] {
+  const names: string[] = []
+  const walk = (el: Element) => {
+    if (typeof el.className === 'string' && el.className.length > 0) {
+      names.push(el.className)
+    }
+    for (const child of el.children) {
+      walk(child)
+    }
+  }
+  walk(root)
+  return names
+}
+
+function findForbiddenPaletteClasses(classNames: string[]): string[] {
+  const hits: string[] = []
+  for (const cn of classNames) {
+    for (const forbidden of FORBIDDEN_CLASS_SUBSTRINGS) {
+      if (cn.includes(forbidden)) {
+        hits.push(`${forbidden} → ${cn}`)
+      }
+    }
+  }
+  return hits
+}
+
 const baseCourse: Course = {
   id: 'c1',
   title: 'T',
@@ -89,5 +124,14 @@ describe('CourseThumbnailEditor', () => {
     const file = new File([], 'picked.webp', { type: 'image/webp' })
     fireEvent.change(input, { target: { files: [file] } })
     expect(onThumbFileChange).toHaveBeenCalledTimes(1)
+  })
+
+  it('uses RS palette on rendered editor (no legacy Tailwind color utilities)', () => {
+    const file = new File([], 'a.jpg', { type: 'image/jpeg' })
+    const { container } = renderEditor({ thumbFile: file })
+    const root = container.firstElementChild
+    expect(root).toBeTruthy()
+    const violations = findForbiddenPaletteClasses(collectClassNames(root!))
+    expect(violations).toEqual([])
   })
 })
