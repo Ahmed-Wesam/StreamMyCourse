@@ -175,6 +175,23 @@ POST /contact                          // Public contact form (no JWT). Body JSO
 
 **Delivery:** Catalog Lambda (VPC, no NAT) validates and **`SendMessage`** to transactional-mail SQS ([`api-stack.yaml`](infrastructure/templates/api-stack.yaml) `TransactionalMailQueueUrl` → env **`TRANSACTIONAL_MAIL_QUEUE_URL`**). **Non-VPC** worker ([`transactional-mail-stack.yaml`](infrastructure/templates/transactional-mail-stack.yaml), [`infrastructure/lambda/transactional_mail/`](infrastructure/lambda/transactional_mail/)) consumes the queue and sends via **Zoho SMTP** (same Secrets Manager secret as Cognito CustomEmailSender — **not Amazon SES**). Inbox **`support@researchspectrum.org`**; worker **`ALLOWLIST_TO_ADDRESSES`** rejects other `to` values. Reuse this queue payload shape for RS-13 / RS-14 notification mail.
 
+### Lesson files and notes (RS-11)
+
+```
+GET    /courses/{id}/lessons/{lessonId}/files              // Cognito. Instructor: pending+ready metadata (no objectKey). Student: ready only after purchase + module unlock (RS-8).
+POST   /courses/{id}/lessons/{lessonId}/files              // Instructor only. Body: title, kind (resource|download), fileType (pdf|csv|xlsx|docx|sav), byteSize (1..104857600). **201** { fileId, uploadUrl } — presigned PUT signs Content-Type + ContentLength.
+PUT    /courses/{id}/lessons/{lessonId}/files/{fileId}/complete  // Instructor only. HEAD object; **400** on mismatch; marks ready.
+GET    /courses/{id}/lessons/{lessonId}/files/{fileId}/url // Cognito + same access as list. **200** { url } presigned GET (300s); PDF resource inline, others attachment.
+DELETE /courses/{id}/lessons/{lessonId}/files/{fileId}     // Instructor only; async S3 delete via media-cleanup queue when configured.
+
+GET    /courses/{id}/lessons/{lessonId}/notes             // Author only. **200** { notes: [...] }
+POST   /courses/{id}/lessons/{lessonId}/notes             // Body: body (1..4000, no tag-like markup), optional timestampSec (0..86400). Max 50 notes per user per lesson.
+PATCH  /courses/{id}/lessons/{lessonId}/notes/{noteId}    // Author only.
+DELETE /courses/{id}/lessons/{lessonId}/notes/{noteId}    // Author only.
+```
+
+**Storage:** Same private video bucket; keys `{courseId}/lessons/{lessonId}/files/{fileId}.{ext}`. Catalog IAM **`s3:GetObject`** includes `*/lessons/*/files/*` for presign + HEAD. Lesson/course delete enqueues file keys on the existing media-cleanup worker. Migration **019** (`lesson_files`, `lesson_notes`).
+
 ### Video provider webhooks
 ```
 POST /webhooks/kinescope              // Provider status callback (`media.update.status`); optional
@@ -292,7 +309,7 @@ The frontend is built as **two separate SPAs** deployed to different subdomains:
 - S3 bucket: Private with presigned URL access (PUT for upload, GET for playback)
 - Lambda IAM: `s3:PutObject` and `s3:GetObject` on `${bucket}/*` (upload + presigned playback; object keys are course/lesson-scoped under the same bucket); **RDS** path uses VPC + Secrets Manager + relational access; legacy DynamoDB policy applies only if the stack still attaches catalog table permissions for rollback
 - CORS: Origin validation with configurable allowlist (`ALLOWED_ORIGINS`, set from CloudFormation `CorsAllowOrigin`); no implicit wildcard (empty env means misconfiguration). Use `ALLOWED_ORIGINS=*` only when intentionally allowing any origin in dev/tools. API Gateway GatewayResponses add CORS headers on 4XX/5XX
-- Presigned uploads: allowed **video / image** `Content-Type` only; S3 keys are `{courseId}/lessons/{lessonId}/video/{uuid}.{ext}` for lesson video, `{courseId}/lessons/{lessonId}/thumbnail/{uuid}.{ext}` for lesson thumbnails, and `{courseId}/thumbnail/{uuid}.{ext}` for course cover; presigned playback **GET** only for keys matching those layouts (validated in Lambda); conditional **repo** update when persisting a new **`videoKey`** after presign (mitigates concurrent upload races). **Note:** `boto3` presigned PUT URLs do not attach policy **Conditions** (e.g. `content-length-range`); document size limits for clients; S3 caps a single PUT at **5 GiB**.
+- Presigned uploads: allowed **video / image** `Content-Type` only for lesson video and thumbnails; **RS-11** lesson attachments use **pdf / csv / xlsx / docx / sav** under `{courseId}/lessons/{lessonId}/files/{fileId}.{ext}` with presigned PUT **Content-Length** signed to the declared byte size (max **100 MiB** per file). S3 keys for video/thumbnails remain `{courseId}/lessons/{lessonId}/video/{uuid}.{ext}`, `{courseId}/lessons/{lessonId}/thumbnail/{uuid}.{ext}`, and `{courseId}/thumbnail/{uuid}.{ext}`; presigned playback **GET** for video/thumbnail keys only on the video adapter; lesson file **GET** uses a separate presign path. Conditional **repo** update when persisting a new **`videoKey`** after presign (mitigates concurrent upload races). S3 caps a single PUT at **5 GiB** (lesson files stay within the 100 MiB product limit).
 - **Layered API abuse protection** (RDS route limits + API Gateway stage throttles); see [ADR-0012](plans/architecture/adr-0012-api-abuse-protection.md). **Product policy** (per-route RDS counters, 429 + `Retry-After`) vs **volumetric abuse** (stage throttles). RDS store errors **fail closed** with **503** (`rate_limit_store_unavailable`). **`GatewayResponseAllowOrigin`** is parameterized (default tightened away from `*` for dev/local)
 - Video stack S3: **Block Public Access**, **SSE-S3** encryption, CORS allowlist parameter (no wildcard origin); **`Range`** / **`If-Range`** allowed for cross-origin HTML5 `<video>` playback
 - **Stateful resource retention (CFN):** Templates set **`DeletionPolicy: Retain`** (and `UpdateReplacePolicy: Retain` where replacement is possible) on **`VideoBucket`** ([`video-stack.yaml`](infrastructure/templates/video-stack.yaml)), **`SiteBucket` / `TeacherSiteBucket`** ([`edge-hosting-stack.yaml`](infrastructure/templates/edge-hosting-stack.yaml)), **`MediaCleanupQueue` / `MediaCleanupDlq`** ([`media-cleanup-stack.yaml`](infrastructure/templates/media-cleanup-stack.yaml)), and **`BillingAlertTopic`** ([`billing-alarm.yaml`](infrastructure/templates/billing-alarm.yaml)); RDS uses `Snapshot` ([`rds-stack.yaml`](infrastructure/templates/rds-stack.yaml)). New stateful resources (`AWS::S3::Bucket`, `AWS::DynamoDB::Table`, `AWS::RDS::DBInstance`, `AWS::SQS::Queue`, `AWS::SNS::Topic`) MUST be added with the same convention unless they hold provably ephemeral state.

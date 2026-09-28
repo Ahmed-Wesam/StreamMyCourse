@@ -264,6 +264,7 @@ Resources:
                     - !Sub 'arn:aws:s3:::${VideoBucketName}/*/lessons/*/thumbnail/*'
                     # Presigned playback GET: signer (catalog role) must be allowed GetObject on video keys.
                     - !Sub 'arn:aws:s3:::${VideoBucketName}/*/lessons/*/video/*'
+                    - !Sub 'arn:aws:s3:::${VideoBucketName}/*/lessons/*/files/*'
                   - - 'arn:aws:s3:::streammycourse-no-bucket-configured/NEVER_MATCH/*'
         - !If
           - HasMediaCleanupQueueArn
@@ -679,6 +680,54 @@ Resources:
       RestApiId: !Ref CatalogApi
       ParentId: !Ref LessonIdResource
       PathPart: video-ready
+
+  # API Gateway Resource: /courses/{courseId}/lessons/{lessonId}/files
+  LessonFilesResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref CatalogApi
+      ParentId: !Ref LessonIdResource
+      PathPart: files
+
+  # API Gateway Resource: /courses/{courseId}/lessons/{lessonId}/files/{fileId}
+  LessonFileIdResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref CatalogApi
+      ParentId: !Ref LessonFilesResource
+      PathPart: '{fileId}'
+
+  # API Gateway Resource: /courses/{courseId}/lessons/{lessonId}/files/{fileId}/complete
+  LessonFileCompleteResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref CatalogApi
+      ParentId: !Ref LessonFileIdResource
+      PathPart: complete
+
+  # API Gateway Resource: /courses/{courseId}/lessons/{lessonId}/files/{fileId}/url
+  LessonFileUrlResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref CatalogApi
+      ParentId: !Ref LessonFileIdResource
+      PathPart: url
+
+  # API Gateway Resource: /courses/{courseId}/lessons/{lessonId}/notes
+  LessonNotesResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref CatalogApi
+      ParentId: !Ref LessonIdResource
+      PathPart: notes
+
+  # API Gateway Resource: /courses/{courseId}/lessons/{lessonId}/notes/{noteId}
+  LessonNoteIdResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref CatalogApi
+      ParentId: !Ref LessonNotesResource
+      PathPart: '{noteId}'
 
   # API Gateway Resource: /playback
   PlaybackResource:
@@ -1790,6 +1839,210 @@ Resources:
         Type: AWS_PROXY
         Uri: !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${CatalogLambda.Arn}/invocations'
 
+  # API Gateway Method: GET /courses/{courseId}/lessons/{lessonId}/files
+  LessonFilesGetMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref CatalogApi
+      ResourceId: !Ref LessonFilesResource
+      HttpMethod: GET
+      AuthorizationType: COGNITO_USER_POOLS
+      AuthorizerId: !Ref CatalogApiTokenAuthorizer
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Uri: !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${CatalogLambda.Arn}/invocations'
+
+  # API Gateway Method: POST /courses/{courseId}/lessons/{lessonId}/files
+  LessonFilesPostMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref CatalogApi
+      ResourceId: !Ref LessonFilesResource
+      HttpMethod: POST
+      AuthorizationType: COGNITO_USER_POOLS
+      AuthorizerId: !Ref CatalogApiTokenAuthorizer
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Uri: !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${CatalogLambda.Arn}/invocations'
+
+  # API Gateway Method: OPTIONS /courses/{courseId}/lessons/{lessonId}/files (CORS preflight)
+  LessonFilesOptionsMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref CatalogApi
+      ResourceId: !Ref LessonFilesResource
+      HttpMethod: OPTIONS
+      AuthorizationType: NONE
+      Integration:
+        IntegrationHttpMethod: POST
+        Type: AWS_PROXY
+        Uri: !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${CatalogLambda.Arn}/invocations'
+
+  # API Gateway Method: DELETE /courses/{courseId}/lessons/{lessonId}/files/{fileId}
+  LessonFileIdDeleteMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref CatalogApi
+      ResourceId: !Ref LessonFileIdResource
+      HttpMethod: DELETE
+      AuthorizationType: COGNITO_USER_POOLS
+      AuthorizerId: !Ref CatalogApiTokenAuthorizer
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Uri: !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${CatalogLambda.Arn}/invocations'
+
+  # API Gateway Method: OPTIONS /courses/{courseId}/lessons/{lessonId}/files/{fileId} (CORS preflight)
+  LessonFileIdOptionsMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref CatalogApi
+      ResourceId: !Ref LessonFileIdResource
+      HttpMethod: OPTIONS
+      AuthorizationType: NONE
+      Integration:
+        IntegrationHttpMethod: POST
+        Type: AWS_PROXY
+        Uri: !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${CatalogLambda.Arn}/invocations'
+
+  # API Gateway Method: PUT /courses/{courseId}/lessons/{lessonId}/files/{fileId}/complete
+  LessonFileCompletePutMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref CatalogApi
+      ResourceId: !Ref LessonFileCompleteResource
+      HttpMethod: PUT
+      AuthorizationType: COGNITO_USER_POOLS
+      AuthorizerId: !Ref CatalogApiTokenAuthorizer
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Uri: !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${CatalogLambda.Arn}/invocations'
+
+  # API Gateway Method: OPTIONS /courses/{courseId}/lessons/{lessonId}/files/{fileId}/complete (CORS preflight)
+  LessonFileCompleteOptionsMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref CatalogApi
+      ResourceId: !Ref LessonFileCompleteResource
+      HttpMethod: OPTIONS
+      AuthorizationType: NONE
+      Integration:
+        IntegrationHttpMethod: POST
+        Type: AWS_PROXY
+        Uri: !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${CatalogLambda.Arn}/invocations'
+
+  # API Gateway Method: GET /courses/{courseId}/lessons/{lessonId}/files/{fileId}/url
+  LessonFileUrlGetMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref CatalogApi
+      ResourceId: !Ref LessonFileUrlResource
+      HttpMethod: GET
+      AuthorizationType: COGNITO_USER_POOLS
+      AuthorizerId: !Ref CatalogApiTokenAuthorizer
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Uri: !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${CatalogLambda.Arn}/invocations'
+
+  # API Gateway Method: OPTIONS /courses/{courseId}/lessons/{lessonId}/files/{fileId}/url (CORS preflight)
+  LessonFileUrlOptionsMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref CatalogApi
+      ResourceId: !Ref LessonFileUrlResource
+      HttpMethod: OPTIONS
+      AuthorizationType: NONE
+      Integration:
+        IntegrationHttpMethod: POST
+        Type: AWS_PROXY
+        Uri: !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${CatalogLambda.Arn}/invocations'
+
+  # API Gateway Method: GET /courses/{courseId}/lessons/{lessonId}/notes
+  LessonNotesGetMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref CatalogApi
+      ResourceId: !Ref LessonNotesResource
+      HttpMethod: GET
+      AuthorizationType: COGNITO_USER_POOLS
+      AuthorizerId: !Ref CatalogApiTokenAuthorizer
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Uri: !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${CatalogLambda.Arn}/invocations'
+
+  # API Gateway Method: POST /courses/{courseId}/lessons/{lessonId}/notes
+  LessonNotesPostMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref CatalogApi
+      ResourceId: !Ref LessonNotesResource
+      HttpMethod: POST
+      AuthorizationType: COGNITO_USER_POOLS
+      AuthorizerId: !Ref CatalogApiTokenAuthorizer
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Uri: !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${CatalogLambda.Arn}/invocations'
+
+  # API Gateway Method: OPTIONS /courses/{courseId}/lessons/{lessonId}/notes (CORS preflight)
+  LessonNotesOptionsMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref CatalogApi
+      ResourceId: !Ref LessonNotesResource
+      HttpMethod: OPTIONS
+      AuthorizationType: NONE
+      Integration:
+        IntegrationHttpMethod: POST
+        Type: AWS_PROXY
+        Uri: !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${CatalogLambda.Arn}/invocations'
+
+  # API Gateway Method: PATCH /courses/{courseId}/lessons/{lessonId}/notes/{noteId}
+  LessonNoteIdPatchMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref CatalogApi
+      ResourceId: !Ref LessonNoteIdResource
+      HttpMethod: PATCH
+      AuthorizationType: COGNITO_USER_POOLS
+      AuthorizerId: !Ref CatalogApiTokenAuthorizer
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Uri: !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${CatalogLambda.Arn}/invocations'
+
+  # API Gateway Method: DELETE /courses/{courseId}/lessons/{lessonId}/notes/{noteId}
+  LessonNoteIdDeleteMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref CatalogApi
+      ResourceId: !Ref LessonNoteIdResource
+      HttpMethod: DELETE
+      AuthorizationType: COGNITO_USER_POOLS
+      AuthorizerId: !Ref CatalogApiTokenAuthorizer
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Uri: !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${CatalogLambda.Arn}/invocations'
+
+  # API Gateway Method: OPTIONS /courses/{courseId}/lessons/{lessonId}/notes/{noteId} (CORS preflight)
+  LessonNoteIdOptionsMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref CatalogApi
+      ResourceId: !Ref LessonNoteIdResource
+      HttpMethod: OPTIONS
+      AuthorizationType: NONE
+      Integration:
+        IntegrationHttpMethod: POST
+        Type: AWS_PROXY
+        Uri: !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${CatalogLambda.Arn}/invocations'
+
   # API Gateway Method: GET /billing/merchant/status
   BillingMerchantStatusGetMethod:
     Type: AWS::ApiGateway::Method
@@ -2023,7 +2276,7 @@ Resources:
   # Bump logical id when API methods/resources change so CloudFormation always
   # creates a new deployment; otherwise the stage can keep serving an old snapshot
   # (symptom: GET /courses/{id}/lessons returns API GW 403 Missing Authentication Token).
-  CatalogApiDeploymentV40:
+  CatalogApiDeploymentV41:
     Type: AWS::ApiGateway::Deployment
     DependsOn:
       - CatalogLambdaApiPermission
@@ -2065,6 +2318,21 @@ Resources:
       - CourseProgressOptionsMethod
       - LessonProgressPutMethod
       - LessonProgressOptionsMethod
+      - LessonFilesGetMethod
+      - LessonFilesPostMethod
+      - LessonFilesOptionsMethod
+      - LessonFileIdDeleteMethod
+      - LessonFileIdOptionsMethod
+      - LessonFileCompletePutMethod
+      - LessonFileCompleteOptionsMethod
+      - LessonFileUrlGetMethod
+      - LessonFileUrlOptionsMethod
+      - LessonNotesGetMethod
+      - LessonNotesPostMethod
+      - LessonNotesOptionsMethod
+      - LessonNoteIdPatchMethod
+      - LessonNoteIdDeleteMethod
+      - LessonNoteIdOptionsMethod
       - CourseModulesGetMethod
       - CourseModulesPostMethod
       - CourseModulesOptionsMethod
@@ -2107,7 +2375,7 @@ Resources:
     Type: AWS::ApiGateway::Stage
     Properties:
       RestApiId: !Ref CatalogApi
-      DeploymentId: !Ref CatalogApiDeploymentV40
+      DeploymentId: !Ref CatalogApiDeploymentV41
       StageName: !Ref Environment
       Description: !Sub '${Environment} stage for Catalog API'
       MethodSettings:

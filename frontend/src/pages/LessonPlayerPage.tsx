@@ -66,6 +66,9 @@ function LessonPrimaryColumn({
   onMarkComplete,
   onMarkIncomplete,
   courseId,
+  lessonId,
+  playbackPositionSec,
+  contentTabsEnabled,
   prevLesson,
   prevQuizHref,
   nextLesson,
@@ -87,6 +90,9 @@ function LessonPrimaryColumn({
   onMarkComplete: () => void
   onMarkIncomplete: () => void
   courseId: string
+  lessonId: string
+  playbackPositionSec: number
+  contentTabsEnabled: boolean
   prevLesson: Lesson | null
   prevQuizHref?: To | null
   nextLesson: Lesson | null
@@ -146,9 +152,13 @@ function LessonPrimaryColumn({
         </div>
 
         <LessonPlayerTabs
+          courseId={courseId}
+          lessonId={lessonId}
           courseDescription={courseDescription}
           activeModuleLabel={activeModuleLabel}
           activeLessonTitle={activeLessonTitle}
+          playbackPositionSec={playbackPositionSec}
+          contentEnabled={contentTabsEnabled}
         />
 
         {upNextTitle ? (
@@ -211,6 +221,7 @@ export default function LessonPlayerPage() {
   const durationSentRef = useRef<boolean>(false)
   const lastPlaybackPositionRef = useRef(0)
   const lastPlaybackDurationRef = useRef(0)
+  const [playbackPositionSec, setPlaybackPositionSec] = useState(0)
 
   const playbackNavLocked = needsSubscription || needsSignIn
   const guardedPlayback = playbackNavLocked ? null : playback
@@ -448,6 +459,7 @@ export default function LessonPlayerPage() {
     durationSentRef.current = false
     lastPlaybackPositionRef.current = 0
     lastPlaybackDurationRef.current = 0
+    setPlaybackPositionSec(0)
   }, [lessonId])
 
   const effectiveLessonDurationSec = useCallback((): number => {
@@ -486,6 +498,7 @@ export default function LessonPlayerPage() {
   const reportPlaybackProgress = useCallback(
     (positionSec: number, durationFromPlayer: number) => {
       lastPlaybackPositionRef.current = positionSec
+      setPlaybackPositionSec(Math.max(0, Math.floor(positionSec)))
       if (durationFromPlayer > 0) {
         lastPlaybackDurationRef.current = durationFromPlayer
       }
@@ -793,6 +806,8 @@ export default function LessonPlayerPage() {
         prevQuizHref={prevQuizHref}
         nextLesson={nextLesson}
         nextQuizHref={nextQuizHref}
+        playbackPositionSec={playbackPositionSec}
+        contentTabsEnabled={!playbackNavLocked}
       />
     )
   }
@@ -933,6 +948,9 @@ export default function LessonPlayerPage() {
               onMarkComplete={() => void handleMarkComplete()}
               onMarkIncomplete={() => void handleMarkIncomplete()}
               courseId={courseId}
+              lessonId={lessonId}
+              playbackPositionSec={playbackPositionSec}
+              contentTabsEnabled={!playbackNavLocked}
               prevLesson={prevLesson}
               prevQuizHref={prevQuizHref}
               nextLesson={nextLesson}

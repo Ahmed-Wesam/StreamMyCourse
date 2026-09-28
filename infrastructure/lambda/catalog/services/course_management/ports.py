@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Optional, Protocol, Sequence
 
-from services.course_management.models import Course, CourseModule, Lesson, PresignResult
+from services.course_management.models import Course, CourseModule, Lesson, LessonFile, PresignResult
 
 
 class UserProfileProvisioner(Protocol):
@@ -47,6 +47,35 @@ class CourseCatalogRepositoryPort(Protocol):
     def set_lesson_thumbnail(self, course_id: str, lesson_id: str, thumbnail_key: str) -> None: ...
     def set_lesson_duration(self, course_id: str, lesson_id: str, duration: int) -> None: ...
     def find_lesson_by_video_key(self, video_key: str) -> Optional[tuple[str, str]]: ...
+
+    def count_lesson_files(self, course_id: str, lesson_id: str) -> int: ...
+    def create_lesson_file(
+        self,
+        *,
+        file_id: str,
+        course_id: str,
+        lesson_id: str,
+        kind: str,
+        title: str,
+        object_key: str,
+        content_type: str,
+        byte_size: int,
+    ) -> LessonFile: ...
+    def get_lesson_file(
+        self, course_id: str, lesson_id: str, file_id: str
+    ) -> Optional[LessonFile]: ...
+    def list_lesson_files(
+        self, course_id: str, lesson_id: str, *, ready_only: bool
+    ) -> List[LessonFile]: ...
+    def mark_lesson_file_ready(self, course_id: str, lesson_id: str, file_id: str) -> None: ...
+    def delete_lesson_file(self, course_id: str, lesson_id: str, file_id: str) -> None: ...
+    def list_lesson_file_object_keys_for_lesson(
+        self, course_id: str, lesson_id: str
+    ) -> List[str]: ...
+    def list_lesson_file_object_keys_for_lessons(
+        self, course_id: str, lesson_ids: Sequence[str]
+    ) -> List[str]: ...
+    def list_lesson_file_object_keys_for_course(self, course_id: str) -> List[str]: ...
 
 
 class StudentModuleLockPort(Protocol):
@@ -94,6 +123,33 @@ class ImageMediaStoragePort(Protocol):
     def presign_get(self, *, key: str, expires_seconds: int = 3600) -> str: ...
     def delete_object(self, key: str) -> None: ...
     def delete_objects(self, keys: Sequence[str]) -> List[str]: ...
+
+
+class LessonFileStoragePort(Protocol):
+    def presign_put_file(
+        self,
+        *,
+        course_id: str,
+        lesson_id: str,
+        file_id: str,
+        file_type: str,
+        byte_size: int,
+        expires_seconds: int = 300,
+    ) -> Any: ...
+
+    def head_object(self, key: str) -> dict: ...
+
+    def delete_object(self, key: str) -> None: ...
+
+    def presign_get_file(
+        self,
+        *,
+        key: str,
+        kind: str,
+        title: str,
+        file_type: str,
+        expires_seconds: int = 300,
+    ) -> str: ...
 
 
 # Deprecated alias — remove after downstream imports migrate.

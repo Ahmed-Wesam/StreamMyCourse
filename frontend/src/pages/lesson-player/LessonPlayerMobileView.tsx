@@ -40,6 +40,8 @@ type LessonPlayerMobileViewProps = {
   prevQuizHref?: To | null
   nextLesson: Lesson | null
   nextQuizHref?: To | null
+  playbackPositionSec: number
+  contentTabsEnabled: boolean
 }
 
 export function LessonPlayerMobileView({
@@ -70,6 +72,8 @@ export function LessonPlayerMobileView({
   prevQuizHref,
   nextLesson,
   nextQuizHref,
+  playbackPositionSec,
+  contentTabsEnabled,
 }: LessonPlayerMobileViewProps) {
   const [curriculumOpen, setCurriculumOpen] = useState(false)
 
@@ -203,9 +207,13 @@ export function LessonPlayerMobileView({
             </button>
 
             <LessonPlayerTabs
+              courseId={courseId}
+              lessonId={lessonId}
               courseDescription={courseDescription}
               activeModuleLabel={activeModuleLabel}
               activeLessonTitle={activeLessonTitle}
+              playbackPositionSec={playbackPositionSec}
+              contentEnabled={contentTabsEnabled}
             />
 
             {upNextTitle ? (

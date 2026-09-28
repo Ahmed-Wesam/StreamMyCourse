@@ -1,9 +1,9 @@
 /**
  * @vitest-environment jsdom
  */
-import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { CourseModule, CourseProgress, Lesson } from '../../lib/api/types'
 import {
@@ -15,6 +15,30 @@ import {
   resolvePrevModuleQuizHref,
 } from './lessonPlayerUi'
 import { LessonPlayerTabs } from './LessonPlayerTabs'
+
+const lessonFilesApi = vi.hoisted(() => ({
+  listLessonFiles: vi.fn(),
+  getLessonFileDownloadUrl: vi.fn(),
+}))
+
+const lessonNotesApi = vi.hoisted(() => ({
+  listLessonNotes: vi.fn(),
+  createLessonNote: vi.fn(),
+  updateLessonNote: vi.fn(),
+  deleteLessonNote: vi.fn(),
+}))
+
+vi.mock('../../lib/api/lessonFiles', () => ({
+  listLessonFiles: (...args: unknown[]) => lessonFilesApi.listLessonFiles(...args),
+  getLessonFileDownloadUrl: (...args: unknown[]) => lessonFilesApi.getLessonFileDownloadUrl(...args),
+}))
+
+vi.mock('../../lib/api/lessonNotes', () => ({
+  listLessonNotes: (...args: unknown[]) => lessonNotesApi.listLessonNotes(...args),
+  createLessonNote: (...args: unknown[]) => lessonNotesApi.createLessonNote(...args),
+  updateLessonNote: (...args: unknown[]) => lessonNotesApi.updateLessonNote(...args),
+  deleteLessonNote: (...args: unknown[]) => lessonNotesApi.deleteLessonNote(...args),
+}))
 
 const lessons: Lesson[] = [
   {
@@ -338,9 +362,18 @@ describe('LessonPlaybackNavigation', () => {
 })
 
 describe('LessonPlayerTabs', () => {
+  beforeEach(() => {
+    lessonFilesApi.listLessonFiles.mockReset()
+    lessonNotesApi.listLessonNotes.mockReset()
+    lessonFilesApi.listLessonFiles.mockResolvedValue([])
+    lessonNotesApi.listLessonNotes.mockResolvedValue([])
+  })
+
   it('lists five tabs and shows overview course description', () => {
     render(
       <LessonPlayerTabs
+        courseId="c1"
+        lessonId="l1"
         courseDescription="Course overview copy"
         activeModuleLabel="Module A"
         activeLessonTitle="Lesson One"
@@ -353,22 +386,85 @@ describe('LessonPlayerTabs', () => {
     expect(screen.getByRole('tabpanel').textContent).toMatch(/Course overview copy/)
   })
 
-  it('placeholder tabs have no anchors and do not call fetch on select', () => {
-    const fetchSpy = vi.spyOn(globalThis, 'fetch')
+  it('loads lesson files and notes when content is enabled', async () => {
     render(
       <LessonPlayerTabs
+        courseId="c1"
+        lessonId="l1"
         courseDescription=""
         activeModuleLabel="Module A"
         activeLessonTitle="Lesson One"
+        contentEnabled
       />,
     )
 
-    fireEvent.click(screen.getByRole('tab', { name: 'Notes' }))
-    const panel = screen.getByTestId('lesson-player-tab-panel')
-    expect(panel.textContent).toMatch(/not available yet/i)
-    expect(panel.querySelector('a')).toBeNull()
-    expect(fetchSpy).not.toHaveBeenCalled()
-    fetchSpy.mockRestore()
+    await waitFor(() => {
+      expect(lessonFilesApi.listLessonFiles).toHaveBeenCalledWith('c1', 'l1')
+      expect(lessonNotesApi.listLessonNotes).toHaveBeenCalledWith('c1', 'l1')
+    })
+  })
+
+  it('shows resource empty state and assignments placeholder', async () => {
+    render(
+      <LessonPlayerTabs
+        courseId="c1"
+        lessonId="l1"
+        courseDescription=""
+        activeModuleLabel="Module A"
+        activeLessonTitle="Lesson One"
+        contentEnabled
+      />,
+    )
+
+    await waitFor(() => {
+      expect(lessonFilesApi.listLessonFiles).toHaveBeenCalled()
+    })
+
+    fireEvent.click(screen.getByRole('tab', { name: 'Resources' }))
+    expect(screen.getByTestId('lesson-player-tab-panel').textContent).toMatch(/no resources/i)
+
+    fireEvent.click(screen.getByRole('tab', { name: 'Assignments' }))
+    expect(screen.getByTestId('lesson-player-tab-placeholder').textContent).toMatch(/not available yet/i)
+  })
+
+  it('opens PDF resources in a new tab via presigned url', async () => {
+    lessonFilesApi.listLessonFiles.mockResolvedValue([
+      {
+        fileId: 'f1',
+        title: 'Slides',
+        kind: 'resource',
+        fileType: 'pdf',
+        byteSize: 100,
+        status: 'ready',
+      },
+    ])
+    lessonFilesApi.getLessonFileDownloadUrl.mockResolvedValue({ url: 'https://cdn.example/slides.pdf' })
+    const openSpy = vi.spyOn(window, 'open').mockImplementation(() => null)
+
+    render(
+      <LessonPlayerTabs
+        courseId="c1"
+        lessonId="l1"
+        courseDescription=""
+        activeModuleLabel="Module A"
+        activeLessonTitle="Lesson One"
+        contentEnabled
+      />,
+    )
+
+    await waitFor(() => {
+      expect(screen.getByText('Slides')).toBeTruthy()
+    })
+
+    fireEvent.click(screen.getByRole('tab', { name: 'Resources' }))
+    fireEvent.click(screen.getByRole('button', { name: /Slides/i }))
+
+    await waitFor(() => {
+      expect(lessonFilesApi.getLessonFileDownloadUrl).toHaveBeenCalledWith('c1', 'l1', 'f1')
+      expect(openSpy).toHaveBeenCalledWith('https://cdn.example/slides.pdf', '_blank', 'noopener,noreferrer')
+    })
+
+    openSpy.mockRestore()
   })
 })
 

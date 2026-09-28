@@ -48,3 +48,24 @@ class PresignResult:
     uploadUrl: str
     videoKey: str
 
+
+@dataclass(frozen=True)
+class LessonFilePresignResult:
+    uploadUrl: str
+    objectKey: str
+
+
+@dataclass(frozen=True)
+class LessonFile:
+    id: str
+    courseId: str
+    lessonId: str
+    kind: str
+    title: str
+    objectKey: str
+    contentType: str
+    byteSize: int
+    status: str
+    fileType: str
+    createdAt: str = ""
+

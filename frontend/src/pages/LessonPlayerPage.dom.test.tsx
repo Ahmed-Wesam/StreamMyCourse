@@ -23,6 +23,24 @@ const api = vi.hoisted(() => ({
   updateLessonProgress: vi.fn(),
 }))
 
+const lessonFilesApi = vi.hoisted(() => ({
+  listLessonFiles: vi.fn(),
+  getLessonFileDownloadUrl: vi.fn(),
+}))
+
+const lessonNotesApi = vi.hoisted(() => ({
+  listLessonNotes: vi.fn(),
+}))
+
+vi.mock('../lib/api/lessonFiles', () => ({
+  listLessonFiles: (...args: unknown[]) => lessonFilesApi.listLessonFiles(...args),
+  getLessonFileDownloadUrl: (...args: unknown[]) => lessonFilesApi.getLessonFileDownloadUrl(...args),
+}))
+
+vi.mock('../lib/api/lessonNotes', () => ({
+  listLessonNotes: (...args: unknown[]) => lessonNotesApi.listLessonNotes(...args),
+}))
+
 vi.mock('../lib/api/catalog', async (importOriginal) => {
   const mod = (await importOriginal()) as typeof import('../lib/api/catalog')
   return {
@@ -133,6 +151,10 @@ describe('LessonPlayerPage', () => {
     api.createCheckoutSession.mockReset()
     api.getCourseProgress.mockReset()
     api.updateLessonProgress.mockReset()
+    lessonFilesApi.listLessonFiles.mockReset()
+    lessonNotesApi.listLessonNotes.mockReset()
+    lessonFilesApi.listLessonFiles.mockResolvedValue([])
+    lessonNotesApi.listLessonNotes.mockResolvedValue([])
 
     api.getCourse.mockResolvedValue({
       id: 'c1',
@@ -1334,24 +1356,29 @@ describe('LessonPlayerPage', () => {
     expect(screen.getByRole('tabpanel').textContent).toMatch(/Desc/)
   })
 
-  it('Resources tab shows a placeholder without fetch or links', async () => {
-    const fetchSpy = vi.spyOn(globalThis, 'fetch')
+  it('Resources tab lists lesson files and Assignments stays placeholder', async () => {
+    lessonFilesApi.listLessonFiles.mockResolvedValue([
+      {
+        fileId: 'f1',
+        title: 'Workbook',
+        kind: 'resource',
+        fileType: 'pdf',
+        byteSize: 2048,
+        status: 'ready',
+      },
+    ])
 
     renderLessonPlayer()
 
     await waitFor(() => {
-      expect(screen.getByRole('tab', { name: 'Resources' })).toBeTruthy()
+      expect(lessonFilesApi.listLessonFiles).toHaveBeenCalledWith('c1', 'l1')
     })
 
-    const callsBefore = fetchSpy.mock.calls.length
     fireEvent.click(screen.getByRole('tab', { name: 'Resources' }))
+    expect(screen.getByText('Workbook')).toBeTruthy()
 
+    fireEvent.click(screen.getByRole('tab', { name: 'Assignments' }))
     expect(screen.getByTestId('lesson-player-tab-placeholder').textContent).toMatch(/not available yet/i)
-    const panel = screen.getByTestId('lesson-player-tab-panel')
-    expect(panel.querySelector('a')).toBeNull()
-    expect(fetchSpy.mock.calls.length).toBe(callsBefore)
-
-    fetchSpy.mockRestore()
   })
 
   it('renders mobile layout with a curriculum bottom sheet', async () => {

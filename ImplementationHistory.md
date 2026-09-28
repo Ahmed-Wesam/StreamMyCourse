@@ -6,6 +6,32 @@
 
 ---
 
+## 2026-09-28 — RS-11 lesson files and student notes
+
+### Decisions
+
+- **Two tabs, one pipeline:** `kind` **resource** (open, PDF inline) vs **download** (attachment); not URL links.
+- **Types and limits:** pdf, csv, xlsx, docx, sav; **100 MiB**; **20** files per lesson; presigned PUT signs content length.
+- **Notes:** Author-only CRUD; **50** notes per user per lesson; plain text with tag-like markup rejected.
+
+### What landed
+
+- **Migration 019:** `lesson_files`, `lesson_notes`.
+- **Backend:** `LessonFileStorage`, file routes on course management controller; `services/lesson_notes/`; bootstrap wiring; API Gateway **CatalogApiDeploymentV41**.
+- **Frontend:** Player Resources/Downloads/Notes tabs; instructor lesson file attach on course management.
+
+### Verification
+
+- [x] Pytest (migration, lesson files, lesson notes, api-stack RS-11); boundary check
+- [x] Vitest (lesson player + course management lessons panel)
+- [ ] Prod RDS **019** + api stack deploy
+
+### Docs
+
+- [`design.md`](design.md) RS-11 API + S3 bullets; [`roadmap.md`](roadmap.md); child plan [`plans/ui-overhaul/rs-11-lesson-files-notes.md`](plans/ui-overhaul/rs-11-lesson-files-notes.md)
+
+---
+
 ## 2026-09-28 — RS-10 contact form + transactional email
 
 ### Decisions

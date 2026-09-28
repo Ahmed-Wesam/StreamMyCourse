@@ -177,6 +177,7 @@ class TestBuildAwsDeps:
         assert deps.merchant_service is not None
         assert deps.purchase_manage_service is not None
         assert deps.rate_limit_service is not None
+        assert deps.lesson_notes_service is not None
 
 
 class TestWarmAwsDepsIfNeeded:
