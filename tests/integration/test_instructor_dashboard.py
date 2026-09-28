@@ -7,7 +7,10 @@ Tests the instructor's "My Courses" endpoint which returns all courses
 from __future__ import annotations
 
 from helpers.api import ApiClient
-from helpers.factories import make_test_title
+import os
+
+from helpers.cleanup import delete_prefixed_teacher_courses_via_http
+from helpers.factories import TEST_TITLE_PREFIX, make_test_title
 
 
 def test_mine_lists_only_own_courses(api: ApiClient, alt_api: ApiClient, course_factory) -> None:
@@ -84,8 +87,17 @@ def test_mine_includes_draft_and_published(api: ApiClient, lesson_factory) -> No
     assert courses_by_id[str(published_id)]["status"] == "PUBLISHED", "Published course should have status PUBLISHED"
 
 
-def test_mine_returns_empty_for_new_teacher(alt_api: ApiClient) -> None:
+def test_mine_returns_empty_for_new_teacher(alt_api: ApiClient, api_base_url: str) -> None:
     """New teacher with no courses gets an empty list from /courses/mine."""
+    token = os.environ.get("INTEGRATION_COGNITO_JWT_ALT", "").strip()
+    if token:
+        for prefix in (TEST_TITLE_PREFIX, "[TEST]"):
+            delete_prefixed_teacher_courses_via_http(
+                api_base_url=api_base_url,
+                auth_token=token,
+                title_prefix=prefix,
+            )
+
     # Teacher B (new teacher) fetches /courses/mine
     resp = alt_api.list_my_courses()
     assert resp.status_code == 200, f"Expected 200, got {resp.status_code}: {resp.text}"
