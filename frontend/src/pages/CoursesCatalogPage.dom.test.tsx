@@ -78,6 +78,28 @@ describe('CoursesCatalogPage', () => {
     expect(listCourses).not.toHaveBeenCalled()
   })
 
+  it('shows catalog card meta (level, hours, key skills) when present', async () => {
+    listPublishedCourses.mockResolvedValue([
+      course({
+        id: 'stats-spss',
+        title: 'Statistics & SPSS',
+        description: 'Hands-on SPSS training.',
+        level: 'Intermediate',
+        estimatedHours: 18,
+        catalogSkills: ['Regression modeling', 'Hypothesis testing'],
+      }),
+    ])
+
+    renderCatalog()
+
+    expect(await screen.findByText('Statistics & SPSS')).toBeTruthy()
+    expect(screen.getByText('Intermediate')).toBeTruthy()
+    expect(screen.getByText('~18 Hours')).toBeTruthy()
+    expect(screen.getByText('Key skills')).toBeTruthy()
+    expect(screen.getByText('Regression modeling')).toBeTruthy()
+    expect(screen.getByText('Hypothesis testing')).toBeTruthy()
+  })
+
   it('renders one course with View Course and View Curriculum links', async () => {
     listPublishedCourses.mockResolvedValue([
       course({

@@ -22,7 +22,10 @@ import type { Course, CourseModule, Lesson, ModuleQuizRow, QuestionBankSummary }
 import { createAndUploadDraftLesson } from '../lib/courseManagementLessonUpload'
 import { catalogApiUserMessage } from '../lib/apiUserMessages'
 import { CourseManagementModuleQuizPanel } from '../components/course/CourseManagementModuleQuizPanel'
+import { CoursePageContentEditor } from '../components/course/CoursePageContentEditor'
 import { CourseThumbnailEditor } from '../components/course/CourseThumbnailEditor'
+import type { CoursePageDocument } from '../lib/course-page'
+import { coursePageFromCourse } from './course-detail/coursePageFromCourse'
 import { CourseManagementAddLessonModal } from '../components/course/CourseManagementAddLessonModal'
 import { CourseManagementLessonsPanel } from '../components/course/CourseManagementLessonsPanel'
 import { CourseManagementModulesPanel } from '../components/course/CourseManagementModulesPanel'
@@ -50,6 +53,8 @@ export default function CourseManagement() {
   const [questionBankSummaries, setQuestionBankSummaries] = useState<QuestionBankSummary[]>([])
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
+  const [savingPageContent, setSavingPageContent] = useState(false)
+  const [editPage, setEditPage] = useState<CoursePageDocument>({})
   const [error, setError] = useState<string | null>(null)
   const [notFound, setNotFound] = useState(false)
   const [info, setInfo] = useState<string | null>(null)
@@ -98,6 +103,7 @@ export default function CourseManagement() {
         setQuestionBankSummaries([])
         setEditTitle('')
         setEditDescription('')
+        setEditPage({})
         setEditPriceUsd('')
         setSelectedModuleId('')
         setNotFound(true)
@@ -110,6 +116,7 @@ export default function CourseManagement() {
         setQuestionBankSummaries(questionBanksData)
         setEditTitle(courseData.title)
         setEditDescription(courseData.description)
+        setEditPage(coursePageFromCourse(courseData))
         setEditPriceUsd(
           typeof courseData.amountMinor === 'number' && courseData.amountMinor > 0
             ? usdMinorToInputValue(courseData.amountMinor)
@@ -131,6 +138,7 @@ export default function CourseManagement() {
       setQuestionBankSummaries([])
       setEditTitle('')
       setEditDescription('')
+      setEditPage({})
       setEditPriceUsd('')
       setSelectedModuleId('')
       const is404 = err instanceof ApiError && err.status === 404
@@ -164,6 +172,26 @@ export default function CourseManagement() {
       setError(catalogApiUserMessage(err, 'updateCourse'))
     } finally {
       setSaving(false)
+    }
+  }
+
+  const handleSavePageContent = async () => {
+    if (!courseId) return
+
+    setSavingPageContent(true)
+    setError(null)
+
+    try {
+      await updateCourse(courseId, {
+        title: editTitle,
+        description: editDescription,
+        page: editPage,
+      })
+      await loadCourseData()
+    } catch (err) {
+      setError(catalogApiUserMessage(err, 'updateCourse'))
+    } finally {
+      setSavingPageContent(false)
     }
   }
 
@@ -467,6 +495,13 @@ export default function CourseManagement() {
           )}
         </div>
       </Card>
+
+      <CoursePageContentEditor
+        page={editPage}
+        onPageChange={setEditPage}
+        onSave={() => void handleSavePageContent()}
+        saving={savingPageContent}
+      />
 
       <CourseThumbnailEditor
         course={course}

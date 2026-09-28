@@ -1,5 +1,6 @@
 import { BookOpen, Star } from 'lucide-react'
 
+import { CatalogCourseCardMeta } from '../../components/course/CatalogCourseCardMeta'
 import { Button } from '../../components/ui/Button'
 import { Card } from '../../components/ui/Card'
 import { Reveal } from '../../components/ui/Reveal'
@@ -81,6 +82,7 @@ export function HomeCoursesSection({ catalog, onRetry, bundleOffer, ownership }:
                       {typeof course.amountMinor === 'number' && course.amountMinor > 0 ? (
                         <p className="mb-2 text-sm font-bold text-rs-blue">{formatUsdMinor(course.amountMinor)}</p>
                       ) : null}
+                      <CatalogCourseCardMeta course={course} className="mb-2" />
                       {course.description ? (
                         <p className="mb-3 text-[13.5px] leading-snug text-rs-body">
                           {course.description}

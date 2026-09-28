@@ -6,6 +6,33 @@
 
 ---
 
+## 2026-09-28 — Research Spectrum rich course pages (RS-7)
+
+### Decisions
+
+- **One shared marketing schema** per course (`page_content` JSONB); plain text with tag-shaped markup rejected on write.
+- **Estimated hours** are instructor-entered; lesson durations are not summed for catalog pills.
+- **No per-course FAQ**; pathway strip is computed from published catalog + Research Team route.
+
+### What landed
+
+- **Schema:** migration **017** — `courses.page_content`
+- **Catalog:** validation, list vs detail DTO mapping, optional `page` on `PUT /courses/{id}`
+- **Student:** detail sections, pathway, enroll CTA; catalog/home/about card meta
+- **Instructor:** `CoursePageContentEditor` on course management
+
+### Verification
+
+- [x] `python -m pytest tests/unit/services/course_management -q` — **370** passed; `python scripts/check_lambda_boundaries.py`
+- [x] `frontend/` Vitest **708**; `npm run build:all` + `npm run check:bundle` OK (student `firstLoadWithAuth` 179.71 KB)
+- [ ] Prod RDS migration **017** + deploy before Bahaa’s page content persists in prod
+
+### Docs
+
+- [`design.md`](design.md) §7 course list/detail; child plan [`plans/ui-overhaul/rs-7-rich-course-pages.md`](plans/ui-overhaul/rs-7-rich-course-pages.md); mega-plan RS-7 status
+
+---
+
 ## 2026-09-27 — Research Spectrum email/password auth (RS-6 verify-and-docs)
 
 ### Decisions

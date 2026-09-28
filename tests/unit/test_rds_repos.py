@@ -162,6 +162,7 @@ class TestCourseCatalogRdsRepository:
                 now,
                 now,
                 None,
+                {},
             )
         )
         return cid
@@ -181,7 +182,7 @@ class TestCourseCatalogRdsRepository:
         cid = uuid.UUID("11111111-2222-3333-4444-555555555555")
         now = datetime(2026, 5, 3, 12, 0, 0, tzinfo=timezone.utc)
         fake_conn.cursor_obj.bulk_rows_to_return = [
-            (cid, "T", "D", "PUBLISHED", "owner", "thumbs/x.png", now, now, None),
+            (cid, "T", "D", "PUBLISHED", "owner", "thumbs/x.png", now, now, None, {}),
         ]
         courses = repo.list_courses()
         assert len(courses) == 1
@@ -241,7 +242,7 @@ class TestCourseCatalogRdsRepository:
         now = datetime(2026, 5, 3, 12, 0, 0, tzinfo=timezone.utc)
         # INSERT courses RETURNING … then INSERT default course_modules.
         fake_conn.cursor_obj.rows_to_return.append(
-            (new_id, "My Course", "Body", "DRAFT", "creator", "", now, now, None)
+            (new_id, "My Course", "Body", "DRAFT", "creator", "", now, now, None, {})
         )
         course = repo.create_course(
             title="My Course", description="Body", created_by="creator"
@@ -271,6 +272,25 @@ class TestCourseCatalogRdsRepository:
         assert "new desc" in params
         assert "course-id" in params
         assert fake_conn.committed >= 1
+
+    def test_update_course_with_page_content_binds_json(
+        self, repo, fake_conn: FakeConn
+    ) -> None:
+        page = {"level": "Beginner", "estimatedHours": 10}
+        repo.update_course("course-id", "t", "d", page_content=page)
+        sql, params = fake_conn.cursor_obj.executions[-1]
+        assert "page_content" in sql.lower()
+        json_param = params[2]
+        if hasattr(json_param, "adapted"):
+            assert json_param.adapted == page
+        else:
+            assert json_param == page
+
+    def test_row_to_course_invalid_page_jsonb_becomes_empty_dict(self, repo) -> None:
+        from services.course_management.rds_repo import _jsonb_to_page_content
+
+        assert _jsonb_to_page_content("{not json") == {}
+        assert _jsonb_to_page_content([]) == {}
 
     def test_set_course_status_parameterized(
         self, repo, fake_conn: FakeConn
@@ -530,7 +550,7 @@ class TestCourseCatalogRdsRepository:
         new_id = uuid.UUID("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee")
         now = datetime(2026, 5, 3, 12, 0, 0, tzinfo=timezone.utc)
         fake_conn.cursor_obj.rows_to_return.append(
-            (new_id, "T", "D", "DRAFT", "creator", "", now, now, None)
+            (new_id, "T", "D", "DRAFT", "creator", "", now, now, None, {})
         )
         repo.create_course(title="T", description="D", created_by="creator")
         # Autocommit was flipped False then back to True (full toggle).
@@ -572,7 +592,7 @@ class TestCourseCatalogRdsRepository:
         cid = uuid.UUID("11111111-2222-3333-4444-555555555555")
         now = datetime(2026, 5, 3, 12, 0, 0, tzinfo=timezone.utc)
         good.cursor_obj.bulk_rows_to_return = [
-            (cid, "Title", "Desc", "DRAFT", "teacher", "", now, now, None),
+            (cid, "Title", "Desc", "DRAFT", "teacher", "", now, now, None, {}),
         ]
         attempt = {"n": 0}
 

@@ -68,4 +68,25 @@ describe('AboutInstructorPage', () => {
 
     expect(container.textContent ?? '').not.toMatch(/\$/)
   })
+
+  it('shows duration and level on about course cards without key skills', async () => {
+    listPublishedCourses.mockResolvedValue([
+      course({
+        id: 'writing',
+        title: 'Scientific Writing',
+        description: 'Publish with confidence.',
+        level: 'Advanced',
+        estimatedHours: 8,
+        catalogSkills: ['Manuscripts'],
+      }),
+    ])
+
+    renderAbout()
+
+    expect(await screen.findByText('Scientific Writing')).toBeTruthy()
+    expect(screen.getByText('Advanced')).toBeTruthy()
+    expect(screen.getByText('~8 Hours')).toBeTruthy()
+    expect(screen.queryByText('Key skills')).toBeNull()
+    expect(screen.queryByText('Manuscripts')).toBeNull()
+  })
 })

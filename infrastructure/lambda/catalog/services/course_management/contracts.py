@@ -2,6 +2,19 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Literal, NotRequired, TypedDict
 
+from services.course_management.course_page_validation import section_has_text
+
+_DETAIL_SECTION_KEYS = (
+    "problem",
+    "outcomes",
+    "inside",
+    "handsOn",
+    "highlights",
+    "audience",
+    "assessment",
+    "enrollCta",
+)
+
 
 class CourseDto(TypedDict):
     id: str
@@ -14,6 +27,19 @@ class CourseDto(TypedDict):
     hasAccess: NotRequired[bool]
     enrolled: NotRequired[bool]
     priceAmountMinor: NotRequired[int]
+    subtitle: NotRequired[str]
+    level: NotRequired[str]
+    estimatedHours: NotRequired[int]
+    catalogSkills: NotRequired[List[str]]
+    curriculumLead: NotRequired[str]
+    problem: NotRequired[Dict[str, Any]]
+    outcomes: NotRequired[Dict[str, Any]]
+    inside: NotRequired[Dict[str, Any]]
+    handsOn: NotRequired[Dict[str, Any]]
+    highlights: NotRequired[Dict[str, Any]]
+    audience: NotRequired[Dict[str, Any]]
+    assessment: NotRequired[Dict[str, Any]]
+    enrollCta: NotRequired[Dict[str, Any]]
 
 
 class LessonDto(TypedDict):
@@ -122,7 +148,36 @@ class MarkThumbnailReadyResponse(TypedDict):
     thumbnailReady: bool
 
 
-def as_course_dto(obj: Dict[str, Any]) -> CourseDto:
+def _page_from_obj(obj: Dict[str, Any]) -> dict[str, Any]:
+    raw = obj.get("pageContent")
+    if isinstance(raw, dict):
+        return raw
+    return {}
+
+
+def _merge_page_card_fields(dto: CourseDto, page: dict[str, Any]) -> None:
+    if page.get("subtitle"):
+        dto["subtitle"] = str(page["subtitle"])
+    if page.get("level"):
+        dto["level"] = str(page["level"])
+    if page.get("estimatedHours") is not None:
+        dto["estimatedHours"] = int(page["estimatedHours"])
+    skills = page.get("catalogSkills")
+    if isinstance(skills, list) and skills:
+        dto["catalogSkills"] = [str(s) for s in skills]
+    if page.get("curriculumLead"):
+        dto["curriculumLead"] = str(page["curriculumLead"])
+
+
+def _merge_page_detail_sections(dto: CourseDto, page: dict[str, Any]) -> None:
+    for key in _DETAIL_SECTION_KEYS:
+        if section_has_text(key, page):
+            section = page.get(key)
+            if isinstance(section, dict):
+                dto[key] = section  # type: ignore[literal-required]
+
+
+def as_course_dto(obj: Dict[str, Any], *, detail: bool = False) -> CourseDto:
     status = obj.get("status", "DRAFT")
     if status not in ("DRAFT", "PUBLISHED"):
         status = "DRAFT"
@@ -144,6 +199,10 @@ def as_course_dto(obj: Dict[str, Any]) -> CourseDto:
         dto["enrolled"] = bool(obj.get("enrolled"))
     if obj.get("priceAmountMinor") is not None:
         dto["priceAmountMinor"] = int(obj.get("priceAmountMinor"))
+    page = _page_from_obj(obj)
+    _merge_page_card_fields(dto, page)
+    if detail:
+        _merge_page_detail_sections(dto, page)
     return dto
 
 
@@ -174,7 +233,7 @@ def as_lesson_dto(obj: Dict[str, Any]) -> LessonDto:
 
 
 def as_course_list(items: List[Dict[str, Any]]) -> List[CourseDto]:
-    return [as_course_dto(x) for x in items]
+    return [as_course_dto(x, detail=False) for x in items]
 
 
 def as_lesson_list(items: List[Dict[str, Any]]) -> List[LessonDto]:

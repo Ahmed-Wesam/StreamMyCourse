@@ -3,10 +3,12 @@ import { Badge } from '../../components/ui/Badge'
 import { Reveal } from '../../components/ui/Reveal'
 import { isHttpsUrl } from '../../lib/isHttpsUrl'
 import { formatUsdMinor } from '../../lib/formatUsdMinor'
+import { sectionHasText } from '../../lib/course-page'
 import { courseDetailLifetimePill } from '../../lib/marketing/courseDetailShellCopy'
 import type { Course } from '../../lib/api/types'
 import { CourseDetailBreadcrumb } from './CourseDetailBreadcrumb'
 import { courseDetailHeroTitle } from './courseDetailHeroTitle'
+import { coursePageFromCourse } from './coursePageFromCourse'
 
 type CourseDetailHeroSectionProps = {
   loading: boolean
@@ -26,6 +28,13 @@ export function CourseDetailHeroSection({
   const heroTitle = courseDetailHeroTitle(loading, course, error)
   const breadcrumbTitle = loading ? '' : course?.title ?? ''
   const heroThumbnail = course?.thumbnailUrl && isHttpsUrl(course.thumbnailUrl) ? course.thumbnailUrl : null
+  const page = course ? coursePageFromCourse(course) : null
+  const heroSubtitle =
+    !loading && course
+      ? sectionHasText('subtitle', page ?? {})
+        ? course.subtitle?.trim()
+        : course.description
+      : ''
 
   return (
     <section aria-label="Course hero" className="relative overflow-hidden bg-gradient-to-b from-rs-sky-2 to-white px-5 pb-12 pt-8 sm:px-7 sm:pb-16 sm:pt-10">
@@ -44,13 +53,24 @@ export function CourseDetailHeroSection({
             </Reveal>
             <Reveal>
               <p className="mt-4 max-w-[560px] text-[17.5px] leading-relaxed text-rs-body">
-                {loading ? '' : course?.description ?? ''}
+                {heroSubtitle}
               </p>
             </Reveal>
             {!loading && course ? (
               <Reveal>
                 <div className="mt-6 flex flex-wrap items-center gap-2.5">
                   <Badge tone="blue">{courseDetailLifetimePill}</Badge>
+                  {sectionHasText('level', page ?? {}) && course.level?.trim() ? (
+                    <span className="inline-flex items-center rounded-full border border-rs-line bg-white px-3.5 py-1.5 text-xs font-bold text-rs-navy">
+                      {course.level.trim()}
+                    </span>
+                  ) : null}
+                  {sectionHasText('estimatedHours', page ?? {}) && typeof course.estimatedHours === 'number' ? (
+                    <span className="inline-flex items-center gap-2 rounded-full border border-rs-line bg-white px-3.5 py-1.5 text-xs font-bold text-rs-navy">
+                      <Clock className="h-3.5 w-3.5 text-rs-blue" aria-hidden />
+                      ~{course.estimatedHours} Hours
+                    </span>
+                  ) : null}
                   {typeof course.amountMinor === 'number' && course.amountMinor > 0 ? (
                     <span className="inline-flex items-center rounded-full border border-rs-line bg-white px-3.5 py-1.5 text-xs font-bold text-rs-blue">
                       {formatUsdMinor(course.amountMinor)}

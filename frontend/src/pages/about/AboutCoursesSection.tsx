@@ -1,5 +1,6 @@
 import { BookOpen } from 'lucide-react'
 
+import { CatalogCourseCardMeta } from '../../components/course/CatalogCourseCardMeta'
 import { Button } from '../../components/ui/Button'
 import { Card } from '../../components/ui/Card'
 import { Reveal } from '../../components/ui/Reveal'
@@ -61,6 +62,7 @@ export function AboutCoursesSection({ catalog, onRetry }: AboutCoursesSectionPro
                   <h3 className="text-lg font-extrabold tracking-tight text-rs-ink">
                     {course.title}
                   </h3>
+                  <CatalogCourseCardMeta course={course} />
                   {course.description ? (
                     <p className="flex-1 text-sm leading-relaxed text-rs-body">
                       {course.description}

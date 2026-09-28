@@ -21,6 +21,65 @@ describe('listPublishedCourses', () => {
     vi.clearAllMocks()
   })
 
+  it('maps level, estimatedHours, catalogSkills and ignores detail section objects', async () => {
+    vi.mocked(fetch).mockResolvedValue(
+      new Response(
+        JSON.stringify([
+          {
+            id: 'rich',
+            title: 'Rich Course',
+            description: 'Overview',
+            status: 'PUBLISHED',
+            level: ' Intermediate ',
+            estimatedHours: 12,
+            catalogSkills: [' SPSS ', '', 'Writing'],
+            problem: { heading: 'Problem', body: 'Ignored' },
+          },
+        ]),
+        { status: 200, headers: { 'Content-Type': 'application/json' } },
+      ),
+    )
+
+    const courses = await listPublishedCourses()
+
+    expect(courses[0]).toEqual({
+      id: 'rich',
+      title: 'Rich Course',
+      description: 'Overview',
+      level: 'Intermediate',
+      estimatedHours: 12,
+      catalogSkills: ['SPSS', 'Writing'],
+    })
+    expect(courses[0]).not.toHaveProperty('problem')
+  })
+
+  it('drops invalid estimatedHours and empty catalogSkills', async () => {
+    vi.mocked(fetch).mockResolvedValue(
+      new Response(
+        JSON.stringify([
+          {
+            id: 'sparse',
+            title: 'Sparse',
+            description: 'x',
+            status: 'PUBLISHED',
+            estimatedHours: 0,
+            catalogSkills: ['  ', ''],
+            level: '   ',
+          },
+        ]),
+        { status: 200, headers: { 'Content-Type': 'application/json' } },
+      ),
+    )
+
+    const courses = await listPublishedCourses()
+
+    expect(courses[0]).toEqual({
+      id: 'sparse',
+      title: 'Sparse',
+      description: 'x',
+    })
+  })
+
   it('maps amountMinor and hasAccess when present', async () => {
     vi.mocked(fetch).mockResolvedValue(
       new Response(

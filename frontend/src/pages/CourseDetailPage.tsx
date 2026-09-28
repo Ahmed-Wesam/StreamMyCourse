@@ -131,7 +131,14 @@ export default function CourseDetailPage() {
         moduleCount={modules.length}
         error={error}
       />
-      {showShellSections ? <CourseDetailShellSections /> : null}
+      {showShellSections ? (
+        <CourseDetailShellSections
+          course={course}
+          courseId={courseId}
+          previewOnly={previewOnly}
+          needsAccess={needsAccess}
+        />
+      ) : null}
       <CourseDetailCurriculumSection
         courseId={courseId}
         error={error}
@@ -141,6 +148,8 @@ export default function CourseDetailPage() {
         courseProgress={courseProgress}
         previewOnly={previewOnly}
         needsAccess={needsAccess}
+        curriculumLead={course?.curriculumLead}
+        estimatedHours={course?.estimatedHours}
         onToggleLessonComplete={onToggleLessonComplete}
         markingLessonId={markingLessonId}
         sidebar={

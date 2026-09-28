@@ -18,6 +18,7 @@ formatted into the SQL string (SQL-injection safe).
 
 from __future__ import annotations
 
+import json
 import logging
 from contextlib import contextmanager
 from datetime import datetime
@@ -25,8 +26,10 @@ from typing import Any, Callable, Dict, Iterator, List, Optional, Tuple
 
 try:  # pragma: no cover - optional dependency path
     import psycopg2
+    from psycopg2.extras import Json as PgJson
 except Exception:  # pragma: no cover - surface at first DB call instead
     psycopg2 = None  # type: ignore[assignment]
+    PgJson = None  # type: ignore[assignment]
 
 from services.common.errors import Conflict
 from services.course_management.models import Course, CourseModule, Lesson
@@ -68,13 +71,34 @@ def _to_iso(value: Any) -> str:
     return str(value)
 
 
+def _pg_json(value: Any) -> Any:
+    if PgJson is not None:
+        return PgJson(value)
+    return json.dumps(value)
+
+
+def _jsonb_to_page_content(value: Any) -> dict[str, Any]:
+    if value is None:
+        return {}
+    if isinstance(value, dict):
+        return dict(value)
+    if isinstance(value, str):
+        try:
+            parsed = json.loads(value)
+            if isinstance(parsed, dict):
+                return parsed
+        except json.JSONDecodeError:
+            return {}
+    return {}
+
+
 def _row_to_course(row: Tuple[Any, ...]) -> Course:
     """Map a ``courses`` row tuple to the camelCase domain type.
 
     Column order must match the SELECT used by all query sites in this module::
 
         id, title, description, status, created_by, thumbnail_key, created_at, updated_at,
-        price_amount_minor
+        price_amount_minor, page_content
     """
     (
         cid,
@@ -86,6 +110,7 @@ def _row_to_course(row: Tuple[Any, ...]) -> Course:
         created_at,
         updated_at,
         price_amount_minor,
+        page_content,
     ) = row
     price_minor: int | None
     if price_amount_minor is None:
@@ -102,6 +127,7 @@ def _row_to_course(row: Tuple[Any, ...]) -> Course:
         thumbnailKey=str(thumbnail_key or ""),
         createdBy=str(created_by or ""),
         priceAmountMinor=price_minor,
+        pageContent=_jsonb_to_page_content(page_content),
     )
 
 
@@ -151,7 +177,7 @@ def _row_to_lesson(row: Tuple[Any, ...]) -> Lesson:
 
 _COURSE_COLUMNS = (
     "id, title, description, status, created_by, thumbnail_key, created_at, updated_at, "
-    "price_amount_minor"
+    "price_amount_minor, page_content"
 )
 _MODULE_COLUMNS = "id, course_id, title, description, module_order, created_at, updated_at"
 _LESSON_SELECT = (
@@ -284,10 +310,28 @@ class CourseCatalogRdsRepository:
             )
         return course
 
-    def update_course(self, course_id: str, title: str, description: str) -> None:
+    def update_course(
+        self,
+        course_id: str,
+        title: str,
+        description: str,
+        *,
+        page_content: dict[str, Any] | None = None,
+    ) -> None:
+        if page_content is None:
+            self._execute(
+                "UPDATE courses SET title = %s, description = %s, updated_at = NOW() WHERE id = %s",
+                (title, description, course_id),
+                commit=True,
+            )
+            return
         self._execute(
-            "UPDATE courses SET title = %s, description = %s, updated_at = NOW() WHERE id = %s",
-            (title, description, course_id),
+            """
+            UPDATE courses
+            SET title = %s, description = %s, page_content = %s, updated_at = NOW()
+            WHERE id = %s
+            """,
+            (title, description, _pg_json(page_content), course_id),
             commit=True,
         )
 

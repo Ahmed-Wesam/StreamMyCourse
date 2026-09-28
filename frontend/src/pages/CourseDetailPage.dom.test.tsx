@@ -1,15 +1,15 @@
 /**
  * @vitest-environment jsdom
  */
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { createMemoryRouter, MemoryRouter, Route, RouterProvider, Routes } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { ApiError } from '../lib/api/client'
+import { DEFAULT_SECTION_HEADINGS } from '../lib/course-page'
 import {
   courseDetailLifetimePill,
   courseDetailNoAccessPrompt,
-  courseDetailShellSections,
   courseDetailSignInPrompt,
 } from '../lib/marketing/courseDetailShellCopy'
 import CourseDetailPage from './CourseDetailPage'
@@ -22,6 +22,17 @@ const api = vi.hoisted(() => ({
   hasSignedInIdToken: vi.fn(),
   updateLessonProgress: vi.fn(),
 }))
+
+const listPublishedCourses = vi.hoisted(() => vi.fn())
+
+vi.mock('../lib/api/public-catalog', async (importOriginal) => {
+  const mod = (await importOriginal()) as typeof import('../lib/api/public-catalog')
+  return {
+    ...mod,
+    listPublishedCourses: (...args: unknown[]) =>
+      listPublishedCourses(...args) as ReturnType<typeof mod.listPublishedCourses>,
+  }
+})
 
 vi.mock('../lib/api/catalog', async (importOriginal) => {
   const mod = (await importOriginal()) as typeof import('../lib/api/catalog')
@@ -65,6 +76,7 @@ describe('CourseDetailPage', () => {
     api.getCourseProgress.mockReset()
     api.hasSignedInIdToken.mockReset()
     api.updateLessonProgress.mockReset()
+    listPublishedCourses.mockReset()
 
     api.getCourse.mockResolvedValue({
       id: 'c1',
@@ -112,6 +124,10 @@ describe('CourseDetailPage', () => {
       ok: true,
       lessonProgress: { lessonId: 'l1', completed: true, lastPositionSec: 0 },
     })
+    listPublishedCourses.mockResolvedValue([
+      { id: 'c1', title: 'Test Course', description: 'Test Description' },
+      { id: 'c2', title: 'Course Two', description: 'Two' },
+    ])
   })
 
   afterEach(() => {
@@ -399,17 +415,142 @@ describe('CourseDetailPage', () => {
     expect(breadcrumb.textContent).toContain('Test Course')
   })
 
-  it('renders RS-7 placeholder sections with generic copy', async () => {
+  it('does not render placeholder or FAQ shell headings', async () => {
     renderCourseDetail()
 
     await waitFor(() => {
       expect(screen.getByRole('heading', { level: 1, name: 'Test Course' })).toBeTruthy()
     })
 
-    for (const section of courseDetailShellSections) {
-      expect(screen.getByRole('heading', { level: 2, name: section.title })).toBeTruthy()
-      expect(screen.getByText(section.lead)).toBeTruthy()
-    }
+    expect(screen.queryByRole('heading', { level: 2, name: 'Common questions' })).toBeNull()
+    expect(
+      screen.queryByText('Learning outcomes for this course will be listed here.'),
+    ).toBeNull()
+    expect(screen.queryByText('Audience details for this course will appear here.')).toBeNull()
+  })
+
+  it('renders filled problem and outcomes sections and omits empty audience', async () => {
+    api.getCourse.mockResolvedValue({
+      id: 'c1',
+      title: 'Test Course',
+      description: 'Test Description',
+      status: 'PUBLISHED',
+      enrolled: true,
+      problem: {
+        items: ['Choosing the wrong statistical test wastes months of work.'],
+        calloutTitle: 'The fix',
+        calloutBody: 'Follow a decision framework.',
+      },
+      outcomes: {
+        lead: 'Run independent analyses in SPSS.',
+        items: ['Interpret p-values correctly'],
+      },
+      audience: { heading: '   ', items: [] },
+    })
+
+    renderCourseDetail()
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole('heading', {
+          level: 2,
+          name: DEFAULT_SECTION_HEADINGS.problem,
+        }),
+      ).toBeTruthy()
+    })
+    expect(screen.getByText('Choosing the wrong statistical test wastes months of work.')).toBeTruthy()
+    expect(screen.getByText('The fix')).toBeTruthy()
+    expect(screen.getByText('Run independent analyses in SPSS.')).toBeTruthy()
+    expect(screen.getByText('Interpret p-values correctly')).toBeTruthy()
+    expect(
+      screen.queryByRole('heading', { level: 2, name: DEFAULT_SECTION_HEADINGS.audience }),
+    ).toBeNull()
+  })
+
+  it('renders hero subtitle, level, and estimated hours pills', async () => {
+    api.getCourse.mockResolvedValue({
+      id: 'c1',
+      title: 'Test Course',
+      description: 'Fallback description',
+      status: 'PUBLISHED',
+      enrolled: true,
+      subtitle: 'Master SPSS from scratch',
+      level: 'Intermediate',
+      estimatedHours: 12,
+    })
+
+    renderCourseDetail()
+
+    await waitFor(() => {
+      expect(screen.getByText('Master SPSS from scratch')).toBeTruthy()
+    })
+    const hero = screen.getByLabelText('Course hero')
+    expect(within(hero).getByText('Intermediate')).toBeTruthy()
+    expect(within(hero).getByText('~12 Hours')).toBeTruthy()
+    expect(within(hero).queryByText('Fallback description')).toBeNull()
+  })
+
+  it('renders pathway from published catalog with Research Team finale', async () => {
+    listPublishedCourses.mockResolvedValue([
+      { id: 'c-alpha', title: 'Alpha Course', description: 'a' },
+      { id: 'c1', title: 'Test Course', description: 'Test Description' },
+      { id: 'c-beta', title: 'Beta Course', description: 'b' },
+    ])
+
+    renderCourseDetail()
+
+    await waitFor(() => {
+      expect(screen.getByRole('link', { name: /Alpha Course/i })).toBeTruthy()
+    })
+    expect(screen.getByRole('link', { name: /Beta Course/i }).getAttribute('href')).toBe('/courses/c-beta')
+    expect(screen.getByRole('link', { name: /Research Team/i }).getAttribute('href')).toBe('/research-team')
+    expect(screen.getByText('This course')).toBeTruthy()
+  })
+
+  it('shows enroll CTA band with checkout link when viewer lacks access', async () => {
+    api.getCourse.mockResolvedValue({
+      id: 'c1',
+      title: 'Test Course',
+      description: 'Test Description',
+      status: 'PUBLISHED',
+      hasAccess: false,
+      enrollCta: {
+        heading: 'Ready to enroll?',
+        body: 'Get lifetime access to every lesson.',
+        extraLine: 'Bundle available at checkout.',
+      },
+    })
+
+    renderCourseDetail()
+
+    await waitFor(() => {
+      expect(screen.getByRole('heading', { level: 2, name: 'Ready to enroll?' })).toBeTruthy()
+    })
+    expect(screen.getByText('Get lifetime access to every lesson.')).toBeTruthy()
+    const enrollLink = screen.getByRole('link', { name: /enroll/i })
+    expect(enrollLink.getAttribute('href')).toBe('/checkout?productType=course&courseId=c1')
+  })
+
+  it('omits enroll CTA band when the viewer owns the course', async () => {
+    api.getCourse.mockResolvedValue({
+      id: 'c1',
+      title: 'Test Course',
+      description: 'Test Description',
+      status: 'PUBLISHED',
+      enrolled: true,
+      enrollCta: {
+        heading: 'Ready to enroll?',
+        body: 'Should not show when owned.',
+      },
+    })
+
+    renderCourseDetail()
+
+    await waitFor(() => {
+      expect(screen.getByRole('heading', { level: 1, name: 'Test Course' })).toBeTruthy()
+    })
+    expect(screen.queryByRole('heading', { level: 2, name: 'Ready to enroll?' })).toBeNull()
+    expect(screen.queryByRole('link', { name: /enroll/i })).toBeNull()
   })
 
   it('renders lifetime access pill and no dollar amounts', async () => {

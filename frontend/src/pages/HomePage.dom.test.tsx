@@ -116,6 +116,28 @@ describe('HomePage', () => {
     expect(await screen.findByText('Courses will appear here')).toBeTruthy()
   })
 
+  it('shows duration and level on home course cards without key skills', async () => {
+    listPublishedCourses.mockResolvedValue([
+      course({
+        id: 'methodology',
+        title: 'Research Methodology',
+        level: 'Beginner',
+        estimatedHours: 10,
+        catalogSkills: ['Study design'],
+      }),
+    ])
+
+    renderHome()
+
+    await waitFor(() => {
+      expect(screen.getAllByText('Research Methodology').length).toBeGreaterThan(0)
+    })
+    expect(screen.getByText('Beginner')).toBeTruthy()
+    expect(screen.getByText('~10 Hours')).toBeTruthy()
+    expect(screen.queryByText('Key skills')).toBeNull()
+    expect(screen.queryByText('Study design')).toBeNull()
+  })
+
   it('renders one course title and a View Course link to /courses/:id', async () => {
     listPublishedCourses.mockResolvedValue([
       course({

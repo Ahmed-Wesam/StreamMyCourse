@@ -1,3 +1,5 @@
+import type { CoursePageDocument } from '../course-page'
+
 export type Course = {
   id: string
   title: string
@@ -14,7 +16,7 @@ export type Course = {
   /** One-time price in USD cents when configured (RS-5). */
   amountMinor?: number
   currency?: string
-}
+} & Partial<CoursePageDocument>
 
 export type CourseModule = {
   id: string

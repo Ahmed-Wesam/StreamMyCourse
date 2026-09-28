@@ -109,11 +109,11 @@ Student playback contract (`GET /playback/{courseId}/{lessonId}`):
 
 ### Courses
 ```
-GET    /courses                          // List (published only for catalog); items may include thumbnailUrl (presigned GET)
+GET    /courses                          // List (published only for catalog); items may include thumbnailUrl (presigned GET) and **RS-7 card fields** when set: `level`, `estimatedHours`, `catalogSkills` (no section bodies)
 POST   /courses                          // Create DRAFT course + default module (module_order 0)
 GET    /courses/mine                     // Instructor dashboard: courses owned by caller (DRAFT + PUBLISHED); teacher/admin + Cognito when enforced; oldest-first (`created_at` ascending)
-GET    /courses/{id}                     // Full details for catalog; may include thumbnailUrl + enrolled (bool). PUBLISHED is public, DRAFT is 404 unless caller is owner/admin (authz uses `sub`/`role` from API Gateway authorizer context when available).
-PUT    /courses/{id}                     // Update metadata
+GET    /courses/{id}                     // Full details for catalog; may include thumbnailUrl + enrolled (bool). **RS-7:** same card fields plus optional marketing sections (`subtitle`, `problem`, `outcomes`, `inside`, `handsOn`, `highlights`, `audience`, `assessment`, `enrollCta`, `curriculumLead`) — omitted when empty. PUBLISHED is public, DRAFT is 404 unless caller is owner/admin (authz uses `sub`/`role` from API Gateway authorizer context when available).
+PUT    /courses/{id}                     // Update title + description; optional body key **`page`** (JSON object) replaces stored marketing document when present (publisher only). Omitting `page` leaves `page_content` unchanged.
 PUT    /courses/{id}/publish             // Publish (requires ≥1 ready lesson)
 PUT    /courses/{id}/thumbnail-ready     // Body { thumbnailKey }; persist cover image after S3 PUT (see upload-url)
 DELETE /courses/{id}                     // Delete course; CASCADE removes modules + lessons + related progress
