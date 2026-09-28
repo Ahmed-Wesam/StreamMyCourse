@@ -1,32 +1,46 @@
 /**
  * @vitest-environment jsdom
  */
-import { cleanup, render, screen, waitFor } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { MemoryRouter } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const fetchMeMock = vi.hoisted(() => vi.fn())
+const patchUsersMeMock = vi.hoisted(() => vi.fn())
+const fetchAuthSessionMock = vi.hoisted(() => vi.fn())
+const updateUserAttributesMock = vi.hoisted(() => vi.fn())
+const updatePasswordMock = vi.hoisted(() => vi.fn())
 
-vi.mock('../../lib/api/session', () => ({
-  fetchMe: (...args: unknown[]) => fetchMeMock(...args),
-}))
+vi.mock('../../lib/api/session', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../lib/api/session')>()
+  return {
+    ...actual,
+    fetchMe: (...args: unknown[]) => fetchMeMock(...args),
+    patchUsersMe: (...args: unknown[]) => patchUsersMeMock(...args),
+  }
+})
 
-const billingApi = vi.hoisted(() => ({
-  getPurchases: vi.fn(),
-}))
-
-vi.mock('../../lib/api/billing', () => ({
-  getPurchases: (...args: unknown[]) => billingApi.getPurchases(...args),
+vi.mock('aws-amplify/auth', () => ({
+  fetchAuthSession: (...args: unknown[]) => fetchAuthSessionMock(...args),
+  updateUserAttributes: (...args: unknown[]) => updateUserAttributesMock(...args),
+  updatePassword: (...args: unknown[]) => updatePasswordMock(...args),
 }))
 
 import AccountProfilePage from './AccountProfilePage'
 
-const profile = {
+const baseProfile = {
   userId: 'user-1',
   email: 'student@example.com',
   role: 'student',
   cognitoSub: 'sub-1',
   createdAt: '2026-01-01T00:00:00.000Z',
   updatedAt: '2026-01-01T00:00:00.000Z',
+  givenName: 'Ada',
+  familyName: 'Lovelace',
+  country: 'Jordan',
+  profession: 'Researcher',
+  termsAcceptedAt: '2026-01-01T00:00:00.000Z',
+  privacyAcceptedAt: '2026-01-01T00:00:00.000Z',
 }
 
 describe('AccountProfilePage', () => {
@@ -37,42 +51,92 @@ describe('AccountProfilePage', () => {
 
   beforeEach(() => {
     fetchMeMock.mockReset()
-    billingApi.getPurchases.mockReset()
+    patchUsersMeMock.mockReset()
+    fetchAuthSessionMock.mockReset()
+    updateUserAttributesMock.mockReset()
+    updatePasswordMock.mockReset()
+    fetchAuthSessionMock.mockResolvedValue({ tokens: { idToken: { payload: {} } } })
+    patchUsersMeMock.mockImplementation(async (body) => ({ ...baseProfile, ...body }))
+    updateUserAttributesMock.mockResolvedValue({})
   })
 
-  it('shows profile email from fetchMe', async () => {
-    fetchMeMock.mockResolvedValue(profile)
+  it('shows read-only email and saves via updateUserAttributes, forceRefresh, and PATCH', async () => {
+    fetchMeMock.mockResolvedValue(baseProfile)
 
-    render(<AccountProfilePage />)
+    render(
+      <MemoryRouter>
+        <AccountProfilePage />
+      </MemoryRouter>,
+    )
 
-    expect(await screen.findByText('student@example.com')).toBeTruthy()
-  })
+    const emailInput = await screen.findByLabelText(/^email$/i)
+    expect((emailInput as HTMLInputElement).readOnly).toBe(true)
 
-  it('renders static Security and Notifications cards without editable controls', async () => {
-    fetchMeMock.mockResolvedValue(profile)
-
-    const { container } = render(<AccountProfilePage />)
+    fireEvent.change(screen.getByLabelText(/first name/i), { target: { value: 'Grace' } })
+    fireEvent.click(screen.getByRole('button', { name: /save profile/i }))
 
     await waitFor(() => {
-      expect(screen.getByText('student@example.com')).toBeTruthy()
+      expect(updateUserAttributesMock).toHaveBeenCalledWith({
+        userAttributes: { given_name: 'Grace', family_name: 'Lovelace' },
+      })
     })
-
-    expect(screen.getByRole('heading', { name: /security/i })).toBeTruthy()
-    expect(screen.getByRole('heading', { name: /notification preferences/i })).toBeTruthy()
-    expect(container.querySelector('input')).toBeNull()
-    expect(container.querySelector('textarea')).toBeNull()
-    expect(container.querySelector('input[type="file"]')).toBeNull()
+    expect(patchUsersMeMock).toHaveBeenCalled()
+    expect(fetchAuthSessionMock).toHaveBeenCalledWith({ forceRefresh: true })
   })
 
-  it('does not call billing APIs from profile dummy cards', async () => {
-    fetchMeMock.mockResolvedValue(profile)
+  it('shows change-password section for native password users only', async () => {
+    fetchMeMock.mockResolvedValue(baseProfile)
+    fetchAuthSessionMock.mockResolvedValue({ tokens: { idToken: { payload: {} } } })
 
-    render(<AccountProfilePage />)
+    render(
+      <MemoryRouter>
+        <AccountProfilePage />
+      </MemoryRouter>,
+    )
 
     await waitFor(() => {
-      expect(screen.getByText('student@example.com')).toBeTruthy()
+      expect(screen.getByRole('heading', { name: /change password/i })).toBeTruthy()
+    })
+  })
+
+  it('hides change-password form for Google federated users', async () => {
+    fetchMeMock.mockResolvedValue(baseProfile)
+    fetchAuthSessionMock.mockResolvedValue({
+      tokens: {
+        idToken: {
+          payload: {
+            identities: JSON.stringify([{ providerName: 'Google', userId: 'g-1' }]),
+          },
+        },
+      },
     })
 
-    expect(billingApi.getPurchases).not.toHaveBeenCalled()
+    render(
+      <MemoryRouter>
+        <AccountProfilePage />
+      </MemoryRouter>,
+    )
+
+    await waitFor(() => {
+      expect(screen.getByText(/signed in with google/i)).toBeTruthy()
+    })
+    expect(screen.queryByRole('heading', { name: /change password/i })).toBeNull()
+  })
+
+  it('shows terms checkboxes for Google users missing acceptance timestamps', async () => {
+    fetchMeMock.mockResolvedValue({
+      ...baseProfile,
+      termsAcceptedAt: '',
+      privacyAcceptedAt: '',
+    })
+
+    render(
+      <MemoryRouter>
+        <AccountProfilePage />
+      </MemoryRouter>,
+    )
+
+    expect(await screen.findByRole('checkbox', { name: /terms of service/i })).toBeTruthy()
+    expect(screen.getByRole('checkbox', { name: /privacy policy/i })).toBeTruthy()
   })
 })

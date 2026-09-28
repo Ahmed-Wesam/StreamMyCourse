@@ -2,6 +2,7 @@ import { lazy, Suspense } from 'react'
 import { Navigate, Route, Routes, useLocation } from 'react-router-dom'
 import { AuthGate } from '../components/auth/AuthGate'
 import { StudentAccountAuth } from '../components/auth/StudentAccountAuth'
+import { StudentTermsGate } from '../components/auth/StudentTermsGate'
 import { AccountLayout } from '../pages/account/AccountLayout'
 import { StudentHeader } from './StudentHeader'
 const StudentSessionGuard = lazy(() =>
@@ -26,6 +27,10 @@ const StudentModuleQuizAuth = lazy(() =>
   import('../components/auth/StudentModuleQuizAuth').then((m) => ({ default: m.StudentModuleQuizAuth })),
 )
 const StudentLoginPage = lazy(() => import('../pages/StudentLoginPage'))
+const StudentRegisterPage = lazy(() => import('../pages/StudentRegisterPage'))
+const VerifyEmailPage = lazy(() => import('../pages/VerifyEmailPage'))
+const ForgotPasswordPage = lazy(() => import('../pages/ForgotPasswordPage'))
+const ResetPasswordPage = lazy(() => import('../pages/ResetPasswordPage'))
 const AccountProfilePage = lazy(() => import('../pages/account/AccountProfilePage'))
 const AccountPurchasesPage = lazy(() => import('../pages/account/AccountPurchasesPage'))
 const CheckoutPage = lazy(() => import('../pages/CheckoutPage'))
@@ -47,6 +52,7 @@ function StudentApp() {
     <AuthGate>
       <Suspense fallback={null}>
         <StudentSessionGuard>
+        <StudentTermsGate>
         <Layout chromeHeader={<StudentHeader />}>
         <ScrollToTop />
         <Routes>
@@ -131,6 +137,38 @@ function StudentApp() {
           element={
             <LazyRoute>
               <StudentLoginPage />
+            </LazyRoute>
+          }
+        />
+        <Route
+          path="/register"
+          element={
+            <LazyRoute>
+              <StudentRegisterPage />
+            </LazyRoute>
+          }
+        />
+        <Route
+          path="/verify-email"
+          element={
+            <LazyRoute>
+              <VerifyEmailPage />
+            </LazyRoute>
+          }
+        />
+        <Route
+          path="/forgot-password"
+          element={
+            <LazyRoute>
+              <ForgotPasswordPage />
+            </LazyRoute>
+          }
+        />
+        <Route
+          path="/reset-password"
+          element={
+            <LazyRoute>
+              <ResetPasswordPage />
             </LazyRoute>
           }
         />
@@ -231,6 +269,7 @@ function StudentApp() {
         <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </Layout>
+        </StudentTermsGate>
         </StudentSessionGuard>
       </Suspense>
     </AuthGate>

@@ -2,6 +2,9 @@ const COURSE_DETAIL = /^\/courses\/[^/]+$/
 const LESSON_PLAYER = /^\/courses\/[^/]+\/lessons\//
 const MODULE_QUIZ = /^\/courses\/[^/]+\/modules\/[^/]+\/quiz/
 
+const AUTH_SELF_SERVICE =
+  /^\/(login|register|verify-email|forgot-password|reset-password)(\/|$)/
+
 /**
  * Public student paths that idle-probe auth after paint (do not import auth immediately).
  * Keep in sync with marketing + catalog surfaces that should stay first-paint light.
@@ -25,6 +28,23 @@ export function isStudentIdleProbePath(pathname: string): boolean {
   )
 }
 
+const TERMS_GATE_LEGAL_PATHS = new Set([
+  '/terms',
+  '/privacy',
+  '/refund',
+  '/delivery',
+  '/educational-disclaimer',
+])
+
+/** Routes where missing terms acceptance must not force redirect to account. */
+export function isStudentTermsGateExemptPath(pathname: string): boolean {
+  if (pathname === '/') return true
+  if (pathname.startsWith('/account')) return true
+  if (AUTH_SELF_SERVICE.test(pathname)) return true
+  if (TERMS_GATE_LEGAL_PATHS.has(pathname)) return true
+  return false
+}
+
 /**
  * Whether the current route should run auth bootstrap (session restore / OAuth callback).
  */
@@ -42,9 +62,10 @@ export function needsAuthBootstrap(pathname: string, search: string): boolean {
   }
 
   if (
-    pathname.startsWith('/login') ||
+    AUTH_SELF_SERVICE.test(pathname) ||
     pathname.startsWith('/account') ||
     pathname.startsWith('/billing') ||
+    pathname.startsWith('/checkout') ||
     LESSON_PLAYER.test(pathname) ||
     MODULE_QUIZ.test(pathname)
   ) {

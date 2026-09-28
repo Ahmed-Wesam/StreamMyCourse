@@ -11,10 +11,14 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { POST_LOGIN_RETURN_TO_KEY } from '../../lib/post-login-return'
 import { GOOGLE_SIGN_IN_LABEL, SignIn } from './SignIn'
 
-const { signInMock } = vi.hoisted(() => ({ signInMock: vi.fn() }))
+const authMocks = vi.hoisted(() => ({
+  signInWithRedirect: vi.fn(),
+  signIn: vi.fn(),
+}))
 
 vi.mock('aws-amplify/auth', () => ({
-  signInWithRedirect: (...args: unknown[]) => signInMock(...args),
+  signInWithRedirect: (...args: unknown[]) => authMocks.signInWithRedirect(...args),
+  signIn: (...args: unknown[]) => authMocks.signIn(...args),
 }))
 
 function TestRoot({ children }: { children: React.ReactNode }) {
@@ -31,7 +35,8 @@ describe('SignIn', () => {
   })
 
   beforeEach(() => {
-    signInMock.mockClear()
+    authMocks.signInWithRedirect.mockClear()
+    authMocks.signIn.mockClear()
     sessionStorage.clear()
     Amplify.configure({
       Auth: {
@@ -39,6 +44,7 @@ describe('SignIn', () => {
           userPoolId: 'eu-west-1_testPool',
           userPoolClientId: 'testClientId',
           loginWith: {
+            email: true,
             oauth: {
               domain: 'test.auth.eu-west-1.amazoncognito.com',
               scopes: ['openid', 'email', 'profile', 'aws.cognito.signin.user.admin'],
@@ -52,50 +58,56 @@ describe('SignIn', () => {
     })
   })
 
-  it('shows only Continue with Google and no username/password inputs', async () => {
-    render(<SignIn />, { wrapper: TestRoot })
+  it('student variant shows email, password, forgot link, and Google button', async () => {
+    render(<SignIn variant="student" />, { wrapper: TestRoot })
+
+    expect(await screen.findByLabelText(/^email$/i)).toBeTruthy()
+    expect(screen.getByLabelText(/^password$/i)).toBeTruthy()
+    expect(screen.getByRole('link', { name: /forgot password/i }).getAttribute('href')).toBe('/forgot-password')
+    expect(screen.getByRole('button', { name: GOOGLE_SIGN_IN_LABEL })).toBeTruthy()
+  })
+
+  it('teacher variant shows Google only (no email/password form)', async () => {
+    render(<SignIn variant="teacher" />, { wrapper: TestRoot })
 
     const button = await waitFor(() => screen.getByRole('button', { name: GOOGLE_SIGN_IN_LABEL }))
-
-    expect(button.tagName).toBe('BUTTON')
-    expect(button.className).toMatch(/rs-btn/)
+    expect(button).toBeTruthy()
     expect(document.querySelector('input[type="password"]')).toBeNull()
     expect(document.querySelector('input[type="email"]')).toBeNull()
-    expect(screen.queryByRole('textbox')).toBeNull()
-    expect(screen.queryByLabelText(/password/i)).toBeNull()
+    expect(screen.queryByRole('link', { name: /forgot password/i })).toBeNull()
   })
 
   it('calls signInWithRedirect with Google provider when Continue with Google is clicked', async () => {
-    render(<SignIn />, { wrapper: TestRoot })
+    render(<SignIn variant="student" />, { wrapper: TestRoot })
 
     const button = await waitFor(() => screen.getByRole('button', { name: GOOGLE_SIGN_IN_LABEL }))
     fireEvent.click(button)
 
-    expect(signInMock).toHaveBeenCalledTimes(1)
-    expect(signInMock).toHaveBeenCalledWith(expect.objectContaining({ provider: 'Google' }))
+    expect(authMocks.signInWithRedirect).toHaveBeenCalledTimes(1)
+    expect(authMocks.signInWithRedirect).toHaveBeenCalledWith(expect.objectContaining({ provider: 'Google' }))
   })
 
   it('persists a safe returnTo path in sessionStorage before redirect', async () => {
     window.history.pushState({}, '', '/courses/abc?tab=lessons#l1')
 
-    render(<SignIn />, { wrapper: TestRoot })
+    render(<SignIn variant="student" />, { wrapper: TestRoot })
 
     const button = await waitFor(() => screen.getByRole('button', { name: GOOGLE_SIGN_IN_LABEL }))
     fireEvent.click(button)
 
     expect(sessionStorage.getItem(POST_LOGIN_RETURN_TO_KEY)).toBe('/courses/abc?tab=lessons#l1')
-    expect(signInMock).toHaveBeenCalledTimes(1)
+    expect(authMocks.signInWithRedirect).toHaveBeenCalledTimes(1)
   })
 
   it('does not persist returnTo when on /login', async () => {
     window.history.pushState({}, '', '/login')
 
-    render(<SignIn />, { wrapper: TestRoot })
+    render(<SignIn variant="student" />, { wrapper: TestRoot })
 
     const button = await waitFor(() => screen.getByRole('button', { name: GOOGLE_SIGN_IN_LABEL }))
     fireEvent.click(button)
 
     expect(sessionStorage.getItem(POST_LOGIN_RETURN_TO_KEY)).toBeNull()
-    expect(signInMock).toHaveBeenCalledTimes(1)
+    expect(authMocks.signInWithRedirect).toHaveBeenCalledTimes(1)
   })
 })

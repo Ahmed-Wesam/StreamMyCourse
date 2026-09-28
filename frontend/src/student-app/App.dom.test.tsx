@@ -48,6 +48,21 @@ vi.mock('../pages/CoursesCatalogPage', () => ({
 vi.mock('../pages/StudentLoginPage', () => ({
   default: () => <div data-testid="student-page-login" />,
 }))
+vi.mock('../pages/StudentRegisterPage', () => ({
+  default: () => <div data-testid="student-page-register" />,
+}))
+vi.mock('../pages/VerifyEmailPage', () => ({
+  default: () => <div data-testid="student-page-verify-email" />,
+}))
+vi.mock('../pages/ForgotPasswordPage', () => ({
+  default: () => <div data-testid="student-page-forgot-password" />,
+}))
+vi.mock('../pages/ResetPasswordPage', () => ({
+  default: () => <div data-testid="student-page-reset-password" />,
+}))
+vi.mock('../components/auth/StudentTermsGate', () => ({
+  StudentTermsGate: ({ children }: { children?: ReactNode }) => <>{children}</>,
+}))
 vi.mock('../components/auth/StudentLessonAuth', () => ({
   StudentLessonAuth: () => <div data-testid="student-page-lesson" />,
 }))
@@ -258,9 +273,16 @@ describe('StudentApp', () => {
     expect(screen.queryByTestId('auth-shell')).toBeNull()
   })
 
-  it('keeps /register on the catch-all to home', async () => {
+  it('mounts the register route at /register', async () => {
     renderAt('/register')
-    expect(await screen.findByTestId('student-page-home')).toBeTruthy()
+    expect(await screen.findByTestId('student-page-register')).toBeTruthy()
+  })
+
+  it('lazy-loads StudentRegisterPage (not a static import in App.tsx)', () => {
+    const appPath = join(dirname(fileURLToPath(import.meta.url)), 'App.tsx')
+    const source = readFileSync(appPath, 'utf8')
+    expect(source).toMatch(/lazy\(\(\) => import\('\.\.\/pages\/StudentRegisterPage'\)\)/)
+    expect(source).not.toMatch(/import StudentRegisterPage from/)
   })
 
   it('keeps /dashboard on the catch-all to home', async () => {

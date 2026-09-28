@@ -4,10 +4,7 @@ import { isAuthConfigured } from './is-auth-configured'
 
 export { isAuthConfigured }
 
-/**
- * Public SPAs use Cognito Hosted UI / OAuth only. Native Amplify `loginWith.email`
- * is intentionally not configured.
- */
+/** Student SPA: Google OAuth plus native email/password via Amplify Auth APIs. */
 
 function isDevLoopbackHostname(hostname: string): boolean {
   return hostname === 'localhost' || hostname === '127.0.0.1'
@@ -94,6 +91,7 @@ export function configureAmplify(): void {
         userPoolId,
         userPoolClientId,
         loginWith: {
+          email: true,
           oauth: {
             domain: oauthDomain,
             scopes: ['openid', 'email', 'profile', 'aws.cognito.signin.user.admin'],
