@@ -168,6 +168,13 @@ GET   /users/me                        // Returns a per-user profile row (requir
 PATCH /users/me                        // Update profile fields (given/family name, country, profession, institution, researchInterests, termsAcceptedAt, privacyAcceptedAt); country/profession must match server allowlists
 ```
 
+### Public contact (RS-10)
+```
+POST /contact                          // Public contact form (no JWT). Body JSON: name, email, category, subject, message; optional honeypot `rs_hp` (non-empty → **202** `{ "accepted": true }` without enqueue). Unknown keys → **400**. **202** `{ "accepted": true }` when accepted and enqueued. **503** when `TRANSACTIONAL_MAIL_QUEUE_URL` is unset or enqueue fails. **429** via RDS rate limits (`contact.ip`: 5 / 10 min per IP; `contact.global`: 30 / hour). Max body **16 KiB**. **No attachments.**
+```
+
+**Delivery:** Catalog Lambda (VPC, no NAT) validates and **`SendMessage`** to transactional-mail SQS ([`api-stack.yaml`](infrastructure/templates/api-stack.yaml) `TransactionalMailQueueUrl` → env **`TRANSACTIONAL_MAIL_QUEUE_URL`**). **Non-VPC** worker ([`transactional-mail-stack.yaml`](infrastructure/templates/transactional-mail-stack.yaml), [`infrastructure/lambda/transactional_mail/`](infrastructure/lambda/transactional_mail/)) consumes the queue and sends via **Zoho SMTP** (same Secrets Manager secret as Cognito CustomEmailSender — **not Amazon SES**). Inbox **`support@researchspectrum.org`**; worker **`ALLOWLIST_TO_ADDRESSES`** rejects other `to` values. Reuse this queue payload shape for RS-13 / RS-14 notification mail.
+
 ### Video provider webhooks
 ```
 POST /webhooks/kinescope              // Provider status callback (`media.update.status`); optional
@@ -238,7 +245,7 @@ The frontend is built as **two separate SPAs** deployed to different subdomains:
 /                                    # Research Spectrum marketing home (catalog cards from public GET /courses; no prices)
 /about                               # About instructor (public)
 /faq                                 # FAQ (public)
-/contact                             # Contact shell (no submit API yet)
+/contact                             # Contact form → public POST /contact (RS-10)
 /research-team                       # Research Team explainer (no application yet)
 /details                             # Legacy path → redirects to `/courses` (same as `/course`, `/catalog`)
 /my-course                           # Legacy enrolled hub → redirects to `/dashboard`
@@ -275,8 +282,11 @@ The frontend is built as **two separate SPAs** deployed to different subdomains:
 ## 9. Security (MVP)
 
 ### API Safety (No Looping)
-- Lambda is invoked **only** by API Gateway (no S3 events, no SNS/SQS, no scheduled triggers).
+- Catalog Lambda is invoked **only** by API Gateway (no S3 events, no inbound SQS, no schedules). It may **enqueue** outbound jobs (e.g. transactional mail, billing fulfillment) to SQS; separate workers handle those queues.
 - This prevents infinite chains/loops in the MVP.
+
+### VPC / no-NAT invariant (catalog)
+- The **in-VPC** catalog Lambda must **not** call the public internet (PayTabs, Google, **Zoho SMTP**, SES, etc.). Outbound email and other edge integrations use **SQS + a non-VPC worker** (same pattern as [`media-cleanup-stack.yaml`](infrastructure/templates/media-cleanup-stack.yaml) and [`video-provider-edge-stack.yaml`](infrastructure/templates/video-provider-edge-stack.yaml)). RDS VPC endpoints cover Secrets Manager, logs, SQS, S3, DynamoDB as needed for enqueue paths.
 
 ### Basic Protections
 - S3 bucket: Private with presigned URL access (PUT for upload, GET for playback)
@@ -377,7 +387,7 @@ Prod API (`deploy-backend.sh`):
 - **SPA Cognito env (after auth stack exists):** Builds read **`VITE_COGNITO_*`**, **`VITE_API_BASE_URL`**, and **`VITE_COGNITO_DOMAIN`** from GitHub Environment **`prod`** secrets via [`deploy-web-reusable.yml`](.github/workflows/deploy-web-reusable.yml) and [`deploy-teacher-web-reusable.yml`](.github/workflows/deploy-teacher-web-reusable.yml).
 - **Auth stack clients:** [`auth-stack.yaml`](infrastructure/templates/auth-stack.yaml) always provisions **Google** (`GoogleClientId` / `GoogleClientSecret` required). **Student** client: **`SupportedIdentityProviders: [COGNITO, Google]`** with **`ALLOW_USER_SRP_AUTH`** + OAuth code flow; Amplify **`loginWith.email`** + Hosted UI OAuth ([`frontend/src/lib/auth.ts`](frontend/src/lib/auth.ts)). **Teacher** client: **Google-only**. Register / verify / forgot-password pages on the student SPA; operator notes in [`infrastructure/docs/admin-auth-runbook.md`](infrastructure/docs/admin-auth-runbook.md). Deploy packages **PreSignUp** Lambda zip on prod backend deploy.
 - **Post-login SPA navigation:** Hosted UI returns to **`/`**; the app stores the pre-login in-SPA path in **`sessionStorage`** (sanitized in [`frontend/src/lib/post-login-return.ts`](frontend/src/lib/post-login-return.ts)) before **`signInWithRedirect`**, and [`frontend/src/components/auth/PostLoginRedirect.tsx`](frontend/src/components/auth/PostLoginRedirect.tsx) restores it after **`authStatus`** becomes **`authenticated`**. Each SPA entry ([`frontend/src/student-main.tsx`](frontend/src/student-main.tsx), [`frontend/src/teacher-main.tsx`](frontend/src/teacher-main.tsx)) mounts **`AuthenticatorProvider`** around **`BrowserRouter`** so auth hooks work on shell chrome ([`frontend/src/components/layout/Layout.tsx`](frontend/src/components/layout/Layout.tsx) **`chromeHeader`** → [`StudentHeader`](frontend/src/student-app/StudentHeader.tsx) / [`TeacherHeader`](frontend/src/teacher-app/TeacherHeader.tsx)) and **`/login`** ([`frontend/src/pages/StudentLoginPage.tsx`](frontend/src/pages/StudentLoginPage.tsx)).
-- **Catalog Lambda:** no direct event sources in MVP (no S3 triggers on the catalog function, no schedules). **Async media cleanup:** [`scripts/deploy-backend.sh`](scripts/deploy-backend.sh) deploys **`StreamMyCourse-MediaCleanup-prod`** ([`infrastructure/templates/media-cleanup-stack.yaml`](infrastructure/templates/media-cleanup-stack.yaml) — SQS + DLQ + worker Lambda).
+- **Catalog Lambda:** no direct event sources in MVP (no S3 triggers on the catalog function, no schedules). **Async media cleanup:** [`scripts/deploy-backend.sh`](scripts/deploy-backend.sh) deploys **`StreamMyCourse-MediaCleanup-prod`** ([`infrastructure/templates/media-cleanup-stack.yaml`](infrastructure/templates/media-cleanup-stack.yaml) — SQS + DLQ + worker Lambda). **Transactional mail (RS-10):** [`scripts/deploy-transactional-mail.sh`](scripts/deploy-transactional-mail.sh) deploys **`StreamMyCourse-TransactionalMail-prod`** ([`infrastructure/templates/transactional-mail-stack.yaml`](infrastructure/templates/transactional-mail-stack.yaml)); [`scripts/deploy-backend.sh`](scripts/deploy-backend.sh) wires queue URL/ARN into the API stack unless overridden.
 - **RDS PostgreSQL (deployed prod):** [`infrastructure/templates/rds-stack.yaml`](infrastructure/templates/rds-stack.yaml) provisions a 1-AZ VPC, private **`db.t4g.micro`** (PostgreSQL 16, encrypted), Secrets Manager credential (auto-generated), and Interface / Gateway VPC endpoints.
 - **RDS prod rollout via CI/CD:** [`.github/workflows/deploy-backend.yml`](.github/workflows/deploy-backend.yml) chains **`deploy-rds-prod`** → **`apply-schema-prod`** → **`deploy-backend-prod`** → **`integration-http-tests`** → **`verify-prod-rds`** ([`tests/integration/test_rds_path.py`](tests/integration/test_rds_path.py)).
 - **Verify prod RDS auth:** **`verify-prod-rds`** calls [`.github/workflows/verify-rds-reusable.yml`](.github/workflows/verify-rds-reusable.yml) with **`github_environment: prod`**. GitHub Environment **`prod`** stores **`COGNITO_RDS_VERIFY_TEST_PASSWORD`**, optional **`COGNITO_RDS_VERIFY_JWT`**, optional **`COGNITO_RDS_VERIFY_TEST_USERNAME`**. Bootstrap user: [`scripts/ensure-ci-rds-verify-cognito-user.sh`](scripts/ensure-ci-rds-verify-cognito-user.sh); details: [`tests/integration/README.md`](tests/integration/README.md).

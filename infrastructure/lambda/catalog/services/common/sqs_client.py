@@ -154,3 +154,21 @@ def _chunk_kinescope_ids_for_messages(
 
 def _send_one(client: _SQSClientProtocol, queue_url: str, body: str) -> None:
     client.send_message(QueueUrl=queue_url, MessageBody=body)
+
+
+def send_transactional_mail_job(
+    queue_url: str,
+    message: dict[str, Any],
+    *,
+    sqs_client: Optional[_SQSClientProtocol] = None,
+) -> None:
+    """Enqueue one transactional-mail worker message. Propagates SQS API errors."""
+    if not queue_url:
+        raise BadRequest("Transactional mail queue URL is required")
+    client = sqs_client
+    if client is None:
+        import boto3
+
+        client = boto3.client("sqs")
+    body = json.dumps(message)
+    _send_one(client, queue_url, body)

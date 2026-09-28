@@ -21,6 +21,8 @@ class AppConfig:
     log_level: str = "INFO"
     # Optional SQS queue URL for async S3 cleanup after course delete (empty = legacy sync delete)
     media_cleanup_queue_url: str = ""
+    # SQS queue for transactional mail (contact form → Zoho SMTP worker)
+    transactional_mail_queue_url: str = ""
     # Progress tracking configuration (lesson completion thresholds)
     progress_complete_ratio: float = 0.92
     progress_position_slack_sec: int = 30
@@ -145,6 +147,7 @@ def load_config() -> AppConfig:
         log_level = "INFO"
 
     media_cleanup_queue_url = os.environ.get("MEDIA_CLEANUP_QUEUE_URL", "").strip()
+    transactional_mail_queue_url = os.environ.get("TRANSACTIONAL_MAIL_QUEUE_URL", "").strip()
 
     # Progress tracking configuration
     progress_complete_ratio = _parse_float(
@@ -175,6 +178,7 @@ def load_config() -> AppConfig:
         db_secret_arn=db_secret_arn,
         log_level=log_level,
         media_cleanup_queue_url=media_cleanup_queue_url,
+        transactional_mail_queue_url=transactional_mail_queue_url,
         progress_complete_ratio=progress_complete_ratio,
         progress_position_slack_sec=progress_position_slack_sec,
         billing_teacher_sub=billing_teacher_sub,

@@ -1,0 +1,183 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'StreamMyCourse - SQS + Lambda worker for async transactional mail (contact form)'
+
+Parameters:
+  Environment:
+    Type: String
+    AllowedValues: [prod]
+    Default: prod
+    Description: Deployment environment
+
+  LambdaCodeS3Bucket:
+    Type: String
+    Description: Artifacts bucket containing the transactional mail Lambda zip
+
+  LambdaCodeS3Key:
+    Type: String
+    Description: S3 key for the transactional mail Lambda deployment package
+
+  ZohoSmtpSecretArn:
+    Type: String
+    MinLength: 1
+    Description: >-
+      Secrets Manager ARN for Zoho SMTP JSON (smtp_username, smtp_password, optional host/port/from/reply_to).
+
+  CatalogLambdaRoleArn:
+    Type: String
+    Default: ''
+    Description: >-
+      Optional catalog Lambda execution role ARN; when set, queue policy allows sqs:SendMessage only from this role.
+
+  MessageRetentionPeriod:
+    Type: Number
+    Default: 1209600
+    Description: SQS message retention in seconds (default 14 days)
+
+  MaxReceiveCount:
+    Type: Number
+    Default: 3
+    Description: Receives before message goes to DLQ
+
+Conditions:
+  HasCatalogLambdaRoleArn: !Not [!Equals [!Ref CatalogLambdaRoleArn, '']]
+
+Resources:
+  TransactionalMailDlq:
+    Type: AWS::SQS::Queue
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      QueueName: !Sub 'StreamMyCourse-TransactionalMail-DLQ-${Environment}'
+      MessageRetentionPeriod: !Ref MessageRetentionPeriod
+      SqsManagedSseEnabled: true
+      Tags:
+        - Key: Project
+          Value: StreamMyCourse
+        - Key: Environment
+          Value: !Ref Environment
+
+  TransactionalMailQueue:
+    Type: AWS::SQS::Queue
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      QueueName: !Sub 'StreamMyCourse-TransactionalMail-${Environment}'
+      VisibilityTimeout: 90
+      MessageRetentionPeriod: !Ref MessageRetentionPeriod
+      SqsManagedSseEnabled: true
+      RedrivePolicy:
+        deadLetterTargetArn: !GetAtt TransactionalMailDlq.Arn
+        maxReceiveCount: !Ref MaxReceiveCount
+      Tags:
+        - Key: Project
+          Value: StreamMyCourse
+        - Key: Environment
+          Value: !Ref Environment
+
+  TransactionalMailQueuePolicy:
+    Type: AWS::SQS::QueuePolicy
+    Condition: HasCatalogLambdaRoleArn
+    Properties:
+      Queues:
+        - !Ref TransactionalMailQueue
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: AllowCatalogSendOnly
+            Effect: Allow
+            Principal:
+              AWS: !Ref CatalogLambdaRoleArn
+            Action: sqs:SendMessage
+            Resource: !GetAtt TransactionalMailQueue.Arn
+
+  TransactionalMailWorkerRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub 'StreamMyCourse-TransactionalMailWorkerRole-${Environment}'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: CloudWatchLogs
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource: !Sub 'arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/StreamMyCourse-TransactionalMailWorker-${Environment}:*'
+        - PolicyName: ZohoSmtpSecretRead
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - secretsmanager:GetSecretValue
+                Resource: !Ref ZohoSmtpSecretArn
+        - PolicyName: SqsConsumeTransactionalMailQueue
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - sqs:ReceiveMessage
+                  - sqs:DeleteMessage
+                  - sqs:GetQueueAttributes
+                  - sqs:ChangeMessageVisibility
+                Resource: !GetAtt TransactionalMailQueue.Arn
+      Tags:
+        - Key: Project
+          Value: StreamMyCourse
+        - Key: Environment
+          Value: !Ref Environment
+
+  TransactionalMailWorker:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub 'StreamMyCourse-TransactionalMailWorker-${Environment}'
+      Runtime: python3.11
+      Handler: worker.lambda_handler
+      Timeout: 30
+      MemorySize: 256
+      Role: !GetAtt TransactionalMailWorkerRole.Arn
+      Code:
+        S3Bucket: !Ref LambdaCodeS3Bucket
+        S3Key: !Ref LambdaCodeS3Key
+      Environment:
+        Variables:
+          ZOHO_SMTP_SECRET_ARN: !Ref ZohoSmtpSecretArn
+          LOG_LEVEL: INFO
+      Tags:
+        - Key: Project
+          Value: StreamMyCourse
+        - Key: Environment
+          Value: !Ref Environment
+
+  TransactionalMailEventSourceMapping:
+    Type: AWS::Lambda::EventSourceMapping
+    Properties:
+      BatchSize: 10
+      Enabled: true
+      EventSourceArn: !GetAtt TransactionalMailQueue.Arn
+      FunctionName: !Ref TransactionalMailWorker
+      FunctionResponseTypes:
+        - ReportBatchItemFailures
+
+Outputs:
+  TransactionalMailQueueUrl:
+    Description: URL of the transactional mail SQS queue (catalog Lambda SendMessage target)
+    Value: !Ref TransactionalMailQueue
+    Export:
+      Name: !Sub '${AWS::StackName}-TransactionalMailQueueUrl'
+
+  TransactionalMailQueueArn:
+    Description: ARN of the transactional mail SQS queue (IAM grant for catalog SendMessage)
+    Value: !GetAtt TransactionalMailQueue.Arn
+    Export:
+      Name: !Sub '${AWS::StackName}-TransactionalMailQueueArn'

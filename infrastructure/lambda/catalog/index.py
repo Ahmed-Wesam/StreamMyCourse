@@ -29,6 +29,7 @@ from services.course_management.kinescope_routing import (
 )
 from services.course_management.video_webhooks import handle_kinescope_drm_auth
 from services.question_banks.controller import handle_question_banks_request
+from services.contact.controller import handle_contact_request
 from services.rate_limit.http import check_rate_limit
 
 logger = logging.getLogger(__name__)
@@ -268,6 +269,31 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                         method=method,
                         parts=parts,
                     )
+
+                if route_response is None:
+                    aws_deps = get_cached_aws_deps()
+                    contact_resp: Optional[Dict[str, Any]] = None
+                    if aws_deps is not None:
+                        contact_resp = handle_contact_request(
+                            event,
+                            origin=origin,
+                            contact_svc=aws_deps.contact_service,
+                        )
+                    elif method in ("POST", "OPTIONS") and parts == ["contact"]:
+                        contact_resp = json_response(
+                            503,
+                            {
+                                "message": (
+                                    "Catalog is not configured: set DB_HOST, DB_NAME, and "
+                                    "DB_SECRET_ARN (deploy the api stack with RdsStackName "
+                                    "wired to the RDS stack)."
+                                ),
+                                "code": "catalog_unconfigured",
+                            },
+                            origin,
+                        )
+                    if contact_resp is not None:
+                        route_response = contact_resp
 
                 if route_response is None:
                     qb_resp = None
