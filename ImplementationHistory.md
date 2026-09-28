@@ -6,6 +6,47 @@
 
 ---
 
+## 2026-09-27 — Research Spectrum email/password auth (RS-6 verify-and-docs)
+
+### Decisions
+
+- **Students:** Google OAuth **and** native email/password on the **student** app client only; **teachers** stay Google-only.
+- **Same email:** PreSignUp **links** Google to existing native users; native sign-up **rejects** duplicate verified email.
+- **Profile:** **`PATCH /users/me`** after verify with allowlisted **country** / **profession**; **terms** + **privacy** timestamps gate protected student routes.
+
+### What landed (this slice)
+
+- **Integration:** [`tests/integration/test_native_signup_profile.py`](tests/integration/test_native_signup_profile.py) — disposable Cognito sign-up, PATCH/GET profile, teardown; helpers in [`tests/integration/helpers/cognito_auth.py`](tests/integration/helpers/cognito_auth.py).
+- **Docs:** [`design.md`](design.md) auth bullets; [`roadmap.md`](roadmap.md); [`infrastructure/docs/admin-auth-runbook.md`](infrastructure/docs/admin-auth-runbook.md); child plan [`plans/ui-overhaul/rs-6-email-password.md`](plans/ui-overhaul/rs-6-email-password.md); mega-plan RS-6 status in [`plans/ui-overhaul/research-spectrum-mega-plan.md`](plans/ui-overhaul/research-spectrum-mega-plan.md).
+
+### Verification
+
+- [x] `python -m pytest tests/integration/test_native_signup_profile.py --collect-only`
+- [ ] Full HTTPS run — `./scripts/run-local-integration-tests.sh tests/integration/test_native_signup_profile.py` after migration **016** + RS-6 auth/API deploy on prod
+
+---
+
+## 2026-09-27 — RS-6 transactional mail via Zoho (CustomEmailSender)
+
+### Decisions
+
+- **No Amazon SES** for Cognito verification/forgot-password mail; use existing **Zoho** domain mail (Route 53 SPF/DKIM already for Zoho).
+- **Cognito CustomEmailSender V1_0** + dedicated KMS key; Lambda decrypts codes and sends via **Zoho SMTP** using Secrets Manager **`streammycourse/zoho-smtp/prod`**.
+
+### What landed
+
+- **Lambda:** [`infrastructure/lambda/cognito_custom_email_sender/`](infrastructure/lambda/cognito_custom_email_sender/) (handler, KMS decrypt, SMTP).
+- **Auth stack:** [`infrastructure/templates/auth-stack.yaml`](infrastructure/templates/auth-stack.yaml) — removed SES identity/DKIM; **`ShouldDeployCustomEmailSender`** gates PreSignUp + S3 zip + **`ZohoSmtpSecretArn`**.
+- **Deploy:** [`scripts/ensure-zoho-smtp-secret.sh`](scripts/ensure-zoho-smtp-secret.sh); [`deploy-backend.yml`](.github/workflows/deploy-backend.yml) packages custom sender zip and passes Zoho ARN; [`restore-prod.sh`](scripts/restore-prod.sh) aligned.
+- **Tests:** [`tests/unit/test_cognito_custom_email_sender.py`](tests/unit/test_cognito_custom_email_sender.py); auth-stack + workflow contract tests updated.
+
+### Verification
+
+- [x] `python -m pytest tests/unit/test_cognito_custom_email_sender.py tests/unit/test_auth_stack_student_srp.py -q`
+- [ ] GitHub **`prod`** secret **`ZOHO_SMTP_PASSWORD`** + auth stack deploy before live verification email works
+
+---
+
 ## 2026-09-27 — Research Spectrum one-time purchases (RS-5)
 
 ### Decisions

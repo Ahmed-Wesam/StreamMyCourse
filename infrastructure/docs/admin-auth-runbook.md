@@ -1,13 +1,16 @@
-# Admin auth runbook (Cognito, Google-only public SPAs)
+# Admin auth runbook (Cognito, student Google + email/password)
 
-Student and teacher hosted SPAs use **Cognito Hosted UI / OAuth with Google**. The **`StreamMyCourse-Auth-*`** CloudFormation stack ([`auth-stack.yaml`](../templates/auth-stack.yaml)) always provisions the **Google** identity provider and sets app clients **`streammycourse-student-<env>`** and **`streammycourse-teacher-<env>`** to **`SupportedIdentityProviders: [Google]`** only — there is **no** native Cognito username/password path on those clients. **Deploy** workflows and **`deploy.ps1 -Template auth`** require **Google OAuth** credentials (see below).
+The **`StreamMyCourse-Auth-*`** stack ([`auth-stack.yaml`](../templates/auth-stack.yaml)) always provisions **Google** OAuth. **Student** SPA client **`streammycourse-student-<env>`** supports **`SupportedIdentityProviders: [COGNITO, Google]`** with **`ALLOW_USER_SRP_AUTH`** (native register/sign-in) **and** Hosted UI Google redirect. **Teacher** client **`streammycourse-teacher-<env>`** remains **`SupportedIdentityProviders: [Google]`** only. **Deploy** workflows and **`deploy.ps1 -Template auth`** require **Google OAuth** credentials (see below). RS-6 details: [`plans/ui-overhaul/rs-6-email-password.md`](../../plans/ui-overhaul/rs-6-email-password.md).
 
 ## Deprecated workflows
 
-The following paths are obsolete for MVP public SPAs and must not be reintroduced in code or operator expectations:
+The following paths are obsolete and must not be reintroduced:
 
-- **Hybrid SPA app clients + native Amplify sign-up/password** flows on hosted student or teacher bundles.
-- Amplify **`loginWith.email`** in the SPA codebase — sign-in configures **Hosted UI OAuth only**, and **`VITE_COGNITO_USER_POOL_ID`**, **`VITE_COGNITO_USER_POOL_CLIENT_ID`**, and **`VITE_COGNITO_DOMAIN`** must all be set for Amplify auth to initialize (parity with SPA build checker [`scripts/check-cognito-spa-env.mjs`](../../scripts/check-cognito-spa-env.mjs)).
+- **Native email/password on the teacher SPA** or teacher app client (teacher stays Google-only).
+- **Amplify `<Authenticator>` widget** as the primary sign-in UI (student uses custom pages + **`loginWith.email`** / OAuth in [`frontend/src/lib/auth.ts`](../../frontend/src/lib/auth.ts)).
+- **Google-only student client** without **`COGNITO`** in **`SupportedIdentityProviders`** (RS-6 rolled back only via intentional auth-stack revert).
+
+**SPA env contract:** **`VITE_COGNITO_USER_POOL_ID`**, client id, and **`VITE_COGNITO_DOMAIN`** must all be set for Amplify auth to initialize ( [`scripts/check-cognito-spa-env.mjs`](../../scripts/check-cognito-spa-env.mjs)).
 
 **Forks / lab without Google OAuth:** Do **not** run the **`Deploy`** workflow’s **full prod backend** jobs that provision auth until **`GOOGLE_OAUTH_CLIENT_ID`** and **`GOOGLE_OAUTH_CLIENT_SECRET`** exist on the **`prod`** GitHub Environment. Local **`deploy.ps1 -Template auth`** also refuses empty Google parameters. SPA builds might still compile with pool ids from stacks created under an older template; that combination is unsupported for this repo’s **mainline** pipelines.
 
@@ -166,9 +169,16 @@ The backend job passes **`UserPoolArn`** into the API stack automatically on the
 After a successful **Deploy** for an environment:
 
 1. Open **student** and **teacher** site URLs (edge stack outputs `StudentSiteUrl` / `TeacherSiteUrl`).
-2. Confirm **only Google** sign-in path works for new users; **`GET /users/me`** returns profile when logged in.
-3. In Cognito Console, confirm student/teacher app clients list **Google** only under **`Supported identity providers`**.
-4. **Callback allowlists:** Google Cloud client + Cognito app client callback URLs must **match exactly** hosted origins (no stray localhost on prod).
+2. **Student site:** register with email/password (verify email) **or** Google; complete profile (**`/account`**) so **terms** + **privacy** timestamps are set; **`GET /users/me`** returns country/profession after **`PATCH /users/me`**. **Teacher site:** Google only.
+3. In Cognito Console, confirm **student** client lists **Cognito user pool** + **Google**; **teacher** client lists **Google** only.
+4. **PreSignUp linking:** Google sign-in for an email that already has a native account should attach to the same user (not a duplicate). Native sign-up with an email already used should fail at PreSignUp.
+5. **Callback allowlists:** Google Cloud client + Cognito app client callback URLs must **match exactly** hosted origins (no stray localhost on prod).
+
+### Student native auth + Zoho mail (RS-6)
+
+- **SRP / auth flows:** Student client must include **`ALLOW_USER_SRP_AUTH`**, **`ALLOW_REFRESH_TOKEN_AUTH`**, and **`ALLOW_ADMIN_USER_PASSWORD_AUTH`** (CI integration minting only — not public **`USER_PASSWORD_AUTH`**). Contract test: [`tests/unit/test_auth_stack_student_srp.py`](../../tests/unit/test_auth_stack_student_srp.py).
+- **Verification email:** When PreSignUp + custom email sender zips deploy with **`ZohoSmtpSecretArn`**, Cognito invokes **`CognitoCustomEmailSenderLambda`** (KMS-encrypted codes) and the Lambda sends via **Zoho SMTP** using Secrets Manager **`streammycourse/zoho-smtp/prod`** (JSON: `smtp_username`, `smtp_password`, optional host/port/from/reply_to). Deploy workflow runs [`scripts/ensure-zoho-smtp-secret.sh`](../../scripts/ensure-zoho-smtp-secret.sh); set GitHub **`prod`** secret **`ZOHO_SMTP_PASSWORD`** (Zoho app-specific password for the **`support@researchspectrum.org`** mailbox; secret JSON sends **From** **`noreply@researchspectrum.org`**) before the first create. Domain SPF/DKIM for Zoho stays in Route 53 (not Amazon SES).
+- **Integration probe:** [`tests/integration/test_native_signup_profile.py`](../../tests/integration/test_native_signup_profile.py) (skips without AWS/API env or pre-RS-6 stack).
 
 ### Cognito `error=redirect_mismatch` (local or wrong SPA)
 

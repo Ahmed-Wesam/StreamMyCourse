@@ -181,6 +181,8 @@ The HTTP test calls themselves only need **`INTEGRATION_COGNITO_JWT`** when rout
 
 GitHub Deploy workflow **Integration HTTP tests** attaches **`environment: prod`**. Resolve stack outputs against **StreamMyCourse-Api-prod** and **StreamMyCourse-Video-prod**, then mint **`INTEGRATION_COGNITO_JWT`** exactly like **`verify-rds-reusable.yml`**: **`StreamMyCourse-Auth-prod`** outputs, **`ADMIN_USER_PASSWORD_AUTH`**, **`TeacherUserPoolClientId`**.
 
+**RS-6 native sign-up:** [`test_native_signup_profile.py`](test_native_signup_profile.py) creates a disposable `rs6-test-*@researchspectrum.org` user via public **`sign_up`** + **`admin_confirm_sign_up`**, then **`PATCH /users/me`** and **`GET /users/me`**; **`admin_delete_user`** in teardown. Skips when the student client lacks SRP/COGNITO, when **`PATCH /users/me`** returns **404** (migration **016** / API method not deployed), or when **`INTEGRATION_API_BASE_URL`** / AWS stack resolution is unavailable.
+
 **3-Principal CI Matrix:** The CI runs tests against three distinct Cognito principals to validate authorization boundaries:
 
 | Principal | Env Var | Role | Typical Test Files |
@@ -222,6 +224,7 @@ tests/integration/
     kinescope_webhook.py            -- POST /webhooks/kinescope media status callbacks
   test_access_control.py            -- cross-teacher access restrictions (owner vs non-owner)
   test_auth_gateway.py              -- `/users/me`, CORS preflight, POST /courses vs Cognito (optional JWT)
+  test_native_signup_profile.py     -- RS-6: Cognito sign_up + PATCH/GET `/users/me` (skips without AWS/API or pre-RS-6 stack)
   test_bootstrap_edges.py           -- cold-start and initialization edge cases
   test_courses.py                   -- course CRUD operations
   test_course_thumbnail.py          -- thumbnail upload and retrieval
