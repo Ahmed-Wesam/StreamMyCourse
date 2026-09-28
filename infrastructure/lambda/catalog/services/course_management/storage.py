@@ -11,6 +11,7 @@ from services.course_management.s3_common import (
     S3_DELETE_BATCH,
     content_type_for_lesson_file_type,
     extension_for_lesson_file_type,
+    extension_for_video_content_type,
     is_valid_lesson_file_object_key,
     is_valid_video_object_key,
     lesson_file_object_key,
