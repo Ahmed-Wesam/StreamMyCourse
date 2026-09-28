@@ -45,6 +45,9 @@ vi.mock('../pages/LearnRedirectPage', () => ({
 vi.mock('../pages/CoursesCatalogPage', () => ({
   default: () => <div data-testid="student-page-catalog" />,
 }))
+vi.mock('../pages/StudentDashboardPage', () => ({
+  default: () => <div data-testid="student-page-dashboard" />,
+}))
 vi.mock('../pages/StudentLoginPage', () => ({
   default: () => <div data-testid="student-page-login" />,
 }))
@@ -86,6 +89,9 @@ vi.mock('../pages/CheckoutPage', () => ({
 }))
 vi.mock('../components/auth/StudentAccountAuth', () => ({
   StudentAccountAuth: () => <Outlet />,
+}))
+vi.mock('../components/auth/StudentDashboardAuth', () => ({
+  StudentDashboardAuth: () => <Outlet />,
 }))
 vi.mock('../components/auth/SignIn', () => ({
   SignIn: ({ children }: { children?: ReactNode }) => <>{children}</>,
@@ -196,10 +202,10 @@ describe('StudentApp', () => {
     })
   })
 
-  it('redirects /my-course to the courses catalog', async () => {
+  it('redirects /my-course to the dashboard', async () => {
     renderAt('/my-course')
     await waitFor(() => {
-      expect(screen.getByTestId('student-page-catalog')).toBeTruthy()
+      expect(screen.getByTestId('student-page-dashboard')).toBeTruthy()
     })
   })
 
@@ -285,9 +291,9 @@ describe('StudentApp', () => {
     expect(source).not.toMatch(/import StudentRegisterPage from/)
   })
 
-  it('keeps /dashboard on the catch-all to home', async () => {
+  it('mounts the dashboard at /dashboard', async () => {
     renderAt('/dashboard')
-    expect(await screen.findByTestId('student-page-home')).toBeTruthy()
+    expect(await screen.findByTestId('student-page-dashboard')).toBeTruthy()
   })
 
   it('keeps /certificates on the catch-all to home', async () => {
@@ -313,6 +319,19 @@ describe('StudentApp', () => {
 
       await waitFor(() => {
         expect(screen.getByTestId('student-page-login')).toBeTruthy()
+      })
+    })
+
+    it('loads AuthShell at /dashboard before dashboard route content', async () => {
+      renderAt('/dashboard')
+
+      await waitFor(() => {
+        expect(screen.getByTestId('auth-shell')).toBeTruthy()
+      })
+      expect(AuthShellMock).toHaveBeenCalled()
+
+      await waitFor(() => {
+        expect(screen.getByTestId('student-page-dashboard')).toBeTruthy()
       })
     })
 

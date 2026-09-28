@@ -157,6 +157,7 @@ export default function CourseDetailPage() {
             courseId={courseId}
             course={course}
             lessons={lessons}
+            modules={modules}
             courseProgress={courseProgress}
             previewOnly={previewOnly}
             needsAccess={needsAccess}

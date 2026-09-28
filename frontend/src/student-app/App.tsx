@@ -2,6 +2,7 @@ import { lazy, Suspense } from 'react'
 import { Navigate, Route, Routes, useLocation } from 'react-router-dom'
 import { AuthGate } from '../components/auth/AuthGate'
 import { StudentAccountAuth } from '../components/auth/StudentAccountAuth'
+import { StudentDashboardAuth } from '../components/auth/StudentDashboardAuth'
 import { StudentTermsGate } from '../components/auth/StudentTermsGate'
 import { AccountLayout } from '../pages/account/AccountLayout'
 import { StudentHeader } from './StudentHeader'
@@ -18,6 +19,7 @@ const FaqPage = lazy(() => import('../pages/FaqPage'))
 const ContactPage = lazy(() => import('../pages/ContactPage'))
 const ResearchTeamPage = lazy(() => import('../pages/ResearchTeamPage'))
 const CoursesCatalogPage = lazy(() => import('../pages/CoursesCatalogPage'))
+const StudentDashboardPage = lazy(() => import('../pages/StudentDashboardPage'))
 const CourseDetailPage = lazy(() => import('../pages/CourseDetailPage'))
 const LearnRedirectPage = lazy(() => import('../pages/LearnRedirectPage'))
 const StudentLessonAuth = lazy(() =>
@@ -115,7 +117,17 @@ function StudentApp() {
           }
         />
         <Route path="/catalog" element={<LegacyPathRedirect to="/courses" />} />
-        <Route path="/my-course" element={<Navigate to="/courses" replace />} />
+        <Route path="/my-course" element={<Navigate to="/dashboard" replace />} />
+        <Route path="/dashboard" element={<StudentDashboardAuth />}>
+          <Route
+            index
+            element={
+              <LazyRoute>
+                <StudentDashboardPage />
+              </LazyRoute>
+            }
+          />
+        </Route>
         <Route
           path="/courses/:courseId"
           element={
