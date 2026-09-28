@@ -3,7 +3,7 @@
  * Does not import Amplify or the authenticated API client.
  */
 
-export type PublicContactPayload = {
+type PublicContactPayload = {
   name: string
   email: string
   category: string
@@ -12,7 +12,7 @@ export type PublicContactPayload = {
   rs_hp?: string
 }
 
-export type PublicContactOutcome =
+type PublicContactOutcome =
   | 'accepted'
   | 'validation_error'
   | 'rate_limited'
