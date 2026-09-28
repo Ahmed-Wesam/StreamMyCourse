@@ -36,6 +36,10 @@ describe('isStudentIdleProbePath', () => {
     expect(isStudentIdleProbePath('/courses/c1/lessons/l1')).toBe(false)
     expect(isStudentIdleProbePath('/courses/c1/modules/m1/quiz')).toBe(false)
   })
+
+  it('returns false for student dashboard (RS-9 slice 2)', () => {
+    expect(isStudentIdleProbePath('/dashboard')).toBe(false)
+  })
 })
 
 describe('needsAuthBootstrap', () => {
@@ -121,6 +125,10 @@ describe('needsAuthBootstrap', () => {
     it('returns true for module quiz', () => {
       expect(needsAuthBootstrap('/courses/c1/modules/m1/quiz', '')).toBe(true)
     })
+
+    it('returns true for student dashboard (RS-9 slice 2)', () => {
+      expect(needsAuthBootstrap('/dashboard', '')).toBe(true)
+    })
   })
 })
 
@@ -135,5 +143,9 @@ describe('isStudentTermsGateExemptPath', () => {
     expect(isStudentTermsGateExemptPath('/courses')).toBe(false)
     expect(isStudentTermsGateExemptPath('/about')).toBe(false)
     expect(isStudentTermsGateExemptPath('/checkout')).toBe(false)
+  })
+
+  it('returns false for student dashboard (RS-9 slice 2)', () => {
+    expect(isStudentTermsGateExemptPath('/dashboard')).toBe(false)
   })
 })

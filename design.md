@@ -230,7 +230,7 @@ The frontend is built as **two separate SPAs** deployed to different subdomains:
 
 | Site | Domain | Purpose | Routes |
 |------|--------|---------|--------|
-| **Student** | `streammycourse.com` | Browse and watch courses | `/`, `/about`, `/faq`, `/contact`, `/research-team`, `/courses`, `/login`, `/privacy`, `/terms`, `/refund`, `/delivery`, `/educational-disclaimer`, `/courses/:id`, `/courses/:id/lessons/:id`, `/courses/:id/modules/:moduleId/quiz` (legacy `/details`, `/course`, `/catalog`, `/my-course` redirect to `/courses`) |
+| **Student** | `streammycourse.com` | Browse and watch courses | `/`, `/about`, `/faq`, `/contact`, `/research-team`, `/courses`, `/dashboard`, `/login`, `/privacy`, `/terms`, `/refund`, `/delivery`, `/educational-disclaimer`, `/courses/:id`, `/courses/:id/lessons/:id`, `/courses/:id/modules/:moduleId/quiz` (legacy `/details`, `/course`, `/catalog` redirect to `/courses`; **`/my-course`** → **`/dashboard`**) |
 | **Teacher** | `teach.streammycourse.com` | Create, edit, upload content | `/`, `/courses/:id`, `/courses/:id/question-banks`, `/courses/:id/question-banks/:bankId`, `/settings/payments` |
 
 ### Student Site Routes (View-Only)
@@ -240,8 +240,10 @@ The frontend is built as **two separate SPAs** deployed to different subdomains:
 /faq                                 # FAQ (public)
 /contact                             # Contact shell (no submit API yet)
 /research-team                       # Research Team explainer (no application yet)
-/details                             # Legacy path → redirects to `/courses` (same as `/course`, `/catalog`, `/my-course`)
-/courses                             # Published course catalog (public `GET /courses`; no prices until RS-5)
+/details                             # Legacy path → redirects to `/courses` (same as `/course`, `/catalog`)
+/my-course                           # Legacy enrolled hub → redirects to `/dashboard`
+/courses                             # Published course catalog (public `GET /courses`)
+/dashboard                           # Signed-in learning hub (purchases + per-course progress/quizzes; RS-9)
 /login                               # Student sign-in (Hosted UI / auth shell)
 /courses/:courseId                   # Course detail
 /courses/:courseId/lessons/:lessonId # Video player

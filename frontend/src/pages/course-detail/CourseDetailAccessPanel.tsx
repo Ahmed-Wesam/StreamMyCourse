@@ -5,29 +5,44 @@ import {
   courseDetailNoAccessPrompt,
   courseDetailSignInPrompt,
 } from '../../lib/marketing/courseDetailShellCopy'
-import type { Course, CourseProgress, Lesson } from '../../lib/api/types'
-import { getResumeLesson } from './courseDetailProgress'
+import type { Course, CourseModule, CourseProgress, Lesson } from '../../lib/api/types'
+import { buildContinueHref, resolveContinueTarget } from '../../lib/studentDashboard'
+
+function emptyCourseProgress(courseId: string, lessons: Lesson[]): CourseProgress {
+  return {
+    courseId,
+    totalReadyLessons: lessons.length,
+    completedCount: 0,
+    percentComplete: 0,
+    lessons: [],
+  }
+}
 
 function ResumeLearningButton({
   courseId,
   lessons,
+  modules,
   courseProgress,
   disabled,
 }: {
   courseId: string
   lessons: Lesson[]
+  modules: CourseModule[]
   courseProgress: CourseProgress | null
   disabled: boolean
 }) {
-  const resumeInfo = getResumeLesson(lessons, courseProgress)
+  const progress = courseProgress ?? emptyCourseProgress(courseId, lessons)
+  const target = resolveContinueTarget(lessons, modules, progress)
+  const toPath = buildContinueHref(courseId, target)
+  const startTimeSec = target.kind === 'lesson' ? target.startTimeSec : 0
   const label =
     lessons.length === 0
       ? 'No lessons'
-      : resumeInfo && resumeInfo.startTimeSec > 0
+      : startTimeSec > 0
         ? 'Resume Learning'
         : 'Start Learning'
 
-  if (disabled || !resumeInfo) {
+  if (disabled || lessons.length === 0 || target.kind === 'blocked') {
     return (
       <span className="inline-flex w-full cursor-not-allowed items-center justify-center gap-2 rounded-full bg-rs-grad-cta px-4 py-3 text-[15px] font-bold text-white opacity-50">
         <Play className="h-5 w-5" aria-hidden />
@@ -35,10 +50,6 @@ function ResumeLearningButton({
       </span>
     )
   }
-
-  const { lesson, startTimeSec } = resumeInfo
-  const lessonPath = `/courses/${courseId}/lessons/${lesson.id}`
-  const toPath = startTimeSec > 0 ? `${lessonPath}?t=${startTimeSec}` : lessonPath
 
   return (
     <Button to={toPath} className="w-full" arrow>
@@ -51,6 +62,7 @@ type CourseDetailAccessPanelProps = {
   courseId: string
   course: Course | null
   lessons: Lesson[]
+  modules: CourseModule[]
   courseProgress: CourseProgress | null
   previewOnly: boolean
   needsAccess: boolean
@@ -60,6 +72,7 @@ export function CourseDetailAccessPanel({
   courseId,
   course,
   lessons,
+  modules,
   courseProgress,
   previewOnly,
   needsAccess,
@@ -99,6 +112,7 @@ export function CourseDetailAccessPanel({
           <ResumeLearningButton
             courseId={courseId}
             lessons={lessons}
+            modules={modules}
             courseProgress={courseProgress}
             disabled={lessons.length === 0}
           />
@@ -106,6 +120,7 @@ export function CourseDetailAccessPanel({
           <ResumeLearningButton
             courseId={courseId}
             lessons={lessons}
+            modules={modules}
             courseProgress={courseProgress}
             disabled
           />

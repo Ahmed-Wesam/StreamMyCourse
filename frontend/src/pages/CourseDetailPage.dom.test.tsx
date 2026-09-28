@@ -383,6 +383,135 @@ describe('CourseDetailPage', () => {
     expect(href).toBe('/courses/c1/lessons/l1?t=50')
   })
 
+  it('Resume href skips locked module incomplete lesson for later unlocked lesson', async () => {
+    api.listLessons.mockResolvedValue([
+      {
+        id: 'l1',
+        title: 'L1',
+        order: 0,
+        moduleId: 'm1',
+        moduleOrder: 0,
+        videoStatus: 'ready',
+        duration: 100,
+      },
+      {
+        id: 'l2',
+        title: 'L2',
+        order: 0,
+        moduleId: 'm2',
+        moduleOrder: 1,
+        videoStatus: 'ready',
+        duration: 100,
+      },
+      {
+        id: 'l3',
+        title: 'L3',
+        order: 0,
+        moduleId: 'm3',
+        moduleOrder: 2,
+        videoStatus: 'ready',
+        duration: 100,
+      },
+    ])
+    api.listCourseModules.mockResolvedValue([
+      { id: 'm1', title: 'M1', description: '', order: 0 },
+      { id: 'm2', title: 'M2', description: '', order: 1, locked: true },
+      { id: 'm3', title: 'M3', description: '', order: 2 },
+    ])
+    api.getCourseProgress.mockResolvedValue({
+      courseId: 'c1',
+      totalReadyLessons: 3,
+      completedCount: 1,
+      percentComplete: 33,
+      lessons: [
+        { lessonId: 'l1', completed: true, lastPositionSec: 100 },
+        { lessonId: 'l2', completed: false, lastPositionSec: 0 },
+        { lessonId: 'l3', completed: false, lastPositionSec: 0 },
+      ],
+    })
+
+    renderCourseDetail()
+
+    const startButton = await waitFor(() => screen.getByText('Start Learning'))
+    const href = startButton.closest('a')?.getAttribute('href')
+    expect(href).toBe('/courses/c1/lessons/l3')
+    expect(href).not.toContain('l2')
+  })
+
+  it('Resume href points to quiz when incomplete lessons are only in locked modules', async () => {
+    api.listLessons.mockResolvedValue([
+      {
+        id: 'l1',
+        title: 'L1',
+        order: 0,
+        moduleId: 'm1',
+        moduleOrder: 0,
+        videoStatus: 'ready',
+        duration: 100,
+      },
+    ])
+    api.listCourseModules.mockResolvedValue([
+      {
+        id: 'm1',
+        title: 'M1',
+        description: '',
+        order: 0,
+        locked: true,
+        moduleQuiz: { available: true, servedCountN: 5, passed: false },
+      },
+      {
+        id: 'm2',
+        title: 'M2',
+        description: '',
+        order: 1,
+        moduleQuiz: { available: true, servedCountN: 5, passed: false },
+      },
+    ])
+    api.getCourseProgress.mockResolvedValue({
+      courseId: 'c1',
+      totalReadyLessons: 1,
+      completedCount: 0,
+      percentComplete: 0,
+      lessons: [{ lessonId: 'l1', completed: false, lastPositionSec: 0 }],
+    })
+
+    renderCourseDetail()
+
+    const button = await waitFor(() => screen.getByText('Start Learning'))
+    const href = button.closest('a')?.getAttribute('href')
+    expect(href).toBe('/courses/c1/modules/m2/quiz')
+  })
+
+  it('disables Resume when incomplete lessons are locked and no quiz fallback exists', async () => {
+    api.listLessons.mockResolvedValue([
+      {
+        id: 'l1',
+        title: 'L1',
+        order: 0,
+        moduleId: 'm1',
+        moduleOrder: 0,
+        videoStatus: 'ready',
+        duration: 100,
+      },
+    ])
+    api.listCourseModules.mockResolvedValue([
+      { id: 'm1', title: 'M1', description: '', order: 0, locked: true },
+    ])
+    api.getCourseProgress.mockResolvedValue({
+      courseId: 'c1',
+      totalReadyLessons: 1,
+      completedCount: 0,
+      percentComplete: 0,
+      lessons: [{ lessonId: 'l1', completed: false, lastPositionSec: 0 }],
+    })
+
+    renderCourseDetail()
+
+    const button = await waitFor(() => screen.getByText('Start Learning'))
+    expect(button.closest('a')).toBeNull()
+    expect(button.closest('span')?.className).toMatch(/cursor-not-allowed/)
+  })
+
   it('shows lesson thumbnails with progress bars', async () => {
     api.getCourseProgress.mockResolvedValue({
       courseId: 'c1',

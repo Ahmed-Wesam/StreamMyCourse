@@ -6,6 +6,33 @@
 
 ---
 
+## 2026-09-28 — Research Spectrum student dashboard (RS-9)
+
+### Decisions
+
+- **`/courses`** stays the public catalog; signed-in hub at **`/dashboard`**; **`/my-course`** → **`/dashboard`**.
+- **No aggregate API:** compose **`GET /billing/purchases`**, public catalog, **`GET /users/me`**, and per owned course **`GET …/progress`**, **`GET …/lessons`**, **`GET …/modules`**.
+- **Continue / Resume:** shared [`studentDashboard.ts`](frontend/src/lib/studentDashboard.ts) — first incomplete **unlocked** lesson, else earliest unlocked unpassed module quiz; course-detail Start/Resume aligned (not locked-only `getResumeLesson`).
+- **Deferred UI:** certificates, Research Team, streak, and recent activity omitted until RS-12 / RS-14.
+
+### What landed
+
+- **Lib:** [`studentDashboard.ts`](frontend/src/lib/studentDashboard.ts) + unit tests
+- **Auth:** [`StudentDashboardAuth.tsx`](frontend/src/components/auth/StudentDashboardAuth.tsx); [`auth-bootstrap.ts`](frontend/src/lib/auth-bootstrap.ts) — `/dashboard` bootstraps auth
+- **Page:** [`StudentDashboardPage.tsx`](frontend/src/pages/StudentDashboardPage.tsx) + [`student-dashboard/`](frontend/src/pages/student-dashboard/) sections
+- **Routes:** lazy **`/dashboard`** in [`App.tsx`](frontend/src/student-app/App.tsx); [`CourseDetailAccessPanel.tsx`](frontend/src/pages/course-detail/CourseDetailAccessPanel.tsx) locked-aware resume
+
+### Verification
+
+- [x] `frontend/` Vitest (dashboard, App routing, course-detail resume cases); `npm run lint`; `npm run check:bundle` — student **`firstLoadWithAuth`** 179.75 KB
+- [ ] Optional browser smoke on `/dashboard` before launch
+
+### Docs
+
+- Child plan [`plans/ui-overhaul/rs-9-student-dashboard.md`](plans/ui-overhaul/rs-9-student-dashboard.md); mega-plan RS-9 status; [`design.md`](design.md) §8 student routes
+
+---
+
 ## 2026-09-28 — Research Spectrum quiz gating (RS-8)
 
 ### Decisions
