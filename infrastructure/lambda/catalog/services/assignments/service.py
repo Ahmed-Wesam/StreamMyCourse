@@ -443,8 +443,6 @@ class AssignmentsService:
                 body["instructions"],
                 field="instructions",
                 current_mode=row.instructions_mode,
-                current_text=row.instructions_text,
-                current_html=row.instructions_html,
                 current_image_key=row.instructions_image_key,
                 current_image_ready=row.instructions_image_ready,
             )
@@ -467,8 +465,6 @@ class AssignmentsService:
                 body["rubric"],
                 field="rubric",
                 current_mode=row.rubric_mode,
-                current_text=row.rubric_text,
-                current_html=row.rubric_html,
                 current_image_key=row.rubric_image_key,
                 current_image_ready=row.rubric_image_ready,
             )
@@ -522,8 +518,6 @@ class AssignmentsService:
         *,
         field: str,
         current_mode: str,
-        current_text: str,
-        current_html: str,
         current_image_key: str,
         current_image_ready: bool,
     ) -> tuple[str, str, str, str, bool, list[str]]:
