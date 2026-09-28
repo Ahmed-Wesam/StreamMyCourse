@@ -1,0 +1,6 @@
+from __future__ import annotations
+
+MAX_NOTE_BODY_LEN = 4000
+MIN_NOTE_BODY_LEN = 1
+MAX_NOTES_PER_USER_LESSON = 50
+MAX_TIMESTAMP_SEC = 86400

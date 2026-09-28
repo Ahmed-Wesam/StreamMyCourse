@@ -30,6 +30,7 @@ from services.course_management.kinescope_routing import (
 from services.course_management.video_webhooks import handle_kinescope_drm_auth
 from services.question_banks.controller import handle_question_banks_request
 from services.contact.controller import handle_contact_request
+from services.lesson_notes.controller import handle_lesson_notes_request
 from services.rate_limit.http import check_rate_limit
 
 logger = logging.getLogger(__name__)
@@ -428,6 +429,40 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                                     "code": "video_edge_required",
                                 },
                                 origin,
+                            )
+                    elif (
+                        len(parts) >= 5
+                        and parts[0] == "courses"
+                        and parts[2] == "lessons"
+                        and parts[4] == "notes"
+                        and (
+                            method == "OPTIONS"
+                            or (method in ("GET", "POST") and len(parts) == 5)
+                            or (method in ("PATCH", "DELETE") and len(parts) == 6)
+                        )
+                    ):
+                        notes_deps = get_cached_aws_deps()
+                        if notes_deps is None or notes_deps.lesson_notes_service is None:
+                            if method == "OPTIONS":
+                                route_response = options_response(origin)
+                            else:
+                                route_response = json_response(
+                                    503,
+                                    {
+                                        "message": (
+                                            "Catalog is not configured: set DB_HOST, DB_NAME, and "
+                                            "DB_SECRET_ARN (deploy the api stack with RdsStackName "
+                                            "wired to the RDS stack)."
+                                        ),
+                                        "code": "catalog_unconfigured",
+                                    },
+                                    origin,
+                                )
+                        else:
+                            route_response = handle_lesson_notes_request(
+                                event,
+                                origin=origin,
+                                notes_svc=notes_deps.lesson_notes_service,
                             )
                     else:
                         route_response = course_management_handle(

@@ -79,6 +79,15 @@ const api = vi.hoisted(() => ({
   patchModuleQuizPassPercent: vi.fn(),
 }))
 
+const lessonFilesApi = vi.hoisted(() => ({
+  listLessonFiles: vi.fn(),
+  deleteLessonFile: vi.fn(),
+}))
+
+const lessonFileUpload = vi.hoisted(() => ({
+  createAndUploadLessonAttachment: vi.fn(),
+}))
+
 const mockNavigate = vi.fn()
 const mockConfirm = vi.fn()
 const mockRouteParams = vi.hoisted(() => ({ courseId: 'c1' }))
@@ -138,6 +147,16 @@ vi.mock('../lib/api/pricing', () => ({
   setCoursePrice: (...args: unknown[]) => pricingApi.setCoursePrice(...args),
 }))
 
+vi.mock('../lib/api/lessonFiles', () => ({
+  listLessonFiles: (...args: unknown[]) => lessonFilesApi.listLessonFiles(...args),
+  deleteLessonFile: (...args: unknown[]) => lessonFilesApi.deleteLessonFile(...args),
+}))
+
+vi.mock('../lib/courseManagementLessonFileUpload', () => ({
+  createAndUploadLessonAttachment: (...args: unknown[]) =>
+    lessonFileUpload.createAndUploadLessonAttachment(...args),
+}))
+
 // Mock window.confirm
 Object.defineProperty(window, 'confirm', {
   writable: true,
@@ -193,6 +212,12 @@ describe('CourseManagement', () => {
     api.createModuleQuiz.mockReset()
     api.patchModuleQuizPassPercent.mockReset()
     pricingApi.setCoursePrice.mockReset()
+    lessonFilesApi.listLessonFiles.mockReset()
+    lessonFilesApi.deleteLessonFile.mockReset()
+    lessonFileUpload.createAndUploadLessonAttachment.mockReset()
+    lessonFilesApi.listLessonFiles.mockResolvedValue([])
+    lessonFilesApi.deleteLessonFile.mockResolvedValue({ fileId: 'f1', deleted: true })
+    lessonFileUpload.createAndUploadLessonAttachment.mockResolvedValue({ fileId: 'f-new' })
     pricingApi.setCoursePrice.mockResolvedValue({
       courseId: 'c1',
       amountMinor: 5999,

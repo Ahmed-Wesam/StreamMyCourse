@@ -50,6 +50,7 @@ _CATALOG_PSYCOPG2_ALLOWED = frozenset(
         _p("infrastructure/lambda/catalog/services/auth/rds_repo.py"),
         _p("infrastructure/lambda/catalog/services/enrollment/rds_repo.py"),
         _p("infrastructure/lambda/catalog/services/progress/rds_repo.py"),
+        _p("infrastructure/lambda/catalog/services/lesson_notes/rds_repo.py"),
         _p("infrastructure/lambda/catalog/services/question_banks/rds_repo.py"),
         _p("infrastructure/lambda/catalog/services/billing_merchant/repo.py"),
         _p("infrastructure/lambda/catalog/services/subscription/repo.py"),
@@ -334,6 +335,9 @@ def check_file(path: str) -> List[Violation]:
     if rel.endswith("/services/progress/controller.py") and "boto3" in roots:
         violations.append(Violation(rel, "progress controller must not import boto3"))
 
+    if rel.endswith("/services/lesson_notes/controller.py") and "boto3" in roots:
+        violations.append(Violation(rel, "lesson_notes controller must not import boto3"))
+
     is_persistence_adapter = (
         rel.endswith("/services/course_management/storage.py")
         or rel.endswith("/services/course_management/image_storage.py")
@@ -341,6 +345,7 @@ def check_file(path: str) -> List[Violation]:
         or rel.endswith("/services/auth/rds_repo.py")
         or rel.endswith("/services/enrollment/rds_repo.py")
         or rel.endswith("/services/progress/rds_repo.py")
+        or rel.endswith("/services/lesson_notes/rds_repo.py")
     )
     if is_persistence_adapter and "services.common.http" in roots:
         violations.append(Violation(rel, "repo/storage must not import services.common.http"))

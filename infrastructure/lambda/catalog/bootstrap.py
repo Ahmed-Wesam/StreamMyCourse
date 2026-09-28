@@ -60,7 +60,7 @@ from services.course_management.rds_repo import CourseCatalogRdsRepository
 
 from services.course_management.service import CourseManagementService
 
-from services.course_management.storage import CourseMediaStorage
+from services.course_management.storage import CourseMediaStorage, LessonFileStorage
 
 from services.course_management.video_providers.kinescope_adapter import KinescopeVideoAdapter
 
@@ -73,6 +73,8 @@ from services.course_management.video_providers.vdocipher_adapter import Vdociph
 from services.progress.rds_repo import LessonProgressRdsRepository
 
 from services.progress.service import LessonProgressService
+
+from services.lesson_notes import LessonNotesRdsRepository, LessonNotesService
 
 from services.purchases.checkout_service import PurchaseCheckoutService
 
@@ -502,6 +504,8 @@ class AwsDeps:
 
     contact_service: ContactService
 
+    lesson_notes_service: LessonNotesService
+
 
 
 
@@ -730,6 +734,8 @@ def build_aws_deps(cfg: AppConfig) -> AwsDeps:
 
     storage = CourseMediaStorage(cfg.video_bucket) if cfg.video_bucket else None
 
+    file_storage = LessonFileStorage(cfg.video_bucket) if cfg.video_bucket else None
+
     image_storage = CourseImageStorage(cfg.video_bucket) if cfg.video_bucket else None
 
     video_provider = _build_video_provider(cfg, storage) if storage is not None else None
@@ -753,6 +759,8 @@ def build_aws_deps(cfg: AppConfig) -> AwsDeps:
         course_repo,
 
         image_storage,
+
+        file_storage=file_storage,
 
         course_access=course_access,
 
@@ -789,6 +797,20 @@ def build_aws_deps(cfg: AppConfig) -> AwsDeps:
         progress_complete_ratio=cfg.progress_complete_ratio,
 
         position_slack_sec=cfg.progress_position_slack_sec,
+
+        module_lock=module_lock,
+
+    )
+
+    notes_repo = LessonNotesRdsRepository(conn_factory)
+
+    lesson_notes_service = LessonNotesService(
+
+        notes_repo,
+
+        course_access,
+
+        course_repo,
 
         module_lock=module_lock,
 
@@ -881,6 +903,8 @@ def build_aws_deps(cfg: AppConfig) -> AwsDeps:
         rate_limit_service=rate_limit_service,
 
         contact_service=contact_service,
+
+        lesson_notes_service=lesson_notes_service,
 
     )
 

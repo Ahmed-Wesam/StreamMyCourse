@@ -22,7 +22,7 @@ import json
 import logging
 from contextlib import contextmanager
 from datetime import datetime
-from typing import Any, Callable, Dict, Iterator, List, Optional, Tuple
+from typing import Any, Callable, Dict, Iterator, List, Optional, Sequence, Tuple
 
 try:  # pragma: no cover - optional dependency path
     import psycopg2
@@ -32,7 +32,7 @@ except Exception:  # pragma: no cover - surface at first DB call instead
     PgJson = None  # type: ignore[assignment]
 
 from services.common.errors import Conflict
-from services.course_management.models import Course, CourseModule, Lesson
+from services.course_management.models import Course, CourseModule, Lesson, LessonFile
 
 
 @contextmanager
@@ -142,6 +142,43 @@ def _row_to_course_module(row: Tuple[Any, ...]) -> CourseModule:
         order=int(module_order or 0),
         createdAt=_to_iso(created_at),
         updatedAt=_to_iso(updated_at),
+    )
+
+
+def _file_type_from_object_key(object_key: str) -> str:
+    key = (object_key or "").strip()
+    if "." not in key:
+        return ""
+    return key.rsplit(".", 1)[-1].lower()
+
+
+def _row_to_lesson_file(row: Tuple[Any, ...]) -> LessonFile:
+    (
+        fid,
+        course_id,
+        lesson_id,
+        kind,
+        title,
+        object_key,
+        content_type,
+        byte_size,
+        status,
+        created_at,
+    ) = row
+    object_key_str = str(object_key or "")
+    file_type = _file_type_from_object_key(object_key_str)
+    return LessonFile(
+        id=str(fid),
+        courseId=str(course_id),
+        lessonId=str(lesson_id),
+        kind=str(kind or ""),
+        title=str(title or ""),
+        objectKey=object_key_str,
+        contentType=str(content_type or ""),
+        byteSize=int(byte_size or 0),
+        status=str(status or "pending"),
+        fileType=file_type,
+        createdAt=_to_iso(created_at),
     )
 
 
@@ -588,3 +625,152 @@ class CourseCatalogRdsRepository:
                     "UPDATE lessons SET lesson_order = %s WHERE course_id = %s AND id = %s",
                     (int(order), course_id, lesson_id),
                 )
+
+    def count_lesson_files(self, course_id: str, lesson_id: str) -> int:
+        cur = self._execute(
+            """
+            SELECT COUNT(*) FROM lesson_files
+             WHERE course_id = %s AND lesson_id = %s
+            """,
+            (course_id, lesson_id),
+            commit=False,
+        )
+        row = cur.fetchone()
+        return int(row[0] or 0) if row else 0
+
+    def create_lesson_file(
+        self,
+        *,
+        file_id: str,
+        course_id: str,
+        lesson_id: str,
+        kind: str,
+        title: str,
+        object_key: str,
+        content_type: str,
+        byte_size: int,
+    ) -> LessonFile:
+        cur = self._execute(
+            """
+            INSERT INTO lesson_files (
+                id, course_id, lesson_id, kind, title, object_key, content_type, byte_size, status
+            )
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, 'pending')
+            RETURNING id, course_id, lesson_id, kind, title, object_key, content_type, byte_size, status, created_at
+            """,
+            (
+                file_id,
+                course_id,
+                lesson_id,
+                kind,
+                title,
+                object_key,
+                content_type,
+                int(byte_size),
+            ),
+            commit=True,
+        )
+        row = cur.fetchone()
+        if row is None:
+            raise RuntimeError("INSERT lesson_files ... RETURNING returned no row")
+        return _row_to_lesson_file(row)
+
+    def get_lesson_file(
+        self, course_id: str, lesson_id: str, file_id: str
+    ) -> Optional[LessonFile]:
+        cur = self._execute(
+            """
+            SELECT id, course_id, lesson_id, kind, title, object_key, content_type, byte_size, status, created_at
+              FROM lesson_files
+             WHERE course_id = %s AND lesson_id = %s AND id = %s
+            """,
+            (course_id, lesson_id, file_id),
+            commit=False,
+        )
+        row = cur.fetchone()
+        return _row_to_lesson_file(row) if row else None
+
+    def list_lesson_files(
+        self, course_id: str, lesson_id: str, *, ready_only: bool
+    ) -> List[LessonFile]:
+        if ready_only:
+            cur = self._execute(
+                """
+                SELECT id, course_id, lesson_id, kind, title, object_key, content_type, byte_size, status, created_at
+                  FROM lesson_files
+                 WHERE course_id = %s AND lesson_id = %s AND status = 'ready'
+                 ORDER BY created_at ASC
+                """,
+                (course_id, lesson_id),
+                commit=False,
+            )
+        else:
+            cur = self._execute(
+                """
+                SELECT id, course_id, lesson_id, kind, title, object_key, content_type, byte_size, status, created_at
+                  FROM lesson_files
+                 WHERE course_id = %s AND lesson_id = %s
+                 ORDER BY created_at ASC
+                """,
+                (course_id, lesson_id),
+                commit=False,
+            )
+        return [_row_to_lesson_file(r) for r in cur.fetchall()]
+
+    def mark_lesson_file_ready(self, course_id: str, lesson_id: str, file_id: str) -> None:
+        self._execute(
+            """
+            UPDATE lesson_files SET status = 'ready'
+             WHERE course_id = %s AND lesson_id = %s AND id = %s
+            """,
+            (course_id, lesson_id, file_id),
+            commit=True,
+        )
+
+    def delete_lesson_file(self, course_id: str, lesson_id: str, file_id: str) -> None:
+        self._execute(
+            "DELETE FROM lesson_files WHERE course_id = %s AND lesson_id = %s AND id = %s",
+            (course_id, lesson_id, file_id),
+            commit=True,
+        )
+
+    def list_lesson_file_object_keys_for_lesson(
+        self, course_id: str, lesson_id: str
+    ) -> List[str]:
+        cur = self._execute(
+            """
+            SELECT object_key FROM lesson_files
+             WHERE course_id = %s AND lesson_id = %s AND object_key <> ''
+            """,
+            (course_id, lesson_id),
+            commit=False,
+        )
+        return [str(r[0]) for r in cur.fetchall() if r and r[0]]
+
+    def list_lesson_file_object_keys_for_lessons(
+        self, course_id: str, lesson_ids: Sequence[str]
+    ) -> List[str]:
+        ids = [i.strip() for i in lesson_ids if i and i.strip()]
+        if not ids:
+            return []
+        placeholders = ", ".join(["%s"] * len(ids))
+        cur = self._execute(
+            f"""
+            SELECT object_key FROM lesson_files
+             WHERE course_id = %s AND lesson_id IN ({placeholders}) AND object_key <> ''
+            """,
+            tuple([course_id, *ids]),
+            commit=False,
+        )
+        return [str(r[0]) for r in cur.fetchall() if r and r[0]]
+
+    def list_lesson_file_object_keys_for_course(self, course_id: str) -> List[str]:
+        cur = self._execute(
+            """
+            SELECT object_key FROM lesson_files
+             WHERE course_id = %s AND object_key <> ''
+            """,
+            (course_id,),
+            commit=False,
+        )
+        return [str(r[0]) for r in cur.fetchall() if r and r[0]]

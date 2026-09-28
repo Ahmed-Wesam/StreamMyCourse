@@ -16,3 +16,4 @@ def test_catalog_lambda_role_can_get_lesson_video_objects_for_presigned_playback
     assert "PolicyName: S3PresignedUrl" in text
     assert "s3:GetObject" in text
     assert "${VideoBucketName}/*/lessons/*/video/*" in text
+    assert "${VideoBucketName}/*/lessons/*/files/*" in text

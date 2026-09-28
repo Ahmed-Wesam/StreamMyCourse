@@ -9,7 +9,7 @@ import time
 from collections import defaultdict
 from dataclasses import asdict
 from typing import Any, Dict, List
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from services.common.errors import (
     BadRequest,
@@ -24,10 +24,11 @@ from services.common.playback_watermark import (
 )
 from services.common.sqs_client import send_media_cleanup_job
 from services.course_management.course_page_validation import validate_and_normalize_course_page
-from services.course_management.models import Course, CourseModule, Lesson
+from services.course_management.models import Course, CourseModule, Lesson, LessonFile
 from services.course_management.ports import (
     CourseCatalogRepositoryPort,
     ImageMediaStoragePort,
+    LessonFileStoragePort,
     ModuleQuizVisibilityPort,
     StudentModuleLockPort,
     UserProfileProvisioner,
@@ -38,6 +39,9 @@ from services.course_management.video_providers.kinescope_adapter import (
 )
 from services.course_management.s3_common import (
     ALLOWED_VIDEO_CONTENT_TYPES,
+    MAX_LESSON_FILE_BYTES,
+    content_type_for_lesson_file_type,
+    extension_for_lesson_file_type,
     normalize_content_type,
 )
 from services.course_management.video_providers.port import (
@@ -49,6 +53,8 @@ from services.course_management.video_providers.port import (
 from services.purchases.ports import CourseAccessPort
 
 logger = logging.getLogger(__name__)
+
+MAX_LESSON_FILES_PER_LESSON = 20
 
 
 def _is_valid_uuid(value: str) -> bool:
@@ -71,6 +77,7 @@ class CourseManagementService:
         media_cleanup_queue_url: str = "",
         module_quiz_visibility: ModuleQuizVisibilityPort | None = None,
         module_lock: StudentModuleLockPort | None = None,
+        file_storage: LessonFileStoragePort | None = None,
         kinescope_drm_jwt_secret: str = "",
         kinescope_drm_jwt_issuer: str = "streammycourse",
         kinescope_drm_jwt_audience: str = "kinescope",
@@ -84,6 +91,7 @@ class CourseManagementService:
         self._media_cleanup_queue_url = (media_cleanup_queue_url or "").strip()
         self._module_quiz_visibility = module_quiz_visibility
         self._module_lock = module_lock
+        self._file_storage = file_storage
         self._kinescope_drm_jwt_secret = (kinescope_drm_jwt_secret or "").strip()
         self._kinescope_drm_jwt_issuer = (kinescope_drm_jwt_issuer or "").strip()
         self._kinescope_drm_jwt_audience = (kinescope_drm_jwt_audience or "").strip()
@@ -533,6 +541,7 @@ class CourseManagementService:
                 keys.append(lesson.videoKey.strip())
             if lesson.thumbnailKey.strip():
                 keys.append(lesson.thumbnailKey.strip())
+        keys.extend(self._repo.list_lesson_file_object_keys_for_course(course_id))
         deduped = list(dict.fromkeys(k.strip() for k in keys if k and k.strip()))
         if deduped and not self._media_cleanup_queue_url:
             raise ServiceUnavailable(
@@ -692,6 +701,10 @@ class CourseManagementService:
                 media_keys.append(lesson.videoKey.strip())
             if lesson.thumbnailKey.strip():
                 media_keys.append(lesson.thumbnailKey.strip())
+        lesson_ids = [l.id for l in lesson_rows if l.id]
+        media_keys.extend(
+            self._repo.list_lesson_file_object_keys_for_lessons(course_id, lesson_ids)
+        )
         deduped = list(dict.fromkeys(k.strip() for k in media_keys if k and k.strip()))
         if deduped and not self._media_cleanup_queue_url:
             raise ServiceUnavailable(
@@ -744,6 +757,9 @@ class CourseManagementService:
             media_keys.append(lesson.videoKey.strip())
         if lesson.thumbnailKey.strip():
             media_keys.append(lesson.thumbnailKey.strip())
+        media_keys.extend(
+            self._repo.list_lesson_file_object_keys_for_lesson(course_id, lesson_id)
+        )
         deduped = list(dict.fromkeys(k.strip() for k in media_keys if k and k.strip()))
         if deduped and not self._media_cleanup_queue_url:
             raise ServiceUnavailable(
@@ -1318,4 +1334,281 @@ class CourseManagementService:
             "lessonId": lesson_id,
             "videoStatus": status or "pending",
         }
+
+    @staticmethod
+    def _lesson_file_public_dict(row: LessonFile) -> Dict[str, Any]:
+        return {
+            "fileId": row.id,
+            "title": row.title,
+            "kind": row.kind,
+            "fileType": row.fileType,
+            "byteSize": row.byteSize,
+            "status": row.status,
+            "createdAt": row.createdAt,
+        }
+
+    def _require_lesson_file_storage(self) -> LessonFileStoragePort:
+        if self._file_storage is None:
+            raise BadRequest("Lesson file uploads are not configured")
+        return self._file_storage
+
+    def _validate_lesson_file_inputs(
+        self,
+        *,
+        kind: str,
+        file_type: str,
+        byte_size: int,
+        title: str,
+    ) -> tuple[str, str, str]:
+        k = (kind or "").strip().lower()
+        if k not in ("resource", "download"):
+            raise BadRequest("Invalid lesson file kind")
+        title_clean = (title or "").strip()
+        if not title_clean:
+            raise BadRequest("title is required")
+        if len(title_clean) > 255:
+            raise BadRequest("title is too long")
+        ft = (file_type or "").strip().lower()
+        extension_for_lesson_file_type(ft)
+        if byte_size < 1 or byte_size > MAX_LESSON_FILE_BYTES:
+            raise BadRequest("byteSize is out of allowed range")
+        content_type = content_type_for_lesson_file_type(ft)
+        return k, ft, content_type
+
+    def create_lesson_file(
+        self,
+        course_id: str,
+        lesson_id: str,
+        *,
+        title: str,
+        kind: str,
+        file_type: str,
+        byte_size: int,
+        cognito_sub: str,
+        role: str,
+    ) -> Dict[str, Any]:
+        self.ensure_can_modify_course(
+            course_id,
+            cognito_sub=cognito_sub,
+            role=role,
+        )
+        if not _is_valid_uuid(course_id):
+            raise NotFound("Course not found")
+        if not _is_valid_uuid(lesson_id):
+            raise NotFound("Lesson not found")
+        lesson = self._repo.get_lesson_by_id(course_id, lesson_id)
+        if not lesson:
+            raise NotFound("Lesson not found")
+        kind_norm, file_type_norm, content_type = self._validate_lesson_file_inputs(
+            kind=kind,
+            file_type=file_type,
+            byte_size=byte_size,
+            title=title,
+        )
+        if self._repo.count_lesson_files(course_id, lesson_id) >= MAX_LESSON_FILES_PER_LESSON:
+            raise BadRequest(
+                f"A lesson may have at most {MAX_LESSON_FILES_PER_LESSON} files"
+            )
+        storage = self._require_lesson_file_storage()
+        file_id = str(uuid4())
+        presign = storage.presign_put_file(
+            course_id=course_id,
+            lesson_id=lesson_id,
+            file_id=file_id,
+            file_type=file_type_norm,
+            byte_size=byte_size,
+        )
+        self._repo.create_lesson_file(
+            file_id=file_id,
+            course_id=course_id,
+            lesson_id=lesson_id,
+            kind=kind_norm,
+            title=(title or "").strip(),
+            object_key=presign.objectKey,
+            content_type=content_type,
+            byte_size=byte_size,
+        )
+        return {"fileId": file_id, "uploadUrl": presign.uploadUrl}
+
+    def complete_lesson_file(
+        self,
+        course_id: str,
+        lesson_id: str,
+        file_id: str,
+        *,
+        cognito_sub: str,
+        role: str,
+    ) -> Dict[str, Any]:
+        self.ensure_can_modify_course(
+            course_id,
+            cognito_sub=cognito_sub,
+            role=role,
+        )
+        if not _is_valid_uuid(course_id):
+            raise NotFound("Course not found")
+        if not _is_valid_uuid(lesson_id):
+            raise NotFound("Lesson not found")
+        if not _is_valid_uuid(file_id):
+            raise NotFound("File not found")
+        row = self._repo.get_lesson_file(course_id, lesson_id, file_id)
+        if not row:
+            raise NotFound("File not found")
+        storage = self._require_lesson_file_storage()
+        object_key = (row.objectKey or "").strip()
+        head = storage.head_object(object_key)
+        length = int(head.get("ContentLength") or 0)
+        head_type = normalize_content_type(str(head.get("ContentType") or ""))
+        expected_type = normalize_content_type(row.contentType)
+        invalid = (
+            length != row.byteSize
+            or length > MAX_LESSON_FILE_BYTES
+            or head_type != expected_type
+        )
+        if invalid:
+            if object_key:
+                storage.delete_object(object_key)
+            if length != row.byteSize:
+                raise BadRequest("Uploaded object size does not match declared byteSize")
+            if length > MAX_LESSON_FILE_BYTES:
+                raise BadRequest("Uploaded object exceeds maximum file size")
+            raise BadRequest("Uploaded object content type does not match file type")
+        self._repo.mark_lesson_file_ready(course_id, lesson_id, file_id)
+        return {"fileId": file_id, "status": "ready"}
+
+    def list_lesson_files(
+        self,
+        course_id: str,
+        lesson_id: str,
+        *,
+        cognito_sub: str,
+        role: str,
+    ) -> List[Dict[str, Any]]:
+        if not _is_valid_uuid(course_id):
+            raise NotFound("Course not found")
+        if not _is_valid_uuid(lesson_id):
+            raise NotFound("Lesson not found")
+        lesson = self._repo.get_lesson_by_id(course_id, lesson_id)
+        if not lesson:
+            raise NotFound("Lesson not found")
+        course = self._repo.get_course(course_id)
+        if not course:
+            raise NotFound("Course not found")
+        ready_only = True
+        if self._can_manage_course_unenrolled(
+            course, cognito_sub=cognito_sub, role=role
+        ):
+            ready_only = False
+        else:
+            if not self.viewer_has_lesson_access(
+                course,
+                course_id=course_id,
+                cognito_sub=cognito_sub,
+                role=role,
+            ):
+                raise Forbidden(
+                    "Purchase required to view this course",
+                    code="purchase_required",
+                )
+            self._ensure_module_unlocked_for_student(
+                course_id,
+                lesson.moduleId,
+                cognito_sub=cognito_sub,
+                role=role,
+            )
+        rows = self._repo.list_lesson_files(course_id, lesson_id, ready_only=ready_only)
+        return [self._lesson_file_public_dict(r) for r in rows]
+
+    def get_lesson_file_download_url(
+        self,
+        course_id: str,
+        lesson_id: str,
+        file_id: str,
+        *,
+        cognito_sub: str,
+        role: str,
+    ) -> Dict[str, Any]:
+        if not _is_valid_uuid(course_id):
+            raise NotFound("Course not found")
+        if not _is_valid_uuid(lesson_id):
+            raise NotFound("Lesson not found")
+        if not _is_valid_uuid(file_id):
+            raise NotFound("File not found")
+        lesson = self._repo.get_lesson_by_id(course_id, lesson_id)
+        if not lesson:
+            raise NotFound("Lesson not found")
+        row = self._repo.get_lesson_file(course_id, lesson_id, file_id)
+        if not row:
+            raise NotFound("File not found")
+        if row.status != "ready":
+            raise NotFound("File not found")
+        course = self._repo.get_course(course_id)
+        if not course:
+            raise NotFound("Course not found")
+        if not self._can_manage_course_unenrolled(
+            course, cognito_sub=cognito_sub, role=role
+        ):
+            if not self.viewer_has_lesson_access(
+                course,
+                course_id=course_id,
+                cognito_sub=cognito_sub,
+                role=role,
+            ):
+                raise Forbidden(
+                    "Purchase required to view this course",
+                    code="purchase_required",
+                )
+            self._ensure_module_unlocked_for_student(
+                course_id,
+                lesson.moduleId,
+                cognito_sub=cognito_sub,
+                role=role,
+            )
+        storage = self._require_lesson_file_storage()
+        url = storage.presign_get_file(
+            key=row.objectKey,
+            kind=row.kind,
+            title=row.title,
+            file_type=row.fileType,
+        )
+        return {"url": url}
+
+    def delete_lesson_file(
+        self,
+        course_id: str,
+        lesson_id: str,
+        file_id: str,
+        *,
+        cognito_sub: str,
+        role: str,
+    ) -> Dict[str, Any]:
+        self.ensure_can_modify_course(
+            course_id,
+            cognito_sub=cognito_sub,
+            role=role,
+        )
+        if not _is_valid_uuid(course_id):
+            raise NotFound("Course not found")
+        if not _is_valid_uuid(lesson_id):
+            raise NotFound("Lesson not found")
+        if not _is_valid_uuid(file_id):
+            raise NotFound("File not found")
+        row = self._repo.get_lesson_file(course_id, lesson_id, file_id)
+        if not row:
+            raise NotFound("File not found")
+        object_key = (row.objectKey or "").strip()
+        if object_key and not self._media_cleanup_queue_url:
+            raise ServiceUnavailable(
+                "Media cleanup queue is not configured (MEDIA_CLEANUP_QUEUE_URL is empty)"
+            )
+        self._repo.delete_lesson_file(course_id, lesson_id, file_id)
+        if object_key:
+            s3_keys, kinescope_video_ids = self._split_cleanup_targets(course_id, [object_key])
+            send_media_cleanup_job(
+                self._media_cleanup_queue_url,
+                course_id,
+                [object_key],
+                s3_keys=s3_keys,
+                kinescope_video_ids=kinescope_video_ids,
+            )
+        return {"fileId": file_id, "deleted": True}
 

@@ -21,6 +21,9 @@ import {
 } from '../lib/api/questionBanks'
 import type { Course, CourseModule, Lesson, ModuleQuizRow, QuestionBankSummary } from '../lib/api/types'
 import { createAndUploadDraftLesson } from '../lib/courseManagementLessonUpload'
+import { createAndUploadLessonAttachment } from '../lib/courseManagementLessonFileUpload'
+import { deleteLessonFile, listLessonFiles } from '../lib/api/lessonFiles'
+import type { LessonFileListItem } from '../lib/api/types'
 import { catalogApiUserMessage } from '../lib/apiUserMessages'
 import { CourseManagementModuleQuizPanel } from '../components/course/CourseManagementModuleQuizPanel'
 import { CoursePageContentEditor } from '../components/course/CoursePageContentEditor'
@@ -72,6 +75,8 @@ export default function CourseManagement() {
   const [selectedFile, setSelectedFile] = useState<File | null>(null)
   const [uploading, setUploading] = useState(false)
   const [uploadProgress, setUploadProgress] = useState(0)
+  const [lessonFilesByLessonId, setLessonFilesByLessonId] = useState<Record<string, LessonFileListItem[]>>({})
+  const [attachingLessonFileId, setAttachingLessonFileId] = useState<string | null>(null)
 
   const [thumbFile, setThumbFile] = useState<File | null>(null)
   const [thumbUploading, setThumbUploading] = useState(false)
@@ -96,6 +101,16 @@ export default function CourseManagement() {
         listCourseModuleQuizzes(courseId),
         listCourseQuestionBanks(courseId),
       ])
+      const fileLists =
+        lessonsData.length > 0
+          ? await Promise.all(
+              lessonsData.map(async (lesson) => {
+                const rows = await listLessonFiles(courseId, lesson.id)
+                return [lesson.id, rows] as const
+              }),
+            )
+          : []
+      const filesMap = Object.fromEntries(fileLists) as Record<string, LessonFileListItem[]>
 
       if (!courseData) {
         setCourse(null)
@@ -103,6 +118,7 @@ export default function CourseManagement() {
         setModules([])
         setModuleQuizRows([])
         setQuestionBankSummaries([])
+        setLessonFilesByLessonId({})
         setEditTitle('')
         setEditDescription('')
         setEditPage({})
@@ -113,6 +129,7 @@ export default function CourseManagement() {
       } else {
         setCourse(courseData)
         setLessons(lessonsData)
+        setLessonFilesByLessonId(filesMap)
         setModules(modulesData)
         setModuleQuizRows(moduleQuizzesData)
         setQuestionBankSummaries(questionBanksData)
@@ -138,6 +155,7 @@ export default function CourseManagement() {
       setModules([])
       setModuleQuizRows([])
       setQuestionBankSummaries([])
+      setLessonFilesByLessonId({})
       setEditTitle('')
       setEditDescription('')
       setEditPage({})
@@ -265,6 +283,48 @@ export default function CourseManagement() {
       setError(null)
       await deleteLesson(courseId, lessonId)
       await loadCourseData()
+    } catch (err) {
+      setError(catalogApiUserMessage(err, 'deleteLesson'))
+    }
+  }
+
+  const refreshLessonFiles = async (lessonId: string) => {
+    if (!courseId) return
+    const rows = await listLessonFiles(courseId, lessonId)
+    setLessonFilesByLessonId((prev) => ({ ...prev, [lessonId]: rows }))
+  }
+
+  const handleAttachLessonFile = async (params: {
+    lessonId: string
+    title: string
+    kind: 'resource' | 'download'
+    file: File
+  }) => {
+    if (!courseId) return
+    setAttachingLessonFileId(params.lessonId)
+    setError(null)
+    try {
+      await createAndUploadLessonAttachment({
+        courseId,
+        lessonId: params.lessonId,
+        title: params.title,
+        kind: params.kind,
+        file: params.file,
+      })
+      await refreshLessonFiles(params.lessonId)
+    } catch (err) {
+      setError(catalogApiUserMessage(err, 'addLesson'))
+    } finally {
+      setAttachingLessonFileId(null)
+    }
+  }
+
+  const handleDeleteLessonFile = async (lessonId: string, fileId: string) => {
+    if (!courseId || !confirm('Remove this file from the lesson?')) return
+    try {
+      setError(null)
+      await deleteLessonFile(courseId, lessonId, fileId)
+      await refreshLessonFiles(lessonId)
     } catch (err) {
       setError(catalogApiUserMessage(err, 'deleteLesson'))
     }
@@ -554,8 +614,12 @@ export default function CourseManagement() {
         course={course}
         sortedLessons={sortedLessons}
         moduleTitleById={moduleTitleById}
+        lessonFilesByLessonId={lessonFilesByLessonId}
+        attachingLessonId={attachingLessonFileId}
         onAddLessonClick={() => setShowAddLesson(true)}
         onDeleteLesson={handleDeleteLesson}
+        onAttachLessonFile={handleAttachLessonFile}
+        onDeleteLessonFile={handleDeleteLessonFile}
       />
 
       {showAddLesson && (

@@ -106,6 +106,48 @@ def _route(method: str, path: str) -> Tuple[str, Dict[str, str]]:
         return "get_playback", {"courseId": parts[1], "lessonId": parts[2]}
     if method == "POST" and parts == ["upload-url"]:
         return "get_upload_url", {}
+    if method == "GET" and len(parts) == 5 and parts[0] == "courses" and parts[2] == "lessons" and parts[4] == "files":
+        return "list_lesson_files", {"courseId": parts[1], "lessonId": parts[3]}
+    if method == "POST" and len(parts) == 5 and parts[0] == "courses" and parts[2] == "lessons" and parts[4] == "files":
+        return "create_lesson_file", {"courseId": parts[1], "lessonId": parts[3]}
+    if (
+        method == "PUT"
+        and len(parts) == 7
+        and parts[0] == "courses"
+        and parts[2] == "lessons"
+        and parts[4] == "files"
+        and parts[6] == "complete"
+    ):
+        return "complete_lesson_file", {
+            "courseId": parts[1],
+            "lessonId": parts[3],
+            "fileId": parts[5],
+        }
+    if (
+        method == "GET"
+        and len(parts) == 7
+        and parts[0] == "courses"
+        and parts[2] == "lessons"
+        and parts[4] == "files"
+        and parts[6] == "url"
+    ):
+        return "get_lesson_file_url", {
+            "courseId": parts[1],
+            "lessonId": parts[3],
+            "fileId": parts[5],
+        }
+    if (
+        method == "DELETE"
+        and len(parts) == 6
+        and parts[0] == "courses"
+        and parts[2] == "lessons"
+        and parts[4] == "files"
+    ):
+        return "delete_lesson_file", {
+            "courseId": parts[1],
+            "lessonId": parts[3],
+            "fileId": parts[5],
+        }
     return "not_found", {}
 
 
@@ -145,6 +187,11 @@ def handle(
             "mark_thumbnail_ready",
             "get_playback",
             "get_upload_url",
+            "list_lesson_files",
+            "create_lesson_file",
+            "complete_lesson_file",
+            "get_lesson_file_url",
+            "delete_lesson_file",
         } and not _actor_sub(claims):
             raise Unauthorized("Authentication required")
 
@@ -371,6 +418,58 @@ def handle(
                 filesize=filesize,
             )
             return json_response(200, upload, origin)
+        if action == "list_lesson_files":
+            files = svc.list_lesson_files(
+                params["courseId"],
+                params["lessonId"],
+                cognito_sub=_actor_sub(claims),
+                role=_actor_role(claims),
+            )
+            return json_response(200, dto.as_lesson_file_list(files), origin)
+        if action == "create_lesson_file":
+            body = parse_json_body(event)
+            title = require_str(body, "title")
+            kind = require_str(body, "kind")
+            file_type = require_str(body, "fileType")
+            byte_size = require_int(body, "byteSize")
+            created_file: dto.CreateLessonFileResponse = svc.create_lesson_file(  # type: ignore[assignment]
+                params["courseId"],
+                params["lessonId"],
+                title=title,
+                kind=kind,
+                file_type=file_type,
+                byte_size=byte_size,
+                cognito_sub=_actor_sub(claims),
+                role=_actor_role(claims),
+            )
+            return json_response(201, created_file, origin)
+        if action == "complete_lesson_file":
+            completed: dto.CompleteLessonFileResponse = svc.complete_lesson_file(  # type: ignore[assignment]
+                params["courseId"],
+                params["lessonId"],
+                params["fileId"],
+                cognito_sub=_actor_sub(claims),
+                role=_actor_role(claims),
+            )
+            return json_response(200, completed, origin)
+        if action == "get_lesson_file_url":
+            download: dto.LessonFileDownloadUrlResponse = svc.get_lesson_file_download_url(  # type: ignore[assignment]
+                params["courseId"],
+                params["lessonId"],
+                params["fileId"],
+                cognito_sub=_actor_sub(claims),
+                role=_actor_role(claims),
+            )
+            return json_response(200, download, origin)
+        if action == "delete_lesson_file":
+            deleted_file: dto.DeleteLessonFileResponse = svc.delete_lesson_file(  # type: ignore[assignment]
+                params["courseId"],
+                params["lessonId"],
+                params["fileId"],
+                cognito_sub=_actor_sub(claims),
+                role=_actor_role(claims),
+            )
+            return json_response(200, deleted_file, origin)
 
         raise NotFound("Not found")
 

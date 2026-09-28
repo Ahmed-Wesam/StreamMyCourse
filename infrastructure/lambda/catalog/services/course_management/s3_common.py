@@ -14,6 +14,8 @@ from services.common.errors import BadRequest
 
 S3_DELETE_BATCH = 1000
 
+MAX_LESSON_FILE_BYTES = 104857600  # 100 MiB
+
 MAX_VIDEO_UPLOAD_BYTES = 10 * 1024 * 1024 * 1024  # 10 GiB (documented; S3 single PUT max 5 GiB)
 
 ALLOWED_VIDEO_CONTENT_TYPES = frozenset(
@@ -34,11 +36,31 @@ _LESSON_THUMBNAIL_KEY_PATTERN = re.compile(
 _COURSE_THUMBNAIL_KEY_PATTERN = re.compile(
     rf"^({_UUID_SEGMENT})/thumbnail/({_UUID_SEGMENT})\.(jpg|png|webp|gif)$"
 )
+_LESSON_FILE_KEY_PATTERN = re.compile(
+    rf"^({_UUID_SEGMENT})/lessons/({_UUID_SEGMENT})/files/({_UUID_SEGMENT})\.(pdf|csv|xlsx|docx|sav)$"
+)
+
+_LESSON_FILE_TYPE_TO_EXT = {
+    "pdf": "pdf",
+    "csv": "csv",
+    "xlsx": "xlsx",
+    "docx": "docx",
+    "sav": "sav",
+}
+
+_LESSON_FILE_TYPE_TO_CONTENT_TYPE = {
+    "pdf": "application/pdf",
+    "csv": "text/csv",
+    "xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    "docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    "sav": "application/x-spss-sav",
+}
 
 _MEDIA_KEY_PATTERNS = (
     _VIDEO_KEY_PATTERN,
     _LESSON_THUMBNAIL_KEY_PATTERN,
     _COURSE_THUMBNAIL_KEY_PATTERN,
+    _LESSON_FILE_KEY_PATTERN,
 )
 _IMAGE_KEY_PATTERNS = (_LESSON_THUMBNAIL_KEY_PATTERN, _COURSE_THUMBNAIL_KEY_PATTERN)
 
@@ -96,6 +118,49 @@ def is_valid_image_object_key(key: str) -> bool:
     if not k or ".." in k or "//" in k or k.startswith("/"):
         return False
     return any(p.fullmatch(k) is not None for p in _IMAGE_KEY_PATTERNS)
+
+
+def extension_for_lesson_file_type(file_type: str) -> str:
+    ft = (file_type or "").strip().lower()
+    ext = _LESSON_FILE_TYPE_TO_EXT.get(ft)
+    if not ext:
+        raise BadRequest("Invalid or unsupported lesson file type")
+    return ext
+
+
+def content_type_for_lesson_file_type(file_type: str) -> str:
+    ft = (file_type or "").strip().lower()
+    ctype = _LESSON_FILE_TYPE_TO_CONTENT_TYPE.get(ft)
+    if not ctype:
+        raise BadRequest("Invalid or unsupported lesson file type")
+    return ctype
+
+
+def lesson_file_object_key(*, course_id: str, lesson_id: str, file_id: str, file_type: str) -> str:
+    ext = extension_for_lesson_file_type(file_type)
+    cid = (course_id or "").strip()
+    lid = (lesson_id or "").strip()
+    fid = (file_id or "").strip()
+    if not cid or not lid or not fid or "/" in cid or "/" in lid or "/" in fid:
+        raise BadRequest("Invalid course, lesson, or file id for upload")
+    return f"{cid}/lessons/{lid}/files/{fid}.{ext}"
+
+
+def is_valid_lesson_file_object_key(key: str) -> bool:
+    k = (key or "").strip()
+    if not k or ".." in k or "//" in k or k.startswith("/"):
+        return False
+    return _LESSON_FILE_KEY_PATTERN.fullmatch(k) is not None
+
+
+def sanitize_download_filename(title: str) -> str:
+    """Strip characters unsafe in Content-Disposition filenames; cap length."""
+    cleaned = (title or "").strip()
+    for ch in ('\r', '\n', '"', ';', '\\'):
+        cleaned = cleaned.replace(ch, "")
+    if len(cleaned) > 120:
+        cleaned = cleaned[:120]
+    return cleaned or "download"
 
 
 def s3_client():

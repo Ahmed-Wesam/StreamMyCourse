@@ -276,3 +276,58 @@ export type PurchaseRecord = {
 export type PurchasesListResponse = {
   purchases: PurchaseRecord[]
 }
+
+export type LessonFileKind = 'resource' | 'download'
+
+export type LessonFileStatus = 'pending' | 'ready'
+
+export type LessonFileListItem = {
+  fileId: string
+  title: string
+  kind: LessonFileKind
+  fileType: string
+  byteSize: number
+  status: LessonFileStatus
+  createdAt?: string
+}
+
+export type CreateLessonFileResponse = {
+  fileId: string
+  uploadUrl: string
+}
+
+export type CompleteLessonFileResponse = {
+  fileId: string
+  status: 'ready'
+}
+
+export type LessonFileDownloadUrlResponse = {
+  url: string
+}
+
+export type DeleteLessonFileResponse = {
+  fileId: string
+  deleted: boolean
+}
+
+export type LessonNoteItem = {
+  id: string
+  courseId: string
+  lessonId: string
+  body: string
+  timestampSec?: number
+  createdAt: string
+  updatedAt: string
+}
+
+export type ListLessonNotesResponse = {
+  notes: LessonNoteItem[]
+}
+
+export type LessonNoteResponse = {
+  note: LessonNoteItem
+}
+
+export type DeleteLessonNoteResponse = {
+  ok: boolean
+}

@@ -148,6 +148,35 @@ class MarkThumbnailReadyResponse(TypedDict):
     thumbnailReady: bool
 
 
+class CreateLessonFileResponse(TypedDict):
+    fileId: str
+    uploadUrl: str
+
+
+class CompleteLessonFileResponse(TypedDict):
+    fileId: str
+    status: Literal["ready"]
+
+
+class LessonFileListItem(TypedDict):
+    fileId: str
+    title: str
+    kind: Literal["resource", "download"]
+    fileType: str
+    byteSize: int
+    status: Literal["pending", "ready"]
+    createdAt: NotRequired[str]
+
+
+class LessonFileDownloadUrlResponse(TypedDict):
+    url: str
+
+
+class DeleteLessonFileResponse(TypedDict):
+    fileId: str
+    deleted: bool
+
+
 def _page_from_obj(obj: Dict[str, Any]) -> dict[str, Any]:
     raw = obj.get("pageContent")
     if isinstance(raw, dict):
@@ -238,6 +267,24 @@ def as_course_list(items: List[Dict[str, Any]]) -> List[CourseDto]:
 
 def as_lesson_list(items: List[Dict[str, Any]]) -> List[LessonDto]:
     return [as_lesson_dto(x) for x in items]
+
+
+def as_lesson_file_dto(obj: Dict[str, Any]) -> LessonFileListItem:
+    dto: LessonFileListItem = {
+        "fileId": str(obj.get("fileId", "")),
+        "title": str(obj.get("title", "")),
+        "kind": obj.get("kind", "resource"),  # type: ignore[typeddict-item]
+        "fileType": str(obj.get("fileType", "")),
+        "byteSize": int(obj.get("byteSize", 0) or 0),
+        "status": obj.get("status", "pending"),  # type: ignore[typeddict-item]
+    }
+    if obj.get("createdAt") is not None:
+        dto["createdAt"] = str(obj.get("createdAt", ""))
+    return dto
+
+
+def as_lesson_file_list(items: List[Dict[str, Any]]) -> List[LessonFileListItem]:
+    return [as_lesson_file_dto(x) for x in items]
 
 
 def as_course_module_dto(obj: Dict[str, Any]) -> CourseModuleDto:
