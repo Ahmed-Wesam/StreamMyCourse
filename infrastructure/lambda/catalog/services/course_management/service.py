@@ -29,6 +29,7 @@ from services.course_management.ports import (
     CourseCatalogRepositoryPort,
     ImageMediaStoragePort,
     ModuleQuizVisibilityPort,
+    StudentModuleLockPort,
     UserProfileProvisioner,
 )
 from services.course_management.video_providers.kinescope_adapter import (
@@ -69,6 +70,7 @@ class CourseManagementService:
         course_access: CourseAccessPort,
         media_cleanup_queue_url: str = "",
         module_quiz_visibility: ModuleQuizVisibilityPort | None = None,
+        module_lock: StudentModuleLockPort | None = None,
         kinescope_drm_jwt_secret: str = "",
         kinescope_drm_jwt_issuer: str = "streammycourse",
         kinescope_drm_jwt_audience: str = "kinescope",
@@ -81,6 +83,7 @@ class CourseManagementService:
         self._course_access = course_access
         self._media_cleanup_queue_url = (media_cleanup_queue_url or "").strip()
         self._module_quiz_visibility = module_quiz_visibility
+        self._module_lock = module_lock
         self._kinescope_drm_jwt_secret = (kinescope_drm_jwt_secret or "").strip()
         self._kinescope_drm_jwt_issuer = (kinescope_drm_jwt_issuer or "").strip()
         self._kinescope_drm_jwt_audience = (kinescope_drm_jwt_audience or "").strip()
@@ -341,6 +344,30 @@ class CourseManagementService:
             cognito_sub, course_id, role, course=course
         )
 
+    def _ensure_module_unlocked_for_student(
+        self,
+        course_id: str,
+        module_id: str,
+        *,
+        cognito_sub: str,
+        role: str,
+    ) -> None:
+        if self._module_lock is None:
+            return
+        module_id = (module_id or "").strip()
+        if not module_id:
+            return
+        if self._module_lock.is_module_locked_for_student(
+            course_id,
+            module_id,
+            cognito_sub=(cognito_sub or "").strip(),
+            role=(role or "student").strip().lower() or "student",
+        ):
+            raise Forbidden(
+                "Complete the prior module quiz to unlock this content",
+                code="module_locked",
+            )
+
     def ensure_can_view_lessons_and_playback(
         self,
         course_id: str,
@@ -579,14 +606,14 @@ class CourseManagementService:
         if course.status == "DRAFT":
             if not self._can_manage_course_unenrolled(course, cognito_sub=cognito_sub, role=role):
                 raise NotFound("Course not found")
+        has_lesson_access = self.viewer_has_lesson_access(
+            course,
+            course_id=course_id,
+            cognito_sub=cognito_sub,
+            role=role,
+        )
         visibility: Dict[str, Dict[str, Any]] = {}
         if self._module_quiz_visibility is not None:
-            has_lesson_access = self.viewer_has_lesson_access(
-                course,
-                course_id=course_id,
-                cognito_sub=cognito_sub,
-                role=role,
-            )
             visibility = self._module_quiz_visibility.module_quiz_visibility_by_course(
                 course_id,
                 course_status=course.status,
@@ -594,7 +621,20 @@ class CourseManagementService:
                 cognito_sub=cognito_sub,
             )
         return [
-            self._public_module_dict(m, module_quiz=visibility.get(m.id))
+            self._public_module_dict(
+                m,
+                module_quiz=visibility.get(m.id),
+                locked=(
+                    self._module_lock.is_module_locked_for_student(
+                        course_id,
+                        m.id,
+                        cognito_sub=cognito_sub,
+                        role=role,
+                    )
+                    if has_lesson_access and self._module_lock is not None
+                    else (False if has_lesson_access else None)
+                ),
+            )
             for m in self._repo.list_course_modules(course_id)
         ]
 
@@ -603,6 +643,7 @@ class CourseManagementService:
         m: CourseModule,
         *,
         module_quiz: Dict[str, Any] | None = None,
+        locked: bool | None = None,
     ) -> Dict[str, Any]:
         row: Dict[str, Any] = {
             "id": m.id,
@@ -612,6 +653,8 @@ class CourseManagementService:
             "createdAt": m.createdAt,
             "updatedAt": m.updatedAt,
         }
+        if locked is not None:
+            row["locked"] = locked
         if module_quiz is not None:
             row["moduleQuiz"] = module_quiz
         return row
@@ -919,6 +962,12 @@ class CourseManagementService:
             raise BadRequest("Video not ready")
         if not lesson.videoKey:
             raise NotFound("No video uploaded")
+        self._ensure_module_unlocked_for_student(
+            course_id,
+            lesson.moduleId,
+            cognito_sub=cognito_sub,
+            role=role,
+        )
         if self._video_provider is None:
             raise BadRequest("Playback is not configured")
         playback = self._video_provider.resolve_playback(
@@ -983,18 +1032,30 @@ class CourseManagementService:
         loc = self._repo.find_lesson_by_video_key(token_video_id)
         if loc is None:
             return False
-        course_id, _lesson_id = loc
+        course_id, lesson_id = loc
         course = self._repo.get_course(course_id)
         if course is None:
             return False
         sub = str(claims.get("sub") or "").strip()
         role = str(claims.get("role") or "student").strip().lower() or "student"
-        return self.viewer_has_lesson_access(
+        if not self.viewer_has_lesson_access(
             course,
             course_id=course_id,
             cognito_sub=sub,
             role=role,
-        )
+        ):
+            return False
+        lesson = self._repo.get_lesson_by_id(course_id, lesson_id)
+        if lesson is None:
+            return False
+        if self._module_lock is not None and self._module_lock.is_module_locked_for_student(
+            course_id,
+            lesson.moduleId,
+            cognito_sub=sub,
+            role=role,
+        ):
+            return False
+        return True
 
     def prepare_lesson_video_upload(
         self,

@@ -6,6 +6,32 @@
 
 ---
 
+## 2026-09-28 — Research Spectrum quiz gating (RS-8)
+
+### Decisions
+
+- **Pass mark:** per module quiz **`passPercent`** (default **70**); **`passed`** when any submitted attempt’s score percent ≥ threshold.
+- **Gating:** ordered modules — later content **locked** until every **earlier** module with a visible published quiz is passed; modules without a visible quiz do not gate; **no** per-student instructor override.
+- **Enforcement:** **403** `module_locked` on playback, quiz routes, and progress updates; **`locked`** + **`moduleQuiz.passed`** on `GET /courses/{id}/modules`.
+
+### What landed
+
+- **Schema:** migration **018** — `module_quizzes.pass_percent` ([`018_module_quiz_pass_percent.sql`](infrastructure/database/migrations/018_module_quiz_pass_percent.sql))
+- **API:** `PATCH /courses/{id}/modules/{mid}/quiz`; `GET …/quiz/attempts`; submit/start/latest_results **`scorePercent` / `passPercent` / `passed`**
+- **Frontend:** instructor pass % editor; student pass banner + attempt history on [`ModuleQuizPage.tsx`](frontend/src/pages/ModuleQuizPage.tsx); curriculum lock UX
+
+### Verification
+
+- [x] `python -m pytest tests/unit/services/question_banks tests/unit/services/course_management/test_module_list_quiz_gating.py tests/unit/services/course_management/test_module_lock_playback.py tests/unit/services/progress/test_module_lock_progress.py tests/unit/test_module_lock_adapter.py -q`; `python scripts/check_lambda_boundaries.py`
+- [x] `frontend/` Vitest (incl. [`ModuleQuizPage.dom.test.tsx`](frontend/src/pages/ModuleQuizPage.dom.test.tsx)); `npm run build:all` + `npm run check:bundle`
+- [ ] Prod RDS migration **018** + API deploy before pass marks and gating apply in prod (pre-launch)
+
+### Docs
+
+- [`design.md`](design.md) §7 quiz routes; [`plans/question-banks-requirements.md`](plans/question-banks-requirements.md) §1.3, §11.3; child plan [`plans/ui-overhaul/rs-8-quiz-gating.md`](plans/ui-overhaul/rs-8-quiz-gating.md); mega-plan RS-8 status
+
+---
+
 ## 2026-09-28 — Research Spectrum rich course pages (RS-7)
 
 ### Decisions

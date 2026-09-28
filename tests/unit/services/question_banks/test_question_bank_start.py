@@ -38,6 +38,7 @@ def _published_module_quiz(*, course_id: str = _COURSE_ID) -> ModuleQuiz:
         moduleId=_MODULE_ID,
         questionBankId=_BANK_ID,
         servedCountN=2,
+        passPercent=70,
         createdAt="",
         updatedAt="",
     )

@@ -2,6 +2,7 @@ import { httpDelete, httpGet, httpPatch, httpPost } from './client'
 import type {
   CreateModuleQuizBody,
   CreateQuestionBankQuestionBody,
+  ModuleQuizAttemptSummary,
   ModuleQuizRow,
   ModuleQuizStartResponse,
   ModuleQuizSubmitBody,
@@ -34,6 +35,27 @@ export async function submitModuleQuiz(
     `/courses/${courseId}/modules/${moduleId}/quiz/submit`,
     body,
   )
+}
+
+export async function listModuleQuizAttempts(
+  courseId: string,
+  moduleId: string,
+): Promise<ModuleQuizAttemptSummary[]> {
+  const c = encodeURIComponent(courseId)
+  const m = encodeURIComponent(moduleId)
+  return httpGet<ModuleQuizAttemptSummary[]>(`/courses/${c}/modules/${m}/quiz/attempts`)
+}
+
+export async function patchModuleQuizPassPercent(
+  courseId: string,
+  moduleId: string,
+  passPercent: number,
+): Promise<{ quizId: string; passPercent: number }> {
+  const c = encodeURIComponent(courseId)
+  const m = encodeURIComponent(moduleId)
+  return httpPatch<{ quizId: string; passPercent: number }>(`/courses/${c}/modules/${m}/quiz`, {
+    passPercent,
+  })
 }
 
 export async function listCourseQuestionBanks(courseId: string): Promise<QuestionBankSummary[]> {

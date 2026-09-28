@@ -99,6 +99,18 @@ def _route_question_banks(method: str, path: str) -> Tuple[str, Dict[str, str]]:
             "questionBankId": parts[3],
         }
     if (
+        method == "GET"
+        and len(parts) == 6
+        and parts[0] == "courses"
+        and parts[2] == "modules"
+        and parts[4] == "quiz"
+        and parts[5] == "attempts"
+    ):
+        return "list_module_quiz_attempts", {
+            "courseId": parts[1],
+            "moduleId": parts[3],
+        }
+    if (
         method == "POST"
         and len(parts) == 6
         and parts[0] == "courses"
@@ -116,6 +128,14 @@ def _route_question_banks(method: str, path: str) -> Tuple[str, Dict[str, str]]:
         and parts[5] == "start"
     ):
         return "start_module_quiz", {"courseId": parts[1], "moduleId": parts[3]}
+    if (
+        method == "PATCH"
+        and len(parts) == 5
+        and parts[0] == "courses"
+        and parts[2] == "modules"
+        and parts[4] == "quiz"
+    ):
+        return "patch_module_quiz", {"courseId": parts[1], "moduleId": parts[3]}
     if (
         method == "POST"
         and len(parts) == 5
@@ -221,6 +241,18 @@ def _route_question_banks(method: str, path: str) -> Tuple[str, Dict[str, str]]:
         and parts[0] == "courses"
         and parts[2] == "modules"
         and parts[4] == "quiz"
+        and parts[5] == "attempts"
+    ):
+        return "options_module_quiz_attempts", {
+            "courseId": parts[1],
+            "moduleId": parts[3],
+        }
+    if (
+        method == "OPTIONS"
+        and len(parts) == 6
+        and parts[0] == "courses"
+        and parts[2] == "modules"
+        and parts[4] == "quiz"
         and parts[5] == "submit"
     ):
         return "options_module_quiz_submit", {"courseId": parts[1], "moduleId": parts[3]}
@@ -312,6 +344,15 @@ def handle_question_banks_request(
             )
             return json_response(200, payload, origin)
 
+        if action == "list_module_quiz_attempts":
+            payload = qb_svc.list_module_quiz_attempts(
+                params["courseId"],
+                params["moduleId"],
+                cognito_sub=_actor_sub(claims),
+                role=_actor_role(claims),
+            )
+            return json_response(200, payload, origin)
+
         if action == "submit_module_quiz":
             body = parse_json_body(event)
             attempt_id = require_str(body, "attemptId")
@@ -341,14 +382,30 @@ def handle_question_banks_request(
         if action == "create_module_quiz":
             body = parse_json_body(event)
             qbid = require_str(body, "questionBankId")
+            pass_percent: int | None = None
+            if "passPercent" in body:
+                pass_percent = require_int(body, "passPercent")
             quiz_id = qb_svc.create_module_quiz(
                 params["courseId"],
                 params["moduleId"],
                 cognito_sub=_actor_sub(claims),
                 role=_actor_role(claims),
                 question_bank_id=qbid,
+                pass_percent=pass_percent,
             )
             return json_response(201, {"quizId": quiz_id}, origin)
+
+        if action == "patch_module_quiz":
+            body = parse_json_body(event)
+            pass_percent = require_int(body, "passPercent")
+            payload = qb_svc.patch_module_quiz_pass_percent(
+                params["courseId"],
+                params["moduleId"],
+                pass_percent=pass_percent,
+                cognito_sub=_actor_sub(claims),
+                role=_actor_role(claims),
+            )
+            return json_response(200, payload, origin)
 
         if action == "publish_question_bank":
             body = parse_json_body(event)

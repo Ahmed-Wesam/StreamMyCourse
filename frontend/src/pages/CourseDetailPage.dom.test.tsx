@@ -790,6 +790,26 @@ describe('CourseDetailPage', () => {
       expect(screen.queryByText('Module quiz')).toBeNull()
     })
 
+    it('shows unlock hint instead of Start quiz when module is locked', async () => {
+      api.listCourseModules.mockResolvedValue([
+        {
+          id: 'm1',
+          title: 'Section 1',
+          description: '',
+          order: 0,
+          locked: true,
+          moduleQuiz: { available: true, servedCountN: 2, passPercent: 70 },
+        },
+      ])
+
+      renderCourseDetail()
+
+      await waitFor(() => {
+        expect(screen.getByText(/Complete the prior module quiz to unlock/i)).toBeTruthy()
+      })
+      expect(screen.queryByRole('link', { name: /start quiz/i })).toBeNull()
+    })
+
     it('does not show Module quiz badge when moduleQuiz.available is false', async () => {
       api.listCourseModules.mockResolvedValue([
         { id: 'm1', title: 'Section 1', description: '', order: 0, moduleQuiz: { available: false, servedCountN: 0 } },

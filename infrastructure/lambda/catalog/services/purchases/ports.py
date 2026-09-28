@@ -85,6 +85,15 @@ class CourseAccessPort(Protocol):
         course: "Course | None" = None,
     ) -> bool: ...
 
+    def bypasses_module_lock(
+        self,
+        user_sub: str,
+        course_id: str,
+        role: str,
+        *,
+        course: "Course | None" = None,
+    ) -> bool: ...
+
 
 __all__ = [
     "CourseAccessPort",

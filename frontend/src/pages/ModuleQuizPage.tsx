@@ -3,14 +3,21 @@ import { Link, useLocation, useParams } from 'react-router-dom'
 import { Button } from '../components/ui/Button'
 import { Card } from '../components/ui/Card'
 import { SectionHeader } from '../components/ui/SectionHeader'
-import { getCourseProgress, listLessons } from '../lib/api/catalog'
-import { isProgressRdsUnavailableError } from '../lib/api/client'
-import { startModuleQuiz, submitModuleQuiz } from '../lib/api/questionBanks'
+import { getCourseProgress, listCourseModules, listLessons } from '../lib/api/catalog'
+import { isModuleLockedError, isProgressRdsUnavailableError } from '../lib/api/client'
+import {
+  listModuleQuizAttempts,
+  startModuleQuiz,
+  submitModuleQuiz,
+} from '../lib/api/questionBanks'
 import type {
+  ModuleQuizAttemptSummary,
   ModuleQuizLatestSubmission,
+  ModuleQuizPassOutcome,
   ModuleQuizQuestion,
   ModuleQuizResultQuestion,
   ModuleQuizStartInProgress,
+  ModuleQuizStartLatestResults,
   ModuleQuizStartResponse,
   ModuleQuizSubmitResponse,
 } from '../lib/api/types'
@@ -25,8 +32,22 @@ import {
   incompleteModuleQuizLinkMessage,
 } from '../lib/questionBankErrors'
 import { usePageTitle } from '../lib/page-title'
+import {
+  formatModuleQuizPassThreshold,
+  moduleQuizPassFailLabel,
+  quizScorePercentPillClass,
+} from '../lib/quizScoreDisplay'
 
-type ResultsModel = ModuleQuizLatestSubmission | ModuleQuizSubmitResponse
+type ResultsModel = (ModuleQuizLatestSubmission | ModuleQuizSubmitResponse) & Partial<ModuleQuizPassOutcome>
+
+function mergeLatestResults(data: ModuleQuizStartLatestResults): ResultsModel {
+  return {
+    ...data.latestSubmission,
+    scorePercent: data.scorePercent,
+    passPercent: data.passPercent,
+    passed: data.passed,
+  }
+}
 
 function applyStartResponse(
   data: ModuleQuizStartResponse,
@@ -36,7 +57,7 @@ function applyStartResponse(
 ) {
   if (data.phase === 'latest_results') {
     setTaking(null)
-    setResults(data.latestSubmission)
+    setResults(mergeLatestResults(data))
     setSelected({})
   } else {
     setTaking(data)
@@ -59,6 +80,9 @@ export default function ModuleQuizPage() {
   const [taking, setTaking] = useState<ModuleQuizStartInProgress | null>(null)
   const [results, setResults] = useState<ResultsModel | null>(null)
   const [selectedByQuestionId, setSelectedByQuestionId] = useState<Record<string, string>>({})
+  const [passPercentThreshold, setPassPercentThreshold] = useState<number | null>(null)
+  const [attemptHistory, setAttemptHistory] = useState<ModuleQuizAttemptSummary[]>([])
+  const [attemptHistoryLoading, setAttemptHistoryLoading] = useState(false)
   const mountedRef = useRef(true)
 
   useEffect(() => {
@@ -109,13 +133,33 @@ export default function ModuleQuizPage() {
     setPageLoading(true)
     setError(null)
 
+    void listCourseModules(courseId)
+      .then((mods) => {
+        if (cancelled) return
+        const mod = mods.find((m) => m.id === moduleId)
+        const threshold = mod?.moduleQuiz?.passPercent
+        if (typeof threshold === 'number') setPassPercentThreshold(threshold)
+      })
+      .catch(() => {
+        /* optional metadata */
+      })
+
     startModuleQuiz(courseId, moduleId)
       .then((data) => {
-        if (!cancelled) hydrateFromStart(data)
+        if (!cancelled) {
+          hydrateFromStart(data)
+          if (data.phase === 'latest_results') {
+            setPassPercentThreshold(data.passPercent)
+          }
+        }
       })
       .catch((e: unknown) => {
         if (!cancelled) {
           setError(catalogApiUserMessage(e, 'loadModuleQuiz'))
+          if (isModuleLockedError(e)) {
+            setTaking(null)
+            setResults(null)
+          }
         }
       })
       .finally(() => {
@@ -126,6 +170,27 @@ export default function ModuleQuizPage() {
       cancelled = true
     }
   }, [courseId, moduleId, hydrateFromStart])
+
+  const refreshAttemptHistory = useCallback(() => {
+    if (!courseId || !moduleId) return
+    setAttemptHistoryLoading(true)
+    listModuleQuizAttempts(courseId, moduleId)
+      .then((rows) => {
+        if (mountedRef.current) setAttemptHistory(rows)
+      })
+      .catch(() => {
+        if (mountedRef.current) setAttemptHistory([])
+      })
+      .finally(() => {
+        if (mountedRef.current) setAttemptHistoryLoading(false)
+      })
+  }, [courseId, moduleId])
+
+  useEffect(() => {
+    if (pageLoading || error || taking !== null) return
+    if (results === null) return
+    refreshAttemptHistory()
+  }, [pageLoading, error, taking, results, refreshAttemptHistory])
 
   const handleTryAgain = () => {
     if (!courseId || !moduleId) return
@@ -169,6 +234,7 @@ export default function ModuleQuizPage() {
         setTaking(null)
         setResults(res)
         setSelectedByQuestionId({})
+        setPassPercentThreshold(res.passPercent)
       })
       .catch((e: unknown) => {
         if (mountedRef.current) setError(catalogApiUserMessage(e, 'submitModuleQuiz'))
@@ -186,13 +252,21 @@ export default function ModuleQuizPage() {
   return (
     <div className="space-y-8 py-6 text-rs-ink sm:py-8">
       <Card className="overflow-hidden shadow-rs-sm">
-        <ModuleQuizCardHeader backTo={backTo} taking={taking} results={results} />
+        <ModuleQuizCardHeader
+          backTo={backTo}
+          taking={taking}
+          results={results}
+          passPercentThreshold={passPercentThreshold}
+        />
 
         <ModuleQuizCardMain
           pageLoading={pageLoading}
           error={error}
           taking={taking}
           results={results}
+          passPercentThreshold={passPercentThreshold}
+          attemptHistory={attemptHistory}
+          attemptHistoryLoading={attemptHistoryLoading}
           selectedByQuestionId={selectedByQuestionId}
           allAnswered={allAnswered}
           submitting={submitting}
@@ -210,19 +284,32 @@ function ModuleQuizCardHeader({
   backTo,
   taking,
   results,
+  passPercentThreshold,
 }: {
   backTo: ModuleQuizReturnTo
   taking: ModuleQuizStartInProgress | null
   results: ResultsModel | null
+  passPercentThreshold: number | null
 }) {
   const showTaking = taking !== null
   const showResults = results !== null && taking === null
+  const threshold =
+    passPercentThreshold ??
+    (showResults && results?.passPercent != null ? results.passPercent : null)
 
   let lead: string | undefined
   if (showTaking && taking) {
-    lead = `${taking.questions.length} of ${taking.servedCountN} questions · If you leave this page before submitting, your selected answers will be lost.`
+    const passHint =
+      threshold != null ? ` · ${formatModuleQuizPassThreshold(threshold)}` : ''
+    lead = `${taking.questions.length} of ${taking.servedCountN} questions${passHint} · If you leave this page before submitting, your selected answers will be lost.`
   } else if (showResults && results) {
-    lead = `Attempt ${results.attemptNumber} · Score ${results.correctCount} / ${results.totalCount} · These are your latest submitted results.`
+    const scoreLine =
+      results.scorePercent != null
+        ? `Score ${results.scorePercent}% (${results.correctCount} / ${results.totalCount})`
+        : `Score ${results.correctCount} / ${results.totalCount}`
+    const passLine =
+      threshold != null ? ` · ${formatModuleQuizPassThreshold(threshold)}` : ''
+    lead = `Attempt ${results.attemptNumber} · ${scoreLine}${passLine} · These are your latest submitted results.`
   }
 
   return (
@@ -252,6 +339,9 @@ function ModuleQuizCardMain({
   error,
   taking,
   results,
+  passPercentThreshold,
+  attemptHistory,
+  attemptHistoryLoading,
   selectedByQuestionId,
   allAnswered,
   submitting,
@@ -264,6 +354,9 @@ function ModuleQuizCardMain({
   error: string | null
   taking: ModuleQuizStartInProgress | null
   results: ResultsModel | null
+  passPercentThreshold: number | null
+  attemptHistory: ModuleQuizAttemptSummary[]
+  attemptHistoryLoading: boolean
   selectedByQuestionId: Record<string, string>
   allAnswered: boolean
   submitting: boolean
@@ -273,8 +366,9 @@ function ModuleQuizCardMain({
   onTryAgain: () => void
 }) {
   const showResults = results !== null && taking === null
-  const showTaking = taking !== null
+  const showTaking = taking !== null && !error
   const submitHelperId = 'module-quiz-submit-helper'
+  const blockQuestions = Boolean(error)
 
   return (
     <>
@@ -288,7 +382,7 @@ function ModuleQuizCardMain({
         </div>
       )}
 
-      {!pageLoading && showTaking && taking && (
+      {!pageLoading && !blockQuestions && showTaking && taking && (
         <>
           <div className="divide-y divide-rs-line">
             {taking.questions.map((question, index) => (
@@ -320,9 +414,11 @@ function ModuleQuizCardMain({
         </>
       )}
 
-      {!pageLoading && showResults && results && (
+      {!pageLoading && !blockQuestions && showResults && results && (
         <div className="space-y-6 px-6 py-6 sm:px-8 sm:py-8">
+          <QuizPassOutcomeBanner results={results} passPercentThreshold={passPercentThreshold} />
           <QuizResultsBreakdown questions={results.questions} />
+          <ModuleQuizAttemptHistoryList loading={attemptHistoryLoading} attempts={attemptHistory} />
           <div className="space-y-3 rounded-rs-sm border border-rs-line bg-rs-sky-2/40 p-5">
             <p className="text-sm font-semibold text-rs-body">
               Trying again draws a new set of questions from the bank and reshuffles them.
@@ -334,6 +430,79 @@ function ModuleQuizCardMain({
         </div>
       )}
     </>
+  )
+}
+
+function QuizPassOutcomeBanner({
+  results,
+  passPercentThreshold,
+}: {
+  results: ResultsModel
+  passPercentThreshold: number | null
+}) {
+  if (results.passed == null && results.scorePercent == null) return null
+  const threshold = passPercentThreshold ?? results.passPercent ?? null
+  const passed = results.passed === true
+  return (
+    <div
+      className={`rounded-rs-sm border px-5 py-4 ${
+        passed ? 'border-emerald-200/80 bg-emerald-50/70' : 'border-amber-200/80 bg-amber-50/70'
+      }`}
+    >
+      <div className="flex flex-wrap items-center gap-3">
+        {results.scorePercent != null ? (
+          <span className={`${quizScorePercentPillClass(results.scorePercent)} text-sm`}>
+            {results.scorePercent}%
+          </span>
+        ) : null}
+        <p className="text-sm font-extrabold text-rs-ink">
+          {moduleQuizPassFailLabel(passed)}
+          {threshold != null ? ` · ${formatModuleQuizPassThreshold(threshold)}` : ''}
+        </p>
+      </div>
+    </div>
+  )
+}
+
+function ModuleQuizAttemptHistoryList({
+  loading,
+  attempts,
+}: {
+  loading: boolean
+  attempts: ModuleQuizAttemptSummary[]
+}) {
+  if (loading && attempts.length === 0) {
+    return (
+      <p className="text-sm font-semibold text-rs-muted">Loading attempt history…</p>
+    )
+  }
+  if (attempts.length === 0) return null
+
+  return (
+    <div className="rounded-rs-sm border border-rs-line bg-white p-5">
+      <h3 className="text-sm font-extrabold text-rs-navy">Attempt history</h3>
+      <ul className="mt-3 space-y-2">
+        {[...attempts].reverse().map((row) => (
+          <li
+            key={row.attemptId}
+            className="flex flex-wrap items-center justify-between gap-2 rounded-rs-sm border border-rs-line/80 bg-rs-sky-2/30 px-3 py-2 text-sm"
+          >
+            <span className="font-semibold text-rs-ink">Attempt {row.attemptNumber}</span>
+            <span className={`${quizScorePercentPillClass(row.scorePercent)}`}>{row.scorePercent}%</span>
+            <span
+              className={`font-bold ${row.passed ? 'text-emerald-800' : 'text-amber-900'}`}
+            >
+              {moduleQuizPassFailLabel(row.passed)}
+            </span>
+            {row.submittedAt ? (
+              <span className="w-full text-xs font-semibold text-rs-muted sm:w-auto sm:ml-auto">
+                {new Date(row.submittedAt).toLocaleString()}
+              </span>
+            ) : null}
+          </li>
+        ))}
+      </ul>
+    </div>
   )
 }
 

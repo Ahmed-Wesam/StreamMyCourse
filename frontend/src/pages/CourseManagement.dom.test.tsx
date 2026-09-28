@@ -76,6 +76,7 @@ const api = vi.hoisted(() => ({
   listCourseModuleQuizzes: vi.fn(),
   listCourseQuestionBanks: vi.fn(),
   createModuleQuiz: vi.fn(),
+  patchModuleQuizPassPercent: vi.fn(),
 }))
 
 const mockNavigate = vi.fn()
@@ -122,6 +123,8 @@ vi.mock('../lib/api/questionBanks', async (importOriginal) => {
       api.listCourseQuestionBanks(...args) as ReturnType<typeof mod.listCourseQuestionBanks>,
     createModuleQuiz: (...args: unknown[]) =>
       api.createModuleQuiz(...args) as ReturnType<typeof mod.createModuleQuiz>,
+    patchModuleQuizPassPercent: (...args: unknown[]) =>
+      api.patchModuleQuizPassPercent(...args) as ReturnType<typeof mod.patchModuleQuizPassPercent>,
   }
 })
 
@@ -188,6 +191,7 @@ describe('CourseManagement', () => {
     api.listCourseModuleQuizzes.mockReset()
     api.listCourseQuestionBanks.mockReset()
     api.createModuleQuiz.mockReset()
+    api.patchModuleQuizPassPercent.mockReset()
     pricingApi.setCoursePrice.mockReset()
     pricingApi.setCoursePrice.mockResolvedValue({
       courseId: 'c1',
@@ -872,7 +876,7 @@ describe('CourseManagement', () => {
 
     it('hides bank in attach picker when already linked to another module', async () => {
       api.listCourseModuleQuizzes.mockResolvedValue([
-        { quizId: 'mq1', moduleId: 'm1', questionBankId: 'qb1', servedCountN: null },
+        { quizId: 'mq1', moduleId: 'm1', questionBankId: 'qb1', servedCountN: null, passPercent: 70 },
       ])
       api.listCourseQuestionBanks.mockResolvedValue([
         { questionBankId: 'qb1', name: 'Bank 1', status: 'DRAFT' },
@@ -885,7 +889,7 @@ describe('CourseManagement', () => {
 
       const m1Row = within(panel).getByText('Section 1').closest('li')
       expect(m1Row).toBeTruthy()
-      expect(within(m1Row as HTMLElement).getByText('Quiz linked')).toBeTruthy()
+      expect(within(m1Row as HTMLElement).getByLabelText(/^Pass score \(%\)$/i)).toBeTruthy()
       expect(within(m1Row as HTMLElement).getByText('Bank 1')).toBeTruthy()
 
       const m2Row = within(panel).getByText('Section 2').closest('li')
@@ -893,6 +897,25 @@ describe('CourseManagement', () => {
       const m2Picker = within(m2Row as HTMLElement).getByLabelText(/^Question bank$/i)
       expect(within(m2Picker).queryByRole('option', { name: /Bank 1 \(Draft\)/i })).toBeNull()
       expect(within(m2Picker).getByRole('option', { name: /Bank 2 \(Draft\)/i })).toBeTruthy()
+    })
+
+    it('saves pass score via PATCH when Save pass score is clicked', async () => {
+      api.listCourseModules.mockResolvedValue([{ id: 'm1', title: 'Section 1', description: '', order: 0 }])
+      api.listCourseModuleQuizzes.mockResolvedValue([
+        { quizId: 'mq1', moduleId: 'm1', questionBankId: 'qb1', servedCountN: 3, passPercent: 70 },
+      ])
+      api.patchModuleQuizPassPercent.mockResolvedValue({ quizId: 'mq1', passPercent: 80 })
+
+      renderCourseManagement()
+
+      const panel = await screen.findByTestId('course-management-module-quizzes')
+      const passInput = within(panel).getByLabelText(/^Pass score \(%\)$/i)
+      fireEvent.change(passInput, { target: { value: '80' } })
+      fireEvent.click(within(panel).getByRole('button', { name: /Save pass score/i }))
+
+      await waitFor(() => {
+        expect(api.patchModuleQuizPassPercent).toHaveBeenCalledWith('c1', 'm1', 80)
+      })
     })
 
     it('shows linked quiz summaries with bank name and id', async () => {
@@ -909,7 +932,7 @@ describe('CourseManagement', () => {
         },
       ])
       api.listCourseModuleQuizzes.mockResolvedValue([
-        { quizId: 'mq1', moduleId: 'm1', questionBankId: 'qb1', servedCountN: 3 },
+        { quizId: 'mq1', moduleId: 'm1', questionBankId: 'qb1', servedCountN: 3, passPercent: 70 },
       ])
       api.listCourseQuestionBanks.mockResolvedValue([
         { questionBankId: 'qb1', name: 'Section 1 practice', status: 'PUBLISHED' },

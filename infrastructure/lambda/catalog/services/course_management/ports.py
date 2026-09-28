@@ -49,6 +49,19 @@ class CourseCatalogRepositoryPort(Protocol):
     def find_lesson_by_video_key(self, video_key: str) -> Optional[tuple[str, str]]: ...
 
 
+class StudentModuleLockPort(Protocol):
+    """Whether a module is quiz-gated locked for a student (owner/admin bypass in adapter)."""
+
+    def is_module_locked_for_student(
+        self,
+        course_id: str,
+        module_id: str,
+        *,
+        cognito_sub: str,
+        role: str,
+    ) -> bool: ...
+
+
 class ModuleQuizVisibilityPort(Protocol):
     def module_quiz_visibility_by_course(
         self,

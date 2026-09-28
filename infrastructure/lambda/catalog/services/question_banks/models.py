@@ -23,6 +23,7 @@ class ModuleQuiz:
     moduleId: str
     questionBankId: Optional[str]
     servedCountN: Optional[int]
+    passPercent: int
     createdAt: str
     updatedAt: str
 

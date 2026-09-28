@@ -7,8 +7,10 @@ import random
 from typing import Any
 from uuid import UUID
 
-from services.common.errors import BadRequest, Conflict, NotFound
+from services.common.errors import BadRequest, Conflict, Forbidden, NotFound
 from services.question_banks.binding_draw import draw_question_ids
+from services.question_banks.gating import DEFAULT_MODULE_QUIZ_PASS_PERCENT
+from services.question_banks.visibility import module_quiz_score_percent
 from services.question_banks.grading import (
     GradingRow,
     QuizGradeResult,
@@ -34,6 +36,7 @@ from services.question_banks.presentation_shuffle import (
     shuffle_question_order,
     validate_question_order,
 )
+from services.course_management.ports import StudentModuleLockPort
 from services.question_banks.ports import (
     CourseMutateAuthorizerPort,
     CourseReadPort,
@@ -52,11 +55,13 @@ class QuestionBankService:
         question_bank_repo: QuestionBankRdsRepository,
         student_lesson_access: StudentLessonAccessPort,
         course_read: CourseReadPort,
+        module_lock: StudentModuleLockPort | None = None,
     ) -> None:
         self._authorizer = course_mutate_authorizer
         self._repo = question_bank_repo
         self._lesson_access = student_lesson_access
         self._course_read = course_read
+        self._module_lock = module_lock
 
     def start_module_quiz(
         self,
@@ -117,7 +122,7 @@ class QuestionBankService:
         answers: dict[str, str],
     ) -> dict[str, Any]:
         """Grade bound answers, persist submission, return scored breakdown (QB-H)."""
-        self._resolve_startable_module_quiz(
+        module_quiz = self._resolve_startable_module_quiz(
             course_id, module_id, cognito_sub=cognito_sub, role=role
         )
         user_sub = cognito_sub.strip()
@@ -176,6 +181,11 @@ class QuestionBankService:
             raise
         except NotFound:
             raise NotFound("Module quiz attempt not found") from None
+        outcome = self._quiz_pass_outcome_fields(
+            module_quiz,
+            correct_count=grade_result.correct_count,
+            total_count=grade_result.total_count,
+        )
         return {
             "attemptId": ctx.attempt.id,
             "attemptNumber": ctx.attempt.attemptNumber,
@@ -184,7 +194,27 @@ class QuestionBankService:
             "questions": self._questions_result_breakdown(
                 grade_result, prompts_by_id
             ),
+            **outcome,
         }
+
+    def list_module_quiz_attempts(
+        self,
+        course_id: str,
+        module_id: str,
+        *,
+        cognito_sub: str,
+        role: str,
+    ) -> list[dict[str, Any]]:
+        module_quiz = self._resolve_startable_module_quiz(
+            course_id, module_id, cognito_sub=cognito_sub, role=role
+        )
+        user_sub = cognito_sub.strip()
+        return self._repo.list_submitted_module_quiz_attempts_for_student(
+            course_id=course_id.strip(),
+            module_id=module_id.strip(),
+            user_sub=user_sub,
+            pass_percent=module_quiz.passPercent,
+        )
 
     def _resolve_startable_module_quiz(
         self,
@@ -215,6 +245,16 @@ class QuestionBankService:
             or bank.status != "PUBLISHED"
         ):
             raise NotFound("Module quiz not available")
+        if self._module_lock is not None and self._module_lock.is_module_locked_for_student(
+            course_id.strip(),
+            module_id.strip(),
+            cognito_sub=cognito_sub.strip(),
+            role=(role or "student").strip().lower() or "student",
+        ):
+            raise Forbidden(
+                "Complete the prior module quiz to unlock this content",
+                code="module_locked",
+            )
         return module_quiz
 
     def _draw_published_questions_for_quiz(
@@ -446,11 +486,17 @@ class QuestionBankService:
             )
         except ValueError as exc:
             raise BadRequest(str(exc)) from exc
+        outcome = self._quiz_pass_outcome_fields(
+            module_quiz,
+            correct_count=grade_result.correct_count,
+            total_count=grade_result.total_count,
+        )
         return {
             "phase": "latest_results",
             "moduleQuizId": module_quiz.id,
             "moduleId": module_quiz.moduleId,
             "servedCountN": served_n,
+            **outcome,
             "latestSubmission": {
                 "correctCount": grade_result.correct_count,
                 "totalCount": grade_result.total_count,
@@ -460,6 +506,23 @@ class QuestionBankService:
                     grade_result, prompts_by_id
                 ),
             },
+        }
+
+    @staticmethod
+    def _quiz_pass_outcome_fields(
+        module_quiz: ModuleQuiz,
+        *,
+        correct_count: int,
+        total_count: int,
+    ) -> dict[str, Any]:
+        threshold = module_quiz.passPercent
+        score = module_quiz_score_percent(
+            correct_count=correct_count, total_count=total_count
+        )
+        return {
+            "scorePercent": score,
+            "passPercent": threshold,
+            "passed": score >= threshold,
         }
 
     @staticmethod
@@ -569,6 +632,7 @@ class QuestionBankService:
             "moduleId": mq.moduleId,
             "questionBankId": mq.questionBankId,
             "servedCountN": mq.servedCountN,
+            "passPercent": mq.passPercent,
             "createdAt": mq.createdAt,
             "updatedAt": mq.updatedAt,
         }
@@ -613,6 +677,7 @@ class QuestionBankService:
         cognito_sub: str,
         role: str,
         question_bank_id: str | None = None,
+        pass_percent: int | None = None,
     ) -> str:
         self._authorizer.ensure_course_mutable_by_actor(
             course_id, cognito_sub=cognito_sub, role=role
@@ -622,6 +687,7 @@ class QuestionBankService:
             raise BadRequest("questionBankId is required")
         if not _is_uuid_string(bid):
             raise BadRequest("questionBankId must be a valid UUID")
+        normalized_pass = _normalize_module_quiz_pass_percent(pass_percent)
         bank = self._repo.get_question_bank_by_id(bank_id=bid)
         if bank is None:
             raise BadRequest("questionBankId does not reference a question bank")
@@ -637,7 +703,31 @@ class QuestionBankService:
             course_id=course_id,
             module_id=module_id,
             question_bank_id=bid,
+            pass_percent=normalized_pass,
         )
+
+    def patch_module_quiz_pass_percent(
+        self,
+        course_id: str,
+        module_id: str,
+        *,
+        pass_percent: int,
+        cognito_sub: str,
+        role: str,
+    ) -> dict[str, Any]:
+        self._authorizer.ensure_course_mutable_by_actor(
+            course_id, cognito_sub=cognito_sub, role=role
+        )
+        normalized_pass = _normalize_module_quiz_pass_percent(pass_percent)
+        mq = self._repo.get_module_quiz_by_module_id(module_id=module_id.strip())
+        if mq is None or mq.courseId.strip() != course_id.strip():
+            raise NotFound("Module quiz not found for this course")
+        self._repo.update_module_quiz_pass_percent(
+            course_id=course_id.strip(),
+            module_id=module_id.strip(),
+            pass_percent=normalized_pass,
+        )
+        return {"quizId": mq.id, "passPercent": normalized_pass}
 
     def get_bank_for_course(
         self,
@@ -861,6 +951,16 @@ def _question_bank_display_name(bank: QuestionBank) -> str:
     if name:
         return name
     return f"Question bank {bank.id[:8]}"
+
+
+def _normalize_module_quiz_pass_percent(value: int | None) -> int:
+    if value is None:
+        return DEFAULT_MODULE_QUIZ_PASS_PERCENT
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise BadRequest("passPercent must be an integer between 1 and 100")
+    if value < 1 or value > 100:
+        raise BadRequest("passPercent must be an integer between 1 and 100")
+    return value
 
 
 def _is_uuid_string(value: str) -> bool:

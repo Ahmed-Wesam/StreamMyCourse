@@ -23,7 +23,10 @@ from services.progress.contracts import (
 from services.progress.ports import LessonProgressRepositoryPort, LessonProgressRow
 
 if TYPE_CHECKING:
-    from services.course_management.ports import CourseCatalogRepositoryPort
+    from services.course_management.ports import (
+        CourseCatalogRepositoryPort,
+        StudentModuleLockPort,
+    )
     from services.purchases.ports import CourseAccessPort
 
 
@@ -56,12 +59,14 @@ class LessonProgressService:
         course_repo: "CourseCatalogRepositoryPort",
         progress_complete_ratio: float = 0.92,
         position_slack_sec: int = 30,
+        module_lock: "StudentModuleLockPort | None" = None,
     ):
         self._progress_repo = progress_repo
         self._course_access = course_access
         self._course_repo = course_repo
         self._progress_complete_ratio = progress_complete_ratio
         self._position_slack_sec = position_slack_sec
+        self._module_lock = module_lock
 
     def _check_authorization(self, user_sub: str, course_id: str, role: str) -> bool:
         """True when the viewer has subscription-based course access (or owner/admin bypass)."""
@@ -248,6 +253,17 @@ class LessonProgressService:
         lesson = self._course_repo.get_lesson_by_id(course_id, lesson_id)
         if lesson is None:
             raise NotFound("Lesson not found")
+
+        if self._module_lock is not None and self._module_lock.is_module_locked_for_student(
+            course_id,
+            lesson.moduleId,
+            cognito_sub=user_sub,
+            role=role,
+        ):
+            raise Forbidden(
+                "Complete the prior module quiz to unlock this content",
+                code="module_locked",
+            )
 
         # Determine completion status
         completed: bool

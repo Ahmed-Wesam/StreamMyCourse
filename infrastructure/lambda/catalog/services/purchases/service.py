@@ -64,3 +64,21 @@ class CourseAccessService:
             logger.warning("course %s has blank createdBy — denying owner bypass", course.id)
             return False
         return owner == user_sub
+
+    def bypasses_module_lock(
+        self,
+        user_sub: str,
+        course_id: str,
+        role: str,
+        *,
+        course: Course | None = None,
+    ) -> bool:
+        """Admin or course owner (teacher) skip RS-8 module quiz gating."""
+        normalized_sub = (user_sub or "").strip()
+        if not normalized_sub:
+            return False
+        if course is None:
+            course = self._course_repo.get_course(course_id)
+        if course is None:
+            return False
+        return self._is_owner_or_admin(course, user_sub=normalized_sub, role=role)

@@ -3,6 +3,11 @@ import { Link, type To } from 'react-router-dom'
 import type { CourseModule, CourseProgress, Lesson } from '../../lib/api/types'
 import { formatModuleQuizQuestionCount, quizScorePercentPillClass } from '../../lib/quizScoreDisplay'
 import { groupLessonsByModule } from '../../lib/lessonGrouping'
+import {
+  hasNavigableModuleQuiz,
+  isAccessibleLesson,
+  isModuleLocked,
+} from '../../lib/moduleGating'
 import { lessonPlayerPath, moduleQuizLinkTo } from '../../lib/moduleQuizNavigation'
 import {
   purchaseBundleCtaLabel,
@@ -70,15 +75,16 @@ export function resolveNextModuleQuizHref({
 
   const returnTo = lessonPlayerPath(courseId, lessonId)
   const currentModule = sortedModules[moduleIndex]
-  if (hasAvailableModuleQuiz(currentModule)) {
+  if (hasNavigableModuleQuiz(currentModule)) {
     return moduleQuizLinkTo(courseId, currentModule.id, returnTo)
   }
 
   for (let i = moduleIndex + 1; i < sortedModules.length; i++) {
     const mod = sortedModules[i]!
+    if (isModuleLocked(mod)) continue
     const modLessonCount = sortedLessons.filter((lesson) => lesson.moduleId === mod.id).length
     if (modLessonCount > 0) break
-    if (hasAvailableModuleQuiz(mod)) {
+    if (hasNavigableModuleQuiz(mod)) {
       return moduleQuizLinkTo(courseId, mod.id, returnTo)
     }
   }
@@ -119,14 +125,15 @@ export function resolvePrevModuleQuizHref({
   let quizOnlyCandidate: To | null = null
   for (let i = moduleIndex - 1; i >= 0; i--) {
     const mod = sortedModules[i]!
+    if (isModuleLocked(mod)) continue
     const modLessonCount = sortedLessons.filter((lesson) => lesson.moduleId === mod.id).length
     if (modLessonCount === 0) {
-      if (hasAvailableModuleQuiz(mod) && quizOnlyCandidate === null) {
+      if (hasNavigableModuleQuiz(mod) && quizOnlyCandidate === null) {
         quizOnlyCandidate = moduleQuizLinkTo(courseId, mod.id, returnTo)
       }
       continue
     }
-    if (hasAvailableModuleQuiz(mod)) {
+    if (hasNavigableModuleQuiz(mod)) {
       return moduleQuizLinkTo(courseId, mod.id, returnTo)
     }
     return quizOnlyCandidate
@@ -250,12 +257,14 @@ function ModuleQuizItem({
   module,
   sectionLessons,
   activeLessonId,
+  linkDisabled,
   onNavigate,
 }: {
   courseId: string
   module: CourseModule
   sectionLessons: Lesson[]
   activeLessonId: string
+  linkDisabled: boolean
   onNavigate?: () => void
 }) {
   const servedCount = module.moduleQuiz?.servedCountN
@@ -268,12 +277,14 @@ function ModuleQuizItem({
       ? moduleQuizLinkTo(courseId, module.id, lessonPlayerPath(courseId, returnLesson.id))
       : `/courses/${courseId}/modules/${module.id}/quiz`
 
-  return (
-    <Link
-      to={quizTo}
-      onClick={onNavigate}
-      className="group flex items-start border-l-4 border-transparent px-4 py-3 transition-colors hover:bg-slate-50 active:bg-slate-100"
-    >
+  const rowClass =
+    'group flex items-start border-l-4 border-transparent px-4 py-3 transition-colors ' +
+    (linkDisabled
+      ? 'cursor-default opacity-80'
+      : 'hover:bg-slate-50 active:bg-slate-100')
+
+  const inner = (
+    <>
       <div className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center text-blue-600">
         <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" aria-hidden="true">
           <path
@@ -301,9 +312,23 @@ function ModuleQuizItem({
           </div>
         </div>
         <p className="mt-0.5 truncate text-xs text-slate-500">
-          {servedCount ? formatModuleQuizQuestionCount(servedCount) : 'Quiz'}
+          {linkDisabled
+            ? 'Complete the prior module quiz to unlock'
+            : servedCount
+              ? formatModuleQuizQuestionCount(servedCount)
+              : 'Quiz'}
         </p>
       </div>
+    </>
+  )
+
+  if (linkDisabled) {
+    return <div className={rowClass}>{inner}</div>
+  }
+
+  return (
+    <Link to={quizTo} onClick={onNavigate} className={rowClass}>
+      {inner}
     </Link>
   )
 }
@@ -634,6 +659,7 @@ export function CourseLessonsCurriculum({
           {sections.map((section) => {
             const expanded = playbackNavLocked ? true : Boolean(openSections[section.id])
             const module = modules.find((m) => m.id === section.id)
+            const moduleLocked = isModuleLocked(module)
             const showModuleQuiz = !playbackNavLocked && hasAvailableModuleQuiz(module)
             return (
               <div key={section.id}>
@@ -682,7 +708,7 @@ export function CourseLessonsCurriculum({
                           lesson={lesson}
                           courseId={courseId}
                           active={lesson.id === activeLessonId}
-                          linkDisabled={playbackNavLocked}
+                          linkDisabled={playbackNavLocked || !isAccessibleLesson(lesson, modules)}
                           completed={lessonProgressEntry?.completed}
                           progressPct={progressPct}
                           durationLabel={formatDurationMmSs(lesson.duration)}
@@ -696,6 +722,7 @@ export function CourseLessonsCurriculum({
                         module={module}
                         sectionLessons={section.lessons}
                         activeLessonId={activeLessonId}
+                        linkDisabled={moduleLocked || !hasNavigableModuleQuiz(module)}
                         onNavigate={onClose}
                       />
                     ) : null}
