@@ -4,7 +4,8 @@ import { isAuthConfigured } from '../auth'
 import { isCognitoRefreshSessionSupersededError } from '../cognito-session-superseded'
 import { isStudentSessionSuperseded } from '../student-session-superseded-state'
 import { bearerFromSession, httpGet } from './client'
-import type { UserProfile } from './types'
+import { httpPatch } from './client'
+import type { PatchUserProfileBody, UserProfile } from './types'
 
 /** True when Cognito is configured and the user has an ID token (signed in). */
 export async function hasSignedInIdToken(): Promise<boolean> {
@@ -25,4 +26,8 @@ export async function hasSignedInIdToken(): Promise<boolean> {
 
 export async function fetchMe(): Promise<UserProfile> {
   return httpGet<UserProfile>('/users/me')
+}
+
+export async function patchUsersMe(body: PatchUserProfileBody): Promise<UserProfile> {
+  return httpPatch<UserProfile>('/users/me', body)
 }

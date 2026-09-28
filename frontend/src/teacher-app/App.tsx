@@ -8,8 +8,12 @@ import { Layout } from '../components/layout/Layout'
 import { LazyRoute, RouteChunkFallback } from '../components/layout/RouteChunkFallback'
 import { studentSiteOrigin } from '../lib/legalUrls'
 
-const SignIn = lazy(() =>
-  import('../components/auth/SignIn').then((mod) => ({ default: mod.SignIn })),
+const TeacherSignIn = lazy(() =>
+  import('../components/auth/SignIn').then((mod) => ({
+    default: function TeacherSignInShell({ children }: { children?: React.ReactNode }) {
+      return <mod.SignIn variant="teacher">{children}</mod.SignIn>
+    },
+  })),
 )
 
 const CourseManagement = lazy(() => import('../pages/CourseManagement'))
@@ -67,9 +71,9 @@ function TeacherApp() {
     <>
       <PostLoginRedirect />
       <Suspense fallback={<RouteChunkFallback />}>
-        <SignIn>
+        <TeacherSignIn>
           <TeacherShell />
-        </SignIn>
+        </TeacherSignIn>
       </Suspense>
     </>
   )

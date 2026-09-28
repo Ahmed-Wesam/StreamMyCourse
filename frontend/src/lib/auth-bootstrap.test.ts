@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest'
 
-import { isStudentIdleProbePath, needsAuthBootstrap } from './auth-bootstrap'
+import {
+  isStudentIdleProbePath,
+  isStudentTermsGateExemptPath,
+  needsAuthBootstrap,
+} from './auth-bootstrap'
 
 describe('isStudentIdleProbePath', () => {
   it('returns true for current public catalog paths', () => {
@@ -95,6 +99,13 @@ describe('needsAuthBootstrap', () => {
       expect(needsAuthBootstrap('/login', '')).toBe(true)
     })
 
+    it('returns true for register and password recovery routes', () => {
+      expect(needsAuthBootstrap('/register', '')).toBe(true)
+      expect(needsAuthBootstrap('/verify-email', '')).toBe(true)
+      expect(needsAuthBootstrap('/forgot-password', '')).toBe(true)
+      expect(needsAuthBootstrap('/reset-password', '')).toBe(true)
+    })
+
     it('returns true for account profile', () => {
       expect(needsAuthBootstrap('/account/profile', '')).toBe(true)
     })
@@ -110,5 +121,19 @@ describe('needsAuthBootstrap', () => {
     it('returns true for module quiz', () => {
       expect(needsAuthBootstrap('/courses/c1/modules/m1/quiz', '')).toBe(true)
     })
+  })
+})
+
+describe('isStudentTermsGateExemptPath', () => {
+  it('includes auth self-service and idle-probe public paths', () => {
+    expect(isStudentTermsGateExemptPath('/')).toBe(true)
+    expect(isStudentTermsGateExemptPath('/terms')).toBe(true)
+    expect(isStudentTermsGateExemptPath('/register')).toBe(true)
+    expect(isStudentTermsGateExemptPath('/account/profile')).toBe(true)
+    expect(isStudentTermsGateExemptPath('/verify-email')).toBe(true)
+    expect(isStudentTermsGateExemptPath('/forgot-password')).toBe(true)
+    expect(isStudentTermsGateExemptPath('/courses')).toBe(false)
+    expect(isStudentTermsGateExemptPath('/about')).toBe(false)
+    expect(isStudentTermsGateExemptPath('/checkout')).toBe(false)
   })
 })

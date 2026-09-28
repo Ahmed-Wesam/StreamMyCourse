@@ -67,12 +67,13 @@ describe('configureAmplify', () => {
         Cognito: {
           userPoolId: string
           userPoolClientId: string
-          loginWith: { oauth: { domain: string; redirectSignIn: string[] } }
+          loginWith: { email: boolean; oauth: { domain: string; redirectSignIn: string[] } }
         }
       }
     }
     expect(arg.Auth.Cognito.userPoolId).toBe('eu-west-1_pool')
     expect(arg.Auth.Cognito.userPoolClientId).toBe('clientid')
+    expect(arg.Auth.Cognito.loginWith.email).toBe(true)
     expect(arg.Auth.Cognito.loginWith.oauth.domain).toBe('myapp.auth.eu-west-1.amazoncognito.com')
     expect(arg.Auth.Cognito.loginWith.oauth.redirectSignIn).toEqual(['https://learn.example.com/'])
   })

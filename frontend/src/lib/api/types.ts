@@ -170,6 +170,25 @@ export type UserProfile = {
   cognitoSub: string
   createdAt: string
   updatedAt: string
+  givenName?: string
+  familyName?: string
+  country?: string
+  profession?: string
+  institution?: string
+  researchInterests?: string
+  termsAcceptedAt?: string
+  privacyAcceptedAt?: string
+}
+
+export type PatchUserProfileBody = {
+  givenName?: string
+  familyName?: string
+  country: string
+  profession: string
+  institution?: string
+  researchInterests?: string
+  termsAcceptedAt: string
+  privacyAcceptedAt: string
 }
 
 export type LessonProgressItem = {
