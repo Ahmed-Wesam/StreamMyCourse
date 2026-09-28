@@ -494,6 +494,20 @@ def test_deploy_backend_bundles_migration_018() -> None:
     assert chunk.index("017_course_page_content.sql") < chunk.index(needle)
 
 
+def test_deploy_backend_bundles_migration_019() -> None:
+    """deploy-backend.yml must cat 019 after 018 in the prod schema bundle."""
+    path = _ROOT / ".github" / "workflows" / "deploy-backend.yml"
+    text = path.read_text(encoding="utf-8")
+    needle = "019_lesson_files_and_notes.sql"
+    marker = "rds-schema-apply-prod-"
+    start = text.index(marker)
+    end = text.index('> "$PKG/schema.sql"', start)
+    chunk = text[start:end]
+    assert needle in chunk
+    assert "018_module_quiz_pass_percent.sql" in chunk
+    assert chunk.index("018_module_quiz_pass_percent.sql") < chunk.index(needle)
+
+
 def test_deploy_rds_stack_sh_bundles_migration_015() -> None:
     """scripts/deploy-rds-stack.sh must cat 015 after 014."""
     path = _ROOT / "scripts" / "deploy-rds-stack.sh"
@@ -546,6 +560,19 @@ def test_deploy_rds_stack_sh_bundles_migration_018() -> None:
     assert chunk.index("017_course_page_content.sql") < chunk.index(needle)
 
 
+def test_deploy_rds_stack_sh_bundles_migration_019() -> None:
+    """scripts/deploy-rds-stack.sh must cat 019 after 018."""
+    path = _ROOT / "scripts" / "deploy-rds-stack.sh"
+    text = path.read_text(encoding="utf-8")
+    needle = "019_lesson_files_and_notes.sql"
+    start = text.index("cat \\")
+    end = text.index('> "$PKG/schema.sql"', start)
+    chunk = text[start:end]
+    assert needle in chunk
+    assert "018_module_quiz_pass_percent.sql" in chunk
+    assert chunk.index("018_module_quiz_pass_percent.sql") < chunk.index(needle)
+
+
 def test_deploy_ps1_lists_migration_015() -> None:
     """infrastructure/deploy.ps1 schema bundle must include 015 after 014."""
     path = _ROOT / "infrastructure" / "deploy.ps1"
@@ -596,6 +623,19 @@ def test_deploy_ps1_lists_migration_018() -> None:
     assert needle in chunk
     assert "017_course_page_content.sql" in chunk
     assert chunk.index("017_course_page_content.sql") < chunk.index(needle)
+
+
+def test_deploy_ps1_lists_migration_019() -> None:
+    """infrastructure/deploy.ps1 schema bundle must include 019 after 018."""
+    path = _ROOT / "infrastructure" / "deploy.ps1"
+    text = path.read_text(encoding="utf-8")
+    needle = "019_lesson_files_and_notes.sql"
+    start = text.index("$schemaSqlFiles = @(")
+    end = text.index(")", start)
+    chunk = text[start:end]
+    assert needle in chunk
+    assert "018_module_quiz_pass_percent.sql" in chunk
+    assert chunk.index("018_module_quiz_pass_percent.sql") < chunk.index(needle)
 
 
 def test_split_real_migration_015_contains_expected_purchases_ddl(schema_apply):
@@ -668,8 +708,8 @@ def test_concatenated_001_003_004_006_007_008_bundle_is_splittable_and_complete(
     assert len(parts) >= 32
 
 
-def test_concatenated_deploy_schema_bundle_through_017_is_splittable(schema_apply):
-    """CI deploy-backend.yml concatenates 001–017 (skipping 002/005) into schema.sql."""
+def test_concatenated_deploy_schema_bundle_through_019_is_splittable(schema_apply):
+    """CI deploy-backend.yml concatenates 001–019 (skipping 002/005) into schema.sql."""
     migrations_dir = _ROOT / "infrastructure" / "database" / "migrations"
     names = (
         "001_initial_schema.sql",
@@ -688,10 +728,13 @@ def test_concatenated_deploy_schema_bundle_through_017_is_splittable(schema_appl
         "016_user_profile_fields.sql",
         "017_course_page_content.sql",
         "018_module_quiz_pass_percent.sql",
+        "019_lesson_files_and_notes.sql",
     )
     bundle = "".join((migrations_dir / n).read_text(encoding="utf-8") for n in names)
     parts = schema_apply._split_sql_statements(bundle)
     joined = "\n".join(parts)
+    assert "CREATE TABLE IF NOT EXISTS lesson_files" in joined
+    assert "CREATE TABLE IF NOT EXISTS lesson_notes" in joined
     assert "pass_percent" in joined
     assert "student_active_session_id" in joined
     assert "CREATE TABLE IF NOT EXISTS rate_limit_counters" in joined
