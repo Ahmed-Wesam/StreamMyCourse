@@ -1,11 +1,12 @@
 /**
  * @vitest-environment jsdom
  */
-import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { legalConfig } from '../lib/legalConfig'
+import { contactFormCopy } from '../lib/marketing/contactCopy'
 import ContactPage from './ContactPage'
 
 function renderContact() {
@@ -16,13 +17,30 @@ function renderContact() {
   )
 }
 
+function fillValidContactForm() {
+  fireEvent.change(screen.getByLabelText(/full name/i), { target: { value: 'Ada Lovelace' } })
+  fireEvent.change(screen.getByLabelText(/email address/i), {
+    target: { value: 'ada@example.com' },
+  })
+  fireEvent.change(screen.getByLabelText(/subject category/i), {
+    target: { value: 'General Question' },
+  })
+  fireEvent.change(screen.getByLabelText(/^subject$/i), { target: { value: 'Hello' } })
+  fireEvent.change(screen.getByLabelText(/^message$/i), {
+    target: { value: 'This is a long enough contact message for support.' },
+  })
+}
+
 describe('ContactPage', () => {
   const writeText = vi.fn().mockResolvedValue(undefined)
   const fetchMock = vi.fn()
+  const originalEnv = import.meta.env.VITE_API_BASE_URL
 
   beforeEach(() => {
     writeText.mockClear()
     fetchMock.mockClear()
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    ;(import.meta as any).env.VITE_API_BASE_URL = 'https://api.example/v1'
     Object.defineProperty(navigator, 'clipboard', {
       configurable: true,
       value: { writeText },
@@ -33,6 +51,8 @@ describe('ContactPage', () => {
   afterEach(() => {
     cleanup()
     vi.unstubAllGlobals()
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    ;(import.meta as any).env.VITE_API_BASE_URL = originalEnv
   })
 
   it('copy control writes legalConfig.supportEmail only', async () => {
@@ -74,35 +94,80 @@ describe('ContactPage', () => {
     }
   })
 
-  it('submit does not call fetch and shows messaging is not available yet', () => {
+  it('does not render a file input', () => {
     renderContact()
 
-    fireEvent.change(screen.getByLabelText(/full name/i), { target: { value: 'Ada Lovelace' } })
-    fireEvent.change(screen.getByLabelText(/email address/i), {
-      target: { value: 'ada@example.com' },
-    })
-    fireEvent.change(screen.getByLabelText(/subject category/i), {
-      target: { value: 'General Question' },
-    })
-    fireEvent.change(screen.getByLabelText(/^subject$/i), { target: { value: 'Hello' } })
-    fireEvent.change(screen.getByLabelText(/^message$/i), {
-      target: { value: 'This is a long enough contact message for support.' },
-    })
-
-    fireEvent.click(screen.getByRole('button', { name: /send message/i }))
-
-    expect(fetchMock).not.toHaveBeenCalled()
-    const status = screen.getByRole('status')
-    expect(status.textContent).toMatch(/messaging is not available yet/i)
-    expect(status.className).not.toMatch(/fef2f2|b91c1c|fecaca/)
-    expect(document.body.textContent).toMatch(/email support/i)
+    expect(document.querySelector('input[type="file"]')).toBeNull()
   })
 
-  it('file input is disabled', () => {
-    renderContact()
+  it('valid submit POSTs JSON to /contact once without Authorization', async () => {
+    fetchMock.mockResolvedValue(
+      new Response(JSON.stringify({ accepted: true }), {
+        status: 202,
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    )
 
-    const fileInput = document.querySelector('input[type="file"]') as HTMLInputElement | null
-    expect(fileInput).toBeTruthy()
-    expect(fileInput!.disabled).toBe(true)
+    renderContact()
+    fillValidContactForm()
+    fireEvent.click(screen.getByRole('button', { name: /send message/i }))
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1))
+
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit]
+    expect(String(url)).toMatch(/\/contact$/)
+    expect(init.method).toBe('POST')
+    expect(init.credentials).toBe('omit')
+    const headers = new Headers(init.headers)
+    expect(headers.get('Content-Type')).toBe('application/json')
+    expect(headers.has('Authorization')).toBe(false)
+    expect(JSON.parse(String(init.body))).toEqual({
+      name: 'Ada Lovelace',
+      email: 'ada@example.com',
+      category: 'General Question',
+      subject: 'Hello',
+      message: 'This is a long enough contact message for support.',
+    })
+  })
+
+  it('shows success copy on 202 and does not echo the message body', async () => {
+    fetchMock.mockResolvedValue(
+      new Response(JSON.stringify({ accepted: true }), {
+        status: 202,
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    )
+
+    renderContact()
+    fillValidContactForm()
+    fireEvent.click(screen.getByRole('button', { name: /send message/i }))
+
+    const status = await screen.findByRole('status')
+    expect(status.textContent).toBe(contactFormCopy.successStatus)
+    expect(document.body.textContent).not.toContain(
+      'This is a long enough contact message for support.',
+    )
+  })
+
+  it.each([
+    [400, contactFormCopy.validationErrorStatus],
+    [429, contactFormCopy.rateLimitStatus],
+    [503, contactFormCopy.unavailableStatus],
+  ] as const)('shows error status copy on HTTP %s (not success)', async (httpStatus, expectedCopy) => {
+    fetchMock.mockResolvedValue(
+      new Response(JSON.stringify({ message: 'server detail' }), {
+        status: httpStatus,
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    )
+
+    renderContact()
+    fillValidContactForm()
+    fireEvent.click(screen.getByRole('button', { name: /send message/i }))
+
+    const status = await screen.findByRole('status')
+    expect(status.textContent).toBe(expectedCopy)
+    expect(status.textContent).not.toBe(contactFormCopy.successStatus)
+    expect(document.body.textContent).not.toContain('server detail')
   })
 })

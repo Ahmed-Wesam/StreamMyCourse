@@ -64,10 +64,13 @@ export const contactFormCopy = {
   messageLabel: 'Message',
   messagePlaceholder:
     'Describe your question or issue in detail. The more information you provide, the faster we can help.',
-  attachmentLabel: 'Attachment (optional)',
-  attachmentHint: 'File uploads are not available yet.',
   submitLabel: 'Send Message',
   responseNote: 'We respond within 1–2 business days',
+  successStatus:
+    'Thank you — your message was sent. We will reply to your email within 1–2 business days.',
+  validationErrorStatus: 'Please check the required fields and try again.',
+  rateLimitStatus:
+    'Too many messages were sent from this device. Please wait a few minutes and try again.',
   unavailableStatus:
-    'Messaging is not available yet. Please email support using the address above.',
+    'The contact form is temporarily unavailable. Please email support using the address above.',
 } as const

@@ -100,6 +100,20 @@ Parameters:
       SQS queue ARN for sqs:SendMessage on the catalog Lambda role. Must be set
       when MediaCleanupQueueUrl is set.
 
+  TransactionalMailQueueUrl:
+    Type: String
+    Default: ''
+    Description: >-
+      SQS queue URL for async transactional mail (contact form). When empty,
+      POST /contact returns service unavailable.
+
+  TransactionalMailQueueArn:
+    Type: String
+    Default: ''
+    Description: >-
+      SQS queue ARN for sqs:SendMessage on the catalog Lambda role. Must be set
+      when TransactionalMailQueueUrl is set.
+
   BillingEdgeLambdaArn:
     Type: String
     Default: ''
@@ -196,6 +210,7 @@ Parameters:
 Conditions:
   HasVideoBucket: !Not [!Equals [!Ref VideoBucketName, '']]
   HasMediaCleanupQueueArn: !Not [!Equals [!Ref MediaCleanupQueueArn, '']]
+  HasTransactionalMailQueueArn: !Not [!Equals [!Ref TransactionalMailQueueArn, '']]
   HasBillingEdgeLambdaArn: !Not [!Equals [!Ref BillingEdgeLambdaArn, '']]
   IsKinescopeProvider: !Equals [!Ref VideoProvider, kinescope]
   HasVideoProviderEdgeLambdaArn: !Not [!Equals [!Ref VideoProviderEdgeLambdaArn, '']]
@@ -260,6 +275,17 @@ Resources:
                   Action:
                     - sqs:SendMessage
                   Resource: !Ref MediaCleanupQueueArn
+          - !Ref AWS::NoValue
+        - !If
+          - HasTransactionalMailQueueArn
+          - PolicyName: SqsTransactionalMailSend
+            PolicyDocument:
+              Version: '2012-10-17'
+              Statement:
+                - Effect: Allow
+                  Action:
+                    - sqs:SendMessage
+                  Resource: !Ref TransactionalMailQueueArn
           - !Ref AWS::NoValue
         # VPC ENI lifecycle for Lambda-in-VPC. These actions are resource-less by
         # AWS design (they return IDs from the global EC2 API) — standard for the
@@ -330,6 +356,7 @@ Resources:
           DB_SECRET_ARN: !ImportValue
             'Fn::Sub': '${RdsStackName}-DbSecretArn'
           MEDIA_CLEANUP_QUEUE_URL: !Ref MediaCleanupQueueUrl
+          TRANSACTIONAL_MAIL_QUEUE_URL: !Ref TransactionalMailQueueUrl
           BILLING_TEACHER_SUB: !Ref BillingTeacherSub
           DEPLOYMENT_ENVIRONMENT: !Ref Environment
           PROGRESS_COMPLETE_RATIO: !Ref ProgressCompleteRatio
@@ -684,6 +711,14 @@ Resources:
       RestApiId: !Ref CatalogApi
       ParentId: !GetAtt CatalogApi.RootResourceId
       PathPart: upload-url
+
+  # API Gateway Resource: /contact (public contact form)
+  ContactResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref CatalogApi
+      ParentId: !GetAtt CatalogApi.RootResourceId
+      PathPart: contact
 
   # API Gateway Resource: /users/me
   UsersResource:
@@ -1637,6 +1672,32 @@ Resources:
           - !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${VideoProviderEdgeLambdaArn}/invocations'
           - !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${CatalogLambda.Arn}/invocations'
 
+  # API Gateway Method: POST /contact (public; no JWT)
+  ContactPostMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref CatalogApi
+      ResourceId: !Ref ContactResource
+      HttpMethod: POST
+      AuthorizationType: NONE
+      Integration:
+        IntegrationHttpMethod: POST
+        Type: AWS_PROXY
+        Uri: !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${CatalogLambda.Arn}/invocations'
+
+  # API Gateway Method: OPTIONS /contact (CORS preflight)
+  ContactOptionsMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref CatalogApi
+      ResourceId: !Ref ContactResource
+      HttpMethod: OPTIONS
+      AuthorizationType: NONE
+      Integration:
+        IntegrationHttpMethod: POST
+        Type: AWS_PROXY
+        Uri: !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${CatalogLambda.Arn}/invocations'
+
   UsersMeGetMethod:
     Type: AWS::ApiGateway::Method
     Properties:
@@ -1962,7 +2023,7 @@ Resources:
   # Bump logical id when API methods/resources change so CloudFormation always
   # creates a new deployment; otherwise the stage can keep serving an old snapshot
   # (symptom: GET /courses/{id}/lessons returns API GW 403 Missing Authentication Token).
-  CatalogApiDeploymentV39:
+  CatalogApiDeploymentV40:
     Type: AWS::ApiGateway::Deployment
     DependsOn:
       - CatalogLambdaApiPermission
@@ -1995,6 +2056,8 @@ Resources:
       - PlaybackOptionsMethod
       - UploadUrlPostMethod
       - UploadUrlOptionsMethod
+      - ContactPostMethod
+      - ContactOptionsMethod
       - UsersMeGetMethod
       - UsersMePatchMethod
       - UsersMeOptionsMethod
@@ -2044,7 +2107,7 @@ Resources:
     Type: AWS::ApiGateway::Stage
     Properties:
       RestApiId: !Ref CatalogApi
-      DeploymentId: !Ref CatalogApiDeploymentV39
+      DeploymentId: !Ref CatalogApiDeploymentV40
       StageName: !Ref Environment
       Description: !Sub '${Environment} stage for Catalog API'
       MethodSettings:
@@ -2070,6 +2133,10 @@ Resources:
           HttpMethod: 'GET'
           ThrottlingRateLimit: 40
           ThrottlingBurstLimit: 80
+        - ResourcePath: '/contact'
+          HttpMethod: 'POST'
+          ThrottlingRateLimit: 20
+          ThrottlingBurstLimit: 40
         - ResourcePath: '/courses'
           HttpMethod: 'GET'
           ThrottlingRateLimit: 40

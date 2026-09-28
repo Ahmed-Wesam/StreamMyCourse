@@ -271,6 +271,50 @@ if [[ -n "${MEDIA_QUEUE_URL:-}" && -n "${MEDIA_QUEUE_ARN:-}" ]]; then
   MEDIA_PARAM_OVERRIDES=("MediaCleanupQueueUrl=${MEDIA_QUEUE_URL}" "MediaCleanupQueueArn=${MEDIA_QUEUE_ARN}")
 fi
 
+# Async transactional mail (contact form → Zoho SMTP worker). Override both URL and ARN to
+# reuse a pre-deployed queue without running the transactional-mail stack again.
+TM_QUEUE_URL="${TRANSACTIONAL_MAIL_QUEUE_URL:-}"
+TM_QUEUE_ARN="${TRANSACTIONAL_MAIL_QUEUE_ARN:-}"
+if [[ -z "$TM_QUEUE_URL" || -z "$TM_QUEUE_ARN" ]]; then
+  TM_SCRIPT="${ROOT}/scripts/deploy-transactional-mail.sh"
+  chmod +x "$TM_SCRIPT"
+  CATALOG_LAMBDA_ROLE_ARN=""
+  if aws cloudformation describe-stacks --stack-name "$API_STACK" --region "$REGION" &>/dev/null; then
+    CATALOG_LAMBDA_ROLE_ARN="$(aws iam get-role \
+      --role-name "StreamMyCourse-CatalogLambdaRole-${ENV}" \
+      --query 'Role.Arn' \
+      --output text 2>/dev/null || true)"
+    if [[ "$CATALOG_LAMBDA_ROLE_ARN" == "None" ]]; then
+      CATALOG_LAMBDA_ROLE_ARN=""
+    fi
+  fi
+  export CATALOG_LAMBDA_ROLE_ARN
+  "$TM_SCRIPT" "$ENV" "$REGION" "$ARTIFACT_BUCKET" "$SUFFIX"
+  TM_STACK="StreamMyCourse-TransactionalMail-${ENV}"
+  TM_QUEUE_URL="$(aws cloudformation describe-stacks \
+    --stack-name "$TM_STACK" \
+    --region "$REGION" \
+    --query 'Stacks[0].Outputs[?OutputKey==`TransactionalMailQueueUrl`].OutputValue' \
+    --output text)"
+  TM_QUEUE_ARN="$(aws cloudformation describe-stacks \
+    --stack-name "$TM_STACK" \
+    --region "$REGION" \
+    --query 'Stacks[0].Outputs[?OutputKey==`TransactionalMailQueueArn`].OutputValue' \
+    --output text)"
+  if [[ -z "$TM_QUEUE_URL" || "$TM_QUEUE_URL" == "None" || -z "$TM_QUEUE_ARN" || "$TM_QUEUE_ARN" == "None" ]]; then
+    echo "Failed to read transactional mail stack outputs (queue URL / ARN)" >&2
+    exit 1
+  fi
+fi
+
+TRANSACTIONAL_MAIL_PARAM_OVERRIDES=()
+if [[ -n "${TM_QUEUE_URL:-}" && -n "${TM_QUEUE_ARN:-}" ]]; then
+  TRANSACTIONAL_MAIL_PARAM_OVERRIDES=(
+    "TransactionalMailQueueUrl=${TM_QUEUE_URL}"
+    "TransactionalMailQueueArn=${TM_QUEUE_ARN}"
+  )
+fi
+
 # Billing edge + fulfillment queue (WS2). Override all three to skip payments stack redeploy.
 BILLING_EDGE_ARN="${BILLING_EDGE_LAMBDA_ARN:-}"
 BILLING_QUEUE_URL="${BILLING_FULFILLMENT_QUEUE_URL:-}"
@@ -447,6 +491,7 @@ _deploy_api_stack() {
     "${COGNITO_OVERRIDE[@]}" \
     "${RDS_STACK_OVERRIDE[@]}" \
     "${MEDIA_PARAM_OVERRIDES[@]}" \
+    "${TRANSACTIONAL_MAIL_PARAM_OVERRIDES[@]}" \
     "${BILLING_PARAM_OVERRIDES[@]}" \
     "${KINESCOPE_PARAM_OVERRIDES[@]}" \
     "${VIDEO_EDGE_PARAM_OVERRIDES[@]}"

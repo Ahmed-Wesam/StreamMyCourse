@@ -88,6 +88,10 @@ from services.rate_limit.rds_repo import RateLimitRdsRepository
 
 from services.rate_limit.service import RateLimitService
 
+from services.contact.service import ContactService
+
+from services.common.sqs_client import send_transactional_mail_job
+
 from services.question_banks.service import QuestionBankService
 
 from services.question_banks.gating import (
@@ -496,6 +500,8 @@ class AwsDeps:
 
     rate_limit_service: RateLimitService
 
+    contact_service: ContactService
+
 
 
 
@@ -842,6 +848,14 @@ def build_aws_deps(cfg: AppConfig) -> AwsDeps:
 
     )
 
+    contact_service = ContactService(
+
+        queue_url=cfg.transactional_mail_queue_url,
+
+        enqueue=lambda url, payload: send_transactional_mail_job(url, payload),
+
+    )
+
 
 
     return AwsDeps(
@@ -865,6 +879,8 @@ def build_aws_deps(cfg: AppConfig) -> AwsDeps:
         purchase_manage_service=purchase_manage_service,
 
         rate_limit_service=rate_limit_service,
+
+        contact_service=contact_service,
 
     )
 

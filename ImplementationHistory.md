@@ -6,6 +6,34 @@
 
 ---
 
+## 2026-09-28 — RS-10 contact form + transactional email
+
+### Decisions
+
+- **Zoho SMTP, not Amazon SES** — contact and future transactional mail reuse **`streammycourse/zoho-smtp/prod`** (same posture as RS-6 CustomEmailSender).
+- **Recipient:** **`support@researchspectrum.org`** only; worker [`ALLOWLIST_TO_ADDRESSES`](infrastructure/lambda/transactional_mail/mail.py) rejects other `to` values.
+- **Abuse:** RDS rate limits on **`POST /contact`** — **`contact.ip`** (5 / 10 min per IP), **`contact.global`** (30 / hour); honeypot field **`rs_hp`** (filled → **202** without enqueue).
+- **No attachments** — JSON body allowlist excludes upload fields; validation rejects unknown keys.
+
+### What landed
+
+- **API:** [`services/contact/`](infrastructure/lambda/catalog/services/contact/) — public **`POST /contact`** in [`api-stack.yaml`](infrastructure/templates/api-stack.yaml); catalog enqueues via [`send_transactional_mail_job`](infrastructure/lambda/catalog/services/common/sqs_client.py).
+- **Worker:** [`infrastructure/lambda/transactional_mail/`](infrastructure/lambda/transactional_mail/) — SQS-triggered Zoho SMTP sender.
+- **Infra:** [`transactional-mail-stack.yaml`](infrastructure/templates/transactional-mail-stack.yaml) → **`StreamMyCourse-TransactionalMail-prod`**; deploy [`scripts/deploy-transactional-mail.sh`](scripts/deploy-transactional-mail.sh); wired from [`scripts/deploy-backend.sh`](scripts/deploy-backend.sh).
+- **Frontend:** [`ContactPage.tsx`](frontend/src/pages/ContactPage.tsx), [`public-contact.ts`](frontend/src/lib/api/public-contact.ts) — unauthenticated submit, no `Authorization` header.
+
+### Verification
+
+- [x] `python -m pytest tests/unit/services/contact tests/unit/test_transactional_mail_worker.py tests/unit/services/contact/test_rate_limit_policies.py -q`; `python scripts/check_lambda_boundaries.py`
+- [x] `frontend/` Vitest — [`ContactPage.dom.test.tsx`](frontend/src/pages/ContactPage.dom.test.tsx)
+- [ ] Optional prod smoke: submit `/contact` and confirm **`support@`** delivery after transactional-mail stack deploy
+
+### Docs
+
+- [`design.md`](design.md) public contact + VPC mail path; child plan [`plans/ui-overhaul/rs-10-contact-email.md`](plans/ui-overhaul/rs-10-contact-email.md); mega-plan RS-10 status
+
+---
+
 ## 2026-09-28 — Research Spectrum student dashboard (RS-9)
 
 ### Decisions

@@ -59,6 +59,19 @@ _CATALOG_ACTOR = RateLimitPolicy(
     bucket_key_template="rl:catalog:actor:{actor}",
 )
 
+_CONTACT_IP = RateLimitPolicy(
+    policy_id="contact.ip",
+    window_seconds=600,
+    max_count=5,
+    bucket_key_template="rl:contact:ip:{actor}",
+)
+_CONTACT_GLOBAL = RateLimitPolicy(
+    policy_id="contact.global",
+    window_seconds=3600,
+    max_count=30,
+    bucket_key_template="rl:contact:global",
+)
+
 
 def resolve_actor(claims: Mapping[str, Any], source_ip: str) -> str:
     sub = str(claims.get("sub", "") or "").strip()
@@ -109,6 +122,10 @@ def _is_post_enroll(method: str, parts: Sequence[str]) -> bool:
     )
 
 
+def _is_post_contact(method: str, parts: Sequence[str]) -> bool:
+    return method == "POST" and list(parts) == ["contact"]
+
+
 def _is_get_catalog(method: str, parts: Sequence[str]) -> bool:
     if method != "GET" or not parts or parts[0] != "courses":
         return False
@@ -150,6 +167,9 @@ def classify_route(
 
     if _is_get_catalog(method, normalized_parts):
         return [_CATALOG_ACTOR]
+
+    if _is_post_contact(method, normalized_parts):
+        return [_CONTACT_IP, _CONTACT_GLOBAL]
 
     return None
 

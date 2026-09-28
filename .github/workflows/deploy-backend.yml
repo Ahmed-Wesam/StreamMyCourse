@@ -6,9 +6,11 @@
 #
 # Lambda zip is uploaded to catalog-{env}-{gitSha}.zip so LambdaCodeS3Key changes every commit
 # (CFN updates the function).
-# For prod, scripts/deploy-backend.sh deploys StreamMyCourse-MediaCleanup-prod (SQS + worker)
-# and StreamMyCourse-Payments-prod (billing edge + fulfillment queue) before the API stack, then
-# passes media cleanup queue URL/ARN and billing edge ARN + fulfillment queue URL/ARN into api-stack.yaml.
+# For prod, scripts/deploy-backend.sh deploys StreamMyCourse-MediaCleanup-prod (SQS + worker),
+# StreamMyCourse-TransactionalMail-prod (contact mail worker), and StreamMyCourse-Payments-prod
+# (billing edge + fulfillment queue) before the API stack, then passes queue URL/ARNs and billing
+# edge ARN into api-stack.yaml. Transactional mail zip/deploy runs inside deploy-backend.sh (same
+# as media cleanup); ZOHO_SMTP_SECRET_ARN is passed from the Ensure Zoho SMTP secret step.
 name: Deploy
 
 on:
@@ -563,6 +565,7 @@ jobs:
           BILLING_FULFILLMENT_ALERT_EMAIL: ${{ vars.BILLING_FULFILLMENT_ALERT_EMAIL }}
           BILLING_TEACHER_SUB: ${{ vars.BILLING_TEACHER_SUB }}
           VIDEO_PROVIDER: s3
+          ZOHO_SMTP_SECRET_ARN: ${{ steps.zoho_smtp_secret_prod.outputs.arn }}
         run: |
           set -euo pipefail
           if [[ -z "${PAYTABS_SECRET_ARN:-}" ]]; then

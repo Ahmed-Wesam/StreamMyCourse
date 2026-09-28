@@ -20,6 +20,9 @@ VIDEO_PROVIDER_EDGE_GLOB = os.path.join(
 BILLING_FULFILLMENT_GLOB = os.path.join(
     ROOT, "infrastructure", "lambda", "billing_fulfillment", "**", "*.py"
 )
+TRANSACTIONAL_MAIL_GLOB = os.path.join(
+    ROOT, "infrastructure", "lambda", "transactional_mail", "**", "*.py"
+)
 
 # Outbound HTTP (stdlib) — billing_edge WS2: only PayTabs adapter may import these.
 _HTTP_CLIENT_ROOTS = frozenset({"urllib", "http", "httplib"})
@@ -95,6 +98,20 @@ _VIDEO_PROVIDER_EDGE_HTTP_ALLOWED = frozenset(
     }
 )
 
+_CATALOG_SMTP_ALLOWED = frozenset()
+
+_TRANSACTIONAL_MAIL_BOTO3_ALLOWED = frozenset(
+    {
+        _p("infrastructure/lambda/transactional_mail/smtp_config.py"),
+    }
+)
+
+_TRANSACTIONAL_MAIL_SMTP_ALLOWED = frozenset(
+    {
+        _p("infrastructure/lambda/transactional_mail/mail.py"),
+    }
+)
+
 
 @dataclass(frozen=True)
 class Violation:
@@ -122,6 +139,8 @@ def _lambda_package(rel: str) -> str:
         return "billing_fulfillment"
     if rel.startswith("infrastructure/lambda/video_provider_edge/"):
         return "video_provider_edge"
+    if rel.startswith("infrastructure/lambda/transactional_mail/"):
+        return "transactional_mail"
     return "unknown"
 
 
@@ -188,6 +207,19 @@ def _check_billing_edge_http(rel: str, norm: str, roots: Set[str]) -> List[Viola
     ]
 
 
+def _check_smtplib(
+    rel: str, norm: str, roots: Set[str], allowed: frozenset[str], label: str
+) -> List[Violation]:
+    if "smtplib" not in roots or norm in allowed:
+        return []
+    return [
+        Violation(
+            rel,
+            f"smtplib may only be imported in {label} allowlisted files",
+        )
+    ]
+
+
 def _check_catalog_http(rel: str, norm: str, roots: Set[str]) -> List[Violation]:
     bad = sorted(_HTTP_CLIENT_ROOTS & roots)
     if not bad:
@@ -232,6 +264,10 @@ def check_file(path: str) -> List[Violation]:
             _check_psycopg2(rel, norm, roots, _CATALOG_PSYCOPG2_ALLOWED, "catalog/cognito")
         )
         violations.extend(_check_catalog_http(rel, norm, roots))
+        if package == "catalog":
+            violations.extend(
+                _check_smtplib(rel, norm, roots, _CATALOG_SMTP_ALLOWED, "catalog")
+            )
     elif package == "billing_edge":
         violations.extend(
             _check_boto3(rel, norm, roots, _BILLING_EDGE_BOTO3_ALLOWED, "billing_edge")
@@ -257,6 +293,13 @@ def check_file(path: str) -> List[Violation]:
             _check_psycopg2(rel, norm, roots, frozenset(), "video_provider_edge")
         )
         violations.extend(_check_video_provider_edge_http(rel, norm, roots))
+    elif package == "transactional_mail":
+        violations.extend(
+            _check_boto3(rel, norm, roots, _TRANSACTIONAL_MAIL_BOTO3_ALLOWED, "transactional_mail")
+        )
+        violations.extend(
+            _check_smtplib(rel, norm, roots, _TRANSACTIONAL_MAIL_SMTP_ALLOWED, "transactional_mail")
+        )
 
     if package != "catalog":
         return violations
@@ -313,6 +356,7 @@ def main() -> int:
             +             glob.glob(BILLING_EDGE_GLOB, recursive=True)
             + glob.glob(BILLING_FULFILLMENT_GLOB, recursive=True)
             + glob.glob(VIDEO_PROVIDER_EDGE_GLOB, recursive=True)
+            + glob.glob(TRANSACTIONAL_MAIL_GLOB, recursive=True)
         )
     )
     all_violations: List[Violation] = []

@@ -7,6 +7,7 @@ import { Card } from '../components/ui/Card'
 import { Eyebrow } from '../components/ui/Eyebrow'
 import { Field } from '../components/ui/Field'
 import { SectionHeader } from '../components/ui/SectionHeader'
+import { submitPublicContact } from '../lib/api/public-contact'
 import { legalConfig } from '../lib/legalConfig'
 import {
   contactCategories,
@@ -16,11 +17,28 @@ import {
 } from '../lib/marketing/contactCopy'
 import { usePageTitle } from '../lib/page-title'
 
+type FormStatus = { kind: 'success' | 'error'; message: string }
+
+function outcomeToMessage(outcome: Awaited<ReturnType<typeof submitPublicContact>>): string {
+  switch (outcome) {
+    case 'accepted':
+      return contactFormCopy.successStatus
+    case 'validation_error':
+      return contactFormCopy.validationErrorStatus
+    case 'rate_limited':
+      return contactFormCopy.rateLimitStatus
+    case 'unavailable':
+    case 'unexpected':
+      return contactFormCopy.unavailableStatus
+  }
+}
+
 export default function ContactPage() {
   usePageTitle('Contact')
 
-  const [status, setStatus] = useState<string | null>(null)
+  const [status, setStatus] = useState<FormStatus | null>(null)
   const [copied, setCopied] = useState(false)
+  const [submitting, setSubmitting] = useState(false)
 
   async function handleCopyEmail() {
     try {
@@ -32,9 +50,40 @@ export default function ContactPage() {
     }
   }
 
-  function handleSubmit(event: FormEvent<HTMLFormElement>) {
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
-    setStatus(contactFormCopy.unavailableStatus)
+    setStatus(null)
+
+    const form = event.currentTarget
+    const data = new FormData(form)
+    const name = String(data.get('name') ?? '').trim()
+    const email = String(data.get('email') ?? '').trim()
+    const category = String(data.get('category') ?? '').trim()
+    const subject = String(data.get('subject') ?? '').trim()
+    const message = String(data.get('message') ?? '').trim()
+    const rs_hp = String(data.get('rs_hp') ?? '')
+
+    setSubmitting(true)
+    try {
+      const outcome = await submitPublicContact({
+        name,
+        email,
+        category,
+        subject,
+        message,
+        rs_hp,
+      })
+      if (outcome === 'accepted') {
+        setStatus({ kind: 'success', message: contactFormCopy.successStatus })
+        form.reset()
+      } else {
+        setStatus({ kind: 'error', message: outcomeToMessage(outcome) })
+      }
+    } catch {
+      setStatus({ kind: 'error', message: contactFormCopy.unavailableStatus })
+    } finally {
+      setSubmitting(false)
+    }
   }
 
   return (
@@ -170,6 +219,15 @@ export default function ContactPage() {
             <p className="mb-6 text-sm font-semibold text-rs-muted">{contactFormCopy.formSub}</p>
 
             <form onSubmit={handleSubmit} noValidate autoComplete="on">
+              <input
+                type="text"
+                name="rs_hp"
+                tabIndex={-1}
+                autoComplete="off"
+                aria-hidden="true"
+                defaultValue=""
+                className="absolute left-[-9999px] size-px overflow-hidden opacity-0"
+              />
               <div className="grid gap-3.5 sm:grid-cols-2">
                 <Field label={contactFormCopy.nameLabel}>
                   <input
@@ -178,6 +236,7 @@ export default function ContactPage() {
                     placeholder={contactFormCopy.namePlaceholder}
                     autoComplete="name"
                     aria-required="true"
+                    disabled={submitting}
                   />
                 </Field>
                 <Field label={contactFormCopy.emailLabel}>
@@ -188,12 +247,13 @@ export default function ContactPage() {
                     autoComplete="email"
                     inputMode="email"
                     aria-required="true"
+                    disabled={submitting}
                   />
                 </Field>
               </div>
               <div className="grid gap-3.5 sm:grid-cols-2">
                 <Field label={contactFormCopy.categoryLabel}>
-                  <select name="category" aria-required="true" defaultValue="">
+                  <select name="category" aria-required="true" defaultValue="" disabled={submitting}>
                     <option value="">{contactFormCopy.categoryPlaceholder}</option>
                     {contactCategories.map((category) => (
                       <option key={category} value={category}>
@@ -208,6 +268,7 @@ export default function ContactPage() {
                     name="subject"
                     placeholder={contactFormCopy.subjectPlaceholder}
                     aria-required="true"
+                    disabled={submitting}
                   />
                 </Field>
               </div>
@@ -218,29 +279,26 @@ export default function ContactPage() {
                   placeholder={contactFormCopy.messagePlaceholder}
                   aria-required="true"
                   className="min-h-[120px] resize-y"
-                />
-              </Field>
-              <Field label={contactFormCopy.attachmentLabel} hint={contactFormCopy.attachmentHint}>
-                <input
-                  type="file"
-                  name="attachment"
-                  disabled
-                  accept=".pdf,.docx,.doc,.png,.jpg,.jpeg,.zip"
-                  aria-label="Choose file"
+                  disabled={submitting}
                 />
               </Field>
 
               {status ? (
                 <p
                   role="status"
-                  className="mb-4 rounded-[10px] border border-rs-line bg-rs-sky-2 px-3.5 py-2.5 text-[13.5px] font-bold text-rs-navy"
+                  aria-live="polite"
+                  className={
+                    status.kind === 'success'
+                      ? 'mb-4 rounded-[10px] border border-emerald-200 bg-emerald-50 px-3.5 py-2.5 text-[13.5px] font-bold text-emerald-800'
+                      : 'mb-4 rounded-[10px] border border-red-200 bg-red-50 px-3.5 py-2.5 text-[13.5px] font-bold text-red-800'
+                  }
                 >
-                  {status}
+                  {status.message}
                 </p>
               ) : null}
 
               <div className="flex flex-wrap items-center gap-3">
-                <Button type="submit" arrow>
+                <Button type="submit" arrow disabled={submitting}>
                   {contactFormCopy.submitLabel}
                 </Button>
                 <span className="text-[13px] font-semibold text-rs-muted">
