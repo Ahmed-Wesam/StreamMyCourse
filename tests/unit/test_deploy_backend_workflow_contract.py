@@ -187,6 +187,19 @@ def _deploy_backend_sh_text() -> str:
     return path.read_text(encoding="utf-8")
 
 
+def test_deploy_backend_prod_packages_cognito_pre_signup_lambda() -> None:
+    text = _workflow_text()
+    block = _job_block(text, "deploy-backend-prod", "\n  # Prod-only")
+    assert "Package and upload Cognito PreSignUp Lambda (prod)" in block
+    assert "cognito_pre_signup_pkg_prod" in block
+    assert "cognito-pre-signup-prod-" in block
+    assert "CognitoPreSignUpCodeS3Bucket=${{ steps.cognito_pre_signup_pkg_prod.outputs.bucket }}" in block
+    assert "Package and upload Cognito custom email sender Lambda (prod)" in block
+    assert "cognito_custom_email_pkg_prod" in block
+    assert "Ensure Zoho SMTP secret (prod)" in block
+    assert "ZohoSmtpSecretArn=${{ steps.zoho_smtp_secret_prod.outputs.arn }}" in block
+
+
 def test_deploy_backend_sh_invokes_deploy_payments_for_prod_only() -> None:
     text = _deploy_backend_sh_text()
     assert "deploy-payments.sh" in text

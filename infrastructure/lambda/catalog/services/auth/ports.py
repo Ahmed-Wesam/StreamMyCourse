@@ -21,6 +21,7 @@ layer and public API contract already assume camelCase.
 
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Any, Dict, Optional, Protocol
 
 
@@ -31,4 +32,18 @@ class UserProfileRepositoryPort(Protocol):
 
     def put_profile(
         self, *, user_sub: str, email: str, role: str
+    ) -> Dict[str, Any]: ...
+
+    def update_profile_fields(
+        self,
+        *,
+        user_sub: str,
+        given_name: str,
+        family_name: str,
+        country: str,
+        profession: str,
+        institution: str,
+        research_interests: str,
+        terms_accepted_at: datetime,
+        privacy_accepted_at: datetime,
     ) -> Dict[str, Any]: ...

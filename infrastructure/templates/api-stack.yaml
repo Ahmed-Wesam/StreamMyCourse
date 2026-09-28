@@ -1601,6 +1601,19 @@ Resources:
         Type: AWS_PROXY
         Uri: !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${CatalogLambda.Arn}/invocations'
 
+  UsersMePatchMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref CatalogApi
+      ResourceId: !Ref UsersMeResource
+      HttpMethod: PATCH
+      AuthorizationType: COGNITO_USER_POOLS
+      AuthorizerId: !Ref CatalogApiTokenAuthorizer
+      Integration:
+        IntegrationHttpMethod: POST
+        Type: AWS_PROXY
+        Uri: !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${CatalogLambda.Arn}/invocations'
+
   UsersMeOptionsMethod:
     Type: AWS::ApiGateway::Method
     Properties:
@@ -1934,6 +1947,7 @@ Resources:
       - UploadUrlPostMethod
       - UploadUrlOptionsMethod
       - UsersMeGetMethod
+      - UsersMePatchMethod
       - UsersMeOptionsMethod
       - CourseProgressGetMethod
       - CourseProgressOptionsMethod

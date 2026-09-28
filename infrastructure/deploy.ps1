@@ -103,6 +103,21 @@ param(
     [Parameter(Mandatory=$false)]
     [string]$CognitoUserProfileSyncCodeS3Key = "",
 
+    [Parameter(Mandatory=$false)]
+    [string]$CognitoPreSignUpCodeS3Bucket = "",
+
+    [Parameter(Mandatory=$false)]
+    [string]$CognitoPreSignUpCodeS3Key = "",
+
+    [Parameter(Mandatory=$false)]
+    [string]$CognitoCustomEmailSenderCodeS3Bucket = "",
+
+    [Parameter(Mandatory=$false)]
+    [string]$CognitoCustomEmailSenderCodeS3Key = "",
+
+    [Parameter(Mandatory=$false)]
+    [string]$ZohoSmtpSecretArn = "",
+
     # api stack: Cognito User Pool ARN + client id(s) for REST authorizer (export from auth stack)
     [Parameter(Mandatory=$true)]
     [string]$CognitoUserPoolArn,
@@ -534,6 +549,21 @@ if ($Template -eq "edge-hosting") {
     }
     if ($CognitoUserProfileSyncCodeS3Key -ne "") {
         $authOverrides += "CognitoUserProfileSyncCodeS3Key=$CognitoUserProfileSyncCodeS3Key"
+    }
+    if ($CognitoPreSignUpCodeS3Bucket -ne "") {
+        $authOverrides += "CognitoPreSignUpCodeS3Bucket=$CognitoPreSignUpCodeS3Bucket"
+    }
+    if ($CognitoPreSignUpCodeS3Key -ne "") {
+        $authOverrides += "CognitoPreSignUpCodeS3Key=$CognitoPreSignUpCodeS3Key"
+    }
+    if ($CognitoCustomEmailSenderCodeS3Bucket -ne "") {
+        $authOverrides += "CognitoCustomEmailSenderCodeS3Bucket=$CognitoCustomEmailSenderCodeS3Bucket"
+    }
+    if ($CognitoCustomEmailSenderCodeS3Key -ne "") {
+        $authOverrides += "CognitoCustomEmailSenderCodeS3Key=$CognitoCustomEmailSenderCodeS3Key"
+    }
+    if ($ZohoSmtpSecretArn -ne "") {
+        $authOverrides += "ZohoSmtpSecretArn=$ZohoSmtpSecretArn"
     }
     $cfDeployArgs += '--parameter-overrides'
     $cfDeployArgs += $authOverrides

@@ -1,6 +1,7 @@
 AWSTemplateFormatVersion: '2010-09-09'
 Description: >-
-  StreamMyCourse - Cognito User Pool (student + teacher app clients, Google federation only; Google OAuth credentials required; no Identity Pool)
+  StreamMyCourse - Cognito User Pool (student native email/password + Google; teacher Google OAuth;
+  optional PreSignUp linking and Zoho SMTP CustomEmailSender; no Identity Pool)
 
 Parameters:
   Environment:
@@ -84,6 +85,33 @@ Parameters:
     Description: >-
       Teacher app client ID for Pre Token pass-through routing (optional guard).
 
+  CognitoPreSignUpCodeS3Bucket:
+    Type: String
+    Default: ''
+    Description: Artifacts bucket containing the Cognito PreSignUp Lambda zip
+
+  CognitoPreSignUpCodeS3Key:
+    Type: String
+    Default: ''
+    Description: S3 key for the Cognito PreSignUp Lambda deployment zip
+
+  CognitoCustomEmailSenderCodeS3Bucket:
+    Type: String
+    Default: ''
+    Description: Artifacts bucket containing the Cognito custom email sender (Zoho SMTP) Lambda zip
+
+  CognitoCustomEmailSenderCodeS3Key:
+    Type: String
+    Default: ''
+    Description: S3 key for the Cognito custom email sender Lambda deployment zip
+
+  ZohoSmtpSecretArn:
+    Type: String
+    Default: ''
+    Description: >-
+      Secrets Manager ARN for Zoho SMTP JSON (smtp_username, smtp_password, optional host/port/from/reply_to).
+      Example secret id streammycourse/zoho-smtp/prod.
+
 Conditions:
   HasRdsStackName: !Not [!Equals [!Ref RdsStackName, '']]
   HasSyncLambdaCode: !And
@@ -93,6 +121,21 @@ Conditions:
     - !Condition HasRdsStackName
     - !Equals [!Ref EnableUserProfileSync, 'true']
     - !Condition HasSyncLambdaCode
+  HasPreSignUpCode: !And
+    - !Not [!Equals [!Ref CognitoPreSignUpCodeS3Bucket, '']]
+    - !Not [!Equals [!Ref CognitoPreSignUpCodeS3Key, '']]
+  ShouldDeployPreSignUp: !Condition HasPreSignUpCode
+  HasCustomEmailSenderCode: !And
+    - !Not [!Equals [!Ref CognitoCustomEmailSenderCodeS3Bucket, '']]
+    - !Not [!Equals [!Ref CognitoCustomEmailSenderCodeS3Key, '']]
+  HasZohoSmtpSecret: !Not [!Equals [!Ref ZohoSmtpSecretArn, '']]
+  ShouldDeployCustomEmailSender: !And
+    - !Condition ShouldDeployPreSignUp
+    - !Condition HasCustomEmailSenderCode
+    - !Condition HasZohoSmtpSecret
+  ShouldDeployUserProfileSyncAndPreSignUp: !And
+    - !Condition ShouldDeployUserProfileSync
+    - !Condition ShouldDeployPreSignUp
 
 Resources:
   UserProfileSyncLambdaRole:
@@ -196,6 +239,150 @@ Resources:
         - Key: Environment
           Value: !Ref Environment
 
+  CognitoPreSignUpLambdaRole:
+    Type: AWS::IAM::Role
+    Condition: ShouldDeployPreSignUp
+    Properties:
+      RoleName: !Sub '${AWS::StackName}-CognitoPreSignUpLambdaRole'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: CloudWatchLogs
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource: !Sub 'arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/${AWS::StackName}-CognitoPreSignUp:*'
+      Tags:
+        - Key: Project
+          Value: StreamMyCourse
+        - Key: Environment
+          Value: !Ref Environment
+
+  CognitoPreSignUpLambda:
+    Type: AWS::Lambda::Function
+    Condition: ShouldDeployPreSignUp
+    DependsOn:
+      - CognitoPreSignUpLambdaRole
+    Properties:
+      FunctionName: !Sub '${AWS::StackName}-CognitoPreSignUp'
+      Runtime: python3.11
+      Handler: handler.lambda_handler
+      Role: !GetAtt CognitoPreSignUpLambdaRole.Arn
+      Timeout: 10
+      MemorySize: 128
+      Code:
+        S3Bucket: !Ref CognitoPreSignUpCodeS3Bucket
+        S3Key: !Ref CognitoPreSignUpCodeS3Key
+      Tags:
+        - Key: Project
+          Value: StreamMyCourse
+        - Key: Environment
+          Value: !Ref Environment
+
+  CognitoCustomEmailSenderLambdaRole:
+    Type: AWS::IAM::Role
+    Condition: ShouldDeployCustomEmailSender
+    Properties:
+      RoleName: !Sub '${AWS::StackName}-CustomEmailSenderLambdaRole'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: CloudWatchLogs
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource: !Sub 'arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/${AWS::StackName}-CustomEmailSender:*'
+        - PolicyName: ZohoSmtpSecretRead
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - secretsmanager:GetSecretValue
+                Resource: !Ref ZohoSmtpSecretArn
+
+  CognitoCustomEmailKmsKey:
+    Type: AWS::KMS::Key
+    Condition: ShouldDeployCustomEmailSender
+    DependsOn:
+      - CognitoCustomEmailSenderLambdaRole
+    Properties:
+      Description: Cognito CustomEmailSender code encryption for StreamMyCourse
+      EnableKeyRotation: true
+      KeyPolicy:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: AllowRootAdmin
+            Effect: Allow
+            Principal:
+              AWS: !Sub 'arn:aws:iam::${AWS::AccountId}:root'
+            Action: kms:*
+            Resource: '*'
+          - Sid: AllowCognitoEncrypt
+            Effect: Allow
+            Principal:
+              Service: cognito-idp.amazonaws.com
+            Action:
+              - kms:CreateGrant
+              - kms:Encrypt
+            Resource: '*'
+            Condition:
+              StringEquals:
+                kms:ViaService: !Sub 'cognito-idp.${AWS::Region}.amazonaws.com'
+          - Sid: AllowLambdaDecrypt
+            Effect: Allow
+            Principal:
+              AWS: !GetAtt CognitoCustomEmailSenderLambdaRole.Arn
+            Action:
+              - kms:Decrypt
+            Resource: '*'
+
+  CognitoCustomEmailSenderLambda:
+    Type: AWS::Lambda::Function
+    Condition: ShouldDeployCustomEmailSender
+    DependsOn:
+      - CognitoCustomEmailSenderLambdaRole
+      - CognitoCustomEmailKmsKey
+      - CognitoCustomEmailSenderKmsPolicy
+    Properties:
+      FunctionName: !Sub '${AWS::StackName}-CustomEmailSender'
+      Runtime: python3.11
+      Handler: handler.lambda_handler
+      Role: !GetAtt CognitoCustomEmailSenderLambdaRole.Arn
+      Timeout: 30
+      MemorySize: 256
+      Environment:
+        Variables:
+          ZOHO_SMTP_SECRET_ARN: !Ref ZohoSmtpSecretArn
+      Code:
+        S3Bucket: !Ref CognitoCustomEmailSenderCodeS3Bucket
+        S3Key: !Ref CognitoCustomEmailSenderCodeS3Key
+      Tags:
+        - Key: Project
+          Value: StreamMyCourse
+        - Key: Environment
+          Value: !Ref Environment
+
   CatalogUserPool:
     Type: AWS::Cognito::UserPool
     Properties:
@@ -225,6 +412,10 @@ Resources:
         AttributesRequireVerificationBeforeUpdate: []
       EmailConfiguration:
         EmailSendingAccount: COGNITO_DEFAULT
+      VerificationMessageTemplate:
+        DefaultEmailOption: CONFIRM_WITH_CODE
+        EmailSubject: Verify your Research Spectrum account
+        EmailMessage: 'Your verification code is {####}.'
       AccountRecoverySetting:
         RecoveryMechanisms:
           - Name: verified_email
@@ -234,12 +425,77 @@ Resources:
         Environment:
           Ref: Environment
       LambdaConfig: !If
-        - ShouldDeployUserProfileSync
-        - PostAuthentication: !GetAtt UserProfileSyncLambda.Arn
+        - ShouldDeployUserProfileSyncAndPreSignUp
+        - PreSignUp: !GetAtt CognitoPreSignUpLambda.Arn
+          PostAuthentication: !GetAtt UserProfileSyncLambda.Arn
           PreTokenGenerationConfig:
             LambdaArn: !GetAtt UserProfileSyncLambda.Arn
             LambdaVersion: V1_0
-        - !Ref AWS::NoValue
+          CustomEmailSender: !If
+            - ShouldDeployCustomEmailSender
+            - LambdaArn: !GetAtt CognitoCustomEmailSenderLambda.Arn
+              LambdaVersion: V1_0
+            - !Ref AWS::NoValue
+          KMSKeyID: !If
+            - ShouldDeployCustomEmailSender
+            - !GetAtt CognitoCustomEmailKmsKey.Arn
+            - !Ref AWS::NoValue
+        - !If
+          - ShouldDeployUserProfileSync
+          - PostAuthentication: !GetAtt UserProfileSyncLambda.Arn
+            PreTokenGenerationConfig:
+              LambdaArn: !GetAtt UserProfileSyncLambda.Arn
+              LambdaVersion: V1_0
+          - !If
+            - ShouldDeployPreSignUp
+            - PreSignUp: !GetAtt CognitoPreSignUpLambda.Arn
+              CustomEmailSender: !If
+                - ShouldDeployCustomEmailSender
+                - LambdaArn: !GetAtt CognitoCustomEmailSenderLambda.Arn
+                  LambdaVersion: V1_0
+                - !Ref AWS::NoValue
+              KMSKeyID: !If
+                - ShouldDeployCustomEmailSender
+                - !GetAtt CognitoCustomEmailKmsKey.Arn
+                - !Ref AWS::NoValue
+            - !Ref AWS::NoValue
+
+  CognitoPreSignUpLambdaPoolPolicy:
+    Type: AWS::IAM::Policy
+    Condition: ShouldDeployPreSignUp
+    DependsOn:
+      - CatalogUserPool
+      - CognitoPreSignUpLambdaRole
+    Properties:
+      PolicyName: CognitoLinkUsers
+      Roles:
+        - !Ref CognitoPreSignUpLambdaRole
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Action:
+              - cognito-idp:ListUsers
+              - cognito-idp:AdminLinkProviderForUser
+            Resource: !GetAtt CatalogUserPool.Arn
+
+  CognitoCustomEmailSenderKmsPolicy:
+    Type: AWS::IAM::Policy
+    Condition: ShouldDeployCustomEmailSender
+    DependsOn:
+      - CognitoCustomEmailSenderLambdaRole
+      - CognitoCustomEmailKmsKey
+    Properties:
+      PolicyName: KmsDecryptCustomEmailCodes
+      Roles:
+        - !Ref CognitoCustomEmailSenderLambdaRole
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Action:
+              - kms:Decrypt
+            Resource: !GetAtt CognitoCustomEmailKmsKey.Arn
 
   UserProfileSyncLambdaPermission:
     Type: AWS::Lambda::Permission
@@ -250,6 +506,31 @@ Resources:
     Properties:
       Action: lambda:InvokeFunction
       FunctionName: !Ref UserProfileSyncLambda
+      Principal: cognito-idp.amazonaws.com
+      SourceArn: !GetAtt CatalogUserPool.Arn
+
+  CognitoPreSignUpLambdaPermission:
+    Type: AWS::Lambda::Permission
+    Condition: ShouldDeployPreSignUp
+    DependsOn:
+      - CatalogUserPool
+      - CognitoPreSignUpLambda
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !Ref CognitoPreSignUpLambda
+      Principal: cognito-idp.amazonaws.com
+      SourceArn: !GetAtt CatalogUserPool.Arn
+
+  CognitoCustomEmailSenderLambdaPermission:
+    Type: AWS::Lambda::Permission
+    Condition: ShouldDeployCustomEmailSender
+    DependsOn:
+      - CatalogUserPool
+      - CognitoCustomEmailSenderLambda
+      - CognitoCustomEmailSenderKmsPolicy
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !Ref CognitoCustomEmailSenderLambda
       Principal: cognito-idp.amazonaws.com
       SourceArn: !GetAtt CatalogUserPool.Arn
 
@@ -292,7 +573,9 @@ Resources:
       ExplicitAuthFlows:
         - ALLOW_REFRESH_TOKEN_AUTH
         - ALLOW_ADMIN_USER_PASSWORD_AUTH
+        - ALLOW_USER_SRP_AUTH
       SupportedIdentityProviders:
+        - COGNITO
         - Google
       PreventUserExistenceErrors: ENABLED
       AllowedOAuthFlowsUserPoolClient: true

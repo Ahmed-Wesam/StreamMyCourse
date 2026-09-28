@@ -8,7 +8,7 @@ from typing import Any, Dict, Optional
 
 from bootstrap import get_cached_aws_deps, lambda_bootstrap, warm_aws_deps_if_needed
 from config import load_config, AppConfig
-from services.auth.controller import handle_users_me
+from services.auth.controller import handle_users_me, handle_users_me_patch
 from services.auth.session import check_student_session
 from services.billing_merchant.controller import handle_merchant_status
 from services.purchases.controller import (
@@ -305,6 +305,12 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                         )
                     elif method == "GET" and parts == ["users", "me"]:
                         route_response = handle_users_me(
+                            event,
+                            origin=origin,
+                            auth_svc=auth_service,
+                        )
+                    elif method == "PATCH" and parts == ["users", "me"]:
+                        route_response = handle_users_me_patch(
                             event,
                             origin=origin,
                             auth_svc=auth_service,

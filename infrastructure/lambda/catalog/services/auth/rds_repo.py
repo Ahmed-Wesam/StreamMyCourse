@@ -7,7 +7,7 @@ in ``_row_to_profile``.
 
 ``put_profile`` is an upsert: the first call inserts, and a second call (e.g.
 a role promotion) updates ``email``, ``role``, ``cognito_sub``, ``updated_at``
-while preserving the original ``created_at``.
+while preserving the original ``created_at`` and any extended profile columns.
 """
 
 from __future__ import annotations
@@ -27,6 +27,13 @@ logger = logging.getLogger(__name__)
 
 ConnectionFactory = Callable[[], Any]
 
+_PROFILE_BASE_COLUMNS = "user_sub, email, role, cognito_sub, created_at, updated_at"
+_PROFILE_EXTENDED_COLUMNS = (
+    "given_name, family_name, country, profession, institution, "
+    "research_interests, terms_accepted_at, privacy_accepted_at"
+)
+_PROFILE_COLUMNS = f"{_PROFILE_BASE_COLUMNS}, {_PROFILE_EXTENDED_COLUMNS}"
+
 
 def _to_iso(value: Any) -> str:
     if isinstance(value, datetime):
@@ -37,13 +44,21 @@ def _to_iso(value: Any) -> str:
 
 
 def _row_to_profile(row: Tuple[Any, ...]) -> Dict[str, Any]:
-    """Translate a ``users`` row tuple to the camelCase dict contract.
-
-    Column order must match every SELECT in this module::
-
-        user_sub, email, role, cognito_sub, created_at, updated_at
-    """
-    user_sub, email, role, cognito_sub, created_at, updated_at = row
+    """Translate a ``users`` row tuple to the camelCase dict contract."""
+    user_sub, email, role, cognito_sub, created_at, updated_at = row[:6]
+    tail = list(row[6:])
+    while len(tail) < 8:
+        tail.append(None)
+    (
+        given_name,
+        family_name,
+        country,
+        profession,
+        institution,
+        research_interests,
+        terms_accepted_at,
+        privacy_accepted_at,
+    ) = tail[:8]
     return {
         "userSub": str(user_sub or ""),
         "email": str(email or ""),
@@ -51,10 +66,15 @@ def _row_to_profile(row: Tuple[Any, ...]) -> Dict[str, Any]:
         "cognitoSub": str(cognito_sub or ""),
         "createdAt": _to_iso(created_at),
         "updatedAt": _to_iso(updated_at),
+        "givenName": str(given_name or ""),
+        "familyName": str(family_name or ""),
+        "country": str(country or ""),
+        "profession": str(profession or ""),
+        "institution": str(institution or ""),
+        "researchInterests": str(research_interests or ""),
+        "termsAcceptedAt": _to_iso(terms_accepted_at),
+        "privacyAcceptedAt": _to_iso(privacy_accepted_at),
     }
-
-
-_PROFILE_COLUMNS = "user_sub, email, role, cognito_sub, created_at, updated_at"
 
 
 class UserProfileRdsRepository:
@@ -111,9 +131,8 @@ class UserProfileRdsRepository:
     def put_profile(
         self, *, user_sub: str, email: str, role: str
     ) -> Dict[str, Any]:
-        # ON CONFLICT preserves ``created_at`` but refreshes the mutable fields.
-        # cognito_sub mirrors user_sub today; kept as a separate column so the
-        # catalog can evolve to a surrogate user_sub later without migrating.
+        # ON CONFLICT preserves ``created_at`` and extended profile columns but
+        # refreshes identity fields from Cognito sync / JWT promotion.
         cur = self._execute(
             f"""
             INSERT INTO users (user_sub, email, role, cognito_sub)
@@ -131,4 +150,50 @@ class UserProfileRdsRepository:
         row = cur.fetchone()
         if row is None:
             raise RuntimeError("INSERT users ... RETURNING returned no row")
+        return _row_to_profile(row)
+
+    def update_profile_fields(
+        self,
+        *,
+        user_sub: str,
+        given_name: str,
+        family_name: str,
+        country: str,
+        profession: str,
+        institution: str,
+        research_interests: str,
+        terms_accepted_at: datetime,
+        privacy_accepted_at: datetime,
+    ) -> Dict[str, Any]:
+        cur = self._execute(
+            f"""
+            UPDATE users
+               SET given_name          = %s,
+                   family_name         = %s,
+                   country             = %s,
+                   profession          = %s,
+                   institution         = %s,
+                   research_interests  = %s,
+                   terms_accepted_at   = %s,
+                   privacy_accepted_at = %s,
+                   updated_at          = NOW()
+             WHERE user_sub = %s
+            RETURNING {_PROFILE_COLUMNS}
+            """,
+            (
+                given_name,
+                family_name,
+                country,
+                profession,
+                institution,
+                research_interests,
+                terms_accepted_at,
+                privacy_accepted_at,
+                user_sub,
+            ),
+            commit=True,
+        )
+        row = cur.fetchone()
+        if row is None:
+            raise RuntimeError("UPDATE users profile ... RETURNING returned no row")
         return _row_to_profile(row)
