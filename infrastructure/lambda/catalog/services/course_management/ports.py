@@ -78,6 +78,12 @@ class CourseCatalogRepositoryPort(Protocol):
     def list_lesson_file_object_keys_for_course(self, course_id: str) -> List[str]: ...
 
 
+class AssignmentMediaKeysPort(Protocol):
+    """List S3 object keys for assignment images and submission files (course delete)."""
+
+    def list_object_keys_for_course(self, course_id: str) -> List[str]: ...
+
+
 class StudentModuleLockPort(Protocol):
     """Whether a module is quiz-gated locked for a student (owner/admin bypass in adapter)."""
 

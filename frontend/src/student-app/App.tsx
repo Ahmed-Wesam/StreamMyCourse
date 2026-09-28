@@ -25,6 +25,11 @@ const LearnRedirectPage = lazy(() => import('../pages/LearnRedirectPage'))
 const StudentLessonAuth = lazy(() =>
   import('../components/auth/StudentLessonAuth').then((m) => ({ default: m.StudentLessonAuth })),
 )
+const StudentAssignmentAuth = lazy(() =>
+  import('../components/auth/StudentAssignmentAuth').then((m) => ({
+    default: m.StudentAssignmentAuth,
+  })),
+)
 const StudentModuleQuizAuth = lazy(() =>
   import('../components/auth/StudentModuleQuizAuth').then((m) => ({ default: m.StudentModuleQuizAuth })),
 )
@@ -275,6 +280,14 @@ function StudentApp() {
           element={
             <LazyRoute>
               <StudentLessonAuth />
+            </LazyRoute>
+          }
+        />
+        <Route
+          path="/courses/:courseId/assignments/:assignmentId"
+          element={
+            <LazyRoute>
+              <StudentAssignmentAuth />
             </LazyRoute>
           }
         />

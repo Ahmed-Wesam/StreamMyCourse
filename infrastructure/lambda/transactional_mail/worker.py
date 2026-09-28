@@ -34,6 +34,13 @@ def _send_for_message(*, body: Dict[str, Any], cfg: Any, message_id: str) -> Non
     to_address = str(body.get("to") or "").strip()
     subject = str(body.get("subject") or "")
     body_text = str(body.get("bodyText") or "")
+    kind_raw = body.get("kind")
+    kind: str | None
+    if kind_raw is None:
+        kind = None
+    else:
+        kind = str(kind_raw).strip() or None
+
     reply_to_raw = body.get("replyTo")
     reply_to: str | None
     if reply_to_raw is None:
@@ -54,9 +61,19 @@ def _send_for_message(*, body: Dict[str, Any], cfg: Any, message_id: str) -> Non
         subject=subject,
         body_text=body_text,
         reply_to=reply_to,
+        kind=kind,
     )
-    logger.info(
-        "Transactional mail sent message_id=%s to=%s",
-        message_id,
-        to_address,
-    )
+
+    normalized_kind = (kind or "").strip().lower() or "contact"
+    if normalized_kind == "notify":
+        logger.info(
+            "Transactional mail sent message_id=%s kind=%s",
+            message_id,
+            normalized_kind,
+        )
+    else:
+        logger.info(
+            "Transactional mail sent message_id=%s to=%s",
+            message_id,
+            to_address,
+        )

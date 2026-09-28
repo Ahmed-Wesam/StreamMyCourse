@@ -40,9 +40,9 @@ def test_rs11_lesson_file_and_note_methods_use_cognito() -> None:
 
 def test_rs11_lesson_file_and_note_methods_in_deployment_v41() -> None:
     text = _API_STACK.read_text(encoding="utf-8")
-    deployment_block = text.split("CatalogApiDeploymentV41:", 1)[1].split(
+    deployment_block = text.split("CatalogApiDeploymentV42:", 1)[1].split(
         "CatalogApiStage:", 1
     )[0]
     for logical_id in _DEPLOYMENT_METHODS:
         assert logical_id in deployment_block, logical_id
-    assert "DeploymentId: !Ref CatalogApiDeploymentV41" in text
+    assert "DeploymentId: !Ref CatalogApiDeploymentV42" in text

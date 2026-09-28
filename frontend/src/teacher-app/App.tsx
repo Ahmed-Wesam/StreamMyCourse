@@ -20,6 +20,12 @@ const CourseManagement = lazy(() => import('../pages/CourseManagement'))
 const QuestionBanksListPage = lazy(() => import('../pages/QuestionBanksListPage'))
 const QuestionBankStudioPage = lazy(() => import('../pages/QuestionBankStudioPage'))
 const TeacherPaymentSetup = lazy(() => import('../pages/TeacherPaymentSetup'))
+const TeacherAssignmentsPage = lazy(
+  () => import('../pages/teacher-assignments/TeacherAssignmentsPage'),
+)
+const TeacherAssignmentReviewPage = lazy(
+  () => import('../pages/teacher-assignments/TeacherAssignmentReviewPage'),
+)
 
 function TeacherShell() {
   return (
@@ -40,6 +46,22 @@ function TeacherShell() {
             element={
               <LazyRoute>
                 <QuestionBanksListPage />
+              </LazyRoute>
+            }
+          />
+          <Route
+            path="/courses/:courseId/assignments/:assignmentId/review"
+            element={
+              <LazyRoute>
+                <TeacherAssignmentReviewPage />
+              </LazyRoute>
+            }
+          />
+          <Route
+            path="/courses/:courseId/assignments"
+            element={
+              <LazyRoute>
+                <TeacherAssignmentsPage />
               </LazyRoute>
             }
           />

@@ -331,3 +331,123 @@ export type LessonNoteResponse = {
 export type DeleteLessonNoteResponse = {
   ok: boolean
 }
+
+/** RS-13 assignment narrative: plain text, sanitized rich HTML, or one picture. */
+export type AssignmentContentMode = 'plain' | 'rich' | 'image'
+
+export type AssignmentNarrative = {
+  mode: AssignmentContentMode
+  text?: string
+  html?: string
+  imageReady?: boolean
+}
+
+type AssignmentCriterion = {
+  id: string
+  label: string
+  maxPoints: number
+}
+
+type AssignmentMyLatest = {
+  id: string
+  status: 'draft' | 'submitted' | 'graded'
+  scorePercent?: number
+  passed?: boolean
+  feedback?: string
+}
+
+export type Assignment = {
+  id: string
+  title: string
+  moduleId: string
+  status: 'draft' | 'published'
+  passPercent: number
+  countsTowardCertificate: boolean
+  locked: boolean
+  instructions: AssignmentNarrative
+  rubric: AssignmentNarrative
+  criteria: AssignmentCriterion[]
+  myLatest: AssignmentMyLatest | null
+}
+
+export type AssignmentSubmissionFile = {
+  id: string
+  title: string
+  fileType: string
+  byteSize: number
+  status: 'pending' | 'ready'
+}
+
+export type AssignmentSubmissionListItem = {
+  id: string
+  status: 'draft' | 'submitted' | 'graded'
+  note?: string
+  scorePercent?: number
+  passed?: boolean
+  feedback?: string
+  files?: AssignmentSubmissionFile[]
+}
+
+export type CreateAssignmentSubmissionResponse = {
+  id: string
+  status: 'draft'
+}
+
+export type CreateAssignmentSubmissionFileResponse = {
+  fileId: string
+  uploadUrl: string
+}
+
+export type CompleteAssignmentSubmissionFileResponse = {
+  fileId: string
+  status: 'ready'
+}
+
+export type SubmitAssignmentSubmissionResponse = {
+  id: string
+  status: 'submitted'
+}
+
+export type GradeAssignmentSubmissionResponse = {
+  scorePercent: number
+  passed: boolean
+}
+
+export type AssignmentImageUploadResponse = {
+  uploadUrl: string
+}
+
+export type AssignmentPresignedUrlResponse = {
+  url: string
+}
+
+export type CreateAssignmentBody = {
+  title: string
+  moduleId: string
+  passPercent?: number
+  countsTowardCertificate?: boolean
+}
+
+export type PatchAssignmentBody = {
+  title?: string
+  moduleId?: string
+  passPercent?: number
+  countsTowardCertificate?: boolean
+  status?: 'draft' | 'published'
+  instructions?: {
+    mode: AssignmentContentMode
+    text?: string
+    html?: string
+  }
+  rubric?: {
+    mode: AssignmentContentMode
+    text?: string
+    html?: string
+  }
+  criteria?: Array<{ id?: string; label: string; maxPoints: number }>
+}
+
+export type GradeAssignmentBody = {
+  scores: Array<{ criterionId: string; points: number }>
+  feedback: string
+}

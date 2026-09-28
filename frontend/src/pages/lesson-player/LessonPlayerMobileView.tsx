@@ -17,6 +17,7 @@ type LessonPlayerMobileViewProps = {
   lessons: Lesson[]
   modules: CourseModule[]
   lessonId: string
+  moduleId?: string
   activeLessonTitle: string
   activeModuleLabel: string
   loading: boolean
@@ -49,6 +50,7 @@ export function LessonPlayerMobileView({
   lessons,
   modules,
   lessonId,
+  moduleId,
   activeLessonTitle,
   activeModuleLabel,
   loading,
@@ -209,6 +211,7 @@ export function LessonPlayerMobileView({
             <LessonPlayerTabs
               courseId={courseId}
               lessonId={lessonId}
+              moduleId={moduleId}
               courseDescription={courseDescription}
               activeModuleLabel={activeModuleLabel}
               activeLessonTitle={activeLessonTitle}

@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useId, useState } from 'react'
+import { Link } from 'react-router-dom'
 
+import { listCourseAssignments } from '../../lib/api/assignments'
 import { listLessonFiles } from '../../lib/api/lessonFiles'
 import {
   createLessonNote,
@@ -7,7 +9,7 @@ import {
   listLessonNotes,
   updateLessonNote,
 } from '../../lib/api/lessonNotes'
-import type { LessonFileListItem, LessonNoteItem } from '../../lib/api/types'
+import type { Assignment, LessonFileListItem, LessonNoteItem } from '../../lib/api/types'
 import { isReadyLessonFile } from '../../lib/lessonFileType'
 import { formatNoteTimestamp, openLessonFileItem } from './lessonPlayerFileActions'
 
@@ -29,11 +31,10 @@ const TAB_LABELS: Record<LessonPlayerTabId, string> = {
   assignments: 'Assignments',
 }
 
-const ASSIGNMENTS_PLACEHOLDER = 'Not available yet.'
-
 const EMPTY_RESOURCES = 'No resources for this lesson yet.'
 const EMPTY_DOWNLOADS = 'No downloads for this lesson yet.'
 const EMPTY_NOTES = 'You have not added any notes for this lesson yet.'
+const EMPTY_ASSIGNMENTS = 'No assignments for this module yet.'
 
 function LessonFileCards({
   files,
@@ -215,28 +216,72 @@ function LessonNotesPanel({
   )
 }
 
+function LessonAssignmentsPanel({
+  courseId,
+  assignments,
+}: {
+  courseId: string
+  assignments: Assignment[]
+}) {
+  if (assignments.length === 0) {
+    return (
+      <p className="text-sm text-rs-muted" data-testid="lesson-player-assignments-empty">
+        {EMPTY_ASSIGNMENTS}
+      </p>
+    )
+  }
+
+  return (
+    <ul className="space-y-2" data-testid="lesson-player-assignment-list">
+      {assignments.map((row) => (
+        <li key={row.id}>
+          <Link
+            to={`/courses/${courseId}/assignments/${row.id}`}
+            className="flex w-full items-center justify-between gap-3 rounded-lg border border-rs-line bg-rs-sky-2/30 px-4 py-3 text-left text-sm transition-colors hover:bg-rs-sky-2/60"
+          >
+            <span className="font-semibold text-rs-navy">{row.title}</span>
+            {row.locked ? (
+              <span className="shrink-0 text-xs font-semibold uppercase tracking-wide text-rs-muted">
+                Locked
+              </span>
+            ) : (
+              <span className="shrink-0 text-xs uppercase tracking-wide text-rs-muted">Open</span>
+            )}
+          </Link>
+        </li>
+      ))}
+    </ul>
+  )
+}
+
 export function LessonPlayerTabs({
   courseId,
   lessonId,
+  moduleId,
   courseDescription,
   activeModuleLabel,
   activeLessonTitle,
   playbackPositionSec = 0,
   contentEnabled = true,
+  assignments: assignmentsProp,
 }: {
   courseId?: string
   lessonId?: string
+  moduleId?: string
   courseDescription?: string
   activeModuleLabel: string
   activeLessonTitle: string
   playbackPositionSec?: number
-  /** When false, skip lesson file/note API calls (paywall / sign-in). */
+  /** When false, skip lesson file/note/assignment API calls (paywall / sign-in). */
   contentEnabled?: boolean
+  /** Optional preloaded module assignments; when omitted the tab loads via API. */
+  assignments?: Assignment[]
 }) {
   const [activeTab, setActiveTab] = useState<LessonPlayerTabId>('overview')
   const baseId = useId()
   const [files, setFiles] = useState<LessonFileListItem[]>([])
   const [notes, setNotes] = useState<LessonNoteItem[]>([])
+  const [assignments, setAssignments] = useState<Assignment[]>(assignmentsProp ?? [])
   const [openingFileId, setOpeningFileId] = useState<string | null>(null)
   const [notesBusy, setNotesBusy] = useState(false)
 
@@ -262,9 +307,30 @@ export function LessonPlayerTabs({
     }
   }, [contentEnabled, courseId, lessonId])
 
+  const loadAssignments = useCallback(async () => {
+    if (assignmentsProp != null) {
+      setAssignments(assignmentsProp)
+      return
+    }
+    if (!contentEnabled || !courseId || !moduleId) {
+      setAssignments([])
+      return
+    }
+    try {
+      const rows = await listCourseAssignments(courseId, { moduleId })
+      setAssignments(rows)
+    } catch {
+      setAssignments([])
+    }
+  }, [assignmentsProp, contentEnabled, courseId, moduleId])
+
   useEffect(() => {
     void loadAttachments()
   }, [loadAttachments])
+
+  useEffect(() => {
+    void loadAssignments()
+  }, [loadAssignments])
 
   const resourceFiles = files.filter((f) => f.kind === 'resource' && isReadyLessonFile(f.status))
   const downloadFiles = files.filter((f) => f.kind === 'download' && isReadyLessonFile(f.status))
@@ -394,12 +460,11 @@ export function LessonPlayerTabs({
                   {EMPTY_NOTES}
                 </p>
               )
+            ) : courseId ? (
+              <LessonAssignmentsPanel courseId={courseId} assignments={assignments} />
             ) : (
-              <p
-                className="text-sm text-rs-muted"
-                data-testid={selected ? 'lesson-player-tab-placeholder' : undefined}
-              >
-                {ASSIGNMENTS_PLACEHOLDER}
+              <p className="text-sm text-rs-muted" data-testid="lesson-player-assignments-empty">
+                {EMPTY_ASSIGNMENTS}
               </p>
             )}
           </div>

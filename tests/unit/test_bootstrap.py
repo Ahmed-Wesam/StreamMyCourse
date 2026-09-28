@@ -43,6 +43,9 @@ def mocked_storage(monkeypatch: pytest.MonkeyPatch):
     mock_s3 = MagicMock()
     monkeypatch.setattr(storage_mod, "_s3_client", lambda: mock_s3)
     monkeypatch.setattr(image_storage_mod, "_s3_client", lambda: mock_s3)
+    import services.assignments.storage as assignment_storage_mod
+
+    monkeypatch.setattr(assignment_storage_mod, "_s3_client", lambda: mock_s3)
 
 
 def _rds_cfg(
@@ -178,6 +181,19 @@ class TestBuildAwsDeps:
         assert deps.purchase_manage_service is not None
         assert deps.rate_limit_service is not None
         assert deps.lesson_notes_service is not None
+        assert deps.assignments_service is not None
+
+    def test_course_management_receives_assignment_media_keys_lister(
+        self, mocked_storage, _mocked_rds
+    ) -> None:
+        """RS-13: bootstrap must pass the real assignments key lister into course delete."""
+        cfg = _rds_cfg(video_bucket="b")
+        deps = bootstrap_mod.build_aws_deps(cfg)
+        lister = getattr(deps.service, "_assignment_media_keys", None)
+        assert lister is not None
+        assert hasattr(lister, "list_object_keys_for_course")
+        # Same object used by AssignmentsService repo (AssignmentsRdsRepository).
+        assert lister is deps.assignments_service._repo
 
 
 class TestWarmAwsDepsIfNeeded:

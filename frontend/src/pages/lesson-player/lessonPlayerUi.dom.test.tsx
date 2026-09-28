@@ -28,6 +28,10 @@ const lessonNotesApi = vi.hoisted(() => ({
   deleteLessonNote: vi.fn(),
 }))
 
+const assignmentsApi = vi.hoisted(() => ({
+  listCourseAssignments: vi.fn(),
+}))
+
 vi.mock('../../lib/api/lessonFiles', () => ({
   listLessonFiles: (...args: unknown[]) => lessonFilesApi.listLessonFiles(...args),
   getLessonFileDownloadUrl: (...args: unknown[]) => lessonFilesApi.getLessonFileDownloadUrl(...args),
@@ -38,6 +42,10 @@ vi.mock('../../lib/api/lessonNotes', () => ({
   createLessonNote: (...args: unknown[]) => lessonNotesApi.createLessonNote(...args),
   updateLessonNote: (...args: unknown[]) => lessonNotesApi.updateLessonNote(...args),
   deleteLessonNote: (...args: unknown[]) => lessonNotesApi.deleteLessonNote(...args),
+}))
+
+vi.mock('../../lib/api/assignments', () => ({
+  listCourseAssignments: (...args: unknown[]) => assignmentsApi.listCourseAssignments(...args),
 }))
 
 const lessons: Lesson[] = [
@@ -365,19 +373,24 @@ describe('LessonPlayerTabs', () => {
   beforeEach(() => {
     lessonFilesApi.listLessonFiles.mockReset()
     lessonNotesApi.listLessonNotes.mockReset()
+    assignmentsApi.listCourseAssignments.mockReset()
     lessonFilesApi.listLessonFiles.mockResolvedValue([])
     lessonNotesApi.listLessonNotes.mockResolvedValue([])
+    assignmentsApi.listCourseAssignments.mockResolvedValue([])
   })
 
   it('lists five tabs and shows overview course description', () => {
     render(
-      <LessonPlayerTabs
-        courseId="c1"
-        lessonId="l1"
-        courseDescription="Course overview copy"
-        activeModuleLabel="Module A"
-        activeLessonTitle="Lesson One"
-      />,
+      <MemoryRouter>
+        <LessonPlayerTabs
+          courseId="c1"
+          lessonId="l1"
+          moduleId="m1"
+          courseDescription="Course overview copy"
+          activeModuleLabel="Module A"
+          activeLessonTitle="Lesson One"
+        />
+      </MemoryRouter>,
     )
 
     for (const label of ['Overview', 'Resources', 'Downloads', 'Notes', 'Assignments']) {
@@ -388,14 +401,17 @@ describe('LessonPlayerTabs', () => {
 
   it('loads lesson files and notes when content is enabled', async () => {
     render(
-      <LessonPlayerTabs
-        courseId="c1"
-        lessonId="l1"
-        courseDescription=""
-        activeModuleLabel="Module A"
-        activeLessonTitle="Lesson One"
-        contentEnabled
-      />,
+      <MemoryRouter>
+        <LessonPlayerTabs
+          courseId="c1"
+          lessonId="l1"
+          moduleId="m1"
+          courseDescription=""
+          activeModuleLabel="Module A"
+          activeLessonTitle="Lesson One"
+          contentEnabled
+        />
+      </MemoryRouter>,
     )
 
     await waitFor(() => {
@@ -404,27 +420,50 @@ describe('LessonPlayerTabs', () => {
     })
   })
 
-  it('shows resource empty state and assignments placeholder', async () => {
+  it('shows resource empty state and lists this module assignment with locked state', async () => {
+    assignmentsApi.listCourseAssignments.mockResolvedValue([
+      {
+        id: 'a1',
+        title: 'Module write-up',
+        moduleId: 'm1',
+        status: 'published',
+        passPercent: 70,
+        countsTowardCertificate: false,
+        locked: true,
+        instructions: { mode: 'plain', text: 'Do it' },
+        rubric: { mode: 'plain', text: '' },
+        criteria: [{ id: 'c1', label: 'Quality', maxPoints: 10 }],
+        myLatest: null,
+      },
+    ])
+
     render(
-      <LessonPlayerTabs
-        courseId="c1"
-        lessonId="l1"
-        courseDescription=""
-        activeModuleLabel="Module A"
-        activeLessonTitle="Lesson One"
-        contentEnabled
-      />,
+      <MemoryRouter>
+        <LessonPlayerTabs
+          courseId="c1"
+          lessonId="l1"
+          moduleId="m1"
+          courseDescription=""
+          activeModuleLabel="Module A"
+          activeLessonTitle="Lesson One"
+          contentEnabled
+        />
+      </MemoryRouter>,
     )
 
     await waitFor(() => {
       expect(lessonFilesApi.listLessonFiles).toHaveBeenCalled()
+      expect(assignmentsApi.listCourseAssignments).toHaveBeenCalledWith('c1', { moduleId: 'm1' })
     })
 
     fireEvent.click(screen.getByRole('tab', { name: 'Resources' }))
     expect(screen.getByTestId('lesson-player-tab-panel').textContent).toMatch(/no resources/i)
 
     fireEvent.click(screen.getByRole('tab', { name: 'Assignments' }))
-    expect(screen.getByTestId('lesson-player-tab-placeholder').textContent).toMatch(/not available yet/i)
+    expect(screen.queryByText(/not available yet/i)).toBeNull()
+    const link = screen.getByRole('link', { name: /Module write-up/i })
+    expect(link.getAttribute('href')).toBe('/courses/c1/assignments/a1')
+    expect(screen.getByText(/locked/i)).toBeTruthy()
   })
 
   it('opens PDF resources in a new tab via presigned url', async () => {
@@ -442,14 +481,17 @@ describe('LessonPlayerTabs', () => {
     const openSpy = vi.spyOn(window, 'open').mockImplementation(() => null)
 
     render(
-      <LessonPlayerTabs
-        courseId="c1"
-        lessonId="l1"
-        courseDescription=""
-        activeModuleLabel="Module A"
-        activeLessonTitle="Lesson One"
-        contentEnabled
-      />,
+      <MemoryRouter>
+        <LessonPlayerTabs
+          courseId="c1"
+          lessonId="l1"
+          moduleId="m1"
+          courseDescription=""
+          activeModuleLabel="Module A"
+          activeLessonTitle="Lesson One"
+          contentEnabled
+        />
+      </MemoryRouter>,
     )
 
     await waitFor(() => {
