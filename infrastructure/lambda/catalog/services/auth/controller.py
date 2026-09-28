@@ -6,6 +6,7 @@ from typing import Any, Dict, Optional
 from services.auth.service import UserProfileService
 from services.common.errors import HttpError, Unauthorized
 from services.common.http import apigw_cognito_claims, json_response
+from services.common.validation import parse_json_body
 from services.common.runtime_context import update_action
 
 logger = logging.getLogger(__name__)
@@ -43,4 +44,40 @@ def handle_users_me(
         return json_response(e.status_code, {"message": e.message, **({"code": e.code} if e.code else {})}, origin)
     except Exception:
         logger.exception("handle_users_me failed", extra={"action": "get_users_me"})
+        return json_response(500, {"message": "Internal error", "code": "internal_error"}, origin)
+
+
+def handle_users_me_patch(
+    event: Dict[str, Any],
+    *,
+    origin: Optional[str],
+    auth_svc: UserProfileService,
+) -> Dict[str, Any]:
+    update_action("patch_users_me")
+
+    claims = apigw_cognito_claims(event)
+    sub = str(claims.get("sub", "") or "").strip()
+    email = str(claims.get("email", "") or "").strip()
+    role = str(claims.get("custom:role") or claims.get("role") or "student").strip()
+
+    try:
+        if not sub:
+            raise Unauthorized("Authentication required")
+        body = parse_json_body(event)
+        # Same lazy create as GET /users/me when PostAuthentication sync did not upsert yet.
+        auth_svc.get_or_create_profile(user_sub=sub, email=email, role=role)
+        result = auth_svc.update_profile_fields(user_sub=sub, body=body)
+        return json_response(200, result, origin)
+    except HttpError as e:
+        logger.info(
+            "HTTP error",
+            extra={
+                "action": "patch_users_me",
+                "status_code": e.status_code,
+                "error_code": e.code,
+            },
+        )
+        return json_response(e.status_code, {"message": e.message, **({"code": e.code} if e.code else {})}, origin)
+    except Exception:
+        logger.exception("handle_users_me_patch failed", extra={"action": "patch_users_me"})
         return json_response(500, {"message": "Internal error", "code": "internal_error"}, origin)

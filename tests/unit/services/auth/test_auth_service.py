@@ -28,8 +28,19 @@ class _FakeRepo:
             "cognitoSub": user_sub,
             "createdAt": self._item.get("createdAt", "") if self._item else "",
             "updatedAt": self._item.get("updatedAt", "") if self._item else "",
+            "givenName": "",
+            "familyName": "",
+            "country": "",
+            "profession": "",
+            "institution": "",
+            "researchInterests": "",
+            "termsAcceptedAt": "",
+            "privacyAcceptedAt": "",
         }
         return dict(self._item)
+
+    def update_profile_fields(self, **kwargs: Any) -> Dict[str, Any]:
+        raise NotImplementedError
 
 
 @pytest.mark.parametrize(
@@ -141,4 +152,12 @@ def test_create_profile_returns_fallback_when_second_read_is_none() -> None:
         "cognitoSub": "u1",
         "createdAt": "",
         "updatedAt": "",
+        "givenName": "",
+        "familyName": "",
+        "country": "",
+        "profession": "",
+        "institution": "",
+        "researchInterests": "",
+        "termsAcceptedAt": "",
+        "privacyAcceptedAt": "",
     }

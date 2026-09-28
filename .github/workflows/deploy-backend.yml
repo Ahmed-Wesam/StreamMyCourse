@@ -350,7 +350,7 @@ jobs:
         run: |
           set -euo pipefail
           if [[ -z "${GOOGLE_OAUTH_CLIENT_ID}" || -z "${GOOGLE_OAUTH_CLIENT_SECRET}" ]]; then
-            echo "GitHub Environment secrets GOOGLE_OAUTH_CLIENT_ID and GOOGLE_OAUTH_CLIENT_SECRET must be set for full deploy (Google-federation-only auth stack)." >&2
+            echo "GitHub Environment secrets GOOGLE_OAUTH_CLIENT_ID and GOOGLE_OAUTH_CLIENT_SECRET must be set for full deploy (auth stack Google IdP)." >&2
             exit 1
           fi
 
@@ -392,6 +392,63 @@ jobs:
           echo "key=${KEY}" >> "$GITHUB_OUTPUT"
           echo "Uploaded Cognito profile sync s3://${BUCKET}/${KEY}"
 
+      - name: Package and upload Cognito PreSignUp Lambda (prod)
+        id: cognito_pre_signup_pkg_prod
+        env:
+          CHECKOUT_SHA: ${{ needs.gate.outputs.checkout_sha }}
+        run: |
+          set -euo pipefail
+          REGION="${{ env.AWS_REGION }}"
+          ACCOUNT="$(aws sts get-caller-identity --query Account --output text --region "$REGION")"
+          BUCKET="streammycourse-artifacts-${ACCOUNT}-${REGION}"
+          SHA="${CHECKOUT_SHA:?missing gate checkout_sha}"
+          SHORT="${SHA:0:12}"
+          KEY="cognito-pre-signup-prod-${SHORT}.zip"
+          STAGE="$(mktemp -d)"
+          PKG="$STAGE/pkg"
+          mkdir -p "$PKG"
+          WS="${{ github.workspace }}"
+          cp "$WS/infrastructure/lambda/cognito_pre_signup/handler.py" "$PKG/"
+          cp "$WS/infrastructure/lambda/cognito_pre_signup/linking.py" "$PKG/"
+          (cd "$PKG" && zip -rq "$STAGE/bundle.zip" .)
+          aws s3 cp "$STAGE/bundle.zip" "s3://${BUCKET}/${KEY}" --region "$REGION"
+          echo "bucket=${BUCKET}" >> "$GITHUB_OUTPUT"
+          echo "key=${KEY}" >> "$GITHUB_OUTPUT"
+          echo "Uploaded Cognito PreSignUp s3://${BUCKET}/${KEY}"
+
+      - name: Package and upload Cognito custom email sender Lambda (prod)
+        id: cognito_custom_email_pkg_prod
+        env:
+          CHECKOUT_SHA: ${{ needs.gate.outputs.checkout_sha }}
+        run: |
+          set -euo pipefail
+          REGION="${{ env.AWS_REGION }}"
+          ACCOUNT="$(aws sts get-caller-identity --query Account --output text --region "$REGION")"
+          BUCKET="streammycourse-artifacts-${ACCOUNT}-${REGION}"
+          SHA="${CHECKOUT_SHA:?missing gate checkout_sha}"
+          SHORT="${SHA:0:12}"
+          KEY="cognito-custom-email-sender-prod-${SHORT}.zip"
+          STAGE="$(mktemp -d)"
+          PKG="$STAGE/pkg"
+          mkdir -p "$PKG"
+          WS="${{ github.workspace }}/infrastructure/lambda/cognito_custom_email_sender"
+          cp "$WS"/*.py "$PKG/"
+          (cd "$PKG" && zip -rq "$STAGE/bundle.zip" .)
+          aws s3 cp "$STAGE/bundle.zip" "s3://${BUCKET}/${KEY}" --region "$REGION"
+          echo "bucket=${BUCKET}" >> "$GITHUB_OUTPUT"
+          echo "key=${KEY}" >> "$GITHUB_OUTPUT"
+          echo "Uploaded Cognito custom email sender s3://${BUCKET}/${KEY}"
+
+      - name: Ensure Zoho SMTP secret (prod)
+        id: zoho_smtp_secret_prod
+        env:
+          ZOHO_SMTP_PASSWORD: ${{ secrets.ZOHO_SMTP_PASSWORD }}
+        run: |
+          set -euo pipefail
+          chmod +x scripts/ensure-zoho-smtp-secret.sh
+          eval "$(./scripts/ensure-zoho-smtp-secret.sh | tail -n 1)"
+          echo "arn=${ZOHO_SMTP_SECRET_ARN}" >> "$GITHUB_OUTPUT"
+
       - name: Deploy auth (prod) — Cognito
         run: |
           set -euo pipefail
@@ -417,7 +474,12 @@ jobs:
               "RdsStackName=StreamMyCourse-Rds-prod" \
               "EnableUserProfileSync=true" \
               "CognitoUserProfileSyncCodeS3Bucket=${{ steps.cognito_sync_pkg_prod.outputs.bucket }}" \
-              "CognitoUserProfileSyncCodeS3Key=${{ steps.cognito_sync_pkg_prod.outputs.key }}"
+              "CognitoUserProfileSyncCodeS3Key=${{ steps.cognito_sync_pkg_prod.outputs.key }}" \
+              "CognitoPreSignUpCodeS3Bucket=${{ steps.cognito_pre_signup_pkg_prod.outputs.bucket }}" \
+              "CognitoPreSignUpCodeS3Key=${{ steps.cognito_pre_signup_pkg_prod.outputs.key }}" \
+              "CognitoCustomEmailSenderCodeS3Bucket=${{ steps.cognito_custom_email_pkg_prod.outputs.bucket }}" \
+              "CognitoCustomEmailSenderCodeS3Key=${{ steps.cognito_custom_email_pkg_prod.outputs.key }}" \
+              "ZohoSmtpSecretArn=${{ steps.zoho_smtp_secret_prod.outputs.arn }}"
 
           student_client_id="$(aws cloudformation describe-stacks \
             --stack-name "$STACK" \
@@ -449,6 +511,11 @@ jobs:
                 "EnableUserProfileSync=true" \
                 "CognitoUserProfileSyncCodeS3Bucket=${{ steps.cognito_sync_pkg_prod.outputs.bucket }}" \
                 "CognitoUserProfileSyncCodeS3Key=${{ steps.cognito_sync_pkg_prod.outputs.key }}" \
+                "CognitoPreSignUpCodeS3Bucket=${{ steps.cognito_pre_signup_pkg_prod.outputs.bucket }}" \
+                "CognitoPreSignUpCodeS3Key=${{ steps.cognito_pre_signup_pkg_prod.outputs.key }}" \
+                "CognitoCustomEmailSenderCodeS3Bucket=${{ steps.cognito_custom_email_pkg_prod.outputs.bucket }}" \
+                "CognitoCustomEmailSenderCodeS3Key=${{ steps.cognito_custom_email_pkg_prod.outputs.key }}" \
+                "ZohoSmtpSecretArn=${{ steps.zoho_smtp_secret_prod.outputs.arn }}" \
                 "StudentCognitoClientId=${student_client_id}" \
                 "TeacherCognitoClientId=${teacher_client_id}"
           fi

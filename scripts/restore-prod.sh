@@ -7,11 +7,19 @@
 # Mutating operations require --confirm. Use --dry-run to preview steps without AWS changes.
 # Required env for edge import/deploy: ROUTE53_HOSTED_ZONE_ID, STUDENT_WEB_DOMAIN, TEACHER_WEB_DOMAIN
 # Required env for auth deploy: COGNITO_DOMAIN_PREFIX, GOOGLE_OAUTH_CLIENT_ID, GOOGLE_OAUTH_CLIENT_SECRET
+# Zoho mail (first create): ZOHO_SMTP_PASSWORD in .env.local or env (see scripts/ensure-zoho-smtp-secret.sh)
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 TEMPLATES="$ROOT/infrastructure/templates"
+
+if [[ -f "$ROOT/.env.local" ]]; then
+  set -a
+  # shellcheck disable=SC1091
+  source "$ROOT/.env.local"
+  set +a
+fi
 # shellcheck source=scripts/lib/prod_pause_constants.sh
 source "$SCRIPT_DIR/lib/prod_pause_constants.sh"
 
@@ -557,8 +565,91 @@ package_cognito_sync_lambda() {
   echo "Uploaded Cognito profile sync s3://${bucket}/${key}"
 }
 
+package_cognito_pre_signup_lambda() {
+  local account bucket key suffix stage pkg ws
+  account="$(aws sts get-caller-identity --query Account --output text --region "$REGION_EU")"
+  bucket="streammycourse-artifacts-${account}-${REGION_EU}"
+  if command -v git >/dev/null 2>&1 && git -C "$ROOT" rev-parse HEAD >/dev/null 2>&1; then
+    suffix="$(git -C "$ROOT" rev-parse HEAD | cut -c1-12)"
+  else
+    suffix="$(date +%s)"
+  fi
+  key="cognito-pre-signup-restore-${suffix}.zip"
+
+  if [[ "$DRY_RUN" == true ]]; then
+    echo "[dry-run] Would package and upload Cognito PreSignUp Lambda to s3://${bucket}/${key}"
+    COGNITO_PRE_SIGNUP_BUCKET="$bucket"
+    COGNITO_PRE_SIGNUP_KEY="$key"
+    return 0
+  fi
+
+  stage="$(mktemp -d)"
+  pkg="${stage}/pkg"
+  mkdir -p "$pkg"
+  ws="${ROOT}/infrastructure/lambda/cognito_pre_signup"
+  cp "$ws/handler.py" "$ws/linking.py" "$pkg/"
+  (cd "$pkg" && zip -rq "${stage}/bundle.zip" .)
+  if ! aws s3api head-bucket --bucket "$bucket" --region "$REGION_EU" 2>/dev/null; then
+    aws s3 mb "s3://${bucket}" --region "$REGION_EU"
+  fi
+  aws s3 cp "${stage}/bundle.zip" "s3://${bucket}/${key}" --region "$REGION_EU"
+  rm -rf "$stage"
+  COGNITO_PRE_SIGNUP_BUCKET="$bucket"
+  COGNITO_PRE_SIGNUP_KEY="$key"
+  echo "Uploaded Cognito PreSignUp s3://${bucket}/${key}"
+}
+
+package_cognito_custom_email_sender_lambda() {
+  local account bucket key suffix stage pkg ws
+  account="$(aws sts get-caller-identity --query Account --output text --region "$REGION_EU")"
+  bucket="streammycourse-artifacts-${account}-${REGION_EU}"
+  if command -v git >/dev/null 2>&1 && git -C "$ROOT" rev-parse HEAD >/dev/null 2>&1; then
+    suffix="$(git -C "$ROOT" rev-parse HEAD | cut -c1-12)"
+  else
+    suffix="$(date +%s)"
+  fi
+  key="cognito-custom-email-sender-restore-${suffix}.zip"
+
+  if [[ "$DRY_RUN" == true ]]; then
+    echo "[dry-run] Would package and upload Cognito custom email sender Lambda to s3://${bucket}/${key}"
+    COGNITO_CUSTOM_EMAIL_BUCKET="$bucket"
+    COGNITO_CUSTOM_EMAIL_KEY="$key"
+    return 0
+  fi
+
+  stage="$(mktemp -d)"
+  pkg="${stage}/pkg"
+  mkdir -p "$pkg"
+  ws="${ROOT}/infrastructure/lambda/cognito_custom_email_sender"
+  cp "$ws"/*.py "$pkg/"
+  (cd "$pkg" && zip -rq "${stage}/bundle.zip" .)
+  if ! aws s3api head-bucket --bucket "$bucket" --region "$REGION_EU" 2>/dev/null; then
+    aws s3 mb "s3://${bucket}" --region "$REGION_EU"
+  fi
+  aws s3 cp "${stage}/bundle.zip" "s3://${bucket}/${key}" --region "$REGION_EU"
+  rm -rf "$stage"
+  COGNITO_CUSTOM_EMAIL_BUCKET="$bucket"
+  COGNITO_CUSTOM_EMAIL_KEY="$key"
+  echo "Uploaded Cognito custom email sender s3://${bucket}/${key}"
+}
+
+ensure_zoho_smtp_secret_arn() {
+  if [[ "$DRY_RUN" == true ]]; then
+    ZOHO_SMTP_SECRET_ARN="arn:aws:secretsmanager:${REGION_EU}:000000000000:secret:streammycourse/zoho-smtp/prod-dryrun"
+    echo "[dry-run] Would ensure Zoho SMTP secret (ARN placeholder for dry-run)"
+    return 0
+  fi
+  local line
+  line="$("${ROOT}/scripts/ensure-zoho-smtp-secret.sh" | tail -n 1)"
+  eval "$line"
+  export ZOHO_SMTP_SECRET_ARN
+}
+
 deploy_auth_stack() {
   package_cognito_sync_lambda
+  package_cognito_pre_signup_lambda
+  package_cognito_custom_email_sender_lambda
+  ensure_zoho_smtp_secret_arn
 
   if [[ "$DRY_RUN" == true ]]; then
     echo "[dry-run] Would deploy auth stack: $TEMPLATES/auth-stack.yaml ($AUTH_STACK)"
@@ -580,6 +671,11 @@ deploy_auth_stack() {
   RESTORE_AUTH_RDS_STACK="$RDS_STACK" \
   RESTORE_AUTH_SYNC_BUCKET="$COGNITO_SYNC_BUCKET" \
   RESTORE_AUTH_SYNC_KEY="$COGNITO_SYNC_KEY" \
+  RESTORE_AUTH_PRE_SIGNUP_BUCKET="$COGNITO_PRE_SIGNUP_BUCKET" \
+  RESTORE_AUTH_PRE_SIGNUP_KEY="$COGNITO_PRE_SIGNUP_KEY" \
+  RESTORE_AUTH_CUSTOM_EMAIL_BUCKET="$COGNITO_CUSTOM_EMAIL_BUCKET" \
+  RESTORE_AUTH_CUSTOM_EMAIL_KEY="$COGNITO_CUSTOM_EMAIL_KEY" \
+  RESTORE_AUTH_ZOHO_SMTP_SECRET_ARN="$ZOHO_SMTP_SECRET_ARN" \
   RESTORE_AUTH_STUDENT_CALLBACK_URLS="$(auth_student_callback_urls)" \
   RESTORE_AUTH_STUDENT_LOGOUT_URLS="$(auth_student_logout_urls)" \
   RESTORE_AUTH_TEACHER_CALLBACK_URLS="$(auth_teacher_callback_urls)" \
@@ -600,6 +696,11 @@ params = {
     "EnableUserProfileSync": "true",
     "CognitoUserProfileSyncCodeS3Bucket": os.environ["RESTORE_AUTH_SYNC_BUCKET"],
     "CognitoUserProfileSyncCodeS3Key": os.environ["RESTORE_AUTH_SYNC_KEY"],
+    "CognitoPreSignUpCodeS3Bucket": os.environ["RESTORE_AUTH_PRE_SIGNUP_BUCKET"],
+    "CognitoPreSignUpCodeS3Key": os.environ["RESTORE_AUTH_PRE_SIGNUP_KEY"],
+    "CognitoCustomEmailSenderCodeS3Bucket": os.environ["RESTORE_AUTH_CUSTOM_EMAIL_BUCKET"],
+    "CognitoCustomEmailSenderCodeS3Key": os.environ["RESTORE_AUTH_CUSTOM_EMAIL_KEY"],
+    "ZohoSmtpSecretArn": os.environ["RESTORE_AUTH_ZOHO_SMTP_SECRET_ARN"],
     "StudentCallbackUrls": os.environ["RESTORE_AUTH_STUDENT_CALLBACK_URLS"],
     "StudentLogoutUrls": os.environ["RESTORE_AUTH_STUDENT_LOGOUT_URLS"],
     "TeacherCallbackUrls": os.environ["RESTORE_AUTH_TEACHER_CALLBACK_URLS"],

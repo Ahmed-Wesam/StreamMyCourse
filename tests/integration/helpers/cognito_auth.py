@@ -20,6 +20,13 @@ STUDENT_SESSION_CLAIM_KEYS = ("student_session_id", "custom:student_session_id")
 
 
 @dataclass(frozen=True)
+class StudentPoolConfig:
+    user_pool_id: str
+    client_id: str
+    region: str
+
+
+@dataclass(frozen=True)
 class StudentCognitoConfig:
     user_pool_id: str
     client_id: str
@@ -102,16 +109,8 @@ def _cfn_output(*, stack_name: str, output_key: str, region: str) -> str | None:
     return None
 
 
-def resolve_student_cognito_config_or_skip() -> StudentCognitoConfig:
-    """Resolve student pool/client from CloudFormation; skip when prerequisites missing."""
-    password = _student_password()
-    if not password:
-        pytest.skip(
-            "Student Cognito password not set "
-            "(LOCAL_COGNITO_PASSWORD_STUDENT / COGNITO_TEST_PASSWORD_STUDENT / "
-            "INTEGRATION_COGNITO_PASSWORD_STUDENT)"
-        )
-
+def resolve_student_pool_config_or_skip() -> StudentPoolConfig:
+    """Resolve student user pool + app client from CloudFormation (no CI password required)."""
     region = _integration_region()
     stack = _auth_stack_name()
     try:
@@ -127,10 +126,113 @@ def resolve_student_cognito_config_or_skip() -> StudentCognitoConfig:
             f"Auth stack {stack} missing UserPoolId or StudentUserPoolClientId outputs"
         )
 
-    return StudentCognitoConfig(
+    return StudentPoolConfig(
         user_pool_id=user_pool_id,
         client_id=client_id,
         region=region,
+    )
+
+
+def student_client_supports_native_signup(cfg: StudentPoolConfig) -> bool:
+    """True when the student app client allows RS-6 native sign-up + admin password auth."""
+    cognito = boto3.client("cognito-idp", region_name=cfg.region)
+    try:
+        resp = cognito.describe_user_pool_client(
+            UserPoolId=cfg.user_pool_id,
+            ClientId=cfg.client_id,
+        )
+    except (BotoCoreError, ClientError) as exc:
+        pytest.skip(f"describe_user_pool_client failed: {exc}")
+
+    client = resp.get("UserPoolClient") or {}
+    flows = client.get("ExplicitAuthFlows") or []
+    providers = client.get("SupportedIdentityProviders") or []
+    return (
+        "ALLOW_USER_SRP_AUTH" in flows
+        and "ALLOW_ADMIN_USER_PASSWORD_AUTH" in flows
+        and "COGNITO" in providers
+    )
+
+
+def admin_delete_cognito_user(*, cfg: StudentPoolConfig, username: str) -> None:
+    """Best-effort delete of a disposable integration user."""
+    cognito = boto3.client("cognito-idp", region_name=cfg.region)
+    try:
+        cognito.admin_delete_user(UserPoolId=cfg.user_pool_id, Username=username)
+    except (BotoCoreError, ClientError):
+        return
+
+
+def mint_native_signup_tokens(
+    *,
+    cfg: StudentPoolConfig,
+    email: str,
+    password: str,
+) -> StudentAuthTokens:
+    """Public sign_up, admin confirm (bypass email), then AdminInitiateAuth for tokens."""
+    cognito = boto3.client("cognito-idp", region_name=cfg.region)
+    try:
+        cognito.sign_up(
+            ClientId=cfg.client_id,
+            Username=email,
+            Password=password,
+            UserAttributes=[{"Name": "email", "Value": email}],
+        )
+    except ClientError as exc:
+        code = str(exc.response.get("Error", {}).get("Code", "") or "")
+        if code in ("NotAuthorizedException", "InvalidParameterException"):
+            pytest.skip(f"Student client does not allow public sign_up ({code})")
+        pytest.fail(f"Cognito sign_up failed ({code}): {exc}")
+    except BotoCoreError as exc:
+        pytest.fail(f"Cognito sign_up failed: {exc}")
+
+    try:
+        cognito.admin_confirm_sign_up(UserPoolId=cfg.user_pool_id, Username=email)
+        cognito.admin_set_user_password(
+            UserPoolId=cfg.user_pool_id,
+            Username=email,
+            Password=password,
+            Permanent=True,
+        )
+        resp = cognito.admin_initiate_auth(
+            UserPoolId=cfg.user_pool_id,
+            ClientId=cfg.client_id,
+            AuthFlow="ADMIN_USER_PASSWORD_AUTH",
+            AuthParameters={"USERNAME": email, "PASSWORD": password},
+        )
+    except (BotoCoreError, ClientError) as exc:
+        pytest.fail(f"Native signup confirm/auth failed: {exc}")
+
+    auth = resp.get("AuthenticationResult") or {}
+    id_token = str(auth.get("IdToken") or "").strip()
+    access_token = str(auth.get("AccessToken") or "").strip()
+    refresh_token = str(auth.get("RefreshToken") or "").strip()
+    if not id_token:
+        pytest.fail("admin_initiate_auth after sign_up did not return IdToken")
+
+    return StudentAuthTokens(
+        id_token=id_token,
+        access_token=access_token,
+        refresh_token=refresh_token,
+        student_session_id=student_session_id_from_id_token(id_token),
+    )
+
+
+def resolve_student_cognito_config_or_skip() -> StudentCognitoConfig:
+    """Resolve student pool/client from CloudFormation; skip when prerequisites missing."""
+    password = _student_password()
+    if not password:
+        pytest.skip(
+            "Student Cognito password not set "
+            "(LOCAL_COGNITO_PASSWORD_STUDENT / COGNITO_TEST_PASSWORD_STUDENT / "
+            "INTEGRATION_COGNITO_PASSWORD_STUDENT)"
+        )
+
+    pool = resolve_student_pool_config_or_skip()
+    return StudentCognitoConfig(
+        user_pool_id=pool.user_pool_id,
+        client_id=pool.client_id,
+        region=pool.region,
         username=_student_username(),
         password=password,
     )

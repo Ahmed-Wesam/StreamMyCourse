@@ -271,6 +271,14 @@ class ApiClient:
     def get_users_me(self, *, headers: Optional[Dict[str, str]] = None) -> httpx.Response:
         return self._client.get("/users/me", headers=headers or {})
 
+    def patch_users_me(
+        self,
+        *,
+        body: Dict[str, Any],
+        headers: Optional[Dict[str, str]] = None,
+    ) -> httpx.Response:
+        return self._client.patch("/users/me", json=body, headers=headers or {})
+
     def thumbnail_ready(self, course_id: str, thumbnail_key: str) -> httpx.Response:
         """Mark a course thumbnail as ready after upload.
 
