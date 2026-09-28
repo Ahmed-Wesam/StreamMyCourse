@@ -146,12 +146,11 @@ describe('CoursesCatalogPage', () => {
 
     renderCatalog()
 
+    expect(await screen.findByText('Research Methodology')).toBeTruthy()
+    expect(await screen.findByText('$99.00')).toBeTruthy()
     await waitFor(() => {
-      expect(screen.getByText('Research Methodology')).toBeTruthy()
+      expect(screen.getAllByText('$150.00').length).toBeGreaterThan(0)
     })
-
-    expect(screen.getByText('$99.00')).toBeTruthy()
-    expect(screen.getAllByText('$150.00').length).toBeGreaterThan(0)
   })
 
   it('has no Continue Learning or Resume controls', async () => {
