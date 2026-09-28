@@ -1,5 +1,6 @@
 import { BookOpen, Star } from 'lucide-react'
 
+import { CatalogCourseCardMeta } from '../../components/course/CatalogCourseCardMeta'
 import { ImageWithFallback } from '../../components/figma/ImageWithFallback'
 import { Button } from '../../components/ui/Button'
 import { Card } from '../../components/ui/Card'
@@ -109,8 +110,14 @@ export function CoursesCatalogGridSection({ catalog, onRetry, bundleOffer, owner
                     </div>
                   </div>
                   {course.description ? (
-                    <p className="mb-5 text-[14.5px] leading-snug text-rs-body">{course.description}</p>
+                    <p className="mb-4 text-[14.5px] leading-snug text-rs-body">{course.description}</p>
                   ) : null}
+                  <CatalogCourseCardMeta
+                    course={course}
+                    showSkills
+                    skillsLabel={coursesCatalogGrid.keySkillsLabel}
+                    className="mb-5"
+                  />
                   <div className="mt-auto flex flex-wrap gap-2.5">
                     <Button to={`/courses/${course.id}`} className="min-w-0 flex-1" size="sm">
                       {coursesCatalogGrid.viewCourse}

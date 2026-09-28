@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from typing import Any
 
 
 @dataclass(frozen=True)
@@ -14,6 +15,7 @@ class Course:
     updatedAt: str = ""
     thumbnailKey: str = ""
     priceAmountMinor: int | None = None
+    pageContent: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)

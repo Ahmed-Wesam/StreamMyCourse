@@ -216,7 +216,7 @@ def handle(
                 cognito_sub=_actor_sub(claims),
                 role=_actor_role(claims),
             )
-            return json_response(200, dto.as_course_dto(detail), origin)
+            return json_response(200, dto.as_course_dto(detail, detail=True), origin)
         if action == "update_course":
             svc.ensure_can_modify_course(
                 params["courseId"],
@@ -226,7 +226,13 @@ def handle(
             body = parse_json_body(event)
             title = optional_str(body, "title", "")
             description = optional_str(body, "description", "")
-            updated: dto.UpdateCourseResponse = svc.update_course(params["courseId"], title, description)  # type: ignore[assignment]
+            if "page" in body:
+                page_raw = body.get("page")
+                updated: dto.UpdateCourseResponse = svc.update_course(  # type: ignore[assignment]
+                    params["courseId"], title, description, page=page_raw
+                )
+            else:
+                updated = svc.update_course(params["courseId"], title, description)  # type: ignore[assignment]
             return json_response(200, updated, origin)
         if action == "publish_course":
             svc.ensure_can_modify_course(

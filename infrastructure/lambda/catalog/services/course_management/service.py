@@ -23,6 +23,7 @@ from services.common.playback_watermark import (
     playback_watermark_from_claims,
 )
 from services.common.sqs_client import send_media_cleanup_job
+from services.course_management.course_page_validation import validate_and_normalize_course_page
 from services.course_management.models import Course, CourseModule, Lesson
 from services.course_management.ports import (
     CourseCatalogRepositoryPort,
@@ -217,6 +218,10 @@ class CourseManagementService:
         data = asdict(course)
         thumb_key = (data.pop("thumbnailKey", None) or "").strip()
         price_minor = data.pop("priceAmountMinor", None)
+        page_content = data.pop("pageContent", None) or {}
+        if not isinstance(page_content, dict):
+            page_content = {}
+        data["pageContent"] = page_content
         if price_minor is not None:
             data["priceAmountMinor"] = int(price_minor)
         if thumb_key and self._image_storage is not None:
@@ -465,10 +470,26 @@ class CourseManagementService:
         ):
             raise NotFound("Course not found")
 
-    def update_course(self, course_id: str, title: str, description: str) -> Dict[str, Any]:
+    def update_course(
+        self,
+        course_id: str,
+        title: str,
+        description: str,
+        *,
+        page: dict[str, Any] | None = None,
+    ) -> Dict[str, Any]:
         if not _is_valid_uuid(course_id):
             raise NotFound("Course not found")
-        self._repo.update_course(course_id=course_id, title=title, description=description)
+        if page is None:
+            self._repo.update_course(course_id=course_id, title=title, description=description)
+        else:
+            normalized = validate_and_normalize_course_page(page)
+            self._repo.update_course(
+                course_id=course_id,
+                title=title,
+                description=description,
+                page_content=normalized,
+            )
         return {"id": course_id, "updated": True}
 
     def delete_course(self, course_id: str) -> Dict[str, Any]:

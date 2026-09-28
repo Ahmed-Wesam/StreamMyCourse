@@ -31,6 +31,8 @@ type CourseDetailCurriculumSectionProps = {
   onToggleLessonComplete: (lesson: Lesson, nextCompleted: boolean) => void
   markingLessonId: string | null
   sidebar: ReactNode
+  curriculumLead?: string
+  estimatedHours?: number
 }
 
 export function CourseDetailCurriculumSection({
@@ -45,7 +47,16 @@ export function CourseDetailCurriculumSection({
   onToggleLessonComplete,
   markingLessonId,
   sidebar,
+  curriculumLead,
+  estimatedHours,
 }: CourseDetailCurriculumSectionProps) {
+  const trimmedLead = curriculumLead?.trim()
+  const countLead = `${lessons.length} ${lessons.length === 1 ? 'lesson' : 'lessons'} across ${modules.length} ${modules.length === 1 ? 'module' : 'modules'}`
+  const hoursFragment =
+    typeof estimatedHours === 'number' && estimatedHours > 0 ? ` · ~${estimatedHours} hours` : ''
+  const statsLine = `${countLead}${hoursFragment}`
+  const sectionLead = trimmedLead || statsLine
+  const showStatsBelow = Boolean(trimmedLead)
   const lessonSections = useMemo(() => groupLessonsByModule(lessons, modules), [lessons, modules])
   const lessonIndexById = useMemo(() => new Map(lessons.map((l, i) => [l.id, i])), [lessons])
   const moduleById = useMemo(() => new Map(modules.map((m) => [m.id, m])), [modules])
@@ -146,12 +157,10 @@ export function CourseDetailCurriculumSection({
 
         <div className="grid grid-cols-1 gap-10 lg:grid-cols-3 lg:gap-12">
           <div className="lg:col-span-2">
-            <SectionHeader
-              title="Curriculum"
-              lead={`${lessons.length} ${lessons.length === 1 ? 'lesson' : 'lessons'} across ${modules.length} ${modules.length === 1 ? 'module' : 'modules'}`}
-              align="start"
-              level={2}
-            />
+            <SectionHeader title="Curriculum" lead={sectionLead} align="start" level={2} />
+            {showStatsBelow ? (
+              <p className="mt-2 text-sm leading-relaxed text-rs-body">{statsLine}</p>
+            ) : null}
             {body}
           </div>
           {!loading && !error ? <div className="lg:col-span-1">{sidebar}</div> : null}

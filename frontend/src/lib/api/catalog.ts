@@ -1,3 +1,4 @@
+import type { CoursePageDocument } from '../course-page'
 import { failedResponseError, httpDelete, httpGet, httpPost, httpPut, mergeHeaders, requireApiBaseUrl } from './client'
 import type {
   Course,
@@ -12,6 +13,7 @@ import type {
 type CreateCourseInput = {
   title: string
   description: string
+  page?: CoursePageDocument
 }
 
 type CreateLessonInput = {

@@ -302,8 +302,9 @@ describe('CourseManagement', () => {
     renderCourseManagement()
 
     await waitFor(() => {
-      expect(screen.getByText(/Ready/i)).toBeTruthy()
+      expect(screen.getByText('Lesson 1')).toBeTruthy()
     })
+    expect(screen.getByText('✓ Ready')).toBeTruthy()
     expect(screen.getByText(/Pending/i)).toBeTruthy()
   })
 
@@ -995,6 +996,117 @@ describe('CourseManagement', () => {
         )
         expect(inline.textContent).toBe(expected)
         expect(inline.textContent).toMatch(/already has a quiz/i)
+      })
+    })
+  })
+
+  describe('course page content editor', () => {
+    it('Save page content calls updateCourse with title, description, and page', async () => {
+      api.getCourse.mockResolvedValue({
+        id: 'c1',
+        title: 'Test Course',
+        description: 'Test Description',
+        status: 'DRAFT',
+        subtitle: 'Learn stats fast',
+        catalogSkills: ['Regression'],
+      })
+
+      renderCourseManagement()
+
+      const editor = await screen.findByTestId('course-page-content-editor')
+      expect(within(editor).getByLabelText(/^Subtitle$/i)).toHaveProperty('value', 'Learn stats fast')
+
+      fireEvent.click(screen.getByRole('button', { name: /save page content/i }))
+
+      await waitFor(() => {
+        expect(api.updateCourse).toHaveBeenCalledWith('c1', {
+          title: 'Test Course',
+          description: 'Test Description',
+          page: expect.objectContaining({
+            subtitle: 'Learn stats fast',
+            catalogSkills: ['Regression'],
+          }),
+        })
+      })
+    })
+
+    it('price save does not include page on updateCourse', async () => {
+      api.getCourse.mockResolvedValue({
+        id: 'c1',
+        title: 'Test Course',
+        description: 'Test Description',
+        status: 'DRAFT',
+        amountMinor: 4900,
+        currency: 'USD',
+        subtitle: 'Catalog line',
+      })
+
+      renderCourseManagement()
+
+      const priceInput = await screen.findByLabelText(/price \(usd\)/i)
+      fireEvent.change(priceInput, { target: { value: '59.99' } })
+      fireEvent.click(screen.getByRole('button', { name: /save price/i }))
+
+      await waitFor(() => {
+        expect(pricingApi.setCoursePrice).toHaveBeenCalledWith('c1', 5999)
+      })
+      expect(api.updateCourse).not.toHaveBeenCalled()
+    })
+
+    it('add and remove catalog skill row changes submitted page', async () => {
+      let catalogSkills = ['First skill']
+      api.getCourse.mockImplementation(async () => ({
+        id: 'c1',
+        title: 'Test Course',
+        description: 'Test Description',
+        status: 'DRAFT',
+        catalogSkills,
+      }))
+      api.updateCourse.mockImplementation(async (_id, input) => {
+        if (input.page?.catalogSkills) {
+          catalogSkills = input.page.catalogSkills
+        }
+        return { ok: true }
+      })
+
+      renderCourseManagement()
+
+      const editor = await screen.findByTestId('course-page-content-editor')
+      fireEvent.click(within(editor).getByRole('button', { name: /add catalog skill/i }))
+
+      const skillInputs = within(editor).getAllByLabelText(/^Catalog skill$/i)
+      expect(skillInputs).toHaveLength(2)
+      fireEvent.change(skillInputs[1]!, { target: { value: 'Second skill' } })
+
+      fireEvent.click(screen.getByRole('button', { name: /save page content/i }))
+
+      await waitFor(() => {
+        expect(api.updateCourse).toHaveBeenCalledWith(
+          'c1',
+          expect.objectContaining({
+            page: expect.objectContaining({
+              catalogSkills: ['First skill', 'Second skill'],
+            }),
+          }),
+        )
+      })
+
+      api.updateCourse.mockClear()
+
+      const removeButtons = within(editor).getAllByRole('button', { name: /remove catalog skill/i })
+      fireEvent.click(removeButtons[0]!)
+
+      fireEvent.click(screen.getByRole('button', { name: /save page content/i }))
+
+      await waitFor(() => {
+        expect(api.updateCourse).toHaveBeenCalledWith(
+          'c1',
+          expect.objectContaining({
+            page: expect.objectContaining({
+              catalogSkills: ['Second skill'],
+            }),
+          }),
+        )
       })
     })
   })

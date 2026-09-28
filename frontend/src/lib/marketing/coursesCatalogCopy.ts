@@ -18,6 +18,7 @@ export const coursesCatalogGrid = {
   pricingSecondary: 'Lifetime access',
   viewCourse: 'View Course',
   viewCurriculum: 'View Curriculum',
+  keySkillsLabel: 'Key skills',
 } as const
 
 export const coursesCatalogCompare = {

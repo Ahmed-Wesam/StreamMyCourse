@@ -14,6 +14,32 @@ export type PublicCatalogCourse = {
   currency?: string
   /** Present when the authenticated catalog includes access flags. */
   hasAccess?: boolean
+  /** RS-7 catalog card meta from course page content. */
+  level?: string
+  estimatedHours?: number
+  catalogSkills?: string[]
+}
+
+function normalizeCatalogLevel(value: unknown): string | undefined {
+  if (typeof value !== 'string') return undefined
+  const trimmed = value.trim()
+  return trimmed ? trimmed : undefined
+}
+
+function normalizeEstimatedHours(value: unknown): number | undefined {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return undefined
+  const hours = Math.trunc(value)
+  if (hours < 1 || hours > 200) return undefined
+  return hours
+}
+
+function normalizeCatalogSkills(value: unknown): string[] | undefined {
+  if (!Array.isArray(value)) return undefined
+  const skills = value
+    .filter((item): item is string => typeof item === 'string')
+    .map((item) => item.trim())
+    .filter(Boolean)
+  return skills.length > 0 ? skills : undefined
 }
 
 function requirePublicApiBaseUrl(): string {
@@ -61,6 +87,16 @@ function mapPublishedRow(row: unknown): PublicCatalogCourse | null {
   } else if (record.hasAccess === false || record.enrolled === false) {
     course.hasAccess = false
   }
+
+  const level = normalizeCatalogLevel(record.level)
+  if (level) course.level = level
+
+  const estimatedHours = normalizeEstimatedHours(record.estimatedHours ?? record.estimated_hours)
+  if (estimatedHours !== undefined) course.estimatedHours = estimatedHours
+
+  const catalogSkills = normalizeCatalogSkills(record.catalogSkills ?? record.catalog_skills)
+  if (catalogSkills) course.catalogSkills = catalogSkills
+
   return course
 }
 
