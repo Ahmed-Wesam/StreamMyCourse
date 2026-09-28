@@ -120,6 +120,7 @@ def test_get_module_quiz_by_question_bank_id_returns_row() -> None:
             "m1",
             "bank-1",
             5,
+            70,
             None,
             None,
         )
@@ -136,6 +137,7 @@ def test_get_module_quiz_by_question_bank_id_returns_row() -> None:
     assert out.moduleId == "m1"
     assert out.questionBankId == "bank-1"
     assert out.servedCountN == 5
+    assert out.passPercent == 70
     sql, params = fake.cursor_obj.executions[0]
     assert "question_bank_id = %s" in sql
     assert params == ("c1", "bank-1")
@@ -284,7 +286,8 @@ def test_insert_module_quiz_success_returns_id() -> None:
     assert fake.committed >= 1
     insert_sql = [e[0] for e in fake.cursor_obj.executions if "INSERT INTO module_quizzes" in e[0]]
     assert insert_sql
-    assert "VALUES (%s, %s, %s, %s)" in insert_sql[0]
+    assert "VALUES (%s, %s, %s, %s, %s)" in insert_sql[0]
+    assert "pass_percent" in insert_sql[0]
 
 
 def _publish_cursor_success(*, draft_total: int = 2) -> FakeCursor:
@@ -487,3 +490,40 @@ def test_list_latest_submission_scores_for_course_empty_when_no_rows() -> None:
     )
 
     assert result == {}
+
+
+def test_list_module_quiz_pass_percent_for_course_maps_rows() -> None:
+    repo, fake = _visibility_repo([("m1", 85)])
+
+    result = repo.list_module_quiz_pass_percent_for_course(course_id="c1")
+
+    assert result == {"m1": 85}
+    sql, params = fake.cursor_obj.executions[0]
+    assert "mq.pass_percent" in sql
+    assert params == ("c1", "c1")
+
+
+def test_list_submitted_attempt_scores_by_module_groups_all_attempts() -> None:
+    repo, fake = _visibility_repo(
+        [
+            ("m1", 1, 2),
+            ("m1", 2, 2),
+            ("m2", 3, 4),
+        ]
+    )
+
+    result = repo.list_submitted_attempt_scores_by_module(
+        course_id="c1", user_sub="student-sub"
+    )
+
+    assert result == {
+        "m1": [
+            {"correctCount": 1, "totalCount": 2},
+            {"correctCount": 2, "totalCount": 2},
+        ],
+        "m2": [{"correctCount": 3, "totalCount": 4}],
+    }
+    sql, params = fake.cursor_obj.executions[0]
+    assert "module_quiz_attempt_submissions" in sql
+    assert "DISTINCT ON" not in sql
+    assert params == ("c1", "c1", "student-sub", "c1")

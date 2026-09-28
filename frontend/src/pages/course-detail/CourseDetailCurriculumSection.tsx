@@ -2,6 +2,7 @@ import { useMemo, type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import { SectionHeader } from '../../components/ui/SectionHeader'
 import { groupLessonsByModule } from '../../lib/lessonGrouping'
+import { hasNavigableModuleQuiz, isModuleLocked } from '../../lib/moduleGating'
 import { lessonPlayerPath, moduleQuizLinkTo } from '../../lib/moduleQuizNavigation'
 import type { CourseModule, CourseProgress, Lesson } from '../../lib/api/types'
 import { CourseDetailLessonRow } from './CourseDetailLessonRow'
@@ -78,13 +79,16 @@ export function CourseDetailCurriculumSection({
     body = (
       <div className="mt-8 divide-y divide-rs-line border-t border-rs-line">
         {lessonSections.map((section) => {
-          const moduleQuiz = moduleById.get(section.id)?.moduleQuiz
+          const moduleRow = moduleById.get(section.id)
+          const moduleQuiz = moduleRow?.moduleQuiz
+          const moduleLocked = isModuleLocked(moduleRow)
           const quizAvailable = showModuleQuizBadge && moduleQuiz?.available === true
+          const quizNavigable = quizAvailable && hasNavigableModuleQuiz(moduleRow)
           const quizReturnLesson = section.lessons[section.lessons.length - 1]
           const quizTo =
-            quizAvailable && quizReturnLesson
+            quizNavigable && quizReturnLesson
               ? moduleQuizLinkTo(courseId, section.id, lessonPlayerPath(courseId, quizReturnLesson.id))
-              : quizAvailable
+              : quizNavigable
                 ? `/courses/${courseId}/modules/${section.id}/quiz`
                 : null
           return (
@@ -95,6 +99,11 @@ export function CourseDetailCurriculumSection({
                   {quizAvailable ? (
                     <span className="rounded-full bg-rs-sky px-2 py-0.5 text-xs font-bold text-rs-blue ring-1 ring-[#cfdcfb]">
                       Module quiz
+                    </span>
+                  ) : null}
+                  {quizAvailable && moduleLocked ? (
+                    <span className="ml-auto text-xs font-semibold text-rs-muted">
+                      Complete the prior module quiz to unlock
                     </span>
                   ) : null}
                   {quizTo ? (
@@ -117,7 +126,7 @@ export function CourseDetailCurriculumSection({
                   lesson={lesson}
                   courseId={courseId}
                   index={lessonIndexById.get(lesson.id) ?? 0}
-                  linkDisabled={linkDisabled}
+                  linkDisabled={linkDisabled || moduleLocked}
                   showActions={!previewOnly && !needsAccess}
                   completed={courseProgress?.lessons.find((p) => p.lessonId === lesson.id)?.completed ?? false}
                   markingComplete={markingLessonId === lesson.id}

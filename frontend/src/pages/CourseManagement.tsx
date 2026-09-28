@@ -17,6 +17,7 @@ import {
   listCourseModuleQuizzes,
   listCourseQuestionBanks,
   createModuleQuiz,
+  patchModuleQuizPassPercent,
 } from '../lib/api/questionBanks'
 import type { Course, CourseModule, Lesson, ModuleQuizRow, QuestionBankSummary } from '../lib/api/types'
 import { createAndUploadDraftLesson } from '../lib/courseManagementLessonUpload'
@@ -75,6 +76,7 @@ export default function CourseManagement() {
   const [thumbFile, setThumbFile] = useState<File | null>(null)
   const [thumbUploading, setThumbUploading] = useState(false)
   const [attachingModuleId, setAttachingModuleId] = useState<string | null>(null)
+  const [savingPassPercentModuleId, setSavingPassPercentModuleId] = useState<string | null>(null)
 
   const [newModuleTitle, setNewModuleTitle] = useState('')
   const [newModuleDescription, setNewModuleDescription] = useState('')
@@ -338,6 +340,20 @@ export default function CourseManagement() {
     }
   }
 
+  const handleSaveModuleQuizPassPercent = async (moduleId: string, passPercent: number) => {
+    if (!courseId) return
+    try {
+      setError(null)
+      setSavingPassPercentModuleId(moduleId)
+      await patchModuleQuizPassPercent(courseId, moduleId, passPercent)
+      await loadCourseData()
+    } catch (err) {
+      setError(catalogApiUserMessage(err, 'saveModuleQuizPassPercent'))
+    } finally {
+      setSavingPassPercentModuleId(null)
+    }
+  }
+
   const handleThumbnailUpload = async () => {
     if (!courseId || !thumbFile) return
     setThumbUploading(true)
@@ -517,7 +533,9 @@ export default function CourseManagement() {
         moduleQuizRows={moduleQuizRows}
         questionBankSummaries={questionBankSummaries}
         attachingModuleId={attachingModuleId}
+        savingPassPercentModuleId={savingPassPercentModuleId}
         onAttachQuiz={handleAttachModuleQuiz}
+        onSavePassPercent={handleSaveModuleQuizPassPercent}
       />
 
       {course.status === 'DRAFT' && (

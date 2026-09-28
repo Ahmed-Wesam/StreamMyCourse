@@ -78,6 +78,7 @@ else
     "${ROOT}/infrastructure/database/migrations/015_one_time_purchases.sql" \
     "${ROOT}/infrastructure/database/migrations/016_user_profile_fields.sql" \
     "${ROOT}/infrastructure/database/migrations/017_course_page_content.sql" \
+    "${ROOT}/infrastructure/database/migrations/018_module_quiz_pass_percent.sql" \
     > "$PKG/schema.sql"
   pip install psycopg2-binary==2.9.9 \
     --quiet \

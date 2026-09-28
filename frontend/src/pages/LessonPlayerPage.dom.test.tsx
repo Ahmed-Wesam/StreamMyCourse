@@ -552,6 +552,33 @@ describe('LessonPlayerPage', () => {
     })
   })
 
+  it('skips lessons in locked modules for Next navigation', async () => {
+    api.listCourseModules.mockResolvedValue([
+      { id: 'm1', title: 'Section 1', description: '', order: 0 },
+      { id: 'm2', title: 'Section 2', description: '', order: 1, locked: true },
+    ])
+
+    renderLessonPlayer('/courses/c1/lessons/l2')
+
+    await waitFor(() => {
+      expect(screen.getAllByText('Beta').length).toBeGreaterThan(0)
+    })
+    const nextLinks = screen.queryAllByRole('link', { name: /Next/i })
+    expect(nextLinks.some((a) => a.getAttribute('href') === '/courses/c1/lessons/l3')).toBe(false)
+  })
+
+  it('shows module_locked message when playback is gated', async () => {
+    api.getPlaybackUrl.mockRejectedValueOnce(
+      new ApiError('Complete the prior module quiz to unlock this content', 403, 'module_locked'),
+    )
+
+    renderLessonPlayer('/courses/c1/lessons/l1')
+
+    await waitFor(() => {
+      expect(screen.getByText(/Complete the prior module quiz to unlock/i)).toBeTruthy()
+    })
+  })
+
   it('navigates Next/Previous across modules in (moduleOrder, order) order', async () => {
     renderLessonPlayer('/courses/c1/lessons/l2')
 

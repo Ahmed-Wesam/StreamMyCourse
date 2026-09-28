@@ -7,6 +7,7 @@ import {
   isCheckoutInProgressError,
   isBillingUnconfiguredError,
   isLastModuleDeleteError,
+  isModuleLockedError,
   isMediaCleanupUnavailableError,
   isNotSubscribedError,
   isProviderAgreementMissingError,
@@ -71,6 +72,7 @@ type ApiUserMessageContext =
   | 'deleteQuestionBankQuestion'
   | 'publishQuestionBank'
   | 'attachModuleQuiz'
+  | 'saveModuleQuizPassPercent'
 
 const CONTEXT_FALLBACKS: Record<ApiUserMessageContext, string> = {
   loadCourses: 'Your courses could not be loaded. Please try again.',
@@ -102,6 +104,7 @@ const CONTEXT_FALLBACKS: Record<ApiUserMessageContext, string> = {
   deleteQuestionBankQuestion: 'That question could not be deleted. Please try again.',
   publishQuestionBank: 'This question bank could not be published. Please try again.',
   attachModuleQuiz: 'The module quiz could not be attached. Please try again.',
+  saveModuleQuizPassPercent: 'The pass score could not be saved. Please try again.',
 }
 
 const CAMEL_CASE_TOKEN = /\b[a-z]+[A-Z][a-zA-Z]*\b/
@@ -317,6 +320,9 @@ function readApiError(err: unknown): ApiError | null {
 }
 
 function mapByApiErrorCode(err: ApiError): string | null {
+  if (isModuleLockedError(err)) {
+    return 'Complete the prior module quiz to unlock this content.'
+  }
   if (isSessionSupersededError(err)) {
     return sessionSupersededUserMessage
   }

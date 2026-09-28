@@ -272,6 +272,8 @@ class TestModuleQuizVisibilityAdapter:
         mock_repo.list_module_quiz_visibility_for_course.return_value = {
             "m1": {"servedCountN": 2},
         }
+        mock_repo.list_module_quiz_pass_percent_for_course.return_value = {"m1": 70}
+        mock_repo.list_submitted_attempt_scores_by_module.return_value = {}
         mock_repo.list_latest_submission_scores_for_course.return_value = {}
         adapter = bootstrap_mod._ModuleQuizVisibilityAdapter(mock_repo)
         result = adapter.module_quiz_visibility_by_course(
@@ -287,12 +289,23 @@ class TestModuleQuizVisibilityAdapter:
             course_id="course-id",
             user_sub="student-sub",
         )
-        assert result == {"m1": {"available": True, "servedCountN": 2}}
+        assert result == {
+            "m1": {
+                "available": True,
+                "servedCountN": 2,
+                "passPercent": 70,
+                "passed": False,
+            },
+        }
 
     def test_includes_latest_score_percent_when_submission_exists(self) -> None:
         mock_repo = MagicMock()
         mock_repo.list_module_quiz_visibility_for_course.return_value = {
             "m1": {"servedCountN": 3},
+        }
+        mock_repo.list_module_quiz_pass_percent_for_course.return_value = {"m1": 70}
+        mock_repo.list_submitted_attempt_scores_by_module.return_value = {
+            "m1": [{"correctCount": 2, "totalCount": 3}],
         }
         mock_repo.list_latest_submission_scores_for_course.return_value = {
             "m1": {"correctCount": 2, "totalCount": 3},
@@ -305,7 +318,13 @@ class TestModuleQuizVisibilityAdapter:
             cognito_sub="student-sub",
         )
         assert result == {
-            "m1": {"available": True, "servedCountN": 3, "latestScorePercent": 67},
+            "m1": {
+                "available": True,
+                "servedCountN": 3,
+                "passPercent": 70,
+                "passed": False,
+                "latestScorePercent": 67,
+            },
         }
 
 

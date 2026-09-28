@@ -111,6 +111,45 @@ describe('resolveNextModuleQuizHref', () => {
     expect(href).toMatchObject({ pathname: '/courses/c1/modules/m1/quiz' })
   })
 
+  it('skips locked quiz-only modules when resolving next quiz href', () => {
+    const lockedModules: CourseModule[] = [
+      { id: 'm1', title: 'Section 1', description: '', order: 0 },
+      {
+        id: 'm2',
+        title: 'Locked quiz only',
+        description: '',
+        order: 1,
+        locked: true,
+        moduleQuiz: { available: true, servedCountN: 2 },
+      },
+      {
+        id: 'm3',
+        title: 'Open quiz only',
+        description: '',
+        order: 2,
+        moduleQuiz: { available: true, servedCountN: 2 },
+      },
+    ]
+    const href = resolveNextModuleQuizHref({
+      courseId: 'c1',
+      lessonId: 'l1',
+      lessons: [
+        {
+          id: 'l1',
+          title: 'Last in M1',
+          order: 1,
+          moduleId: 'm1',
+          moduleOrder: 0,
+          videoStatus: 'ready',
+          duration: 120,
+        },
+      ],
+      modules: lockedModules,
+      playbackNavLocked: false,
+    })
+    expect(href).toMatchObject({ pathname: '/courses/c1/modules/m3/quiz' })
+  })
+
   it('returns null when not on the last lesson in the module', () => {
     const href = resolveNextModuleQuizHref({
       courseId: 'c1',

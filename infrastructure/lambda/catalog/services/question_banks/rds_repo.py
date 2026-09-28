@@ -18,6 +18,7 @@ except Exception:  # pragma: no cover - surface at first DB call instead
 
 from services.common.errors import BadRequest, Conflict, NotFound
 from services.question_banks.mcq_validation import validate_draft_question_for_publish
+from services.question_banks.visibility import module_quiz_score_percent
 from services.question_banks.models import (
     BoundQuestion,
     ModuleQuiz,
@@ -57,6 +58,29 @@ def _pg_json(value: Any) -> Any:
     if PgJson is not None:
         return PgJson(value)
     return json.dumps(value)
+
+
+def _module_quiz_from_row(row: tuple[Any, ...]) -> ModuleQuiz:
+    (
+        qid,
+        course_id,
+        mid,
+        bank_id,
+        served_n,
+        pass_percent,
+        created_at,
+        updated_at,
+    ) = row
+    return ModuleQuiz(
+        id=str(qid),
+        courseId=str(course_id),
+        moduleId=str(mid),
+        questionBankId=str(bank_id) if bank_id is not None else None,
+        servedCountN=int(served_n) if served_n is not None else None,
+        passPercent=int(pass_percent),
+        createdAt=_to_iso(created_at),
+        updatedAt=_to_iso(updated_at),
+    )
 
 
 class QuestionBankRdsRepository:
@@ -334,18 +358,19 @@ class QuestionBankRdsRepository:
         module_id: str,
         question_bank_id: Optional[str] = None,
         served_count_n: Optional[int] = None,
+        pass_percent: int = 70,
     ) -> str:
         """Create at most one quiz row per module (enforced by UNIQUE(module_id))."""
         try:
             cur = self._execute(
                 """
                 INSERT INTO module_quizzes (
-                    course_id, module_id, question_bank_id, served_count_n
+                    course_id, module_id, question_bank_id, served_count_n, pass_percent
                 )
-                VALUES (%s, %s, %s, %s)
+                VALUES (%s, %s, %s, %s, %s)
                 RETURNING id
                 """,
-                (course_id, module_id, question_bank_id, served_count_n),
+                (course_id, module_id, question_bank_id, served_count_n, pass_percent),
                 commit=True,
             )
         except Exception as exc:
@@ -449,7 +474,7 @@ class QuestionBankRdsRepository:
         cur = self._execute(
             """
             SELECT mq.id, mq.course_id, mq.module_id, mq.question_bank_id, mq.served_count_n,
-                   mq.created_at, mq.updated_at
+                   mq.pass_percent, mq.created_at, mq.updated_at
             FROM module_quizzes mq
             INNER JOIN course_modules cm
               ON cm.course_id = mq.course_id AND cm.id = mq.module_id
@@ -458,29 +483,25 @@ class QuestionBankRdsRepository:
             """,
             (course_id,),
         )
-        out: list[ModuleQuiz] = []
-        for row in cur.fetchall():
-            (
-                qid,
-                cid,
-                mid,
-                bank_id,
-                served_n,
-                created_at,
-                updated_at,
-            ) = row
-            out.append(
-                ModuleQuiz(
-                    id=str(qid),
-                    courseId=str(cid),
-                    moduleId=str(mid),
-                    questionBankId=str(bank_id) if bank_id is not None else None,
-                    servedCountN=int(served_n) if served_n is not None else None,
-                    createdAt=_to_iso(created_at),
-                    updatedAt=_to_iso(updated_at),
-                )
+        return [_module_quiz_from_row(row) for row in cur.fetchall()]
+
+    def update_module_quiz_pass_percent(
+        self, *, course_id: str, module_id: str, pass_percent: int
+    ) -> None:
+        try:
+            cur = self._execute(
+                """
+                UPDATE module_quizzes
+                SET pass_percent = %s, updated_at = NOW()
+                WHERE course_id = %s AND module_id = %s
+                """,
+                (pass_percent, course_id, module_id),
+                commit=True,
             )
-        return out
+        except Exception as exc:
+            self._raise_integrity(exc, for_module_quiz=True)
+        if cur.rowcount != 1:
+            raise NotFound("Module quiz not found for this course")
 
     def list_questions_for_course_bank(
         self, *, course_id: str, bank_id: str
@@ -834,6 +855,113 @@ class QuestionBankRdsRepository:
                 "totalCount": int(total_count),
             }
         return result
+
+    def list_module_quiz_pass_percent_for_course(
+        self, *, course_id: str
+    ) -> dict[str, int]:
+        """Pass threshold per module with a visible published module quiz."""
+        cur = self._execute(
+            """
+            SELECT mq.module_id, mq.pass_percent
+            FROM module_quizzes mq
+            INNER JOIN question_banks qb
+              ON qb.id = mq.question_bank_id AND qb.course_id = %s
+            WHERE mq.course_id = %s
+              AND mq.question_bank_id IS NOT NULL
+              AND qb.status = 'PUBLISHED'
+              AND mq.served_count_n IS NOT NULL
+              AND mq.served_count_n >= 1
+            """,
+            (course_id, course_id),
+        )
+        return {str(module_id): int(pass_percent) for module_id, pass_percent in cur.fetchall()}
+
+    def list_submitted_attempt_scores_by_module(
+        self, *, course_id: str, user_sub: str
+    ) -> dict[str, list[dict[str, int]]]:
+        """Every submitted attempt score per module for one student (RS-8 gating)."""
+        cur = self._execute(
+            """
+            SELECT mq.module_id, s.correct_count, s.total_count
+            FROM module_quizzes mq
+            INNER JOIN question_banks qb
+              ON qb.id = mq.question_bank_id AND qb.course_id = %s
+            INNER JOIN student_module_quiz_bindings b
+              ON b.module_quiz_id = mq.id
+             AND b.course_id = %s
+             AND b.user_sub = %s
+            INNER JOIN module_quiz_attempts a ON a.binding_id = b.id
+            INNER JOIN module_quiz_attempt_submissions s ON s.attempt_id = a.id
+            WHERE mq.course_id = %s
+              AND mq.question_bank_id IS NOT NULL
+              AND qb.status = 'PUBLISHED'
+              AND mq.served_count_n IS NOT NULL
+              AND mq.served_count_n >= 1
+            ORDER BY mq.module_id, s.submitted_at ASC, s.attempt_id ASC
+            """,
+            (course_id, course_id, user_sub, course_id),
+        )
+        result: dict[str, list[dict[str, int]]] = {}
+        for module_id, correct_count, total_count in cur.fetchall():
+            key = str(module_id)
+            result.setdefault(key, []).append(
+                {
+                    "correctCount": int(correct_count),
+                    "totalCount": int(total_count),
+                }
+            )
+        return result
+
+    def list_submitted_module_quiz_attempts_for_student(
+        self,
+        *,
+        course_id: str,
+        module_id: str,
+        user_sub: str,
+        pass_percent: int,
+    ) -> list[dict[str, Any]]:
+        """Submitted attempts for one student/module, oldest first (no answer payload)."""
+        cur = self._execute(
+            """
+            SELECT a.id, a.attempt_number, s.correct_count, s.total_count, s.submitted_at
+            FROM module_quizzes mq
+            INNER JOIN question_banks qb
+              ON qb.id = mq.question_bank_id AND qb.course_id = %s
+            INNER JOIN student_module_quiz_bindings b
+              ON b.module_quiz_id = mq.id
+             AND b.course_id = %s
+             AND b.user_sub = %s
+            INNER JOIN module_quiz_attempts a ON a.binding_id = b.id
+            INNER JOIN module_quiz_attempt_submissions s ON s.attempt_id = a.id
+            WHERE mq.course_id = %s
+              AND mq.module_id = %s
+              AND mq.question_bank_id IS NOT NULL
+              AND qb.status = 'PUBLISHED'
+              AND mq.served_count_n IS NOT NULL
+              AND mq.served_count_n >= 1
+            ORDER BY s.submitted_at ASC, s.attempt_id ASC
+            """,
+            (course_id, course_id, user_sub, course_id, module_id),
+        )
+        rows: list[dict[str, Any]] = []
+        threshold = int(pass_percent)
+        for att_id, attempt_number, correct_count, total_count, submitted_at in cur.fetchall():
+            correct = int(correct_count)
+            total = int(total_count)
+            score = module_quiz_score_percent(correct_count=correct, total_count=total)
+            rows.append(
+                {
+                    "attemptId": str(att_id),
+                    "attemptNumber": int(attempt_number),
+                    "correctCount": correct,
+                    "totalCount": total,
+                    "scorePercent": score,
+                    "passPercent": threshold,
+                    "passed": score >= threshold,
+                    "submittedAt": _to_iso(submitted_at),
+                }
+            )
+        return rows
 
     def list_published_question_ids(
         self, *, course_id: str, bank_id: str
@@ -1393,7 +1521,7 @@ class QuestionBankRdsRepository:
         cur = self._execute(
             """
             SELECT id, course_id, module_id, question_bank_id, served_count_n,
-                   created_at, updated_at
+                   pass_percent, created_at, updated_at
             FROM module_quizzes
             WHERE module_id = %s
             """,
@@ -1402,24 +1530,7 @@ class QuestionBankRdsRepository:
         row = cur.fetchone()
         if not row:
             return None
-        (
-            qid,
-            course_id,
-            mid,
-            bank_id,
-            served_n,
-            created_at,
-            updated_at,
-        ) = row
-        return ModuleQuiz(
-            id=str(qid),
-            courseId=str(course_id),
-            moduleId=str(mid),
-            questionBankId=str(bank_id) if bank_id is not None else None,
-            servedCountN=int(served_n) if served_n is not None else None,
-            createdAt=_to_iso(created_at),
-            updatedAt=_to_iso(updated_at),
-        )
+        return _module_quiz_from_row(row)
 
     def get_module_quiz_by_question_bank_id(
         self, *, course_id: str, question_bank_id: str
@@ -1427,7 +1538,7 @@ class QuestionBankRdsRepository:
         cur = self._execute(
             """
             SELECT id, course_id, module_id, question_bank_id, served_count_n,
-                   created_at, updated_at
+                   pass_percent, created_at, updated_at
             FROM module_quizzes
             WHERE course_id = %s AND question_bank_id = %s
             """,
@@ -1436,21 +1547,4 @@ class QuestionBankRdsRepository:
         row = cur.fetchone()
         if not row:
             return None
-        (
-            qid,
-            course_id_val,
-            mid,
-            bank_id,
-            served_n,
-            created_at,
-            updated_at,
-        ) = row
-        return ModuleQuiz(
-            id=str(qid),
-            courseId=str(course_id_val),
-            moduleId=str(mid),
-            questionBankId=str(bank_id) if bank_id is not None else None,
-            servedCountN=int(served_n) if served_n is not None else None,
-            createdAt=_to_iso(created_at),
-            updatedAt=_to_iso(updated_at),
-        )
+        return _module_quiz_from_row(row)

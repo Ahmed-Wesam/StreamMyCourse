@@ -12,7 +12,9 @@ import ModuleQuizPage from './ModuleQuizPage'
 const api = vi.hoisted(() => ({
   startModuleQuiz: vi.fn(),
   submitModuleQuiz: vi.fn(),
+  listModuleQuizAttempts: vi.fn(),
   listLessons: vi.fn(),
+  listCourseModules: vi.fn(),
   getCourseProgress: vi.fn(),
 }))
 
@@ -23,6 +25,8 @@ vi.mock('../lib/api/catalog', async (importOriginal) => {
     listLessons: (...args: unknown[]) => api.listLessons(...args) as ReturnType<typeof mod.listLessons>,
     getCourseProgress: (...args: unknown[]) =>
       api.getCourseProgress(...args) as ReturnType<typeof mod.getCourseProgress>,
+    listCourseModules: (...args: unknown[]) =>
+      api.listCourseModules(...args) as ReturnType<typeof mod.listCourseModules>,
   }
 })
 
@@ -34,6 +38,8 @@ vi.mock('../lib/api/questionBanks', async (importOriginal) => {
       api.startModuleQuiz(...args) as ReturnType<typeof mod.startModuleQuiz>,
     submitModuleQuiz: (...args: unknown[]) =>
       api.submitModuleQuiz(...args) as ReturnType<typeof mod.submitModuleQuiz>,
+    listModuleQuizAttempts: (...args: unknown[]) =>
+      api.listModuleQuizAttempts(...args) as ReturnType<typeof mod.listModuleQuizAttempts>,
   }
 })
 
@@ -71,6 +77,9 @@ const LATEST_RESULTS_RESPONSE = {
   moduleQuizId: 'mq1',
   moduleId: 'm1',
   servedCountN: 2,
+  scorePercent: 50,
+  passPercent: 70,
+  passed: false,
   latestSubmission: {
     correctCount: 1,
     totalCount: 2,
@@ -122,9 +131,21 @@ describe('ModuleQuizPage', () => {
   beforeEach(() => {
     api.startModuleQuiz.mockReset()
     api.submitModuleQuiz.mockReset()
+    api.listModuleQuizAttempts.mockReset()
     api.listLessons.mockReset()
+    api.listCourseModules.mockReset()
     api.getCourseProgress.mockReset()
     api.startModuleQuiz.mockResolvedValue(REVERSED_START_RESPONSE)
+    api.listModuleQuizAttempts.mockResolvedValue([])
+    api.listCourseModules.mockResolvedValue([
+      {
+        id: 'm1',
+        title: 'Section 1',
+        description: '',
+        order: 0,
+        moduleQuiz: { available: true, servedCountN: 2, passPercent: 70 },
+      },
+    ])
     api.listLessons.mockResolvedValue([
       { id: 'l1', title: 'Lesson 1', order: 0, moduleId: 'm1', moduleOrder: 0, videoStatus: 'ready' as const },
     ])
@@ -229,7 +250,7 @@ describe('ModuleQuizPage', () => {
     renderModuleQuiz()
 
     await waitFor(() => {
-      expect(screen.getByText(/Score 1 \/ 2/)).toBeTruthy()
+      expect(screen.getByText(/Score 50%/)).toBeTruthy()
     })
 
     expect(screen.getByText(/These are your latest submitted results./i)).toBeTruthy()
@@ -249,7 +270,7 @@ describe('ModuleQuizPage', () => {
     renderModuleQuiz()
 
     await waitFor(() => {
-      expect(screen.getByText(/Score 1 \/ 2/)).toBeTruthy()
+      expect(screen.getByText(/Score 50%/)).toBeTruthy()
     })
 
     fireEvent.click(screen.getByRole('button', { name: /^Try again$/i }))
@@ -300,15 +321,14 @@ describe('ModuleQuizPage', () => {
     expect(screen.queryAllByRole('radio')).toHaveLength(0)
   })
 
-  it('does not surface pass-mark or 70% copy while taking or reviewing results', async () => {
+  it('shows pass threshold while taking and pass/fail on results', async () => {
     renderModuleQuiz()
 
     await waitFor(() => {
       expect(screen.getByText('Capital of France?')).toBeTruthy()
     })
 
-    expect(document.body.textContent ?? '').not.toMatch(/70\s*%/i)
-    expect(document.body.textContent ?? '').not.toMatch(/pass mark/i)
+    expect(screen.getByText(/70% to pass/i)).toBeTruthy()
 
     const fieldsets = screen.getAllByRole('group')
     fireEvent.click(within(fieldsets[0]!).getAllByRole('radio')[0]!)
@@ -319,16 +339,52 @@ describe('ModuleQuizPage', () => {
       attemptNumber: 1,
       correctCount: 2,
       totalCount: 2,
+      scorePercent: 100,
+      passPercent: 70,
+      passed: true,
       questions: LATEST_RESULTS_RESPONSE.latestSubmission.questions,
     })
     fireEvent.click(screen.getByRole('button', { name: /submit answers/i }))
 
     await waitFor(() => {
-      expect(screen.getAllByText(/Your answer:/)).toHaveLength(2)
+      expect(screen.getAllByText(/Passed/i).length).toBeGreaterThan(0)
+      expect(screen.getAllByText(/70% to pass/i).length).toBeGreaterThan(0)
     })
+  })
 
-    expect(document.body.textContent ?? '').not.toMatch(/70\s*%/i)
-    expect(document.body.textContent ?? '').not.toMatch(/pass mark/i)
+  it('shows module_locked message without question controls', async () => {
+    const err = new ApiError('Complete the prior module quiz to unlock this content', 403, 'module_locked')
+    api.startModuleQuiz.mockRejectedValueOnce(err)
+    renderModuleQuiz()
+
+    await waitFor(() => {
+      expect(screen.getByText(catalogApiUserMessage(err, 'loadModuleQuiz'))).toBeTruthy()
+    })
+    expect(screen.queryByText('Capital of France?')).toBeNull()
+    expect(screen.queryAllByRole('radio')).toHaveLength(0)
+  })
+
+  it('loads attempt history on latest results', async () => {
+    api.startModuleQuiz.mockResolvedValue(LATEST_RESULTS_RESPONSE)
+    api.listModuleQuizAttempts.mockResolvedValue([
+      {
+        attemptId: 'a1',
+        attemptNumber: 1,
+        correctCount: 1,
+        totalCount: 2,
+        scorePercent: 50,
+        passPercent: 70,
+        passed: false,
+        submittedAt: '2026-01-15T12:00:00.000Z',
+      },
+    ])
+    renderModuleQuiz()
+
+    await waitFor(() => {
+      expect(screen.getByText(/Attempt history/i)).toBeTruthy()
+      expect(screen.getAllByText(/Did not pass/i).length).toBeGreaterThan(0)
+    })
+    expect(api.listModuleQuizAttempts).toHaveBeenCalledWith('c1', 'm1')
   })
 
   it('shows Back to lesson when returnTo points at a lesson player URL', async () => {
@@ -437,7 +493,7 @@ describe('ModuleQuizPage', () => {
     renderModuleQuiz()
 
     await waitFor(() => {
-      expect(screen.getByText(/Score 1 \/ 2/)).toBeTruthy()
+      expect(screen.getByText(/Score 50%/)).toBeTruthy()
     })
 
     fireEvent.click(screen.getByRole('button', { name: /^Try again$/i }))

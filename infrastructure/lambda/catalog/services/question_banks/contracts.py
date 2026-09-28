@@ -84,3 +84,27 @@ class StudentQuizStartBodyDto(TypedDict, total=False):
     """Optional JSON body for ``POST .../quiz/start``."""
 
     retake: bool
+
+
+class ModuleQuizCreateRequestDto(TypedDict, total=False):
+    questionBankId: str
+    passPercent: int
+
+
+class ModuleQuizPatchRequestDto(TypedDict):
+    passPercent: int
+
+
+class ModuleQuizPatchResponseDto(TypedDict):
+    quizId: str
+    passPercent: int
+
+
+class PublisherModuleQuizSummaryDto(TypedDict):
+    quizId: str
+    moduleId: str
+    questionBankId: str | None
+    servedCountN: int | None
+    passPercent: int
+    createdAt: str
+    updatedAt: str

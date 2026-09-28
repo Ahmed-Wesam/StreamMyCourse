@@ -18,7 +18,9 @@ type Props = {
   moduleQuizRows: ModuleQuizRow[]
   questionBankSummaries: QuestionBankSummary[]
   attachingModuleId?: string | null
+  savingPassPercentModuleId?: string | null
   onAttachQuiz: (moduleId: string, questionBankId: string) => void | Promise<void>
+  onSavePassPercent: (moduleId: string, passPercent: number) => void | Promise<void>
 }
 
 function needsAttachUi(row: ModuleQuizRow | undefined): boolean {
@@ -44,10 +46,13 @@ export function CourseManagementModuleQuizPanel({
   moduleQuizRows,
   questionBankSummaries,
   attachingModuleId = null,
+  savingPassPercentModuleId = null,
   onAttachQuiz,
+  onSavePassPercent,
 }: Props) {
   const banksLink = `/courses/${encodeURIComponent(courseId)}/question-banks`
   const [selectedBankByModuleId, setSelectedBankByModuleId] = useState<Record<string, string>>({})
+  const [passPercentDraftByModuleId, setPassPercentDraftByModuleId] = useState<Record<string, string>>({})
 
   const moduleIdsKey = useMemo(
     () =>
@@ -55,6 +60,15 @@ export function CourseManagementModuleQuizPanel({
         .sort()
         .join(','),
     [sortedModules],
+  )
+
+  const moduleQuizPassKey = useMemo(
+    () =>
+      moduleQuizRows
+        .map((r) => `${r.moduleId}:${r.passPercent}`)
+        .sort()
+        .join('|'),
+    [moduleQuizRows],
   )
 
   useEffect(() => {
@@ -67,6 +81,18 @@ export function CourseManagementModuleQuizPanel({
       return Object.keys(next).length === Object.keys(prev).length ? prev : next
     })
   }, [moduleIdsKey])
+
+  useEffect(() => {
+    setPassPercentDraftByModuleId((prev) => {
+      const next: Record<string, string> = { ...prev }
+      for (const row of moduleQuizRows) {
+        if (row.questionBankId) {
+          next[row.moduleId] = String(row.passPercent ?? 70)
+        }
+      }
+      return next
+    })
+  }, [moduleQuizPassKey, moduleQuizRows])
 
   return (
     <Card
@@ -87,7 +113,9 @@ export function CourseManagementModuleQuizPanel({
             const row = moduleQuizRows.find((r) => r.moduleId === m.id)
             const showAttach = needsAttachUi(row)
             const selectedBankId = selectedBankByModuleId[m.id] ?? ''
-            const busy = attachingModuleId === m.id
+            const attachBusy = attachingModuleId === m.id
+            const passBusy = savingPassPercentModuleId === m.id
+            const passDraft = passPercentDraftByModuleId[m.id] ?? (row ? String(row.passPercent ?? 70) : '70')
             const linkedBank = row?.questionBankId
               ? questionBankSummaries.find((b) => b.questionBankId === row.questionBankId)
               : undefined
@@ -141,7 +169,7 @@ export function CourseManagementModuleQuizPanel({
                           <select
                             className="!py-2 !text-sm"
                             value={selectedBankId}
-                            disabled={busy}
+                            disabled={attachBusy}
                             onChange={(e) =>
                               setSelectedBankByModuleId((prev) => ({ ...prev, [m.id]: e.target.value }))
                             }
@@ -157,7 +185,7 @@ export function CourseManagementModuleQuizPanel({
                         <Button
                           type="button"
                           size="sm"
-                          disabled={!selectedBankId || busy}
+                          disabled={!selectedBankId || attachBusy}
                           onClick={() => {
                             if (!selectedBankId) return
                             void onAttachQuiz(m.id, selectedBankId)
@@ -168,7 +196,36 @@ export function CourseManagementModuleQuizPanel({
                       </div>
                     )
                   ) : (
-                    <span className="self-start text-rs-body sm:self-end">Quiz linked</span>
+                    <div className="flex w-full flex-col items-stretch gap-2 sm:w-auto sm:min-w-[14rem] sm:items-end">
+                      <Field label="Pass score (%)" className="mb-0">
+                        <input
+                          type="number"
+                          min={1}
+                          max={100}
+                          className="!py-2 !text-sm"
+                          value={passDraft}
+                          disabled={passBusy}
+                          onChange={(e) =>
+                            setPassPercentDraftByModuleId((prev) => ({
+                              ...prev,
+                              [m.id]: e.target.value,
+                            }))
+                          }
+                        />
+                      </Field>
+                      <Button
+                        type="button"
+                        size="sm"
+                        disabled={passBusy || passDraft.trim() === ''}
+                        onClick={() => {
+                          const n = Number.parseInt(passDraft, 10)
+                          if (!Number.isFinite(n)) return
+                          void onSavePassPercent(m.id, n)
+                        }}
+                      >
+                        {passBusy ? 'Saving…' : 'Save pass score'}
+                      </Button>
+                    </div>
                   )}
                 </div>
               </li>

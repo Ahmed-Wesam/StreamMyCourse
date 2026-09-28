@@ -107,6 +107,12 @@ export function isPlaybackAuthRequiredError(e: unknown): boolean {
   return false
 }
 
+/** True when lesson, playback, or quiz access is blocked by prior-module quiz gating (RS-8). */
+export function isModuleLockedError(e: unknown): boolean {
+  if (!(e instanceof ApiError)) return false
+  return e.code === 'module_locked'
+}
+
 /** True when module deletion failed because the course must keep at least one module. */
 export function isLastModuleDeleteError(e: unknown): boolean {
   if (!(e instanceof ApiError)) return false

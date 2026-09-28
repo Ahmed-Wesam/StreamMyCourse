@@ -69,6 +69,12 @@ describe('catalogApiUserMessage', () => {
   })
 
   it('maps module quiz API messages', () => {
+    expect(
+      catalogApiUserMessage(
+        new ApiError('Complete the prior module quiz to unlock this content', 403, 'module_locked'),
+        'loadModuleQuiz',
+      ),
+    ).toBe('Complete the prior module quiz to unlock this content.')
     expect(catalogApiUserMessage(new ApiError('Module quiz not available', 404))).toBe(
       'This quiz is not available. It may not be published yet, or you may not have access.',
     )

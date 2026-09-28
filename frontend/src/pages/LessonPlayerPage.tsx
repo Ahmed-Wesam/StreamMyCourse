@@ -26,6 +26,7 @@ import {
   courseNotFoundMessage,
   incompleteLessonPlayerLinkMessage,
 } from '../lib/apiUserMessages'
+import { resolveNextAccessibleLesson, resolvePrevAccessibleLesson } from '../lib/moduleGating'
 import { usePageTitle } from '../lib/page-title'
 import { useRevokeLessonPlaybackOnSessionSuperseded } from '../lib/use-revoke-lesson-playback-on-session-superseded'
 import { readMdUpMatch, useIsMdUp } from '../lib/useMediaQuery'
@@ -336,19 +337,15 @@ export default function LessonPlayerPage() {
     return lessons.findIndex((x) => x.id === lessonId)
   }, [lessons, lessonId])
 
-  const nextLesson = useMemo(() => {
-    if (activeLessonIndex < lessons.length - 1) {
-      return lessons[activeLessonIndex + 1]
-    }
-    return null
-  }, [lessons, activeLessonIndex])
+  const nextLesson = useMemo(
+    () => resolveNextAccessibleLesson(lessons, activeLessonIndex, modules),
+    [lessons, activeLessonIndex, modules],
+  )
 
-  const prevLesson = useMemo(() => {
-    if (activeLessonIndex > 0) {
-      return lessons[activeLessonIndex - 1]
-    }
-    return null
-  }, [lessons, activeLessonIndex])
+  const prevLesson = useMemo(
+    () => resolvePrevAccessibleLesson(lessons, activeLessonIndex, modules),
+    [lessons, activeLessonIndex, modules],
+  )
 
   const nextQuizHref = useMemo(
     () =>

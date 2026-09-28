@@ -36,6 +36,7 @@ def _published_module_quiz() -> ModuleQuiz:
         moduleId=_MODULE_ID,
         questionBankId=_BANK_ID,
         servedCountN=2,
+        passPercent=70,
         createdAt="",
         updatedAt="",
     )

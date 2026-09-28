@@ -313,6 +313,7 @@ def test_create_module_quiz_rejects_bank_already_linked_to_other_module() -> Non
         moduleId=_OTHER_MODULE_ID,
         questionBankId=_BANK_ID,
         servedCountN=None,
+        passPercent=70,
         createdAt="",
         updatedAt="",
     )

@@ -9,3 +9,11 @@ export function quizScorePercentPillClass(percent: number): string {
 export function formatModuleQuizQuestionCount(servedCount: number): string {
   return servedCount === 1 ? '1 question' : `${servedCount} questions`
 }
+
+export function formatModuleQuizPassThreshold(passPercent: number): string {
+  return `${passPercent}% to pass`
+}
+
+export function moduleQuizPassFailLabel(passed: boolean): string {
+  return passed ? 'Passed' : 'Did not pass'
+}

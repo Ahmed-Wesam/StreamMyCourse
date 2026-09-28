@@ -25,8 +25,16 @@ export type CourseModule = {
   order: number
   createdAt?: string
   updatedAt?: string
+  /** True when quiz gating blocks this module for the signed-in student (RS-8). */
+  locked?: boolean
   /** Present when the viewer may see that a module quiz exists (enrolled + visibility rules). */
-  moduleQuiz?: { available: boolean; servedCountN: number; latestScorePercent?: number }
+  moduleQuiz?: {
+    available: boolean
+    servedCountN: number
+    latestScorePercent?: number
+    passPercent?: number
+    passed?: boolean
+  }
 }
 
 type ModuleQuizOption = {
@@ -49,13 +57,19 @@ export type ModuleQuizResultQuestion = {
   isCorrect: boolean
 }
 
+export type ModuleQuizPassOutcome = {
+  scorePercent: number
+  passPercent: number
+  passed: boolean
+}
+
 export type ModuleQuizLatestSubmission = {
   correctCount: number
   totalCount: number
   attemptNumber: number
   submittedAt?: string | null
   questions: ModuleQuizResultQuestion[]
-}
+} & Partial<ModuleQuizPassOutcome>
 
 export type ModuleQuizStartInProgress = {
   phase: 'in_progress'
@@ -69,13 +83,13 @@ export type ModuleQuizStartInProgress = {
   questions: ModuleQuizQuestion[]
 }
 
-type ModuleQuizStartLatestResults = {
+export type ModuleQuizStartLatestResults = {
   phase: 'latest_results'
   moduleQuizId: string
   moduleId: string
   servedCountN: number
   latestSubmission: ModuleQuizLatestSubmission
-}
+} & ModuleQuizPassOutcome
 
 export type ModuleQuizStartResponse = ModuleQuizStartInProgress | ModuleQuizStartLatestResults
 
@@ -90,6 +104,17 @@ export type ModuleQuizSubmitResponse = {
   correctCount: number
   totalCount: number
   questions: ModuleQuizResultQuestion[]
+} & ModuleQuizPassOutcome
+
+export type ModuleQuizAttemptSummary = {
+  attemptId: string
+  attemptNumber: number
+  correctCount: number
+  totalCount: number
+  scorePercent: number
+  passPercent: number
+  passed: boolean
+  submittedAt?: string | null
 }
 
 export type QuestionBankStatus = 'DRAFT' | 'PUBLISHED'
@@ -109,6 +134,7 @@ export type ModuleQuizRow = {
   moduleId: string
   questionBankId: string | null
   servedCountN: number | null
+  passPercent?: number
   createdAt?: string
   updatedAt?: string
 }
