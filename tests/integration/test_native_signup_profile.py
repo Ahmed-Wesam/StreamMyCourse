@@ -11,6 +11,7 @@ import os
 import secrets
 import string
 import uuid
+from datetime import datetime, timezone
 from typing import Iterator
 
 import httpx
@@ -36,6 +37,14 @@ def _strong_password() -> str:
     alphabet = string.ascii_letters + string.digits + "!@#$%^&*"
     core = "".join(secrets.choice(alphabet) for _ in range(20))
     return f"Rs6!{core}aA1"
+
+
+def _same_instant_utc(actual: str | None, expected: str) -> bool:
+    """True when both ISO timestamps denote the same UTC instant (Z vs +00:00)."""
+    if not actual:
+        return False
+    norm = lambda s: datetime.fromisoformat(s.replace("Z", "+00:00")).astimezone(timezone.utc)
+    return norm(actual) == norm(expected)
 
 
 def _valid_patch_body() -> dict[str, str]:
@@ -98,8 +107,8 @@ def test_native_signup_patch_and_get_users_me_profile(api: ApiClient) -> None:
         data = get_resp.json()
         assert data.get("country") == "Jordan"
         assert data.get("profession") == "Researcher"
-        assert data.get("termsAcceptedAt") == _TERMS_AT
-        assert data.get("privacyAcceptedAt") == _PRIVACY_AT
+        assert _same_instant_utc(data.get("termsAcceptedAt"), _TERMS_AT)
+        assert _same_instant_utc(data.get("privacyAcceptedAt"), _PRIVACY_AT)
         assert data.get("givenName") == "RS"
         assert data.get("familyName") == "Integration"
     finally:
