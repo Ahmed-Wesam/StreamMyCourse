@@ -510,6 +510,14 @@ export default function CourseManagement() {
                 Question banks
               </Link>
             ) : null}
+            {courseId ? (
+              <Link
+                to={`/courses/${encodeURIComponent(courseId)}/assignments`}
+                className="font-semibold text-rs-blue hover:underline"
+              >
+                Assignments
+              </Link>
+            ) : null}
           </div>
           <h1 className="text-3xl font-extrabold tracking-tight text-rs-navy">Manage Course</h1>
         </div>

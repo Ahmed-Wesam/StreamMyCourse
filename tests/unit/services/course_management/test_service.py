@@ -485,6 +485,51 @@ class TestDeleteCourse:
         }
 
     @patch("services.course_management.service.send_media_cleanup_job")
+    def test_delete_course_includes_assignment_object_keys(
+        self, send_job: MagicMock, repo: MagicMock, course_access: MagicMock
+    ) -> None:
+        """RS-13: assignment image/submission keys are collected before DB delete."""
+        assignment_key = f"{_VID}/assignments/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa/images/instructions.jpg"
+        keys_port = MagicMock()
+        keys_port.list_object_keys_for_course.return_value = [assignment_key]
+        svc = CourseManagementService(
+            repo,
+            None,
+            course_access=course_access,
+            media_cleanup_queue_url="https://sqs.example/queue",
+            assignment_media_keys=keys_port,
+        )
+        repo.get_course.return_value = _course(id_=_VID)
+        repo.list_lessons.return_value = []
+        repo.list_lesson_file_object_keys_for_course.return_value = []
+        svc.delete_course(_VID)
+        keys_port.list_object_keys_for_course.assert_called_once_with(_VID)
+        send_job.assert_called_once()
+        assert assignment_key in send_job.call_args[0][2]
+        repo.delete_course_and_lessons.assert_called_once_with(_VID)
+
+    def test_delete_course_503_when_assignment_keys_and_queue_empty(
+        self, repo: MagicMock, course_access: MagicMock
+    ) -> None:
+        """RS-13: empty MEDIA_CLEANUP_QUEUE_URL + assignment keys → 503, no delete."""
+        assignment_key = f"{_VID}/assignments/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa/submissions/s1/f1.pdf"
+        keys_port = MagicMock()
+        keys_port.list_object_keys_for_course.return_value = [assignment_key]
+        svc = CourseManagementService(
+            repo,
+            None,
+            course_access=course_access,
+            media_cleanup_queue_url="",
+            assignment_media_keys=keys_port,
+        )
+        repo.get_course.return_value = _course(id_=_VID)
+        repo.list_lessons.return_value = []
+        repo.list_lesson_file_object_keys_for_course.return_value = []
+        with pytest.raises(ServiceUnavailable, match="MEDIA_CLEANUP_QUEUE_URL"):
+            svc.delete_course(_VID)
+        repo.delete_course_and_lessons.assert_not_called()
+
+    @patch("services.course_management.service.send_media_cleanup_job")
     def test_enqueue_runs_without_storage_when_queue_configured(
         self, send_job: MagicMock, repo: MagicMock, enrollments: MagicMock
     ) -> None:

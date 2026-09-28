@@ -67,6 +67,7 @@ function LessonPrimaryColumn({
   onMarkIncomplete,
   courseId,
   lessonId,
+  moduleId,
   playbackPositionSec,
   contentTabsEnabled,
   prevLesson,
@@ -91,6 +92,7 @@ function LessonPrimaryColumn({
   onMarkIncomplete: () => void
   courseId: string
   lessonId: string
+  moduleId?: string
   playbackPositionSec: number
   contentTabsEnabled: boolean
   prevLesson: Lesson | null
@@ -154,6 +156,7 @@ function LessonPrimaryColumn({
         <LessonPlayerTabs
           courseId={courseId}
           lessonId={lessonId}
+          moduleId={moduleId}
           courseDescription={courseDescription}
           activeModuleLabel={activeModuleLabel}
           activeLessonTitle={activeLessonTitle}
@@ -343,6 +346,11 @@ export default function LessonPlayerPage() {
     if (!mod) return ''
     return mod.title
   }, [lessons, lessonId, modules])
+
+  const activeModuleId = useMemo(() => {
+    const activeLesson = lessons.find((x) => x.id === lessonId)
+    return activeLesson?.moduleId ?? ''
+  }, [lessons, lessonId])
 
   const activeLessonIndex = useMemo(() => {
     return lessons.findIndex((x) => x.id === lessonId)
@@ -783,6 +791,7 @@ export default function LessonPlayerPage() {
         lessons={lessons}
         modules={modules}
         lessonId={lessonId}
+        moduleId={activeModuleId}
         activeLessonTitle={activeLessonTitle}
         activeModuleLabel={activeModuleLabel}
         loading={loading}
@@ -949,6 +958,7 @@ export default function LessonPlayerPage() {
               onMarkIncomplete={() => void handleMarkIncomplete()}
               courseId={courseId}
               lessonId={lessonId}
+              moduleId={activeModuleId}
               playbackPositionSec={playbackPositionSec}
               contentTabsEnabled={!playbackNavLocked}
               prevLesson={prevLesson}

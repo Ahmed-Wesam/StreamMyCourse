@@ -6,6 +6,36 @@
 
 ---
 
+## 2026-09-28 — RS-13 assignments
+
+### Decisions
+
+- Many assignments per course, each on one module. Locked until earlier modules' visible quizzes are passed.
+- Any number may be flagged `countsTowardCertificate`, including none. Certificates themselves stay RS-12.
+- Rubric points, default pass **70%**, unlimited resubmit after a fail, grades immutable, no due dates.
+- Student files: pdf, csv, xlsx, docx, sav, **100 MiB**. Instructions and rubric narrative: plain text, sanitized rich text, or one picture up to **50 MiB**.
+- Grade email uses transactional mail `kind: notify` to `users.email`. Contact mail stays limited to `support@`.
+
+### What landed
+
+- **Migration 020** and `services/assignments/` (controller, service, repo, storage).
+- API Gateway **CatalogApiDeploymentV42**, `s3:GetObject` on `*/assignments/*`, course-delete key collection.
+- Student assignment page, player Assignments tab, teacher create/review, course-management link.
+
+### Verification
+
+- [x] Pytest: assignments, migration 020, API stack V42, course delete, bootstrap, transactional mail
+- [x] `python scripts/check_lambda_boundaries.py`
+- [x] Vitest: assignment page, teacher create/review, player tab, API client, course-management link
+- [ ] Prod RDS **020** and API deploy
+- [ ] Browser click-path (API not deployed)
+
+### Docs
+
+- [`design.md`](design.md) assignments API; [`roadmap.md`](roadmap.md); child plan [`plans/ui-overhaul/rs-13-assignments.md`](plans/ui-overhaul/rs-13-assignments.md)
+
+---
+
 ## 2026-09-28 — RS-11 lesson files and student notes
 
 ### Decisions

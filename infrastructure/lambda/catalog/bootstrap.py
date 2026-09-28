@@ -76,6 +76,18 @@ from services.progress.service import LessonProgressService
 
 from services.lesson_notes import LessonNotesRdsRepository, LessonNotesService
 
+from services.assignments import (
+
+    AssignmentsRdsRepository,
+
+    AssignmentsService,
+
+    AssignmentFileStorage,
+
+)
+
+from services.assignments.ports import CourseOwnerInfo, NotifyMailMessage
+
 from services.purchases.checkout_service import PurchaseCheckoutService
 
 from services.purchases.manage_service import PurchaseManageService
@@ -92,7 +104,7 @@ from services.rate_limit.service import RateLimitService
 
 from services.contact.service import ContactService
 
-from services.common.sqs_client import send_transactional_mail_job
+from services.common.sqs_client import send_media_cleanup_job, send_transactional_mail_job
 
 from services.question_banks.service import QuestionBankService
 
@@ -480,6 +492,134 @@ class _StudentModuleLockAdapter:
 
 @dataclass(frozen=True)
 
+class _AssignmentCourseLookupAdapter:
+
+    """Composition-root adapter: assignments ``CourseLookupPort`` → course catalog RDS."""
+
+
+
+    _course_repo: CourseCatalogRdsRepository
+
+
+
+    def get_course(self, course_id: str) -> CourseOwnerInfo | None:
+
+        course = self._course_repo.get_course(course_id)
+
+        if course is None:
+
+            return None
+
+        return CourseOwnerInfo(id=course.id, title=course.title, created_by=course.createdBy)
+
+
+
+    def module_belongs_to_course(self, course_id: str, module_id: str) -> bool:
+
+        return self._course_repo.get_course_module(course_id, module_id) is not None
+
+
+
+
+
+@dataclass(frozen=True)
+
+class _AssignmentMediaCleanupAdapter:
+
+    """Composition-root adapter: assignments ``MediaCleanupPort`` → SQS media cleanup."""
+
+
+
+    _queue_url: str
+
+
+
+    def queue_url(self) -> str:
+
+        return (self._queue_url or "").strip()
+
+
+
+    def enqueue_object_keys(self, keys) -> None:
+
+        cleaned = [k.strip() for k in keys if k and str(k).strip()]
+
+        if not cleaned:
+
+            return
+
+        course_id = cleaned[0].split("/", 1)[0]
+
+        send_media_cleanup_job(self.queue_url(), course_id, cleaned)
+
+
+
+
+
+@dataclass(frozen=True)
+
+class _AssignmentMailAdapter:
+
+    """Composition-root adapter: assignments ``AssignmentMailPort`` → transactional mail SQS."""
+
+
+
+    _queue_url: str
+
+
+
+    def enqueue_notify(self, message: NotifyMailMessage) -> None:
+
+        send_transactional_mail_job(
+
+            (self._queue_url or "").strip(),
+
+            {
+
+                "kind": message.kind,
+
+                "to": message.to,
+
+                "subject": message.subject,
+
+                "body": message.body,
+
+            },
+
+        )
+
+
+
+
+
+@dataclass(frozen=True)
+
+class _UserEmailAdapter:
+
+    """Composition-root adapter: assignments ``UserEmailPort`` → users.email."""
+
+
+
+    _auth_repo: UserProfileRdsRepository
+
+
+
+    def get_email_for_user_sub(self, user_sub: str) -> str:
+
+        profile = self._auth_repo.get_profile(user_sub)
+
+        if not profile:
+
+            return ""
+
+        return str(profile.get("email") or "")
+
+
+
+
+
+@dataclass(frozen=True)
+
 class AwsDeps:
 
     cfg: AppConfig
@@ -505,6 +645,8 @@ class AwsDeps:
     contact_service: ContactService
 
     lesson_notes_service: LessonNotesService
+
+    assignments_service: Optional[AssignmentsService]
 
 
 
@@ -754,6 +896,10 @@ def build_aws_deps(cfg: AppConfig) -> AwsDeps:
 
     )
 
+    assignments_repo = AssignmentsRdsRepository(conn_factory)
+
+
+
     service = CourseManagementService(
 
         course_repo,
@@ -771,6 +917,8 @@ def build_aws_deps(cfg: AppConfig) -> AwsDeps:
         module_quiz_visibility=module_quiz_visibility,
 
         module_lock=module_lock,
+
+        assignment_media_keys=assignments_repo,
 
         kinescope_drm_jwt_secret=cfg.kinescope_drm_jwt_secret,
 
@@ -815,6 +963,36 @@ def build_aws_deps(cfg: AppConfig) -> AwsDeps:
         module_lock=module_lock,
 
     )
+
+
+
+    if cfg.video_bucket:
+
+        assignment_storage = AssignmentFileStorage(cfg.video_bucket)
+
+        assignments_service = AssignmentsService(
+
+            assignments_repo,
+
+            assignment_storage,
+
+            course_access,
+
+            module_lock,
+
+            _AssignmentCourseLookupAdapter(course_repo),
+
+            _AssignmentMediaCleanupAdapter(cfg.media_cleanup_queue_url),
+
+            _AssignmentMailAdapter(cfg.transactional_mail_queue_url),
+
+            _UserEmailAdapter(auth_repo),
+
+        )
+
+    else:
+
+        assignments_service = None
 
 
 
@@ -905,6 +1083,8 @@ def build_aws_deps(cfg: AppConfig) -> AwsDeps:
         contact_service=contact_service,
 
         lesson_notes_service=lesson_notes_service,
+
+        assignments_service=assignments_service,
 
     )
 

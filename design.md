@@ -173,7 +173,7 @@ PATCH /users/me                        // Update profile fields (given/family na
 POST /contact                          // Public contact form (no JWT). Body JSON: name, email, category, subject, message; optional honeypot `rs_hp` (non-empty → **202** `{ "accepted": true }` without enqueue). Unknown keys → **400**. **202** `{ "accepted": true }` when accepted and enqueued. **503** when `TRANSACTIONAL_MAIL_QUEUE_URL` is unset or enqueue fails. **429** via RDS rate limits (`contact.ip`: 5 / 10 min per IP; `contact.global`: 30 / hour). Max body **16 KiB**. **No attachments.**
 ```
 
-**Delivery:** Catalog Lambda (VPC, no NAT) validates and **`SendMessage`** to transactional-mail SQS ([`api-stack.yaml`](infrastructure/templates/api-stack.yaml) `TransactionalMailQueueUrl` → env **`TRANSACTIONAL_MAIL_QUEUE_URL`**). **Non-VPC** worker ([`transactional-mail-stack.yaml`](infrastructure/templates/transactional-mail-stack.yaml), [`infrastructure/lambda/transactional_mail/`](infrastructure/lambda/transactional_mail/)) consumes the queue and sends via **Zoho SMTP** (same Secrets Manager secret as Cognito CustomEmailSender — **not Amazon SES**). Inbox **`support@researchspectrum.org`**; worker **`ALLOWLIST_TO_ADDRESSES`** rejects other `to` values. Reuse this queue payload shape for RS-13 / RS-14 notification mail.
+**Delivery:** Catalog Lambda (VPC, no NAT) validates and **`SendMessage`** to transactional-mail SQS ([`api-stack.yaml`](infrastructure/templates/api-stack.yaml) `TransactionalMailQueueUrl` → env **`TRANSACTIONAL_MAIL_QUEUE_URL`**). **Non-VPC** worker ([`transactional-mail-stack.yaml`](infrastructure/templates/transactional-mail-stack.yaml), [`infrastructure/lambda/transactional_mail/`](infrastructure/lambda/transactional_mail/)) consumes the queue and sends via **Zoho SMTP** (same Secrets Manager secret as Cognito CustomEmailSender — **not Amazon SES**). Contact jobs (`kind` omitted or `contact`) may only be delivered to **`support@researchspectrum.org`**. Grade notifications use `kind: notify` and one student address taken from RDS `users.email` (the HTTP client cannot set `to`).
 
 ### Lesson files and notes (RS-11)
 
@@ -192,6 +192,35 @@ DELETE /courses/{id}/lessons/{lessonId}/notes/{noteId}    // Author only.
 
 **Storage:** Same private video bucket; keys `{courseId}/lessons/{lessonId}/files/{fileId}.{ext}`. Catalog IAM **`s3:GetObject`** includes `*/lessons/*/files/*` for presign + HEAD. Lesson/course delete enqueues file keys on the existing media-cleanup worker. Migration **019** (`lesson_files`, `lesson_notes`).
 
+### Assignments (RS-13)
+
+Cognito on every method except OPTIONS. Students need a purchase. An assignment belongs to one module and is **403** `module_locked` until every **earlier** module with a visible quiz is passed. The owning teacher or an admin bypasses that lock. Any number of assignments may set `countsTowardCertificate` (including none). This slice stores the flag and pass/fail. It does not issue certificates.
+
+```
+GET    /courses/{id}/assignments                         // { assignments: [...] }. Students: published only.
+POST   /courses/{id}/assignments                         // Teacher. Body: title, moduleId, passPercent?, countsTowardCertificate?. **201** { assignment } draft.
+GET    /courses/{id}/assignments/{assignmentId}          // { assignment }
+PATCH  /courses/{id}/assignments/{assignmentId}          // Teacher. instructions/rubric/criteria/status.
+DELETE /courses/{id}/assignments/{assignmentId}          // Teacher. Enqueues S3 keys, then deletes rows.
+
+POST   /courses/{id}/assignments/{assignmentId}/images   // Teacher. slot instructions|rubric, contentType image/jpeg|png|webp|gif, byteSize 1..52428800. { uploadUrl }
+POST   .../images/{slot}/complete                        // HEAD; marks the picture ready.
+GET    .../images/{slot}/url                             // Presigned GET, inline, 300s.
+
+POST   .../submissions                                   // Student opens a draft. **201**
+GET    .../submissions                                   // { submissions }. Owner: all. Student: own rows only. No userId query.
+GET    .../submissions/{submissionId}
+POST   .../submissions/{submissionId}/files              // title, fileType pdf|csv|xlsx|docx|sav, byteSize 1..104857600. { fileId, uploadUrl }
+POST   .../files/{fileId}/complete
+GET    .../files/{fileId}/url                            // Attachment, sanitized filename, 300s.
+POST   .../submissions/{submissionId}/submit             // Optional note. Requires one ready file.
+POST   .../submissions/{submissionId}/grade              // Teacher. scores[{criterionId, points}], feedback. { scorePercent, passed }
+```
+
+**Rules:** Pass percent default **70** (instructor **1–100**). Score is integer half-up `(100 * awarded + maxTotal // 2) // maxTotal`. A passing grade closes further attempts. A failing grade allows a new draft. Grades are immutable. Instructions and the optional rubric narrative are plain text, sanitized rich text (`p`, `br`, `strong`, `em`, `ul`, `ol`, `li`, `https` links), or one picture. Scoring uses plain-text criterion labels and points (1–12 criteria). Caps: **20** assignments per course, **10** files per submission. Unknown JSON keys **400**.
+
+**Storage:** `{courseId}/assignments/{assignmentId}/images/{slot}.{ext}` and `{courseId}/assignments/{assignmentId}/submissions/{submissionId}/{fileId}.{ext}`. Catalog **`s3:GetObject`** includes `*/assignments/*`. Course delete collects those keys before the row delete. Migration **020**. API deployment **CatalogApiDeploymentV42**.
+
 ### Video provider webhooks
 ```
 POST /webhooks/kinescope              // Provider status callback (`media.update.status`); optional
@@ -204,7 +233,7 @@ POST /webhooks/kinescope/drm-auth     // DRM auth callback; validates signed tok
 
 ## 8. React Frontend (MVP)
 
-**User-visible brand:** **Research Spectrum** (strings, titles/meta, logo/favicons via [`frontend/src/lib/brand.ts`](frontend/src/lib/brand.ts) and shared header/footer). Repo, stacks, and infra names remain **StreamMyCourse**. Shared visual foundation (Tailwind `rs-*` tokens, self-hosted Plus Jakarta Sans, UI primitives) is in place. Public marketing routes (`/`, `/about`, `/faq`, `/contact`, `/research-team`), student app flows (catalog, detail, player, quiz, login, account), and instructor app pages (dashboard, course management, question banks, payment setup) use that system. Legacy student paths (`/learn`, unrouted Figma pages) may still use older styling until cleaned up.
+**User-visible brand:** **Research Spectrum** (strings, titles/meta, logo/favicons via [`frontend/src/lib/brand.ts`](frontend/src/lib/brand.ts) and shared header/footer). Repo, stacks, and infra names remain **StreamMyCourse**. Shared visual foundation (Tailwind `rs-*` tokens, self-hosted Plus Jakarta Sans, UI primitives) is in place. Public marketing routes (`/`, `/about`, `/faq`, `/contact`, `/research-team`), student app flows (catalog, detail, player, quiz, login, account), and instructor app pages (dashboard, course management, question banks, payment setup, assignment create/review) use that system. Student assignment page: `/courses/:courseId/assignments/:assignmentId`. Teacher: `/courses/:courseId/assignments` and `.../review`. Legacy student paths (`/learn`, unrouted Figma pages) may still use older styling until cleaned up.
 
 ### Tech Stack
 - **React 19** + **Vite**
@@ -309,7 +338,7 @@ The frontend is built as **two separate SPAs** deployed to different subdomains:
 - S3 bucket: Private with presigned URL access (PUT for upload, GET for playback)
 - Lambda IAM: `s3:PutObject` and `s3:GetObject` on `${bucket}/*` (upload + presigned playback; object keys are course/lesson-scoped under the same bucket); **RDS** path uses VPC + Secrets Manager + relational access; legacy DynamoDB policy applies only if the stack still attaches catalog table permissions for rollback
 - CORS: Origin validation with configurable allowlist (`ALLOWED_ORIGINS`, set from CloudFormation `CorsAllowOrigin`); no implicit wildcard (empty env means misconfiguration). Use `ALLOWED_ORIGINS=*` only when intentionally allowing any origin in dev/tools. API Gateway GatewayResponses add CORS headers on 4XX/5XX
-- Presigned uploads: allowed **video / image** `Content-Type` only for lesson video and thumbnails; **RS-11** lesson attachments use **pdf / csv / xlsx / docx / sav** under `{courseId}/lessons/{lessonId}/files/{fileId}.{ext}` with presigned PUT **Content-Length** signed to the declared byte size (max **100 MiB** per file). S3 keys for video/thumbnails remain `{courseId}/lessons/{lessonId}/video/{uuid}.{ext}`, `{courseId}/lessons/{lessonId}/thumbnail/{uuid}.{ext}`, and `{courseId}/thumbnail/{uuid}.{ext}`; presigned playback **GET** for video/thumbnail keys only on the video adapter; lesson file **GET** uses a separate presign path. Conditional **repo** update when persisting a new **`videoKey`** after presign (mitigates concurrent upload races). S3 caps a single PUT at **5 GiB** (lesson files stay within the 100 MiB product limit).
+- Presigned uploads: allowed **video / image** `Content-Type` only for lesson video and thumbnails; **RS-11** lesson attachments use **pdf / csv / xlsx / docx / sav** under `{courseId}/lessons/{lessonId}/files/{fileId}.{ext}` with presigned PUT **Content-Length** signed to the declared byte size (max **100 MiB** per file). **RS-13** submission files use the same types and size under `{courseId}/assignments/{assignmentId}/submissions/{submissionId}/{fileId}.{ext}`; instruction pictures are jpeg/png/webp/gif up to **50 MiB** under `{courseId}/assignments/{assignmentId}/images/{slot}.{ext}`. S3 keys for video/thumbnails remain `{courseId}/lessons/{lessonId}/video/{uuid}.{ext}`, `{courseId}/lessons/{lessonId}/thumbnail/{uuid}.{ext}`, and `{courseId}/thumbnail/{uuid}.{ext}`; presigned playback **GET** for video/thumbnail keys only on the video adapter; lesson file **GET** uses a separate presign path. Conditional **repo** update when persisting a new **`videoKey`** after presign (mitigates concurrent upload races). S3 caps a single PUT at **5 GiB** (lesson files stay within the 100 MiB product limit).
 - **Layered API abuse protection** (RDS route limits + API Gateway stage throttles); see [ADR-0012](plans/architecture/adr-0012-api-abuse-protection.md). **Product policy** (per-route RDS counters, 429 + `Retry-After`) vs **volumetric abuse** (stage throttles). RDS store errors **fail closed** with **503** (`rate_limit_store_unavailable`). **`GatewayResponseAllowOrigin`** is parameterized (default tightened away from `*` for dev/local)
 - Video stack S3: **Block Public Access**, **SSE-S3** encryption, CORS allowlist parameter (no wildcard origin); **`Range`** / **`If-Range`** allowed for cross-origin HTML5 `<video>` playback
 - **Stateful resource retention (CFN):** Templates set **`DeletionPolicy: Retain`** (and `UpdateReplacePolicy: Retain` where replacement is possible) on **`VideoBucket`** ([`video-stack.yaml`](infrastructure/templates/video-stack.yaml)), **`SiteBucket` / `TeacherSiteBucket`** ([`edge-hosting-stack.yaml`](infrastructure/templates/edge-hosting-stack.yaml)), **`MediaCleanupQueue` / `MediaCleanupDlq`** ([`media-cleanup-stack.yaml`](infrastructure/templates/media-cleanup-stack.yaml)), and **`BillingAlertTopic`** ([`billing-alarm.yaml`](infrastructure/templates/billing-alarm.yaml)); RDS uses `Snapshot` ([`rds-stack.yaml`](infrastructure/templates/rds-stack.yaml)). New stateful resources (`AWS::S3::Bucket`, `AWS::DynamoDB::Table`, `AWS::RDS::DBInstance`, `AWS::SQS::Queue`, `AWS::SNS::Topic`) MUST be added with the same convention unless they hold provably ephemeral state.

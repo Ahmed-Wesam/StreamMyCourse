@@ -32,6 +32,10 @@ const lessonNotesApi = vi.hoisted(() => ({
   listLessonNotes: vi.fn(),
 }))
 
+const assignmentsApi = vi.hoisted(() => ({
+  listCourseAssignments: vi.fn(),
+}))
+
 vi.mock('../lib/api/lessonFiles', () => ({
   listLessonFiles: (...args: unknown[]) => lessonFilesApi.listLessonFiles(...args),
   getLessonFileDownloadUrl: (...args: unknown[]) => lessonFilesApi.getLessonFileDownloadUrl(...args),
@@ -39,6 +43,10 @@ vi.mock('../lib/api/lessonFiles', () => ({
 
 vi.mock('../lib/api/lessonNotes', () => ({
   listLessonNotes: (...args: unknown[]) => lessonNotesApi.listLessonNotes(...args),
+}))
+
+vi.mock('../lib/api/assignments', () => ({
+  listCourseAssignments: (...args: unknown[]) => assignmentsApi.listCourseAssignments(...args),
 }))
 
 vi.mock('../lib/api/catalog', async (importOriginal) => {
@@ -153,8 +161,10 @@ describe('LessonPlayerPage', () => {
     api.updateLessonProgress.mockReset()
     lessonFilesApi.listLessonFiles.mockReset()
     lessonNotesApi.listLessonNotes.mockReset()
+    assignmentsApi.listCourseAssignments.mockReset()
     lessonFilesApi.listLessonFiles.mockResolvedValue([])
     lessonNotesApi.listLessonNotes.mockResolvedValue([])
+    assignmentsApi.listCourseAssignments.mockResolvedValue([])
 
     api.getCourse.mockResolvedValue({
       id: 'c1',
@@ -1356,7 +1366,7 @@ describe('LessonPlayerPage', () => {
     expect(screen.getByRole('tabpanel').textContent).toMatch(/Desc/)
   })
 
-  it('Resources tab lists lesson files and Assignments stays placeholder', async () => {
+  it('Resources tab lists lesson files and Assignments lists module assignment', async () => {
     lessonFilesApi.listLessonFiles.mockResolvedValue([
       {
         fileId: 'f1',
@@ -1365,6 +1375,21 @@ describe('LessonPlayerPage', () => {
         fileType: 'pdf',
         byteSize: 2048,
         status: 'ready',
+      },
+    ])
+    assignmentsApi.listCourseAssignments.mockResolvedValue([
+      {
+        id: 'a1',
+        title: 'Module write-up',
+        moduleId: 'm1',
+        status: 'published',
+        passPercent: 70,
+        countsTowardCertificate: false,
+        locked: true,
+        instructions: { mode: 'plain', text: 'Do it' },
+        rubric: { mode: 'plain', text: '' },
+        criteria: [{ id: 'c1', label: 'Quality', maxPoints: 10 }],
+        myLatest: null,
       },
     ])
 
@@ -1377,8 +1402,14 @@ describe('LessonPlayerPage', () => {
     fireEvent.click(screen.getByRole('tab', { name: 'Resources' }))
     expect(screen.getByText('Workbook')).toBeTruthy()
 
+    await waitFor(() => {
+      expect(assignmentsApi.listCourseAssignments).toHaveBeenCalledWith('c1', { moduleId: 'm1' })
+    })
+
     fireEvent.click(screen.getByRole('tab', { name: 'Assignments' }))
-    expect(screen.getByTestId('lesson-player-tab-placeholder').textContent).toMatch(/not available yet/i)
+    expect(screen.queryByText(/not available yet/i)).toBeNull()
+    expect(screen.getByRole('link', { name: /Module write-up/i })).toBeTruthy()
+    expect(screen.getByText(/locked/i)).toBeTruthy()
   })
 
   it('renders mobile layout with a curriculum bottom sheet', async () => {

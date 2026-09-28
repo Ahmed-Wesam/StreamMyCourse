@@ -316,6 +316,8 @@ describe('CourseManagement', () => {
 
     const questionBanksLink = screen.getByRole('link', { name: /^Question banks$/i })
     expect(questionBanksLink.getAttribute('href')).toBe('/courses/c1/question-banks')
+    const assignmentsLink = screen.getByRole('link', { name: /^Assignments$/i })
+    expect(assignmentsLink.getAttribute('href')).toBe('/courses/c1/assignments')
   })
 
   it('renders list of lessons', async () => {

@@ -20,6 +20,29 @@ def _reject_crlf(value: str, field_name: str) -> None:
         raise ValueError(f"{field_name} must not contain CR or LF")
 
 
+def _normalize_kind(kind: str | None) -> str:
+    raw = (kind or "").strip().lower()
+    if not raw:
+        return "contact"
+    if raw in ("contact", "notify"):
+        return raw
+    raise ValueError(f"Unsupported mail kind {kind!r}")
+
+
+def _validate_notify_recipient(to_address: str) -> str:
+    addr = to_address.strip()
+    if not addr:
+        raise ValueError("Recipient is required")
+    _reject_crlf(addr, "to")
+    if "," in addr:
+        raise ValueError("Notify recipient must be a single address")
+    if any(ch.isspace() for ch in addr):
+        raise ValueError("Notify recipient must be a single address")
+    if "@" not in addr:
+        raise ValueError("Notify recipient must be a single address")
+    return addr
+
+
 def build_message(
     *,
     cfg: ZohoSmtpConfig,
@@ -44,11 +67,17 @@ def send_transactional_mail(
     subject: str,
     body_text: str,
     reply_to: str | None = None,
+    kind: str | None = None,
     smtp_factory: type[smtplib.SMTP] = smtplib.SMTP,
 ) -> None:
+    mail_kind = _normalize_kind(kind)
     to_address = to_address.strip()
-    if to_address not in ALLOWLIST_TO_ADDRESSES:
-        raise ValueError(f"Recipient {to_address!r} is not on the allowlist")
+
+    if mail_kind == "notify":
+        to_address = _validate_notify_recipient(to_address)
+    else:
+        if to_address not in ALLOWLIST_TO_ADDRESSES:
+            raise ValueError(f"Recipient {to_address!r} is not on the allowlist")
 
     _reject_crlf(subject, "subject")
 

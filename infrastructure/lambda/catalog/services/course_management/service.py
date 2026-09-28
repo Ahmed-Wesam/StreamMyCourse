@@ -26,6 +26,7 @@ from services.common.sqs_client import send_media_cleanup_job
 from services.course_management.course_page_validation import validate_and_normalize_course_page
 from services.course_management.models import Course, CourseModule, Lesson, LessonFile
 from services.course_management.ports import (
+    AssignmentMediaKeysPort,
     CourseCatalogRepositoryPort,
     ImageMediaStoragePort,
     LessonFileStoragePort,
@@ -78,6 +79,7 @@ class CourseManagementService:
         module_quiz_visibility: ModuleQuizVisibilityPort | None = None,
         module_lock: StudentModuleLockPort | None = None,
         file_storage: LessonFileStoragePort | None = None,
+        assignment_media_keys: AssignmentMediaKeysPort | None = None,
         kinescope_drm_jwt_secret: str = "",
         kinescope_drm_jwt_issuer: str = "streammycourse",
         kinescope_drm_jwt_audience: str = "kinescope",
@@ -92,6 +94,7 @@ class CourseManagementService:
         self._module_quiz_visibility = module_quiz_visibility
         self._module_lock = module_lock
         self._file_storage = file_storage
+        self._assignment_media_keys = assignment_media_keys
         self._kinescope_drm_jwt_secret = (kinescope_drm_jwt_secret or "").strip()
         self._kinescope_drm_jwt_issuer = (kinescope_drm_jwt_issuer or "").strip()
         self._kinescope_drm_jwt_audience = (kinescope_drm_jwt_audience or "").strip()
@@ -542,6 +545,8 @@ class CourseManagementService:
             if lesson.thumbnailKey.strip():
                 keys.append(lesson.thumbnailKey.strip())
         keys.extend(self._repo.list_lesson_file_object_keys_for_course(course_id))
+        if self._assignment_media_keys is not None:
+            keys.extend(self._assignment_media_keys.list_object_keys_for_course(course_id))
         deduped = list(dict.fromkeys(k.strip() for k in keys if k and k.strip()))
         if deduped and not self._media_cleanup_queue_url:
             raise ServiceUnavailable(

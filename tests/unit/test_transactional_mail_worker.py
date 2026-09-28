@@ -269,3 +269,122 @@ def test_logs_do_not_contain_body_subject_or_password(
     assert zoho_cfg.password not in log_blob
     assert sensitive_body not in log_blob
     assert sensitive_subject not in log_blob
+
+
+def test_contact_or_missing_kind_rejects_student_address(
+    mail_mod: ModuleType, zoho_cfg: Any
+) -> None:
+    RecordingSmtpFactory.reset()
+    student = "student@example.com"
+    with pytest.raises(ValueError, match="allowlist"):
+        mail_mod.send_transactional_mail(
+            cfg=zoho_cfg,
+            to_address=student,
+            subject="Hi",
+            body_text="body",
+            smtp_factory=RecordingSmtpFactory,  # type: ignore[arg-type]
+        )
+    with pytest.raises(ValueError, match="allowlist"):
+        mail_mod.send_transactional_mail(
+            cfg=zoho_cfg,
+            to_address=student,
+            subject="Hi",
+            body_text="body",
+            kind="contact",
+            smtp_factory=RecordingSmtpFactory,  # type: ignore[arg-type]
+        )
+    assert not RecordingSmtpFactory.instances
+
+
+def test_notify_accepts_one_student_address(
+    mail_mod: ModuleType, zoho_cfg: Any
+) -> None:
+    RecordingSmtpFactory.reset()
+    student = "student@example.com"
+    mail_mod.send_transactional_mail(
+        cfg=zoho_cfg,
+        to_address=student,
+        subject="Grade ready",
+        body_text="You scored 80%",
+        kind="notify",
+        smtp_factory=RecordingSmtpFactory,  # type: ignore[arg-type]
+    )
+    assert len(RecordingSmtpFactory.sent_messages) == 1
+    assert RecordingSmtpFactory.sent_messages[0]["To"] == student
+
+
+def test_notify_rejects_comma_separated_recipients(
+    mail_mod: ModuleType, zoho_cfg: Any
+) -> None:
+    RecordingSmtpFactory.reset()
+    with pytest.raises(ValueError):
+        mail_mod.send_transactional_mail(
+            cfg=zoho_cfg,
+            to_address="a@b.com,c@d.com",
+            subject="Grade ready",
+            body_text="body",
+            kind="notify",
+            smtp_factory=RecordingSmtpFactory,  # type: ignore[arg-type]
+        )
+    assert not RecordingSmtpFactory.instances
+
+
+def test_notify_rejects_crlf_in_subject_or_address(
+    mail_mod: ModuleType, zoho_cfg: Any
+) -> None:
+    RecordingSmtpFactory.reset()
+    with pytest.raises(ValueError, match="subject"):
+        mail_mod.send_transactional_mail(
+            cfg=zoho_cfg,
+            to_address="student@example.com",
+            subject="Bad\r\nSubject",
+            body_text="body",
+            kind="notify",
+            smtp_factory=RecordingSmtpFactory,  # type: ignore[arg-type]
+        )
+    with pytest.raises(ValueError):
+        mail_mod.send_transactional_mail(
+            cfg=zoho_cfg,
+            to_address="student@example.com\r\nBcc: evil@x.com",
+            subject="Ok subject",
+            body_text="body",
+            kind="notify",
+            smtp_factory=RecordingSmtpFactory,  # type: ignore[arg-type]
+        )
+    assert not RecordingSmtpFactory.instances
+
+
+def test_worker_notify_log_does_not_contain_recipient(
+    worker_mod: ModuleType,
+    zoho_cfg: Any,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    import logging
+
+    caplog.set_level(logging.INFO)
+    RecordingSmtpFactory.reset()
+    monkeypatch.setattr(worker_mod, "load_zoho_smtp_config", lambda **_: zoho_cfg)
+    real_send = worker_mod.send_transactional_mail
+
+    def send_with_fake_smtp(**kwargs: Any) -> None:
+        kwargs["smtp_factory"] = RecordingSmtpFactory  # type: ignore[assignment]
+        return real_send(**kwargs)
+
+    monkeypatch.setattr(worker_mod, "send_transactional_mail", send_with_fake_smtp)
+
+    student = "student@example.com"
+    body = {
+        "kind": "notify",
+        "to": student,
+        "subject": "Grade ready",
+        "bodyText": "You passed",
+    }
+    event = {"Records": [{"messageId": "m-notify", "body": json.dumps(body)}]}
+    out = worker_mod.lambda_handler(event, None)
+    assert out == {"batchItemFailures": []}
+    assert RecordingSmtpFactory.sent_messages
+    log_blob = caplog.text
+    assert student not in log_blob
+    assert "m-notify" in log_blob
+    assert "notify" in log_blob
