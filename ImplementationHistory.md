@@ -6,6 +6,38 @@
 
 ---
 
+## 2026-09-29 — RS-14 Research Team application
+
+### Decisions
+
+- Required courses: admin checkbox per course, default off. Only **published** checked courses count. Empty set → nobody can apply.
+- Eligibility: **valid** certificate only (revoked does not count). Enforced on **submit** only.
+- One open application (`submitted` or `under_review`). Statuses: `submitted`, `under_review`, `accepted`, `rejected`. No interview.
+- Reapply only after admin **allow-reapply** on the latest rejected row. **Accepted** is terminal for the student. Admin may correct rejected → `under_review` or `accepted`.
+- Review, status, allow-reapply, and the checkbox are **admin only** (`custom:role=admin`). Teacher role **403**. Instructor UI shows controls only for admin.
+- Notify applicant via transactional mail `kind: notify` with `bodyText` to the account email. Assignment grade mail adapter fixed from `body` to `bodyText` in the same work.
+- Marketing copy change is the Research Team page only. Homepage, about, and FAQ still say four courses until RS-15.
+
+### What landed
+
+- Migration **022** ([`022_research_team.sql`](infrastructure/database/migrations/022_research_team.sql)).
+- [`services/research_team/`](infrastructure/lambda/catalog/services/research_team/) plus public `GET /research-team/requirements`, student me/submit, admin review/allow-reapply, course requirement checkbox. API stage **CatalogApiDeploymentV44**.
+- Student `/research-team` and `/research-team/apply`, dashboard block, instructor admin review at `/research-team/applications`.
+
+### Verification
+
+- [x] Pytest: `research_team` unit suite + API stack (**99** passed in parent re-run)
+- [x] `python scripts/check_lambda_boundaries.py`
+- [x] Vitest: full frontend (**841** passed); lint **0** errors; knip exit **0**; `check:bundle` OK (`firstLoadPublic` **78.06 KB**)
+- [ ] Prod RDS **022** and API **V44** deploy
+- [ ] Browser click-path
+
+### Docs
+
+- [`design.md`](design.md) Research Team API + routes; [`roadmap.md`](roadmap.md); child plan [`plans/ui-overhaul/rs-14-research-team-application.md`](plans/ui-overhaul/rs-14-research-team-application.md); mega-plan RS-14 status
+
+---
+
 ## 2026-09-28 — RS-12 certificates
 
 ### Decisions
