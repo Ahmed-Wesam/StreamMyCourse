@@ -89,4 +89,16 @@ describe('AboutInstructorPage', () => {
     expect(screen.queryByText('Key skills')).toBeNull()
     expect(screen.queryByText('Manuscripts')).toBeNull()
   })
+
+  it('keeps four-course curriculum language but does not hard-code all-four eligibility', async () => {
+    renderAbout()
+
+    expect(await screen.findByText(/Four flagship courses/i)).toBeTruthy()
+    expect(screen.getByText(/Four Connected Courses/i)).toBeTruthy()
+
+    const pageText = document.body.textContent ?? ''
+    expect(pageText).not.toMatch(/Graduates of all four courses become eligible/i)
+    expect(pageText).toMatch(/Research Team Pathway/i)
+    expect(pageText).toMatch(/required course|Research Team page|\/research-team/i)
+  })
 })

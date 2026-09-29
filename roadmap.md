@@ -12,11 +12,15 @@ This document is the **long-range** product and architecture vision (Phase 2 onw
 
 Roughly what exists today before Phase 2 work:
 
+- **Commerce (MVP, not "future"):** USD **one-time** per-course + platform **bundle** entitlements via PayTabs HPP (mock by default); subscription tables/routes removed. Decision: [ADR-0013](plans/architecture/adr-0013-one-time-purchases-bundle-entitlements.md). Live PayTabs USD profile remains a go-live ops step.
+- **Mail (shipped path):** Cognito CustomEmailSender + contact/notify jobs use **Zoho SMTP** (Secrets Manager) via non-VPC workers — **not Amazon SES** as the live path. Decision: [ADR-0014](plans/architecture/adr-0014-student-google-cognito-srp-zoho-mail.md).
+- **Certificates (RS-12) + Research Team (RS-14):** In-repo MVP features (issue/verify/revoke; apply + admin review). Prod migrations **021** / **022** and API **V44** still pending remote Deploy (**RS-15 prod-qa**).
+
 - **Frontend:** React 19 (Vite + TS + Tailwind), student **Home** (`/`, Research Spectrum marketing; course cards from public `GET /courses` with **USD prices** when set), public **About** (`/about`), **FAQ** (`/faq`), **Contact** form (`/contact` → public **`POST /contact`**, Zoho SMTP via SQS worker — RS-10), **Research Team** (`/research-team` + signed-in `/research-team/apply`, dashboard block, admin `/research-team/applications` — RS-14; migration **022** / API **V44** pending prod), **Details** at **`/details`** (legacy), **Courses** catalog at **`/courses`** (legacy **`/catalog`** redirect), signed-in **dashboard** at **`/dashboard`** (legacy **`/my-course`** redirect), course detail (**USD prices** + **purchase** CTAs when `hasAccess === false`), lesson player (including **module quiz** entry in the sidebar and **Next** to `/courses/:courseId/modules/:moduleId/quiz` after the last lesson in a module when `moduleQuiz` is available; **RS-8** pass mark, **locked** modules when prior quiz not passed, attempt history on quiz page; **RS-11** **Resources** / **Downloads** tabs for instructor-uploaded lesson files and **Notes** tab for private per-student notes; **RS-13** module assignments — player **Assignments** tab, student `/courses/:courseId/assignments/:assignmentId`, teacher create/review, rubric grade at 70%; **RS-12** student **`/certificates`**, public **`/verify/:credentialId`**, client PDF download, dashboard certificate count, teacher revoke on course management), plus instructor dashboard and course management (instructor **pass %** per module quiz; **RS-11** attach/list/delete lesson files on each lesson row). **Billing (pre-go-live, RS-5):** mock **`POST /billing/checkout-session`** `{ productType, courseId? }` + **`/billing/success`** / **`/billing/cancel`** return routes; **`GET /billing/bundle`**, **`GET /billing/purchases`**; student **`/checkout`**, **`/account/purchases`** — see [`design.md` §13](./design.md) and [`plans/ui-overhaul/rs-5-one-time-purchases.md`](plans/ui-overhaul/rs-5-one-time-purchases.md). **Hosted** as **two SPAs** (student + teacher) on S3 + CloudFront + Route 53 via **`StreamMyCourse-EdgeHosting-prod`** in **`us-east-1`** (unified stack). On **`main`**, **[`deploy-backend.yml`](.github/workflows/deploy-backend.yml)** drives prod SPA asset deploys after edge + backend + integration tests (with **[`deploy-web-reusable.yml`](.github/workflows/deploy-web-reusable.yml)** / teacher reusable). Student UI gaps vs Figma/backend are listed in **[`reports/figma-student-ui-gap-report.md`](reports/figma-student-ui-gap-report.md)**.
 - **API:** API Gateway REST → single Python Lambda (`infrastructure/lambda/catalog/`), layered **controller → service → repo** with `plans/architecture/` ADRs and CI boundary checks. **CI** then **Deploy** ([`deploy-backend.yml`](.github/workflows/deploy-backend.yml) after green [`ci.yml`](.github/workflows/ci.yml)) runs video + API + edge + SPAs via [`scripts/deploy-backend.sh`](scripts/deploy-backend.sh) / reusable web workflows: **prod** edge, RDS, backend, integration HTTP tests, verify prod RDS, then both prod SPAs (see workflow graph for exact ordering).
-- **Data:** **RDS PostgreSQL** is the **only** persistence path — [`infrastructure/templates/rds-stack.yaml`](infrastructure/templates/rds-stack.yaml), Lambda VPC + `DB_*` wiring in [`api-stack.yaml`](infrastructure/templates/api-stack.yaml), `services/<context>/rds_repo.py`, migrations under [`infrastructure/database/migrations/`](infrastructure/database/migrations/). DynamoDB path was fully removed; `RdsStackName` is now a required parameter for api stack deploy. S3 presigned **SigV4** upload/playback (regional endpoint); MP4 playback **primarily** via presigned S3 GET; **video** stack also provisions **CloudFront + OAC** on the private bucket for a correct CDN path and cache invalidation (see `design.md` §5 / §13). **Question banks:** migrations **006**–**010** (bank name schema folded into [`006_question_banks_module_quizzes.sql`](infrastructure/database/migrations/006_question_banks_module_quizzes.sql)); create/list/rename bank names, module quiz, draft MCQ, publish with `n` + `moduleId`; MCQ validation ([`mcq_validation.py`](infrastructure/lambda/catalog/services/question_banks/mcq_validation.py)); **QB-D** optional `moduleQuiz` on modules list + passive badge; **QB-F** per-student bindings ([`binding_draw.py`](infrastructure/lambda/catalog/services/question_banks/binding_draw.py)); **QB-G** `module_quiz_attempts` + presentation shuffle; **QB-H/I** `POST .../quiz/submit`, equal-weight grading ([`grading.py`](infrastructure/lambda/catalog/services/question_banks/grading.py)), `POST .../quiz/start` phases (`in_progress` / `latest_results`, optional `retake`, `latestSubmission`), persisted submissions in **`module_quiz_attempt_submissions`**. Student quiz routes remain bank-name-free: [`ModuleQuizPage.tsx`](frontend/src/pages/ModuleQuizPage.tsx) + [`api.ts`](frontend/src/lib/api.ts) via [`StudentModuleQuizAuth.tsx`](frontend/src/components/auth/StudentModuleQuizAuth.tsx). **RS-8:** migration **018** `pass_percent`, **`PATCH …/quiz`**, **`GET …/quiz/attempts`**, module chain gating ([`gating.py`](infrastructure/lambda/catalog/services/question_banks/gating.py)) — [`plans/ui-overhaul/rs-8-quiz-gating.md`](plans/ui-overhaul/rs-8-quiz-gating.md); **prod 018 pending** pre-launch. Unit suite under [`tests/unit/services/question_banks/`](tests/unit/services/question_banks/) (incl. grading, submit, gating, attempts); HTTPS integration authored in [`test_question_bank_start.py`](tests/integration/test_question_bank_start.py) and [`test_question_bank_submit.py`](tests/integration/test_question_bank_submit.py), plus permissions/publish/visibility/publisher reads (**CatalogApiDeploymentV27**+ route in template; schema **008–010** when pipeline apply-schema runs).
-- **Video provider cutover:** catalog now uses a provider port (`services/course_management/video_providers/port.py`) with `VIDEO_PROVIDER` selection in `bootstrap.py`; `kinescope` is the default. Playback API can return provider contract `{ provider, videoId, drmAuthToken }`; provider callbacks are `POST /webhooks/kinescope` and `POST /webhooks/kinescope/drm-auth`; Kinescope cleanup IDs flow through async media-cleanup payloads.
-- **Auth (optional on API):** Cognito user pool via CloudFormation (`StreamMyCourse-Auth-prod`); API authorizer when the pool ARN is passed on backend deploy. **Student single-session** (one active student session per user; teacher client exempt; **`session_superseded`** API guard + Cognito Pre Token refresh deny) — implemented in repo; see [`design.md` §9](./design.md) and [`plans/student-single-session-refresh-spike.md`](plans/student-single-session-refresh-spike.md). Public reads remain public, but are wired to a **permissive API Gateway REQUEST authorizer** so authenticated callers can supply `sub`/`role` context without any Cognito/JWKS calls from the in-VPC catalog Lambda. **Auth template** ([`infrastructure/templates/auth-stack.yaml`](infrastructure/templates/auth-stack.yaml)): **`GoogleClientId` / `GoogleClientSecret`** required; **student** client **`SupportedIdentityProviders: [COGNITO, Google]`** with **SRP** + OAuth; **teacher** client **Google-only**; **PreSignUp** linking + **Zoho CustomEmailSender** (`ZOHO_SMTP_PASSWORD` / `streammycourse/zoho-smtp/prod`). Catalog **`PATCH /users/me`** + migration **016**; student **terms gate**. Stack **defaults** merge **`http://localhost:{5173|5174}/`** and **`http://127.0.0.1:{5173|5174}/`** for Hosted UI callback + sign-out URLs. **Full** [`.github/workflows/deploy-backend.yml`](.github/workflows/deploy-backend.yml) auth jobs require **`GOOGLE_OAUTH_*`** and package PreSignUp on prod deploy. **Student SPA:** [`frontend/src/lib/auth.ts`](frontend/src/lib/auth.ts) **`loginWith.email: true`** + OAuth domain; register/verify/forgot routes. **`npm run build:all`** enforces **`VITE_COGNITO_DOMAIN`** when pool + client ids are set ([`scripts/check-cognito-spa-env.mjs`](scripts/check-cognito-spa-env.mjs)). Operator notes: [`infrastructure/docs/admin-auth-runbook.md`](infrastructure/docs/admin-auth-runbook.md). Child plan: [`plans/ui-overhaul/rs-6-email-password.md`](plans/ui-overhaul/rs-6-email-password.md).
+- **Data:** **RDS PostgreSQL** is the **only** persistence path — [`infrastructure/templates/rds-stack.yaml`](infrastructure/templates/rds-stack.yaml), Lambda VPC + `DB_*` wiring in [`api-stack.yaml`](infrastructure/templates/api-stack.yaml), `services/<context>/rds_repo.py`, migrations under [`infrastructure/database/migrations/`](infrastructure/database/migrations/). DynamoDB path was fully removed; `RdsStackName` is now a required parameter for api stack deploy. S3 presigned **SigV4** upload/playback (regional endpoint); MP4 playback **primarily** via presigned S3 GET; **video** stack also provisions **CloudFront + OAC** on the private bucket for a correct CDN path and cache invalidation (see `design.md` §5 / §13). **Question banks:** migrations **006**–**010** (bank name schema folded into [`006_question_banks_module_quizzes.sql`](infrastructure/database/migrations/006_question_banks_module_quizzes.sql)); create/list/rename bank names, module quiz, draft MCQ, publish with `n` + `moduleId`; MCQ validation ([`mcq_validation.py`](infrastructure/lambda/catalog/services/question_banks/mcq_validation.py)); **QB-D** optional `moduleQuiz` on modules list + passive badge; **QB-F** per-student bindings ([`binding_draw.py`](infrastructure/lambda/catalog/services/question_banks/binding_draw.py)); **QB-G** `module_quiz_attempts` + presentation shuffle; **QB-H/I** `POST .../quiz/submit`, equal-weight grading ([`grading.py`](infrastructure/lambda/catalog/services/question_banks/grading.py)), `POST .../quiz/start` phases (`in_progress` / `latest_results`, optional `retake`, `latestSubmission`), persisted submissions in **`module_quiz_attempt_submissions`**. Student quiz routes remain bank-name-free: [`ModuleQuizPage.tsx`](frontend/src/pages/ModuleQuizPage.tsx) + [`api.ts`](frontend/src/lib/api.ts) via [`StudentModuleQuizAuth.tsx`](frontend/src/components/auth/StudentModuleQuizAuth.tsx). **RS-8:** migration **018** `pass_percent`, **`PATCH …/quiz`**, **`GET …/quiz/attempts`**, module chain gating ([`gating.py`](infrastructure/lambda/catalog/services/question_banks/gating.py)) — [`plans/ui-overhaul/rs-8-quiz-gating.md`](plans/ui-overhaul/rs-8-quiz-gating.md); **prod 018–022 pending** pre-launch (**RS-15**). Unit suite under [`tests/unit/services/question_banks/`](tests/unit/services/question_banks/) (incl. grading, submit, gating, attempts); HTTPS integration authored in [`test_question_bank_start.py`](tests/integration/test_question_bank_start.py) and [`test_question_bank_submit.py`](tests/integration/test_question_bank_submit.py), plus permissions/publish/visibility/publisher reads (**CatalogApiDeploymentV27**+ route in template; schema **008–010** when pipeline apply-schema runs).
+- **Video provider cutover:** catalog now uses a provider port (`services/course_management/video_providers/port.py`) with `VIDEO_PROVIDER` selection in `bootstrap.py`; `kinescope` is the default. Playback API can return provider contract `{ provider, videoId, drmAuthToken }`; provider callbacks are `POST /webhooks/kinescope` and `POST /webhooks/kinescope/drm-auth`; Kinescope cleanup IDs flow through async media-cleanup payloads. See [ADR-0011](plans/architecture/adr-0011-video-provider-port-kinescope-cutover.md).
+- **Auth (optional on API):** Cognito user pool via CloudFormation (`StreamMyCourse-Auth-prod`); API authorizer when the pool ARN is passed on backend deploy. **Student single-session** (one active student session per user; teacher client exempt; **`session_superseded`** API guard + Cognito Pre Token refresh deny) — implemented in repo; see [`design.md` §9](./design.md) and [`plans/student-single-session-refresh-spike.md`](plans/student-single-session-refresh-spike.md). Public reads remain public, but are wired to a **permissive API Gateway REQUEST authorizer** so authenticated callers can supply `sub`/`role` context without any Cognito/JWKS calls from the in-VPC catalog Lambda. **Auth template** ([`infrastructure/templates/auth-stack.yaml`](infrastructure/templates/auth-stack.yaml)): **`GoogleClientId` / `GoogleClientSecret`** required; **student** client **`SupportedIdentityProviders: [COGNITO, Google]`** with **SRP** + OAuth; **teacher** client **Google-only**; **PreSignUp** linking + **Zoho CustomEmailSender** (`ZOHO_SMTP_PASSWORD` / `streammycourse/zoho-smtp/prod`). Catalog **`PATCH /users/me`** + migration **016**; student **terms gate**. Stack **defaults** merge **`http://localhost:{5173|5174}/`** and **`http://127.0.0.1:{5173|5174}/`** for Hosted UI callback + sign-out URLs. **Full** [`.github/workflows/deploy-backend.yml`](.github/workflows/deploy-backend.yml) auth jobs require **`GOOGLE_OAUTH_*`** and package PreSignUp on prod deploy. **Student SPA:** [`frontend/src/lib/auth.ts`](frontend/src/lib/auth.ts) **`loginWith.email: true`** + OAuth domain; register/verify/forgot routes. **`npm run build:all`** enforces **`VITE_COGNITO_DOMAIN`** when pool + client ids are set ([`scripts/check-cognito-spa-env.mjs`](scripts/check-cognito-spa-env.mjs)). Operator notes: [`infrastructure/docs/admin-auth-runbook.md`](infrastructure/docs/admin-auth-runbook.md). Child plan: [`plans/ui-overhaul/rs-6-email-password.md`](plans/ui-overhaul/rs-6-email-password.md). Auth decision: [ADR-0014](plans/architecture/adr-0014-student-google-cognito-srp-zoho-mail.md).
 - **Quality:** GitHub Actions (frontend ESLint + Knip + production build + Vitest, Lambda compile + Vulture + Radon informational, YAML parse for app + IAM bootstrap templates, import boundaries); **`npm run test:coverage`** is **local-only** (**`@vitest/coverage-v8`**, **`vitest run --coverage`**); plain **`npm run test`** stays non-instrumented ([`vitest.config.ts`](frontend/vitest.config.ts)). CORS hardened (Lambda + GatewayResponses + S3 bucket CORS); presigned upload **Content-Type** checks, **course-scoped S3 key** playback presign, conditional **`videoKey`** write, **API abuse protection** (RDS route limits + API Gateway throttles — see [ADR-0012](plans/architecture/adr-0012-api-abuse-protection.md)), SPA CloudFront **response headers** (HSTS / nosniff / frame deny), video bucket **Block Public Access** + **SSE-S3**.
 - **Ops (IAM, outside Actions):** GitHub OIDC deploy role bootstrapped with [`github-deploy-role-stack.yaml`](infrastructure/templates/github-deploy-role-stack.yaml) + [`scripts/deploy-github-iam-stack`](scripts/deploy-github-iam-stack.sh) (see [`infrastructure/README.md`](infrastructure/README.md)); not part of the **CI** or **Deploy** workflows. Backend inline policy scopes **CloudFormation / Lambda / DynamoDB / logs** to **`StreamMyCourse-*`** where feasible; SPA deploy workflows use **explicit** `workflow_call` secret maps—**re-sync** [`iam-policy-github-deploy-backend.json`](infrastructure/iam-policy-github-deploy-backend.json) / the stack template to the live role after edits (account-specific ARNs in the JSON).
 - **Deploy topology:** **Prod-only** AWS — no mirrored dev stacks; local Vite proxies to prod API/Cognito ([`design.md` §10](./design.md)); legacy `*-dev` teardown in [`infrastructure/README.md`](infrastructure/README.md) Phase 0.
@@ -25,7 +29,7 @@ Roughly what exists today before Phase 2 work:
 
 ## Bridge to Phase 2 (recommended order)
 
-Do these before or in parallel with heavy Phase 2 (payments / DRM) scope; aligns with [design.md §13](./design.md) and [ImplementationHistory.md](./ImplementationHistory.md).
+Do these before or in parallel with heavy Phase 2 scope; aligns with [design.md §13](./design.md) and [ImplementationHistory.md](./ImplementationHistory.md). **Note:** one-time purchases and Zoho mail are already MVP ([ADR-0013](plans/architecture/adr-0013-one-time-purchases-bundle-entitlements.md), [ADR-0014](plans/architecture/adr-0014-student-google-cognito-srp-zoho-mail.md)) — Phase 2 is hardening / optional alternatives, not first commerce.
 
 | Order | Track | Outcome |
 |-------|--------|---------|
@@ -47,20 +51,20 @@ Optional parallel work: richer `contracts` typing at the HTTP boundary.
 | Feature | Description | Complexity |
 |---------|-------------|------------|
 | **Provider reliability & DRM hardening** | Expand telemetry, retries, and policy controls around the shipped Kinescope integration | High |
-| **Stripe Payments** | One-time purchases + subscriptions | High |
+| **Alternate PSP / Stripe (optional)** | Historical idea: Stripe one-time + subscriptions. **MVP already ships PayTabs one-time + bundle** ([ADR-0013](plans/architecture/adr-0013-one-time-purchases-bundle-entitlements.md)); do not treat Stripe subscriptions as current MVP. | Low–Medium |
 | **Reviews & Ratings** | 5-star + text reviews per course | Medium |
 | **Watchlist** | Save courses for later | Low |
 | **Progress Tracking v2** | % complete, lesson completion markers | Medium |
 | **Instructor Analytics** | Views, revenue, enrollment charts | Medium |
-| **Email Notifications** | SES for welcome, purchase confirmations | Medium |
+| **Richer email notifications** | Extra templates (welcome, purchase confirm). **Shipped mail path is Zoho SMTP**, not SES ([ADR-0014](plans/architecture/adr-0014-student-google-cognito-srp-zoho-mail.md)). | Medium |
 | **1080p Transcoding** | Add 1080p quality tier | Low |
 | **Quality Selector** | Manual quality override in player | Low |
 
 ### New Services
 - **No new video vendor required for this phase baseline:** Kinescope integration is already in the shipped path; Phase 2 focuses on hardening/operations and optional multi-provider strategy.
-- **RDS PostgreSQL:** Payments, subscriptions, analytics (ACID required) — **catalog already on RDS in deployed prod**; Phase 2 extends the schema with `payments` / `subscriptions` / `reviews` / `daily_stats` tables (see [Appendix: Full Data Models](#appendix-full-data-models)).
-- **SES:** Transactional emails
-- **Stripe:** Payment processing
+- **RDS PostgreSQL:** Analytics / reviews extensions — **catalog already on RDS**; `purchases` / `bundle_offers` are MVP (migration **015**). Historical Stripe subscription sketches live only in the [historical appendix](#appendix-full-data-models-historical).
+- **Zoho SMTP (shipped):** Transactional Cognito + contact/notify mail — not SES
+- **PayTabs (shipped MVP path):** One-time HPP; optional alternate PSP later
 - **ElastiCache (Optional):** Session caching if auth latency becomes issue
 
 ### Architecture Changes
@@ -71,9 +75,9 @@ Existing MVP +
   │   ├── Upload init: `POST /upload-url` -> provider adapter
   │   ├── Playback: `GET /playback/...` -> provider payload (`videoId` + `drmAuthToken`)
   │   └── Webhooks: `/webhooks/kinescope` + `/webhooks/kinescope/drm-auth`
-  ├── RDS PostgreSQL (Payments, analytics)
-  ├── SES (Email notifications)
-  └── Stripe Webhooks → Lambda
+  ├── RDS PostgreSQL (analytics / reviews extensions; purchases already MVP)
+  ├── Zoho SMTP (shipped transactional mail; SES is not the live path)
+  └── PayTabs IPN → SQS → fulfillment (MVP); optional alternate PSP later
 ```
 
 ---
@@ -86,7 +90,7 @@ Existing MVP +
 |---------|-------------|------------|
 | **Admin Panel** | User mgmt, course moderation, refunds | High |
 | **Full-Text Search** | OpenSearch for course discovery | High |
-| **Certificates** | **In repo (RS-12):** one certificate per course, public verify, client PDF. Prod migration **021** not applied. | Medium |
+| **Certificates** | **Shipped in MVP (RS-12)** — moved out of “future”: one certificate per course, public verify, client PDF. Prod migration **021** pending **RS-15 prod-qa**. | — (done in-repo) |
 | **Batch Uploads** | Multiple lessons at once | Medium |
 | **WebSocket API** | Real-time upload progress, future live chat | Medium |
 | **WAF** | DDoS protection, advanced security rules | Low — deferred (RDS + API GW limits shipped; see [ADR-0012](plans/architecture/adr-0012-api-abuse-protection.md)) |
@@ -135,6 +139,8 @@ Phase 2 +
 
 ## Full Architecture (All Phases)
 
+> Vision diagram mixing **shipped MVP** pieces with Phase 2+ ideas. Live transactional mail is **Zoho SMTP** (not SES). Catalog + purchases are on **RDS** (DynamoDB catalog path removed).
+
 ```
 ┌─────────────────────────────────────────────────────────────────┐
 │                        REACT FRONTEND                            │
@@ -167,9 +173,9 @@ Phase 2 +
                     ▼                           ▼                           ▼
            ┌─────────────┐            ┌──────────────┐          ┌─────────────┐
            │  DynamoDB   │            │    RDS       │          │ ElastiCache │
-           │ (Users,     │            │  PostgreSQL  │          │  (Redis)    │
-           │  Progress,  │            │  (Payments,  │          │  (Sessions) │
-           │  Catalog)   │            │  Analytics)  │          └─────────────┘
+           │ (legacy /   │            │  PostgreSQL  │          │  (Redis)    │
+           │  unused)    │            │  (catalog +  │          │  (Sessions) │
+           │             │            │  purchases)  │          └─────────────┘
            └─────────────┘            └──────┬───────┘
                                            │
                                            ▼
@@ -182,8 +188,8 @@ Phase 2 +
                     │                      │                      │
                     ▼                      ▼                      ▼
            ┌─────────────┐      ┌─────────────────┐    ┌─────────────┐
-           │  SQS / SNS   │      │  AWS Cognito    │    │   SES       │
-           │  (Async)     │      │  (Auth)         │    │  (Email)    │
+           │  SQS / SNS   │      │  AWS Cognito    │    │  Zoho SMTP │
+           │  (Async)     │      │  (Auth)         │    │  (Email)   │
            └──────┬──────┘      └─────────────────┘    └─────────────┘
                   │
                   ▼
@@ -214,14 +220,14 @@ This table mixes **shipped MVP** choices with **Phase 2+ direction**. A “Chose
 | Decision | Options | Chosen | Rationale |
 |----------|---------|--------|-----------|
 | **Auth** | Cognito vs Auth0 vs Clerk | Cognito | AWS native, cost-effective |
-| **Data strategy (auth vs payments)** | DynamoDB-only vs split stores | DynamoDB for profiles/roles now; RDS for payments in Phase 2 | DynamoDB fits auth and catalog; PostgreSQL adds ACID for Stripe, refunds, and reporting when monetization ships |
+| **Data strategy (auth vs payments)** | DynamoDB-only vs split stores | **RDS for catalog + purchases (MVP)**; Cognito for identity | Dynamo path removed; purchase entitlements on PostgreSQL ([ADR-0013](plans/architecture/adr-0013-one-time-purchases-bundle-entitlements.md)) |
 | **Video Player** | Video.js vs hls.js vs DPlayer | **MVP:** native HTML5 `<video>` for MP4. **Phase 2+:** hls.js (or similar) if HLS or adaptive bitrate is required | Matches shipped MP4-only path; hls.js is a natural fit when streaming format moves beyond progressive MP4 |
 | **State** | Redux vs Zustand vs Jotai | **MVP:** React component state plus [`frontend/src/lib/api.ts`](frontend/src/lib/api.ts) (`fetch`); no Zustand in-tree. **Phase 2+:** Zustand (or similar) if UI complexity warrants; TanStack Query only with an ADR | Keeps MVP small; avoid parallel data stacks until needed |
 | **CSS** | Tailwind vs MUI vs Chakra | Tailwind | Customizable, smaller bundle |
 | **Forms** | Formik vs RHF | **MVP:** lightweight controlled inputs where needed. **Phase 2+:** RHF + Zod if forms and validation grow | RHF + Zod are a strong default when form surface area expands; not required for the current MVP screens |
 | **Transcoder** | MediaConvert vs FFmpeg self-hosted | MediaConvert | Serverless, no ops |
 | **Search** | OpenSearch vs Algolia vs Typesense | OpenSearch | AWS native, cost at scale |
-| **Payments** | Stripe vs PayPal vs Square | Stripe | Developer experience |
+| **Payments** | Stripe vs PayPal vs Square vs PayTabs | **MVP: PayTabs one-time USD** ([ADR-0013](plans/architecture/adr-0013-one-time-purchases-bundle-entitlements.md)); Stripe was an early roadmap pick, not the shipped path | Matches Research Spectrum RS-5 |
 | **Mobile** | React Native vs Flutter | TBD | Team expertise decides |
 
 ---
@@ -251,17 +257,19 @@ Rough order-of-magnitude only; actual spend depends on egress, video minutes, an
 
 ---
 
-## Appendix: Full API Spec
+## Appendix: Full API Spec (historical sketches)
 
-See design.md for MVP APIs. Additional endpoints for future phases:
+> **Historical.** MVP commerce APIs are PayTabs one-time checkout + purchase entitlement routes in [design.md](./design.md) / [ADR-0013](plans/architecture/adr-0013-one-time-purchases-bundle-entitlements.md). The Stripe / subscription shapes below are **not** the shipped MVP contract.
 
-### Payments (Phase 2)
+See design.md for MVP APIs. Additional endpoints once considered for later phases:
+
+### Payments / subscriptions (historical — superseded by RS-5)
 ```
-POST /payments/intent              # Stripe PaymentIntent
-POST /payments/webhook             # Stripe webhook
+POST /payments/intent              # Stripe PaymentIntent (not shipped)
+POST /payments/webhook             # Stripe webhook (not shipped)
 GET  /payments/history
-POST /subscriptions                # Create subscription
-PUT  /subscriptions/{id}/cancel    # Cancel subscription
+POST /subscriptions                # Create subscription (removed; migration 015)
+PUT  /subscriptions/{id}/cancel    # Cancel subscription (removed)
 ```
 
 ### Reviews (Phase 2)
@@ -297,9 +305,11 @@ GET /search/suggestions?q=partial
 
 ---
 
-## Appendix: Full Data Models
+## Appendix: Full Data Models (historical)
 
-### RDS PostgreSQL (Phase 2+)
+> **Historical.** Shipped MVP uses `purchases` / `bundle_offers` / course prices (migration **015**), not the Stripe `payments` / `subscriptions` tables below. Prefer [design.md §6](./design.md) and [ADR-0013](plans/architecture/adr-0013-one-time-purchases-bundle-entitlements.md).
+
+### RDS PostgreSQL (early Phase 2 sketches)
 
 ```sql
 -- Payments

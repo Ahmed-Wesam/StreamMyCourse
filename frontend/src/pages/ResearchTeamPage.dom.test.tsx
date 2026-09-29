@@ -298,11 +298,13 @@ describe('ResearchTeamPage', () => {
     })
     expect(getMyResearchTeam).not.toHaveBeenCalled()
 
-    expect(
-      screen.getByText(
-        /Eligibility does not guarantee acceptance\. Selection considers interviews/i,
-      ),
-    ).toBeTruthy()
+    const pageText = document.body.textContent ?? ''
+    expect(pageText).not.toMatch(/Selection considers interviews/i)
+    expect(pageText).not.toMatch(/\binterviews?\b/i)
+    expect(pageText).toMatch(/Eligibility does not guarantee acceptance/i)
+    expect(pageText).toMatch(/admin/i)
+    expect(pageText).toMatch(/required course/i)
+    expect(pageText).toMatch(/certificate for each required course/i)
 
     const coursesLinks = screen
       .getAllByRole('link')

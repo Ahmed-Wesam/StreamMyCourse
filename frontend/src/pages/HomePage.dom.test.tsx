@@ -201,4 +201,24 @@ describe('HomePage', () => {
     })
     expect((await screen.findAllByText('Recovered Course')).length).toBeGreaterThan(0)
   })
+
+  it('keeps four-courses catalog heading and drops interview eligibility claims', async () => {
+    renderHome()
+
+    await waitFor(() => {
+      expect(screen.getByRole('heading', { name: COURSES_HEADING })).toBeTruthy()
+    })
+
+    const pageText = document.body.textContent ?? ''
+    expect(pageText).not.toMatch(/Interview & Selection Process/i)
+    expect(pageText).not.toMatch(/Selection is based on interviews/i)
+    expect(pageText).not.toMatch(/move through interviews/i)
+    expect(pageText).toMatch(/How Eligibility Works/i)
+    expect(pageText).toMatch(/required course|\/research-team|Research Team/i)
+
+    const learnMoreToTeam = screen
+      .getAllByRole('link', { name: /Learn more/i })
+      .find((link) => (link.getAttribute('href') ?? '') === '/research-team')
+    expect(learnMoreToTeam).toBeTruthy()
+  })
 })

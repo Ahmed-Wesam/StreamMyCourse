@@ -10,13 +10,13 @@ export const researchTeamHero = {
   secondaryCta: 'View Eligibility Requirements',
   cardTitle: 'Research Team Eligibility',
   cardBody:
-    'Create an account and complete all four Research Spectrum courses to become eligible to apply to the Research Team.',
+    'Create an account and earn certificates for the admin-required Research Spectrum courses to become eligible to apply to the Research Team. The live required list is on this page.',
   pathwaySteps: [
     'Research Methodology',
     'Statistics & SPSS',
     'Scientific Writing',
     'Systematic Reviews & Meta-Analysis',
-    'Earn all four certificates',
+    'Earn certificates for required courses',
     'Become eligible to apply',
   ] as const,
 } as const
@@ -116,7 +116,7 @@ export const researchTeamHowItWorks = {
   steps: [
     {
       title: 'Learn',
-      body: 'Complete the four Research Spectrum courses and earn your certificates.',
+      body: 'Complete the Research Spectrum courses required for eligibility and earn your certificates.',
     },
     {
       title: 'Apply',
@@ -136,8 +136,8 @@ export const researchTeamHowItWorks = {
 export const researchTeamEligibility = {
   kicker: 'Before You Apply',
   title: 'Eligibility Requirements',
-  lead: 'Complete all four Research Spectrum courses to unlock the application.',
-  certificateNote: 'Earn all four certificates',
-  note: 'Eligibility does not guarantee acceptance. Selection considers interviews, course performance, assignments, English proficiency, and research skills.',
+  lead: 'Earn certificates for the admin-required courses listed on this page to unlock the application.',
+  certificateNote: 'Earn a certificate for each required course',
+  note: 'Eligibility does not guarantee acceptance. Selection considers course performance, assignments, English proficiency, and research skills. Administrators choose which published courses are required; this page shows the live list.',
   primaryCta: 'Explore Courses',
 } as const

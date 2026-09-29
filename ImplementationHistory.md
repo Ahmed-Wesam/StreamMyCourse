@@ -6,6 +6,35 @@
 
 ---
 
+## 2026-09-29 — RS-15 docs, legal alignment, QA closeout (in progress)
+
+### Decisions (locked in child plan)
+
+- Prod migrate/deploy for closeout: **remote CI only** (`deploy-backend.yml` on `main`) — not local deploy scripts.
+- Restore `plans/architecture/` + `.gitignore` exception for that subtree only; leave `plans/ui-overhaul/` local-only.
+- Eng legal alignment only (no counsel letter). Keep “four courses” catalog language; fix false eligibility / Settings / interview claims.
+- Next free ADR numbers after restore: **0013** (RS-5 purchases) and **0014** (RS-6 auth + Zoho).
+
+### What landed (docs / architecture slices)
+
+- [x] **Architecture restore** — `plans/architecture/` restored and tracked; `.gitignore` exception for that subtree.
+- [x] **ADRs** — re-authored [ADR-0011](plans/architecture/adr-0011-video-provider-port-kinescope-cutover.md), [ADR-0012](plans/architecture/adr-0012-api-abuse-protection.md); added [ADR-0013](plans/architecture/adr-0013-one-time-purchases-bundle-entitlements.md) (RS-5), [ADR-0014](plans/architecture/adr-0014-student-google-cognito-srp-zoho-mail.md) (RS-6); refreshed [`module-map.md`](plans/architecture/module-map.md).
+- [x] **Marketing / legal TDD** — eligibility and privacy copy aligned in prior RS-15 slices (Research Team / FAQ / home / about; privacy contract tests). Catalog “four courses” product language kept.
+- [x] **Contract docs sync (this slice)** — [`design.md`](design.md) (§6 migrations **015–022**, routes, purchase access wording, §13 RS-15 / ADR links); [`roadmap.md`](roadmap.md) (MVP = one-time purchases + Zoho; certificates/Research Team as shipped-in-repo; historical subscription appendix); mega-plan + [`rs-15-docs-legal-qa.md`](plans/ui-overhaul/rs-15-docs-legal-qa.md) status.
+
+### Verification / still open (prod-qa slice)
+
+- [ ] Remote CI Deploy applies migrations **015–022** + API **V44** (do not claim prod migrate done yet)
+- [ ] `./scripts/run-local-integration-tests.sh` against prod after Deploy
+- [ ] Local CI-parity checklist (`AGENTS.md`) + light a11y sample
+- [ ] Final `/update_docs` + mark RS-15 Done
+
+### Docs
+
+- Child plan: [`plans/ui-overhaul/rs-15-docs-legal-qa.md`](plans/ui-overhaul/rs-15-docs-legal-qa.md); mega-plan RS-15 **In progress** (docs done; prod QA pending)
+
+---
+
 ## 2026-09-29 — RS-14 Research Team application
 
 ### Decisions
@@ -16,7 +45,7 @@
 - Reapply only after admin **allow-reapply** on the latest rejected row. **Accepted** is terminal for the student. Admin may correct rejected → `under_review` or `accepted`.
 - Review, status, allow-reapply, and the checkbox are **admin only** (`custom:role=admin`). Teacher role **403**. Instructor UI shows controls only for admin.
 - Notify applicant via transactional mail `kind: notify` with `bodyText` to the account email. Assignment grade mail adapter fixed from `body` to `bodyText` in the same work.
-- Marketing copy change is the Research Team page only. Homepage, about, and FAQ still say four courses until RS-15.
+- Marketing copy for Research Team eligibility updated under RS-15; catalog “four courses” product language kept.
 
 ### What landed
 

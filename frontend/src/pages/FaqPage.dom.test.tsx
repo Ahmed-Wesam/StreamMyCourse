@@ -15,6 +15,16 @@ function renderFaq() {
   )
 }
 
+function openFaqAnswer(question: RegExp): string {
+  const button = screen.getByRole('button', { name: question })
+  fireEvent.click(button)
+  const panelId = button.getAttribute('aria-controls')
+  expect(panelId).toBeTruthy()
+  const panel = document.getElementById(panelId!)
+  expect(panel).toBeTruthy()
+  return panel!.textContent ?? ''
+}
+
 describe('FaqPage', () => {
   afterEach(() => {
     cleanup()
@@ -50,5 +60,45 @@ describe('FaqPage', () => {
     const secondPanel = document.getElementById(secondControls!)
     expect(secondPanel).toBeTruthy()
     expect((secondPanel!.textContent ?? '').trim().length).toBeGreaterThan(0)
+  })
+
+  it('does not invent Settings notification or privacy preference pages', () => {
+    renderFaq()
+
+    const notification = openFaqAnswer(/How do notification settings work\?/i)
+    expect(notification).not.toMatch(/Settings page/i)
+    expect(notification).toMatch(/Account|email|Contact/i)
+
+    const privacy = openFaqAnswer(/Can I manage my privacy settings\?/i)
+    expect(privacy).not.toMatch(/Settings page/i)
+    expect(privacy).toMatch(/Privacy Policy/i)
+  })
+
+  it('does not invent a Certificate Eligible stage before issuance', () => {
+    renderFaq()
+
+    const answer = openFaqAnswer(/What does ["']?certificate eligibility["']? mean\?/i)
+    expect(answer).not.toMatch(/Certificate Eligible/i)
+    expect(answer).not.toMatch(/stage just before certificate issuance/i)
+    expect(answer).toMatch(/quiz|assignment|certificate/i)
+  })
+
+  it('points Research Team eligibility at the live required list, not interviews or hard-coded all-four certificates', () => {
+    renderFaq()
+
+    const whoCanApply = openFaqAnswer(/Who can apply for the Research Team\?/i)
+    expect(whoCanApply).not.toMatch(/all four certificates are required/i)
+    expect(whoCanApply).not.toMatch(/interview/i)
+    expect(whoCanApply).toMatch(/\/research-team|Research Team page|admin/i)
+    expect(whoCanApply).toMatch(/required course/i)
+
+    const selected = openFaqAnswer(/How are Research Team applicants selected\?/i)
+    expect(selected).not.toMatch(/\binterviews?\b/i)
+    expect(selected).not.toMatch(/brief interview/i)
+    expect(selected).toMatch(/assignment|performance|skill/i)
+
+    const bundle = openFaqAnswer(/Can I purchase courses individually/i)
+    expect(bundle).not.toMatch(/all four certificates are required for eligibility/i)
+    expect(bundle).toMatch(/\/research-team|Research Team page/i)
   })
 })
