@@ -40,6 +40,15 @@ describe('isStudentIdleProbePath', () => {
   it('returns false for student dashboard (RS-9 slice 2)', () => {
     expect(isStudentIdleProbePath('/dashboard')).toBe(false)
   })
+
+  it('treats public certificate verification as idle-probe', () => {
+    expect(isStudentIdleProbePath('/verify')).toBe(true)
+    expect(isStudentIdleProbePath('/verify/RS-A1B7F3-2026-9C2E10B4D8')).toBe(true)
+  })
+
+  it('does not treat /certificates as idle-probe', () => {
+    expect(isStudentIdleProbePath('/certificates')).toBe(false)
+  })
 })
 
 describe('needsAuthBootstrap', () => {
@@ -129,6 +138,16 @@ describe('needsAuthBootstrap', () => {
     it('returns true for student dashboard (RS-9 slice 2)', () => {
       expect(needsAuthBootstrap('/dashboard', '')).toBe(true)
     })
+
+    it('returns true for /certificates', () => {
+      expect(needsAuthBootstrap('/certificates', '')).toBe(true)
+    })
+  })
+
+  describe('public certificate verification', () => {
+    it('returns false for /verify/:credentialId', () => {
+      expect(needsAuthBootstrap('/verify/RS-A1B7F3-2026-9C2E10B4D8', '')).toBe(false)
+    })
   })
 })
 
@@ -147,5 +166,14 @@ describe('isStudentTermsGateExemptPath', () => {
 
   it('returns false for student dashboard (RS-9 slice 2)', () => {
     expect(isStudentTermsGateExemptPath('/dashboard')).toBe(false)
+  })
+
+  it('exempts public certificate verification paths', () => {
+    expect(isStudentTermsGateExemptPath('/verify')).toBe(true)
+    expect(isStudentTermsGateExemptPath('/verify/RS-A1B7F3-2026-9C2E10B4D8')).toBe(true)
+  })
+
+  it('does not exempt /certificates', () => {
+    expect(isStudentTermsGateExemptPath('/certificates')).toBe(false)
   })
 })

@@ -20,6 +20,8 @@ const ContactPage = lazy(() => import('../pages/ContactPage'))
 const ResearchTeamPage = lazy(() => import('../pages/ResearchTeamPage'))
 const CoursesCatalogPage = lazy(() => import('../pages/CoursesCatalogPage'))
 const StudentDashboardPage = lazy(() => import('../pages/StudentDashboardPage'))
+const CertificatesPage = lazy(() => import('../pages/CertificatesPage'))
+const VerifyCertificatePage = lazy(() => import('../pages/VerifyCertificatePage'))
 const CourseDetailPage = lazy(() => import('../pages/CourseDetailPage'))
 const LearnRedirectPage = lazy(() => import('../pages/LearnRedirectPage'))
 const StudentLessonAuth = lazy(() =>
@@ -133,6 +135,32 @@ function StudentApp() {
             }
           />
         </Route>
+        <Route path="/certificates" element={<StudentDashboardAuth />}>
+          <Route
+            index
+            element={
+              <LazyRoute>
+                <CertificatesPage />
+              </LazyRoute>
+            }
+          />
+        </Route>
+        <Route
+          path="/verify"
+          element={
+            <LazyRoute>
+              <VerifyCertificatePage />
+            </LazyRoute>
+          }
+        />
+        <Route
+          path="/verify/:credentialId"
+          element={
+            <LazyRoute>
+              <VerifyCertificatePage />
+            </LazyRoute>
+          }
+        />
         <Route
           path="/courses/:courseId"
           element={

@@ -50,6 +50,7 @@
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
     "aws-amplify": "^6.16.4",
+    "jspdf": "4.2.1",
     "lucide-react": "^1.14.0",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",

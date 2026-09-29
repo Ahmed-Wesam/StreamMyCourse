@@ -47,3 +47,9 @@ class UserProfileRepositoryPort(Protocol):
         terms_accepted_at: datetime,
         privacy_accepted_at: datetime,
     ) -> Dict[str, Any]: ...
+
+
+class CertificateIssuerPort(Protocol):
+    """Optional RS-12 hook; duck-typed to CertificatesService.try_issue_for_user."""
+
+    def try_issue_for_user(self, *, user_sub: str, role: str) -> None: ...

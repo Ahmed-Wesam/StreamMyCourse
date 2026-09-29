@@ -88,6 +88,11 @@ const lessonFileUpload = vi.hoisted(() => ({
   createAndUploadLessonAttachment: vi.fn(),
 }))
 
+const certificatesApi = vi.hoisted(() => ({
+  listCourseCertificates: vi.fn(),
+  revokeCourseCertificate: vi.fn(),
+}))
+
 const mockNavigate = vi.fn()
 const mockConfirm = vi.fn()
 const mockRouteParams = vi.hoisted(() => ({ courseId: 'c1' }))
@@ -157,6 +162,17 @@ vi.mock('../lib/courseManagementLessonFileUpload', () => ({
     lessonFileUpload.createAndUploadLessonAttachment(...args),
 }))
 
+vi.mock('../lib/api/certificates', async (importOriginal) => {
+  const mod = (await importOriginal()) as typeof import('../lib/api/certificates')
+  return {
+    ...mod,
+    listCourseCertificates: (...args: unknown[]) =>
+      certificatesApi.listCourseCertificates(...args) as ReturnType<typeof mod.listCourseCertificates>,
+    revokeCourseCertificate: (...args: unknown[]) =>
+      certificatesApi.revokeCourseCertificate(...args) as ReturnType<typeof mod.revokeCourseCertificate>,
+  }
+})
+
 // Mock window.confirm
 Object.defineProperty(window, 'confirm', {
   writable: true,
@@ -215,9 +231,17 @@ describe('CourseManagement', () => {
     lessonFilesApi.listLessonFiles.mockReset()
     lessonFilesApi.deleteLessonFile.mockReset()
     lessonFileUpload.createAndUploadLessonAttachment.mockReset()
+    certificatesApi.listCourseCertificates.mockReset()
+    certificatesApi.revokeCourseCertificate.mockReset()
     lessonFilesApi.listLessonFiles.mockResolvedValue([])
     lessonFilesApi.deleteLessonFile.mockResolvedValue({ fileId: 'f1', deleted: true })
     lessonFileUpload.createAndUploadLessonAttachment.mockResolvedValue({ fileId: 'f-new' })
+    certificatesApi.listCourseCertificates.mockResolvedValue({ certificates: [] })
+    certificatesApi.revokeCourseCertificate.mockResolvedValue({
+      id: 'cert-1',
+      credentialId: 'RS-X',
+      status: 'revoked',
+    })
     pricingApi.setCoursePrice.mockResolvedValue({
       courseId: 'c1',
       amountMinor: 5999,
@@ -936,9 +960,13 @@ describe('CourseManagement', () => {
       renderCourseManagement()
 
       const panel = await screen.findByTestId('course-management-module-quizzes')
-      const passInput = within(panel).getByLabelText(/^Pass score \(%\)$/i)
-      fireEvent.change(passInput, { target: { value: '80' } })
-      fireEvent.click(within(panel).getByRole('button', { name: /Save pass score/i }))
+      const m1Row = within(panel).getByText('Section 1').closest('li')
+      expect(m1Row).toBeTruthy()
+      const passInput = within(m1Row as HTMLElement).getByLabelText(/^Pass score \(%\)$/i)
+      fireEvent.input(passInput, { target: { value: '80' } })
+      fireEvent.click(
+        within(m1Row as HTMLElement).getByRole('button', { name: /Save pass score/i }),
+      )
 
       await waitFor(() => {
         expect(api.patchModuleQuizPassPercent).toHaveBeenCalledWith('c1', 'm1', 80)

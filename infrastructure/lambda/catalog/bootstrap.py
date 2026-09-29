@@ -88,6 +88,16 @@ from services.assignments import (
 
 from services.assignments.ports import CourseOwnerInfo, NotifyMailMessage
 
+from services.certificates.eligibility import AssignmentRequirement, QuizRequirement
+
+from services.certificates.entitlement import is_certificate_entitled
+
+from services.certificates.ports import CourseInfo as CertificateCourseInfo
+
+from services.certificates.rds_repo import CertificatesRdsRepository
+
+from services.certificates.service import CertificatesService
+
 from services.purchases.checkout_service import PurchaseCheckoutService
 
 from services.purchases.manage_service import PurchaseManageService
@@ -620,6 +630,338 @@ class _UserEmailAdapter:
 
 @dataclass(frozen=True)
 
+class _CertificateCourseLookupAdapter:
+
+    """Composition-root adapter: certificates course lookup → catalog RDS."""
+
+
+
+    _course_repo: CourseCatalogRdsRepository
+
+
+
+    def get_course(self, course_id: str) -> CertificateCourseInfo | None:
+
+        course = self._course_repo.get_course(course_id)
+
+        if course is None:
+
+            return None
+
+        return CertificateCourseInfo(
+
+            id=course.id,
+
+            title=course.title,
+
+            created_by=course.createdBy,
+
+            certificate_code=course.certificateCode,
+
+        )
+
+
+
+
+
+@dataclass(frozen=True)
+
+class _CertificateProfileAdapter:
+
+    """Composition-root adapter: certificates profile names → users table."""
+
+
+
+    _auth_repo: UserProfileRdsRepository
+
+
+
+    def get_given_and_family_name(self, user_sub: str) -> tuple[str, str]:
+
+        profile = self._auth_repo.get_profile(user_sub)
+
+        if not profile:
+
+            return "", ""
+
+        return (
+
+            str(profile.get("givenName") or ""),
+
+            str(profile.get("familyName") or ""),
+
+        )
+
+
+
+
+
+@dataclass(frozen=True)
+
+class _CertificateRequirementsAdapter:
+
+    """Visible quizzes + assignment pass state for certificate eligibility."""
+
+
+
+    _qb_repo: QuestionBankRdsRepository
+
+    _assignments_repo: AssignmentsRdsRepository
+
+
+
+    def get_requirements(
+
+        self, course_id: str, user_sub: str
+
+    ) -> tuple[list[QuizRequirement], list[AssignmentRequirement]]:
+
+        visible = self._qb_repo.list_module_quiz_visibility_for_course(course_id=course_id)
+
+        pass_by_module = self._qb_repo.list_module_quiz_pass_percent_for_course(
+
+            course_id=course_id
+
+        )
+
+        scores_by_module = self._qb_repo.list_submitted_attempt_scores_by_module(
+
+            course_id=course_id, user_sub=user_sub
+
+        )
+
+        submitted: dict[str, list[tuple[int, int]]] = {
+
+            module_id: [
+
+                (int(a["correctCount"]), int(a["totalCount"])) for a in attempts
+
+            ]
+
+            for module_id, attempts in scores_by_module.items()
+
+        }
+
+        visible_ids = set(visible.keys())
+
+        quizzes: list[QuizRequirement] = []
+
+        for module_id in visible:
+
+            passed = module_is_passed(
+
+                module_id=module_id,
+
+                visible_quiz_module_ids=visible_ids,
+
+                pass_percent_by_module_id=pass_by_module,
+
+                submitted_scores_by_module_id=submitted,
+
+            )
+
+            quizzes.append(QuizRequirement(module_id=module_id, passed=passed))
+
+
+
+        assignments: list[AssignmentRequirement] = []
+
+        for row in self._assignments_repo.list_assignments(course_id):
+
+            submission = self._assignments_repo.get_latest_submission_for_user(
+
+                assignment_id=row.id, user_sub=user_sub
+
+            )
+
+            passed = bool(
+
+                submission is not None
+
+                and submission.grade is not None
+
+                and submission.grade.passed
+
+            )
+
+            assignments.append(
+
+                AssignmentRequirement(
+
+                    assignment_id=row.id,
+
+                    status=row.status,
+
+                    counts_toward_certificate=row.counts_toward_certificate,
+
+                    passed=passed,
+
+                )
+
+            )
+
+        return quizzes, assignments
+
+
+
+
+
+def _certificate_has_course_activity(
+
+    qb_repo: QuestionBankRdsRepository,
+
+    assignments_repo: AssignmentsRdsRepository,
+
+) -> Callable[[str, str], bool]:
+
+    """True when this student already submitted a quiz attempt or assignment on the course."""
+
+
+
+    def has_activity(user_sub: str, course_id: str) -> bool:
+
+        scores = qb_repo.list_submitted_attempt_scores_by_module(
+
+            course_id=course_id,
+
+            user_sub=user_sub,
+
+        )
+
+        if scores:
+
+            return True
+
+        return assignments_repo.user_has_submission_for_course(
+
+            course_id=course_id,
+
+            user_sub=user_sub,
+
+        )
+
+
+
+    return has_activity
+
+
+
+
+
+@dataclass(frozen=True)
+
+class _CertificateEntitledAdapter:
+
+    """Paid course purchase (any status), or a paid bundle of a published course.
+
+
+
+    Teacher and admin ownership is not an entitlement. ``CourseAccessService``
+
+    stays on playback and quizzes; this adapter does not call it.
+
+    """
+
+
+
+    _course_repo: CourseCatalogRdsRepository
+
+    _purchase_repo: PurchaseRdsRepository
+
+    _has_course_activity: Optional[Callable[[str, str], bool]] = None
+
+
+
+    def _course_activity(self, user_sub: str, course_id: str) -> bool:
+
+        if self._has_course_activity is None:
+
+            return False
+
+        return self._has_course_activity(user_sub, course_id)
+
+
+
+    def _is_entitled_course(
+
+        self,
+
+        user_sub: str,
+
+        course: Course,
+
+        *,
+
+        paid_bundle: bool,
+
+    ) -> bool:
+
+        paid_course = self._purchase_repo.has_paid_course_purchase(user_sub, course.id)
+
+        published = course.status == "PUBLISHED"
+
+        activity = False
+
+        if paid_bundle and not published and not paid_course:
+
+            activity = self._course_activity(user_sub, course.id)
+
+        return is_certificate_entitled(
+
+            has_paid_course_purchase=paid_course,
+
+            has_paid_bundle=paid_bundle,
+
+            course_published=published,
+
+            has_course_activity=activity,
+
+        )
+
+
+
+    def is_entitled(self, user_sub: str, course_id: str) -> bool:
+
+        course = self._course_repo.get_course(course_id)
+
+        if course is None:
+
+            return False
+
+        paid_bundle = self._purchase_repo.has_paid_bundle(user_sub)
+
+        return self._is_entitled_course(
+
+            user_sub,
+
+            course,
+
+            paid_bundle=paid_bundle,
+
+        )
+
+
+
+    def list_entitled_course_ids(self, user_sub: str) -> list[str]:
+
+        paid_bundle = self._purchase_repo.has_paid_bundle(user_sub)
+
+        out: list[str] = []
+
+        for course in self._course_repo.list_courses():
+
+            if self._is_entitled_course(user_sub, course, paid_bundle=paid_bundle):
+
+                out.append(course.id)
+
+        return out
+
+
+
+
+
+@dataclass(frozen=True)
+
 class AwsDeps:
 
     cfg: AppConfig
@@ -647,6 +989,8 @@ class AwsDeps:
     lesson_notes_service: LessonNotesService
 
     assignments_service: Optional[AssignmentsService]
+
+    certificates_service: CertificatesService
 
 
 
@@ -932,7 +1276,41 @@ def build_aws_deps(cfg: AppConfig) -> AwsDeps:
 
     )
 
-    auth_service = UserProfileService(auth_repo)
+    certificates_repo = CertificatesRdsRepository(conn_factory)
+
+    certificate_entitlement = _CertificateEntitledAdapter(
+
+        course_repo,
+
+        purchase_repo,
+
+        _certificate_has_course_activity(qb_repo, assignments_repo),
+
+    )
+
+    certificates_service = CertificatesService(
+
+        certificates_repo,
+
+        certificate_entitlement,
+
+        _CertificateCourseLookupAdapter(course_repo),
+
+        _CertificateProfileAdapter(auth_repo),
+
+        _CertificateRequirementsAdapter(qb_repo, assignments_repo),
+
+        certificate_entitlement,
+
+    )
+
+    auth_service = UserProfileService(
+
+        auth_repo,
+
+        certificate_issuer=certificates_service,
+
+    )
 
     progress_service = LessonProgressService(
 
@@ -988,6 +1366,8 @@ def build_aws_deps(cfg: AppConfig) -> AwsDeps:
 
             _UserEmailAdapter(auth_repo),
 
+            certificate_issuer=certificates_service,
+
         )
 
     else:
@@ -1013,6 +1393,8 @@ def build_aws_deps(cfg: AppConfig) -> AwsDeps:
         course_read=course_read,
 
         module_lock=module_lock,
+
+        certificate_issuer=certificates_service,
 
     )
 
@@ -1085,6 +1467,8 @@ def build_aws_deps(cfg: AppConfig) -> AwsDeps:
         lesson_notes_service=lesson_notes_service,
 
         assignments_service=assignments_service,
+
+        certificates_service=certificates_service,
 
     )
 

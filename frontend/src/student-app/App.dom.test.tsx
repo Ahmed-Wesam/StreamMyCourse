@@ -48,6 +48,12 @@ vi.mock('../pages/CoursesCatalogPage', () => ({
 vi.mock('../pages/StudentDashboardPage', () => ({
   default: () => <div data-testid="student-page-dashboard" />,
 }))
+vi.mock('../pages/CertificatesPage', () => ({
+  default: () => <div data-testid="student-page-certificates" />,
+}))
+vi.mock('../pages/VerifyCertificatePage', () => ({
+  default: () => <div data-testid="student-page-verify-certificate" />,
+}))
 vi.mock('../pages/StudentLoginPage', () => ({
   default: () => <div data-testid="student-page-login" />,
 }))
@@ -296,9 +302,15 @@ describe('StudentApp', () => {
     expect(await screen.findByTestId('student-page-dashboard')).toBeTruthy()
   })
 
-  it('keeps /certificates on the catch-all to home', async () => {
+  it('mounts the certificates page at /certificates', async () => {
     renderAt('/certificates')
-    expect(await screen.findByTestId('student-page-home')).toBeTruthy()
+    expect(await screen.findByTestId('student-page-certificates')).toBeTruthy()
+    expect(screen.queryByTestId('student-page-home')).toBeNull()
+  })
+
+  it('mounts public certificate verification at /verify/:credentialId', async () => {
+    renderAt('/verify/RS-A1B7F3-2026-9C2E10B4D8')
+    expect(await screen.findByTestId('student-page-verify-certificate')).toBeTruthy()
   })
 
   describe('AuthGate integration', () => {

@@ -30,6 +30,7 @@ from services.assignments.ports import (
     AssignmentRow,
     AssignmentsRepositoryPort,
     AssignmentStoragePort,
+    CertificateIssuerPort,
     CourseAccessPort,
     CourseLookupPort,
     CourseOwnerInfo,
@@ -93,6 +94,7 @@ class AssignmentsService:
         cleanup: MediaCleanupPort,
         mail: AssignmentMailPort,
         user_email: UserEmailPort,
+        certificate_issuer: CertificateIssuerPort | None = None,
     ) -> None:
         self._repo = repo
         self._storage = storage
@@ -102,6 +104,7 @@ class AssignmentsService:
         self._cleanup = cleanup
         self._mail = mail
         self._user_email = user_email
+        self._certificate_issuer = certificate_issuer
 
     # --- authorization helpers -------------------------------------------------
 
@@ -1239,6 +1242,23 @@ class AssignmentsService:
             assignment_id=assignment_id,
             submission_id=submission_id,
         )
+        if passed and self._certificate_issuer is not None:
+            try:
+                self._certificate_issuer.try_issue(
+                    user_sub=submission.user_sub,
+                    course_id=course_id,
+                    role="student",
+                )
+            except Exception:
+                logger.exception(
+                    "Certificate issue after assignment pass failed",
+                    extra={
+                        "course_id": course_id,
+                        "assignment_id": assignment_id,
+                        "submission_id": submission_id,
+                        "user_sub": submission.user_sub,
+                    },
+                )
         return {"scorePercent": percent, "passed": passed}
 
     def _try_notify_grade(

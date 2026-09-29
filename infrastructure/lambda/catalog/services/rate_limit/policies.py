@@ -72,6 +72,19 @@ _CONTACT_GLOBAL = RateLimitPolicy(
     bucket_key_template="rl:contact:global",
 )
 
+_CERTIFICATE_VERIFY_IP = RateLimitPolicy(
+    policy_id="certificate.verify.ip",
+    window_seconds=600,
+    max_count=20,
+    bucket_key_template="rl:certificate:verify:ip:{actor}",
+)
+_CERTIFICATE_VERIFY_GLOBAL = RateLimitPolicy(
+    policy_id="certificate.verify.global",
+    window_seconds=3600,
+    max_count=200,
+    bucket_key_template="rl:certificate:verify:global",
+)
+
 
 def resolve_actor(claims: Mapping[str, Any], source_ip: str) -> str:
     sub = str(claims.get("sub", "") or "").strip()
@@ -126,6 +139,10 @@ def _is_post_contact(method: str, parts: Sequence[str]) -> bool:
     return method == "POST" and list(parts) == ["contact"]
 
 
+def _is_get_certificate_verify(method: str, parts: Sequence[str]) -> bool:
+    return method == "GET" and len(parts) == 2 and parts[0] == "certificates"
+
+
 def _is_get_catalog(method: str, parts: Sequence[str]) -> bool:
     if method != "GET" or not parts or parts[0] != "courses":
         return False
@@ -170,6 +187,9 @@ def classify_route(
 
     if _is_post_contact(method, normalized_parts):
         return [_CONTACT_IP, _CONTACT_GLOBAL]
+
+    if _is_get_certificate_verify(method, normalized_parts):
+        return [_CERTIFICATE_VERIFY_IP, _CERTIFICATE_VERIFY_GLOBAL]
 
     return None
 

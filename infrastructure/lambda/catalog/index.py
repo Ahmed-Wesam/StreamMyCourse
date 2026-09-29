@@ -32,6 +32,7 @@ from services.question_banks.controller import handle_question_banks_request
 from services.contact.controller import handle_contact_request
 from services.lesson_notes.controller import handle_lesson_notes_request
 from services.assignments.controller import handle_assignments_request
+from services.certificates.controller import handle_certificates_request
 from services.rate_limit.http import check_rate_limit
 
 logger = logging.getLogger(__name__)
@@ -496,6 +497,44 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                                 event,
                                 origin=origin,
                                 assignments_svc=assign_deps.assignments_service,
+                            )
+                    elif (
+                        (
+                            (len(parts) == 2 and parts[0] == "me" and parts[1] == "certificates")
+                            or (len(parts) == 2 and parts[0] == "certificates")
+                            or (
+                                len(parts) >= 3
+                                and parts[0] == "courses"
+                                and parts[2] == "certificates"
+                            )
+                        )
+                        and (
+                            method == "OPTIONS"
+                            or method in ("GET", "POST")
+                        )
+                    ):
+                        cert_deps = get_cached_aws_deps()
+                        if cert_deps is None:
+                            if method == "OPTIONS":
+                                route_response = options_response(origin)
+                            else:
+                                route_response = json_response(
+                                    503,
+                                    {
+                                        "message": (
+                                            "Catalog is not configured: set DB_HOST, DB_NAME, and "
+                                            "DB_SECRET_ARN (deploy the api stack with RdsStackName "
+                                            "wired to the RDS stack)."
+                                        ),
+                                        "code": "catalog_unconfigured",
+                                    },
+                                    origin,
+                                )
+                        else:
+                            route_response = handle_certificates_request(
+                                event,
+                                origin=origin,
+                                certificates_svc=cert_deps.certificates_service,
                             )
                     else:
                         route_response = course_management_handle(

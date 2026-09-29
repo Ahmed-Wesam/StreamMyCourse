@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import random
 from typing import Any
 from uuid import UUID
@@ -38,6 +39,7 @@ from services.question_banks.presentation_shuffle import (
 )
 from services.course_management.ports import StudentModuleLockPort
 from services.question_banks.ports import (
+    CertificateIssuerPort,
     CourseMutateAuthorizerPort,
     CourseReadPort,
     StudentLessonAccessPort,
@@ -45,6 +47,8 @@ from services.question_banks.ports import (
 from services.question_banks.rds_repo import QuestionBankRdsRepository
 
 _QUESTION_BANK_NAME_MAX_LENGTH = 80
+
+logger = logging.getLogger(__name__)
 
 
 class QuestionBankService:
@@ -56,12 +60,14 @@ class QuestionBankService:
         student_lesson_access: StudentLessonAccessPort,
         course_read: CourseReadPort,
         module_lock: StudentModuleLockPort | None = None,
+        certificate_issuer: CertificateIssuerPort | None = None,
     ) -> None:
         self._authorizer = course_mutate_authorizer
         self._repo = question_bank_repo
         self._lesson_access = student_lesson_access
         self._course_read = course_read
         self._module_lock = module_lock
+        self._certificate_issuer = certificate_issuer
 
     def start_module_quiz(
         self,
@@ -186,6 +192,18 @@ class QuestionBankService:
             correct_count=grade_result.correct_count,
             total_count=grade_result.total_count,
         )
+        if outcome.get("passed") is True and self._certificate_issuer is not None:
+            try:
+                self._certificate_issuer.try_issue(
+                    user_sub=user_sub,
+                    course_id=cid,
+                    role="student",
+                )
+            except Exception:
+                logger.exception(
+                    "Certificate issue after quiz pass failed",
+                    extra={"course_id": cid, "user_sub": user_sub},
+                )
         return {
             "attemptId": ctx.attempt.id,
             "attemptNumber": ctx.attempt.attemptNumber,

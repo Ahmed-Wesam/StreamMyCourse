@@ -9,6 +9,8 @@ const AUTH_SELF_SERVICE =
  * Public student paths that idle-probe auth after paint (do not import auth immediately).
  * Keep in sync with marketing + catalog surfaces that should stay first-paint light.
  */
+const CERTIFICATE_VERIFY = /^\/verify(\/|$)/
+
 export function isStudentIdleProbePath(pathname: string): boolean {
   return (
     pathname === '/' ||
@@ -24,6 +26,7 @@ export function isStudentIdleProbePath(pathname: string): boolean {
     pathname === '/refund' ||
     pathname === '/delivery' ||
     pathname === '/educational-disclaimer' ||
+    CERTIFICATE_VERIFY.test(pathname) ||
     COURSE_DETAIL.test(pathname)
   )
 }
@@ -42,6 +45,7 @@ export function isStudentTermsGateExemptPath(pathname: string): boolean {
   if (pathname.startsWith('/account')) return true
   if (AUTH_SELF_SERVICE.test(pathname)) return true
   if (TERMS_GATE_LEGAL_PATHS.has(pathname)) return true
+  if (CERTIFICATE_VERIFY.test(pathname)) return true
   return false
 }
 
@@ -64,6 +68,7 @@ export function needsAuthBootstrap(pathname: string, search: string): boolean {
   if (
     AUTH_SELF_SERVICE.test(pathname) ||
     pathname === '/dashboard' ||
+    pathname === '/certificates' ||
     pathname.startsWith('/account') ||
     pathname.startsWith('/billing') ||
     pathname.startsWith('/checkout') ||

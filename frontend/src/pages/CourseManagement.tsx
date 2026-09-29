@@ -38,6 +38,7 @@ import {
   CourseManagementLoadingSkeleton,
   CourseManagementNotFound,
 } from '../components/course/CourseManagementPageStates'
+import { TeacherCourseCertificates } from './teacher-certificates/TeacherCourseCertificates'
 import { setCoursePrice } from '../lib/api/pricing'
 import { usePageTitle } from '../lib/page-title'
 import { parseUsdInputToMinor, usdMinorToInputValue } from '../lib/usdPriceInput'
@@ -629,6 +630,8 @@ export default function CourseManagement() {
         onAttachLessonFile={handleAttachLessonFile}
         onDeleteLessonFile={handleDeleteLessonFile}
       />
+
+      {courseId ? <TeacherCourseCertificates courseId={courseId} /> : null}
 
       {showAddLesson && (
         <CourseManagementAddLessonModal

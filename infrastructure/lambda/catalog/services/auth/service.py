@@ -1,10 +1,11 @@
 from __future__ import annotations
 
+import logging
 from datetime import datetime
 from typing import Any, Dict
 
+from services.auth.ports import CertificateIssuerPort, UserProfileRepositoryPort
 from services.auth.profile_allowlists import COUNTRIES, PROFESSIONS
-from services.auth.ports import UserProfileRepositoryPort
 from services.common.errors import BadRequest, NotFound
 
 
@@ -15,6 +16,8 @@ _MAX_RESEARCH_INTERESTS = 1000
 
 _COUNTRY_SET = frozenset(COUNTRIES)
 _PROFESSION_SET = frozenset(PROFESSIONS)
+
+logger = logging.getLogger(__name__)
 
 
 def _parse_iso_timestamp(key: str, raw: str) -> datetime:
@@ -51,8 +54,13 @@ def _require_allowlist_value(body: Dict[str, Any], key: str, allowed: frozenset[
 
 
 class UserProfileService:
-    def __init__(self, repo: UserProfileRepositoryPort) -> None:
+    def __init__(
+        self,
+        repo: UserProfileRepositoryPort,
+        certificate_issuer: CertificateIssuerPort | None = None,
+    ) -> None:
         self._repo = repo
+        self._certificate_issuer = certificate_issuer
 
     @staticmethod
     def _public_profile_body(
@@ -162,9 +170,21 @@ class UserProfileService:
             terms_accepted_at=terms_accepted_at,
             privacy_accepted_at=privacy_accepted_at,
         )
-        return self._public_profile_body(
+        body = self._public_profile_body(
             user_sub=sub,
             email=str(updated.get("email", "") or ""),
             role=str(updated.get("role", "") or "student"),
             item=updated,
         )
+        if given_name and family_name and self._certificate_issuer is not None:
+            try:
+                self._certificate_issuer.try_issue_for_user(
+                    user_sub=sub,
+                    role=str(body.get("role", "") or "student"),
+                )
+            except Exception:
+                logger.exception(
+                    "Certificate issue after profile name completion failed",
+                    extra={"user_sub": sub},
+                )
+        return body
