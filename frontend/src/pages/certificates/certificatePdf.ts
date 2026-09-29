@@ -2,7 +2,7 @@ import { jsPDF } from 'jspdf'
 
 const INSTRUCTOR_NAME = 'Dr. Bahaa Aburayya'
 
-export type CertificatePdfData = {
+type CertificatePdfData = {
   name: string
   title: string
   cred: string

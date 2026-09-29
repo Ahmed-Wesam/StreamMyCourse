@@ -7,9 +7,9 @@
 
 import { httpGet, httpPost } from './client'
 
-export type CertificateStatus = 'valid' | 'revoked'
+type CertificateStatus = 'valid' | 'revoked'
 
-export type MyCertificate = {
+type MyCertificate = {
   id: string
   credentialId: string
   status: CertificateStatus
@@ -33,24 +33,14 @@ export type CourseCertificate = {
   issueDate: string
 }
 
-export type ListCourseCertificatesResponse = {
-  certificates: CourseCertificate[]
-}
-
-export type RevokeCourseCertificateResponse = {
-  id: string
-  credentialId: string
-  status: CertificateStatus
-}
-
-export type CertificateInProgress = {
+type CertificateInProgress = {
   courseId: string
   courseTitle: string
   passedCount: number
   totalCount: number
 }
 
-export type CertificateProfileIncomplete = {
+type CertificateProfileIncomplete = {
   courseId: string
   courseTitle: string
   requirementsMet: boolean
@@ -150,7 +140,7 @@ function normalizeCourseItem(row: unknown): CourseCertificate | null {
 
 export async function listCourseCertificates(
   courseId: string,
-): Promise<ListCourseCertificatesResponse> {
+): Promise<{ certificates: CourseCertificate[] }> {
   const c = encodeURIComponent(courseId)
   const raw = await httpGet<Record<string, unknown>>(`/courses/${c}/certificates`)
   const certificates = Array.isArray(raw.certificates)
@@ -164,7 +154,7 @@ export async function listCourseCertificates(
 export async function revokeCourseCertificate(
   courseId: string,
   certificateId: string,
-): Promise<RevokeCourseCertificateResponse> {
+): Promise<{ id: string; credentialId: string; status: CertificateStatus }> {
   const c = encodeURIComponent(courseId)
   const id = encodeURIComponent(certificateId)
   const raw = await httpPost<Record<string, unknown>>(

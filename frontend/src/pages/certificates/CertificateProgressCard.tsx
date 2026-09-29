@@ -4,7 +4,7 @@ import type {
   CertificateProfileIncompleteFixture,
 } from './certificateFixture'
 
-export type CertificateProgressCardProps =
+type CertificateProgressCardProps =
   | { progress: CertificateInProgressFixture; incomplete?: undefined }
   | { incomplete: CertificateProfileIncompleteFixture; progress?: undefined }
 
