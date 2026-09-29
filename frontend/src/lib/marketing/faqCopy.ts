@@ -55,7 +55,7 @@ export const faqCategories: readonly FaqCategory[] = [
       {
         id: "getting-started-what-is-research-spectrum",
         question: "What is Research Spectrum?",
-        answer: "Research Spectrum is a structured online research education platform designed specifically for healthcare professionals. It provides four comprehensive courses covering Research Methodology, Statistics & SPSS, Scientific Writing, and Systematic Reviews & Meta-Analysis. Each course includes expert-led video lectures, module quizzes, a graded final assignment, and a competency-based certificate. The platform also features a Research Team pathway; see /research-team for the live list of admin-required courses.",
+        answer: "Research Spectrum is a structured online research education platform designed specifically for healthcare professionals. It provides four comprehensive courses covering Research Methodology, Statistics & SPSS, Scientific Writing, and Systematic Reviews & Meta-Analysis. Courses include expert-led video lectures, module quizzes where published, graded assignments when the instructor publishes them, and competency-based certificates when the course’s certificate requirements are met. The platform also features a Research Team pathway; see /research-team for the live list of admin-required courses.",
       },
       {
         id: "getting-started-who-are-the-courses-designed-for",
@@ -75,12 +75,12 @@ export const faqCategories: readonly FaqCategory[] = [
       {
         id: "getting-started-how-does-learning-work-on-research-spectrum",
         question: "How does learning work on Research Spectrum?",
-        answer: "Each course is divided into structured modules containing expert-led video lectures, readings, and practical exercises. After completing each module, students take a knowledge check quiz to confirm understanding before progressing. Upon completing all modules and passing their quizzes, students submit a final assignment which is evaluated by subject-matter experts. Passing the assignment earns a verified certificate. All learning is self-paced — there are no deadlines or cohort schedules.",
+        answer: "Each course is divided into structured modules containing expert-led video lectures, readings, and practical exercises. Where a module has a published quiz, you must pass it before later modules unlock. Instructors may also publish graded assignments (including ones that count toward a certificate). Certificates issue automatically when every visible module quiz is passed and every published certificate-counting assignment is passed. All learning is self-paced — there are no deadlines or cohort schedules.",
       },
       {
         id: "getting-started-how-long-do-courses-take-to-complete",
         question: "How long do courses take to complete?",
-        answer: "Each course contains 12–20 hours of video content, plus time for quizzes, the final assignment, and review. Most students who study consistently complete a course over 4–8 weeks. Because all courses are self-paced, you can take longer or shorter depending on your schedule. There is no penalty for taking more time.",
+        answer: "Course length varies. Instructors set estimated hours where available. Plan additional time for quizzes, any published assignments, and review. Because all courses are self-paced, you can take longer or shorter depending on your schedule. There is no penalty for taking more time.",
       },
     ],
   },
@@ -103,7 +103,7 @@ export const faqCategories: readonly FaqCategory[] = [
       {
         id: "courses-what-is-included-in-each-course",
         question: "What is included in each course?",
-        answer: "Every course includes: 12–20 hours of expert-led video lectures; structured modules with readings and exercises; module knowledge-check quizzes; a graded final assignment evaluated by subject-matter experts with written feedback; downloadable resources including templates, datasets, example submissions, and rubrics; a verified competency-based certificate; progress tracking; and lifetime access for as long as the course remains available.",
+        answer: "Every course includes: expert-led video lectures; structured modules with readings and exercises; module knowledge-check quizzes when the instructor publishes them; graded assignments when published (with written feedback); downloadable resources where attached; a verified competency-based certificate when certificate requirements are met; progress tracking; and lifetime access for as long as the course remains available.",
       },
       {
         id: "courses-do-courses-include-lifetime-access",
@@ -130,12 +130,12 @@ export const faqCategories: readonly FaqCategory[] = [
       {
         id: "quizzes-assignments-are-module-quizzes-required",
         question: "Are module quizzes required?",
-        answer: "Yes. Module quizzes are a required part of each course. They must be passed before progressing to later modules. Quizzes serve as mastery-based checkpoints — they confirm understanding of the module material before new concepts are introduced. Passing all module quizzes is also a prerequisite for accessing and submitting the final assignment.",
+        answer: "When a module has a published quiz, that quiz must be passed before later modules unlock. Modules without a published quiz do not gate progression. Quizzes serve as mastery-based checkpoints. Passing every visible module quiz is also part of certificate eligibility (along with any published assignments the instructor flags as counting toward the certificate).",
       },
       {
         id: "quizzes-assignments-what-score-is-required-to-pass-quizzes",
         question: "What score is required to pass quizzes?",
-        answer: "Module quizzes require a score of 70% or higher to pass, with unlimited retakes and no penalty. The mastery-based approach means you can review the material and retake the quiz as many times as needed until you reach the 70% threshold — the focus is on genuine understanding, not time-pressure performance. The final assignment also requires a rubric score of 70% or higher to pass. Each assignment rubric category is clearly specified in the grading criteria available from the course assignment page.",
+        answer: "The instructor sets each quiz and assignment pass mark (commonly 70% by default, but editable). Module quizzes allow unlimited retakes with no penalty. Assignment rubrics and the pass mark for that assignment are shown on the course assignment page.",
       },
       {
         id: "quizzes-assignments-can-i-retake-quizzes-if-i-don-t-pass",
@@ -150,7 +150,7 @@ export const faqCategories: readonly FaqCategory[] = [
       {
         id: "quizzes-assignments-how-do-final-assignments-work",
         question: "How do final assignments work?",
-        answer: "Each course concludes with a final assignment in which students apply course skills to a real dataset or research scenario. Assignments are submitted through the platform and evaluated by subject-matter evaluators. You receive a rubric-based score and detailed written feedback covering strengths, areas for improvement, and evaluator notes. A score of 70% or higher is required to pass. Passing the assignment triggers automatic certificate issuance.",
+        answer: "Instructors may publish one or more graded assignments on a course (tied to a module). Assignments are submitted through the platform and evaluated by the course owner. You receive a rubric-based score and written feedback. The instructor sets the pass mark. Only published assignments flagged as counting toward a certificate gate certificate issuance — passing an assignment alone does not automatically issue a certificate if other requirements remain.",
       },
       {
         id: "quizzes-assignments-can-assignments-be-resubmitted-if-they-don-t-pass",
@@ -160,7 +160,7 @@ export const faqCategories: readonly FaqCategory[] = [
       {
         id: "quizzes-assignments-how-long-does-assignment-grading-take",
         question: "How long does assignment grading take?",
-        answer: "Assignments are typically assigned to an evaluator within 24–48 hours of submission. The evaluation itself takes 3–5 business days depending on evaluator availability and submission complexity. You can track the exact stage of your submission — from submitted, through assigned, under review, and feedback ready — using the Evaluator Status tracker on your assignment page.",
+        answer: "Grading turnaround depends on the course owner’s availability. After you submit, the assignment page shows whether your latest attempt is still submitted (awaiting a grade) or graded (with pass/fail and feedback). There is no separate multi-stage evaluator pipeline UI beyond that submission status.",
       },
       {
         id: "quizzes-assignments-what-happens-if-revisions-are-requested",
@@ -178,17 +178,17 @@ export const faqCategories: readonly FaqCategory[] = [
       {
         id: "certificates-how-do-i-earn-a-certificate",
         question: "How do I earn a certificate?",
-        answer: "To earn a Research Spectrum certificate, you must: (1) complete all course modules and pass all module knowledge-check quizzes, and (2) submit the final assignment and receive a passing evaluation (70% or higher on the rubric). Once both requirements are met, your certificate is issued automatically and becomes immediately available on your Certificates page and Dashboard.",
+        answer: "To earn a Research Spectrum certificate for a course, you must pass every visible module quiz and pass every published assignment the instructor flagged as counting toward the certificate. Lesson watch progress does not count. If a course has no visible quiz and no published certificate-counting assignment, no certificate is issued. When the requirements are met, your certificate is issued automatically and appears on your Certificates page.",
       },
       {
         id: "certificates-do-all-courses-include-certificates",
         question: "Do all courses include certificates?",
-        answer: "Yes. Every Research Spectrum course includes a competency-based certificate issued upon successful completion of all module quizzes and the final assignment. Certificates are awarded for Research Methodology, Statistics & SPSS, Scientific Writing, and Systematic Reviews & Meta-Analysis. Each certificate includes a unique credential ID for public verification.",
+        answer: "Courses can issue a competency-based certificate when their certificate requirements are met (visible module quizzes plus any published certificate-counting assignments). A course with nothing to pass does not issue a certificate. Certificates include a unique credential ID for public verification.",
       },
       {
         id: "certificates-what-does-certificate-eligibility-mean",
         question: "What does \"certificate eligibility\" mean?",
-        answer: "In everyday language, certificate eligibility just means you are on track to earn a certificate: you must pass all module quizzes and then submit and pass the final assignment. The platform does not use a separate pre-issuance eligibility stage. Once quizzes and the assignment are passed, the certificate is issued automatically.",
+        answer: "\"Certificate eligibility\" means you have satisfied the course’s certificate requirements: every visible module quiz passed, and every published certificate-counting assignment passed. The platform does not use a separate pre-issuance eligibility stage or status badge before issuance. When those requirements are met, the certificate is issued automatically.",
       },
       {
         id: "certificates-can-research-spectrum-certificates-be-verified",

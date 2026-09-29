@@ -109,9 +109,19 @@ describe('Legal pages', () => {
 
     expect(pageText).toMatch(/profession/i)
     expect(pageText).toMatch(/purchase/i)
-    expect(pageText).toMatch(/notes|lesson uploads?/i)
+    expect(pageText).toMatch(/lesson notes/i)
+    expect(pageText).toMatch(/assignment submission/i)
+    expect(pageText).not.toMatch(/Lesson uploads and other course materials you submit/i)
+    expect(pageText).not.toMatch(/Examination results/i)
+    expect(pageText).not.toMatch(/QR verification data/i)
+    expect(pageText).not.toMatch(/Maximum registered device limits/i)
+    expect(pageText).not.toMatch(/Learning management systems/i)
+    expect(pageText).not.toMatch(/unsubscribe from marketing communications at any time/i)
+    expect(pageText).not.toMatch(/• Phone number/i)
     expect(pageText).toMatch(/Research Team application|application PII/i)
     expect(pageText).not.toMatch(/Certificate Visibility Controls/i)
+    expect(pageText).not.toMatch(/account deletion through the platform's account settings/i)
+    expect(pageText).toMatch(/Contact|support@/i)
   })
 
   it('Refund still describes one-time purchases without a current subscription model', () => {
