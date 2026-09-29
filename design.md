@@ -238,6 +238,23 @@ POST /courses/{courseId}/certificates/{certificateId}/revoke  // Owner or admin.
 
 Public verify is rate-limited: `certificate.verify.ip` 20 / 10 min per IP, `certificate.verify.global` 200 / hour. PDF download is client-side (`jspdf`, dynamic import on the student certificates page). There is no server PDF and no NAT path. Migration **021**. API deployment **CatalogApiDeploymentV43**. Prod apply of **021** is still pending (pre-launch).
 
+### Research Team application (RS-14)
+
+Eligible students apply to join the Research Team. **Required courses** are admin-flagged (`PUT /courses/{courseId}/research-team-requirement`); only **published** checked courses count. An empty required set means nobody can apply. Eligibility needs a **valid** (non-revoked) certificate for each required course and is enforced on **submit** only. Statuses: `submitted`, `under_review`, `accepted`, `rejected`. One open application (`submitted` or `under_review`) per student. Reapply only after admin **allow-reapply** on the latest rejected row; **accepted** is terminal for the student. Admin may move a rejected row to `under_review` or `accepted`. Review, status updates, allow-reapply, and the course checkbox require `custom:role=admin` (teacher role **403**). Application PII is stored in RDS and emailed to the applicant only (`kind: notify`, `bodyText` via the transactional-mail worker).
+
+```
+GET  /research-team/requirements                         // Public. { courses: [{ id, title }] } — published required courses.
+GET  /me/research-team                                   // Cognito. Eligibility progress + latest application summary.
+POST /me/research-team/applications                      // Cognito. Submit when eligible; one open application.
+PUT  /courses/{courseId}/research-team-requirement       // Admin. Body: { required: boolean }.
+GET  /research-team/applications                         // Admin. List applications.
+GET  /research-team/applications/{id}                    // Admin. Application detail (includes form PII).
+PATCH /research-team/applications/{id}                   // Admin. Status update.
+POST /research-team/applications/{id}/allow-reapply      // Admin. Gate reapply after rejection.
+```
+
+Migration **022**. API deployment **CatalogApiDeploymentV44**. Prod apply of **022** / **V44** is still pending (pre-launch).
+
 ### Video provider webhooks
 ```
 POST /webhooks/kinescope              // Provider status callback (`media.update.status`); optional
@@ -250,7 +267,7 @@ POST /webhooks/kinescope/drm-auth     // DRM auth callback; validates signed tok
 
 ## 8. React Frontend (MVP)
 
-**User-visible brand:** **Research Spectrum** (strings, titles/meta, logo/favicons via [`frontend/src/lib/brand.ts`](frontend/src/lib/brand.ts) and shared header/footer). Repo, stacks, and infra names remain **StreamMyCourse**. Shared visual foundation (Tailwind `rs-*` tokens, self-hosted Plus Jakarta Sans, UI primitives) is in place. Public marketing routes (`/`, `/about`, `/faq`, `/contact`, `/research-team`), student app flows (catalog, detail, player, quiz, login, account), and instructor app pages (dashboard, course management, question banks, payment setup, assignment create/review) use that system. Student assignment page: `/courses/:courseId/assignments/:assignmentId`. Teacher: `/courses/:courseId/assignments` and `.../review`. Student certificates: `/certificates` (client PDF download). Public verification: `/verify/:credentialId`. Legacy student paths (`/learn`, unrouted Figma pages) may still use older styling until cleaned up.
+**User-visible brand:** **Research Spectrum** (strings, titles/meta, logo/favicons via [`frontend/src/lib/brand.ts`](frontend/src/lib/brand.ts) and shared header/footer). Repo, stacks, and infra names remain **StreamMyCourse**. Shared visual foundation (Tailwind `rs-*` tokens, self-hosted Plus Jakarta Sans, UI primitives) is in place. Public marketing routes (`/`, `/about`, `/faq`, `/contact`, `/research-team`), student app flows (catalog, detail, player, quiz, login, account), and instructor app pages (dashboard, course management, question banks, payment setup, assignment create/review) use that system. Student assignment page: `/courses/:courseId/assignments/:assignmentId`. Teacher: `/courses/:courseId/assignments` and `.../review`. Student certificates: `/certificates` (client PDF download). Public verification: `/verify/:credentialId`. Research Team apply: `/research-team/apply`; admin review: `/research-team/applications`. Legacy student paths (`/learn`, unrouted Figma pages) may still use older styling until cleaned up.
 
 ### Tech Stack
 - **React 19** + **Vite**
@@ -300,8 +317,8 @@ The frontend is built as **two separate SPAs** deployed to different subdomains:
 
 | Site | Domain | Purpose | Routes |
 |------|--------|---------|--------|
-| **Student** | `streammycourse.com` | Browse and watch courses | `/`, `/about`, `/faq`, `/contact`, `/research-team`, `/courses`, `/dashboard`, `/login`, `/privacy`, `/terms`, `/refund`, `/delivery`, `/educational-disclaimer`, `/courses/:id`, `/courses/:id/lessons/:id`, `/courses/:id/modules/:moduleId/quiz` (legacy `/details`, `/course`, `/catalog` redirect to `/courses`; **`/my-course`** → **`/dashboard`**) |
-| **Teacher** | `teach.streammycourse.com` | Create, edit, upload content | `/`, `/courses/:id`, `/courses/:id/question-banks`, `/courses/:id/question-banks/:bankId`, `/settings/payments` |
+| **Student** | `streammycourse.com` | Browse and watch courses | `/`, `/about`, `/faq`, `/contact`, `/research-team`, `/research-team/apply`, `/courses`, `/dashboard`, `/login`, `/privacy`, `/terms`, `/refund`, `/delivery`, `/educational-disclaimer`, `/courses/:id`, `/courses/:id/lessons/:id`, `/courses/:id/modules/:moduleId/quiz` (legacy `/details`, `/course`, `/catalog` redirect to `/courses`; **`/my-course`** → **`/dashboard`**) |
+| **Teacher** | `teach.streammycourse.com` | Create, edit, upload content | `/`, `/courses/:id`, `/courses/:id/question-banks`, `/courses/:id/question-banks/:bankId`, `/settings/payments`, `/research-team/applications` (admin) |
 
 ### Student Site Routes (View-Only)
 ```
@@ -309,11 +326,12 @@ The frontend is built as **two separate SPAs** deployed to different subdomains:
 /about                               # About instructor (public)
 /faq                                 # FAQ (public)
 /contact                             # Contact form → public POST /contact (RS-10)
-/research-team                       # Research Team explainer (no application yet)
+/research-team                       # Research Team info + eligibility (lists admin-required published courses)
+/research-team/apply                 # Signed-in application form (RS-14; eligibility enforced on submit)
 /details                             # Legacy path → redirects to `/courses` (same as `/course`, `/catalog`)
 /my-course                           # Legacy enrolled hub → redirects to `/dashboard`
 /courses                             # Published course catalog (public `GET /courses`)
-/dashboard                           # Signed-in learning hub (purchases + per-course progress/quizzes; RS-9)
+/dashboard                           # Signed-in learning hub (purchases + progress/quizzes; RS-9; Research Team block RS-14)
 /login                               # Student sign-in (Hosted UI / auth shell)
 /courses/:courseId                   # Course detail
 /courses/:courseId/lessons/:lessonId # Video player
@@ -329,6 +347,8 @@ The frontend is built as **two separate SPAs** deployed to different subdomains:
 /courses/:courseId/question-banks    # Question bank list + create
 /courses/:courseId/question-banks/:bankId # Question bank studio (draft/publish)
 /settings/payments                   # PayTabs merchant setup + bundle USD price (billing teacher)
+/research-team/applications          # Admin-only Research Team application review (RS-14)
+/research-team/applications/:id      # Admin-only application detail + status / allow-reapply
 ```
 
 ### Build Configuration
