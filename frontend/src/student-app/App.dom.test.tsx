@@ -36,6 +36,9 @@ vi.mock('../pages/ContactPage', () => ({
 vi.mock('../pages/ResearchTeamPage', () => ({
   default: () => <div data-testid="student-page-research-team" />,
 }))
+vi.mock('../pages/ApplyResearchTeamPage', () => ({
+  default: () => <div data-testid="student-page-apply-research-team" />,
+}))
 vi.mock('../pages/CourseDetailPage', () => ({
   default: () => <div data-testid="student-page-detail" />,
 }))
@@ -283,6 +286,14 @@ describe('StudentApp', () => {
     expect(await screen.findByTestId('student-page-research-team')).toBeTruthy()
     expect(AuthShellMock).not.toHaveBeenCalled()
     expect(screen.queryByTestId('auth-shell')).toBeNull()
+  })
+
+  it('mounts the research-team apply route behind AuthShell', async () => {
+    renderAt('/research-team/apply')
+    await waitFor(() => {
+      expect(screen.getByTestId('auth-shell')).toBeTruthy()
+    })
+    expect(await screen.findByTestId('student-page-apply-research-team')).toBeTruthy()
   })
 
   it('mounts the register route at /register', async () => {

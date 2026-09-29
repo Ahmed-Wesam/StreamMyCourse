@@ -33,6 +33,12 @@ vi.mock('../pages/QuestionBankStudioPage', () => ({
 vi.mock('../pages/TeacherPaymentSetup', () => ({
   default: () => <div data-testid="teacher-page-payments" />,
 }))
+vi.mock('../pages/teacher-research-team/TeacherResearchTeamApplicationsPage', () => ({
+  default: () => <div data-testid="teacher-page-research-team-list" />,
+}))
+vi.mock('../pages/teacher-research-team/TeacherResearchTeamApplicationDetailPage', () => ({
+  default: () => <div data-testid="teacher-page-research-team-detail" />,
+}))
 
 import TeacherApp from './App'
 
@@ -82,6 +88,20 @@ describe('TeacherApp', () => {
     renderAt('/settings/payments')
     await waitFor(() => {
       expect(screen.getByTestId('teacher-page-payments')).toBeTruthy()
+    })
+  })
+
+  it('mounts research team applications list at /research-team/applications', async () => {
+    renderAt('/research-team/applications')
+    await waitFor(() => {
+      expect(screen.getByTestId('teacher-page-research-team-list')).toBeTruthy()
+    })
+  })
+
+  it('mounts research team application detail at /research-team/applications/:id', async () => {
+    renderAt('/research-team/applications/app-1')
+    await waitFor(() => {
+      expect(screen.getByTestId('teacher-page-research-team-detail')).toBeTruthy()
     })
   })
 

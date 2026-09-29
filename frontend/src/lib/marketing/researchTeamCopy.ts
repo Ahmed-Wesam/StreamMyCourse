@@ -137,12 +137,6 @@ export const researchTeamEligibility = {
   kicker: 'Before You Apply',
   title: 'Eligibility Requirements',
   lead: 'Complete all four Research Spectrum courses to unlock the application.',
-  requirements: [
-    'Research Methodology',
-    'Statistics & SPSS',
-    'Scientific Writing',
-    'Systematic Reviews & Meta-Analysis',
-  ] as const,
   certificateNote: 'Earn all four certificates',
   note: 'Eligibility does not guarantee acceptance. Selection considers interviews, course performance, assignments, English proficiency, and research skills.',
   primaryCta: 'Explore Courses',

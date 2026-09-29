@@ -93,6 +93,15 @@ const certificatesApi = vi.hoisted(() => ({
   revokeCourseCertificate: vi.fn(),
 }))
 
+const sessionApi = vi.hoisted(() => ({
+  fetchMe: vi.fn(),
+}))
+
+const researchTeamTeacherApi = vi.hoisted(() => ({
+  setCourseResearchTeamRequirement: vi.fn(),
+  getCourseResearchTeamRequirement: vi.fn(),
+}))
+
 const mockNavigate = vi.fn()
 const mockConfirm = vi.fn()
 const mockRouteParams = vi.hoisted(() => ({ courseId: 'c1' }))
@@ -173,6 +182,21 @@ vi.mock('../lib/api/certificates', async (importOriginal) => {
   }
 })
 
+vi.mock('../lib/api/session', async (importOriginal) => {
+  const mod = (await importOriginal()) as typeof import('../lib/api/session')
+  return {
+    ...mod,
+    fetchMe: (...args: unknown[]) => sessionApi.fetchMe(...args) as ReturnType<typeof mod.fetchMe>,
+  }
+})
+
+vi.mock('../lib/api/research-team-teacher', () => ({
+  setCourseResearchTeamRequirement: (...args: unknown[]) =>
+    researchTeamTeacherApi.setCourseResearchTeamRequirement(...args),
+  getCourseResearchTeamRequirement: (...args: unknown[]) =>
+    researchTeamTeacherApi.getCourseResearchTeamRequirement(...args),
+}))
+
 // Mock window.confirm
 Object.defineProperty(window, 'confirm', {
   writable: true,
@@ -233,6 +257,9 @@ describe('CourseManagement', () => {
     lessonFileUpload.createAndUploadLessonAttachment.mockReset()
     certificatesApi.listCourseCertificates.mockReset()
     certificatesApi.revokeCourseCertificate.mockReset()
+    sessionApi.fetchMe.mockReset()
+    researchTeamTeacherApi.setCourseResearchTeamRequirement.mockReset()
+    researchTeamTeacherApi.getCourseResearchTeamRequirement.mockReset()
     lessonFilesApi.listLessonFiles.mockResolvedValue([])
     lessonFilesApi.deleteLessonFile.mockResolvedValue({ fileId: 'f1', deleted: true })
     lessonFileUpload.createAndUploadLessonAttachment.mockResolvedValue({ fileId: 'f-new' })
@@ -241,6 +268,22 @@ describe('CourseManagement', () => {
       id: 'cert-1',
       credentialId: 'RS-X',
       status: 'revoked',
+    })
+    sessionApi.fetchMe.mockResolvedValue({
+      userId: 'u1',
+      email: 'teacher@example.com',
+      role: 'teacher',
+      cognitoSub: 'sub-t',
+      createdAt: '',
+      updatedAt: '',
+    })
+    researchTeamTeacherApi.getCourseResearchTeamRequirement.mockResolvedValue({
+      courseId: 'c1',
+      required: false,
+    })
+    researchTeamTeacherApi.setCourseResearchTeamRequirement.mockResolvedValue({
+      courseId: 'c1',
+      required: true,
     })
     pricingApi.setCoursePrice.mockResolvedValue({
       courseId: 'c1',
@@ -1186,6 +1229,115 @@ describe('CourseManagement', () => {
           }),
         )
       })
+    })
+  })
+
+  describe('research team requirement (admin)', () => {
+    it('shows Required for Research Team checkbox when role is admin', async () => {
+      sessionApi.fetchMe.mockResolvedValue({
+        userId: 'u-admin',
+        email: 'admin@example.com',
+        role: 'admin',
+        cognitoSub: 'sub-a',
+        createdAt: '',
+        updatedAt: '',
+      })
+
+      renderCourseManagement()
+
+      await waitFor(() => {
+        expect(screen.getByRole('checkbox', { name: /Required for Research Team/i })).toBeTruthy()
+      })
+    })
+
+    it('checks the Required for Research Team box when GET reports required true', async () => {
+      sessionApi.fetchMe.mockResolvedValue({
+        userId: 'u-admin',
+        email: 'admin@example.com',
+        role: 'admin',
+        cognitoSub: 'sub-a',
+        createdAt: '',
+        updatedAt: '',
+      })
+      researchTeamTeacherApi.getCourseResearchTeamRequirement.mockResolvedValue({
+        courseId: 'c1',
+        required: true,
+      })
+
+      renderCourseManagement()
+
+      const checkbox = await screen.findByRole('checkbox', { name: /Required for Research Team/i })
+      await waitFor(() => {
+        expect((checkbox as HTMLInputElement).checked).toBe(true)
+      })
+      expect(researchTeamTeacherApi.getCourseResearchTeamRequirement).toHaveBeenCalledWith('c1')
+    })
+
+    it('does not show Required for Research Team checkbox when role is teacher', async () => {
+      renderCourseManagement()
+
+      await waitFor(() => {
+        expect(screen.getByText('Manage Course')).toBeTruthy()
+      })
+
+      expect(screen.queryByRole('checkbox', { name: /Required for Research Team/i })).toBeNull()
+    })
+
+    it('toggling Required for Research Team checkbox calls PUT with required true then false', async () => {
+      sessionApi.fetchMe.mockResolvedValue({
+        userId: 'u-admin',
+        email: 'admin@example.com',
+        role: 'admin',
+        cognitoSub: 'sub-a',
+        createdAt: '',
+        updatedAt: '',
+      })
+      researchTeamTeacherApi.setCourseResearchTeamRequirement
+        .mockResolvedValueOnce({ courseId: 'c1', required: true })
+        .mockResolvedValueOnce({ courseId: 'c1', required: false })
+
+      renderCourseManagement()
+
+      const checkbox = await screen.findByRole('checkbox', { name: /Required for Research Team/i })
+      expect((checkbox as HTMLInputElement).checked).toBe(false)
+
+      fireEvent.click(checkbox)
+      await waitFor(() => {
+        expect(researchTeamTeacherApi.setCourseResearchTeamRequirement).toHaveBeenCalledWith(
+          'c1',
+          true,
+        )
+      })
+
+      fireEvent.click(screen.getByRole('checkbox', { name: /Required for Research Team/i }))
+      await waitFor(() => {
+        expect(researchTeamTeacherApi.setCourseResearchTeamRequirement).toHaveBeenCalledWith(
+          'c1',
+          false,
+        )
+      })
+      expect(researchTeamTeacherApi.setCourseResearchTeamRequirement).toHaveBeenCalledTimes(2)
+    })
+
+    it('surfaces an error when requirements load fails instead of silently unchecked', async () => {
+      sessionApi.fetchMe.mockResolvedValue({
+        userId: 'u-admin',
+        email: 'admin@example.com',
+        role: 'admin',
+        cognitoSub: 'sub-a',
+        createdAt: '',
+        updatedAt: '',
+      })
+      researchTeamTeacherApi.getCourseResearchTeamRequirement.mockRejectedValue(
+        new ApiError('requirements down', 500),
+      )
+
+      renderCourseManagement()
+
+      await waitFor(() => {
+        expect(screen.getByRole('checkbox', { name: /Required for Research Team/i })).toBeTruthy()
+      })
+      expect(await screen.findByRole('alert')).toBeTruthy()
     })
   })
 })

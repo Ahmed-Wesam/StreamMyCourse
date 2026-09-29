@@ -15,6 +15,7 @@ import {
 } from '../lib/studentDashboard'
 import { StudentDashboardContinueSection } from './student-dashboard/StudentDashboardContinueSection'
 import { StudentDashboardHero } from './student-dashboard/StudentDashboardHero'
+import { StudentDashboardResearchTeamBlock } from './student-dashboard/StudentDashboardResearchTeamBlock'
 import { StudentDashboardStatsRow } from './student-dashboard/StudentDashboardStatsRow'
 import { Button } from '../components/ui/Button'
 
@@ -164,6 +165,7 @@ export default function StudentDashboardPage() {
                   certificatesCount={ready.certificatesCount}
                 />
               ) : null}
+              <StudentDashboardResearchTeamBlock />
               <div>
                 <h2 className="mb-5 text-xl font-extrabold text-rs-ink">Continue learning</h2>
                 <StudentDashboardContinueSection rows={rows} />

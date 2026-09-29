@@ -18,6 +18,7 @@ const AboutInstructorPage = lazy(() => import('../pages/AboutInstructorPage'))
 const FaqPage = lazy(() => import('../pages/FaqPage'))
 const ContactPage = lazy(() => import('../pages/ContactPage'))
 const ResearchTeamPage = lazy(() => import('../pages/ResearchTeamPage'))
+const ApplyResearchTeamPage = lazy(() => import('../pages/ApplyResearchTeamPage'))
 const CoursesCatalogPage = lazy(() => import('../pages/CoursesCatalogPage'))
 const StudentDashboardPage = lazy(() => import('../pages/StudentDashboardPage'))
 const CertificatesPage = lazy(() => import('../pages/CertificatesPage'))
@@ -105,6 +106,16 @@ function StudentApp() {
             </LazyRoute>
           }
         />
+        <Route path="/research-team/apply" element={<StudentDashboardAuth />}>
+          <Route
+            index
+            element={
+              <LazyRoute>
+                <ApplyResearchTeamPage />
+              </LazyRoute>
+            }
+          />
+        </Route>
         <Route path="/details" element={<LegacyPathRedirect to="/courses" />} />
         <Route path="/course" element={<LegacyPathRedirect to="/courses" />} />
         <Route

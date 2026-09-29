@@ -8,6 +8,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const useAuthenticatorMock = vi.hoisted(() => vi.fn())
 const useCognitoDisplayNameMock = vi.hoisted(() => vi.fn())
+const fetchMeMock = vi.hoisted(() => vi.fn())
 
 vi.mock('../lib/auth-ui', () => ({
   useAuthenticator: (...args: unknown[]) => useAuthenticatorMock(...args),
@@ -16,6 +17,14 @@ vi.mock('../lib/auth-ui', () => ({
 vi.mock('../lib/cognito-display-name', () => ({
   useCognitoDisplayName: (...args: unknown[]) => useCognitoDisplayNameMock(...args),
 }))
+
+vi.mock('../lib/api/session', async (importOriginal) => {
+  const mod = (await importOriginal()) as typeof import('../lib/api/session')
+  return {
+    ...mod,
+    fetchMe: (...args: unknown[]) => fetchMeMock(...args) as ReturnType<typeof mod.fetchMe>,
+  }
+})
 
 async function openProfileMenu() {
   const trigger = await screen.findByRole('button', { name: /Account menu/i })
@@ -42,7 +51,16 @@ describe('TeacherHeader', () => {
   beforeEach(() => {
     useAuthenticatorMock.mockReset()
     useCognitoDisplayNameMock.mockReset()
+    fetchMeMock.mockReset()
     useCognitoDisplayNameMock.mockReturnValue({ label: 'Alex', title: 'Alex', ready: true })
+    fetchMeMock.mockResolvedValue({
+      userId: 'u1',
+      email: 'teacher@example.com',
+      role: 'teacher',
+      cognitoSub: 'sub-t',
+      createdAt: '',
+      updatedAt: '',
+    })
     vi.unstubAllEnvs()
   })
 
@@ -66,6 +84,43 @@ describe('TeacherHeader', () => {
     expect(within(main).getByRole('link', { name: 'Payments' }).getAttribute('href')).toBe(
       '/settings/payments',
     )
+  })
+
+  it('shows Research Team nav link when role is admin', async () => {
+    fetchMeMock.mockResolvedValue({
+      userId: 'u-admin',
+      email: 'admin@example.com',
+      role: 'admin',
+      cognitoSub: 'sub-a',
+      createdAt: '',
+      updatedAt: '',
+    })
+    useAuthenticatorMock.mockReturnValue({
+      user: { username: 'admin@example.com' },
+      signOut: vi.fn(),
+      authStatus: 'authenticated',
+    })
+    await renderTestRoot()
+    const main = screen.getByRole('navigation', { name: 'Primary' })
+    await waitFor(() => {
+      expect(within(main).getByRole('link', { name: 'Research Team' }).getAttribute('href')).toBe(
+        '/research-team/applications',
+      )
+    })
+  })
+
+  it('does not show Research Team nav link when role is teacher', async () => {
+    useAuthenticatorMock.mockReturnValue({
+      user: { username: 'teacher@example.com' },
+      signOut: vi.fn(),
+      authStatus: 'authenticated',
+    })
+    await renderTestRoot()
+    const main = screen.getByRole('navigation', { name: 'Primary' })
+    await waitFor(() => {
+      expect(fetchMeMock).toHaveBeenCalled()
+    })
+    expect(within(main).queryByRole('link', { name: 'Research Team' })).toBeNull()
   })
 
   it('uses sticky positioning so page content is not hidden under the header', async () => {

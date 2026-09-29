@@ -26,6 +26,12 @@ const TeacherAssignmentsPage = lazy(
 const TeacherAssignmentReviewPage = lazy(
   () => import('../pages/teacher-assignments/TeacherAssignmentReviewPage'),
 )
+const TeacherResearchTeamApplicationsPage = lazy(
+  () => import('../pages/teacher-research-team/TeacherResearchTeamApplicationsPage'),
+)
+const TeacherResearchTeamApplicationDetailPage = lazy(
+  () => import('../pages/teacher-research-team/TeacherResearchTeamApplicationDetailPage'),
+)
 
 function TeacherShell() {
   return (
@@ -78,6 +84,22 @@ function TeacherShell() {
             element={
               <LazyRoute>
                 <TeacherPaymentSetup />
+              </LazyRoute>
+            }
+          />
+          <Route
+            path="/research-team/applications/:applicationId"
+            element={
+              <LazyRoute>
+                <TeacherResearchTeamApplicationDetailPage />
+              </LazyRoute>
+            }
+          />
+          <Route
+            path="/research-team/applications"
+            element={
+              <LazyRoute>
+                <TeacherResearchTeamApplicationsPage />
               </LazyRoute>
             }
           />

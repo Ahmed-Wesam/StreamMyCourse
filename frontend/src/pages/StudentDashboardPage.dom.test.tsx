@@ -12,6 +12,7 @@ const getCourseProgress = vi.fn()
 const listLessons = vi.fn()
 const listCourseModules = vi.fn()
 const listMyCertificates = vi.fn()
+const getMyResearchTeam = vi.fn()
 
 vi.mock('../lib/api/billing', async (importOriginal) => {
   const mod = await importOriginal<typeof import('../lib/api/billing')>()
@@ -55,6 +56,14 @@ vi.mock('../lib/api/certificates', async (importOriginal) => {
   }
 })
 
+vi.mock('../lib/api/research-team', async (importOriginal) => {
+  const mod = await importOriginal<typeof import('../lib/api/research-team')>()
+  return {
+    ...mod,
+    getMyResearchTeam: (...args: unknown[]) => getMyResearchTeam(...args),
+  }
+})
+
 import StudentDashboardPage from './StudentDashboardPage'
 
 function renderDashboard() {
@@ -74,6 +83,7 @@ describe('StudentDashboardPage', () => {
     listLessons.mockReset()
     listCourseModules.mockReset()
     listMyCertificates.mockReset()
+    getMyResearchTeam.mockReset()
 
     listPublishedCourses.mockResolvedValue([
       { id: 'c1', title: 'Alpha Course', description: 'Desc' },
@@ -122,6 +132,15 @@ describe('StudentDashboardPage', () => {
       certificates: [],
       inProgress: [],
       profileIncomplete: [],
+    })
+    getMyResearchTeam.mockResolvedValue({
+      courses: [
+        { courseId: 'c1', title: 'Research Methodology', certified: true },
+        { courseId: 'c2', title: 'Statistics & SPSS', certified: false },
+      ],
+      eligible: false,
+      canSubmit: false,
+      application: null,
     })
   })
 
@@ -279,5 +298,27 @@ describe('StudentDashboardPage', () => {
     expect(certLink.getAttribute('href')).toBe('/certificates')
     expect(certLink.textContent).toMatch(/2/)
     expect(certLink.textContent).not.toMatch(/3/)
+  })
+
+  it('shows Research Team certificate progress with a link to /research-team', async () => {
+    renderDashboard()
+    expect(await screen.findByTestId('student-dashboard-research-team')).toBeTruthy()
+    expect(screen.getByText(/1 of 2 certificates/i)).toBeTruthy()
+    expect(screen.getByRole('link', { name: /View Research Team/i }).getAttribute('href')).toBe(
+      '/research-team',
+    )
+  })
+
+  it('shows applications-not-open on the Research Team block when there are zero required courses', async () => {
+    getMyResearchTeam.mockResolvedValue({
+      courses: [],
+      eligible: false,
+      canSubmit: false,
+      application: null,
+    })
+    renderDashboard()
+    expect(await screen.findByTestId('student-dashboard-research-team')).toBeTruthy()
+    expect(screen.getByText(/Applications are not open yet/i)).toBeTruthy()
+    expect(screen.queryByText(/0 of 0 certificates/i)).toBeNull()
   })
 })

@@ -69,6 +69,7 @@ export function needsAuthBootstrap(pathname: string, search: string): boolean {
     AUTH_SELF_SERVICE.test(pathname) ||
     pathname === '/dashboard' ||
     pathname === '/certificates' ||
+    pathname === '/research-team/apply' ||
     pathname.startsWith('/account') ||
     pathname.startsWith('/billing') ||
     pathname.startsWith('/checkout') ||
