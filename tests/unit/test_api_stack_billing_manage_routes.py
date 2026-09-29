@@ -36,9 +36,9 @@ def test_api_stack_billing_checkout_on_edge() -> None:
 
 def test_api_stack_billing_manage_deployment_v37() -> None:
     text = _api_stack_text()
-    assert "CatalogApiDeploymentV43:" in text
+    assert "CatalogApiDeploymentV44:" in text
     assert "CatalogApiDeploymentV38:" not in text
-    deployment_block = text.split("CatalogApiDeploymentV43:")[1].split("CatalogApiStage:")[0]
+    deployment_block = text.split("CatalogApiDeploymentV44:")[1].split("CatalogApiStage:")[0]
     for legacy in (
         "BillingSubscriptionGetMethod",
         "BillingSubscriptionOptionsMethod",
@@ -53,4 +53,4 @@ def test_api_stack_billing_manage_deployment_v37() -> None:
         "BillingBundleGetMethod:",
     ):
         assert required in text
-    assert "DeploymentId: !Ref CatalogApiDeploymentV43" in text
+    assert "DeploymentId: !Ref CatalogApiDeploymentV44" in text
