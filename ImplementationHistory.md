@@ -6,6 +6,37 @@
 
 ---
 
+## 2026-09-28 — RS-12 certificates
+
+### Decisions
+
+- Issue when every visible module quiz is passed and every **published** `countsTowardCertificate` assignment is passed. Lessons do not count. Nothing to pass means no certificate. Draft flags do not block.
+- Entitlement is a paid course purchase (any course status) or a paid bundle of a published course. A bundle also keeps an unpublished course when that student already has a quiz attempt or assignment submission. Teacher or admin ownership does not issue. Playback `has_course_access` is not the certificate check.
+- Snapshot profile given + family name, course title, and the instructor line **Dr. Bahaa Aburayya**. Later name edits do not change the row.
+- Credential ID `RS-{course 6 hex}-{year}-{10 hex}`. Course code is generated once on the course.
+- Public verify returns name, course, issue date, and status. Revoked IDs stay public as revoked. Unknown IDs return no name.
+- PDF is client-side `jspdf` **4.2.1** (dynamic import). No server PDF, NAT, or VPC endpoint.
+
+### What landed
+
+- Migration **021** (`courses.certificate_code`, `certificates`) in the deploy schema bundles.
+- `services/certificates/` plus `GET /me/certificates`, public `GET /certificates/{credentialId}`, teacher list and revoke. API stage **CatalogApiDeploymentV43**.
+- Issue hooks after quiz pass, passing assignment grade (student sub), and profile save when both names are set. Dashboard certificate count. Student `/certificates` and public `/verify`. Teacher revoke on course management.
+
+### Verification
+
+- [x] Pytest: eligibility, migration 021, issue service, API stack V43, quiz/grade/profile issuer hooks
+- [x] `python scripts/check_lambda_boundaries.py`
+- [x] Vitest: certificate views, student pages, auth bootstrap, teacher revoke, dashboard stat
+- [ ] Prod RDS **021** and API deploy
+- [ ] Browser click-path
+
+### Docs
+
+- [`design.md`](design.md) certificates API; [`roadmap.md`](roadmap.md); child plan [`plans/ui-overhaul/rs-12-certificates.md`](plans/ui-overhaul/rs-12-certificates.md)
+
+---
+
 ## 2026-09-28 — RS-13 assignments
 
 ### Decisions

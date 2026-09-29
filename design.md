@@ -194,7 +194,7 @@ DELETE /courses/{id}/lessons/{lessonId}/notes/{noteId}    // Author only.
 
 ### Assignments (RS-13)
 
-Cognito on every method except OPTIONS. Students need a purchase. An assignment belongs to one module and is **403** `module_locked` until every **earlier** module with a visible quiz is passed. The owning teacher or an admin bypasses that lock. Any number of assignments may set `countsTowardCertificate` (including none). This slice stores the flag and pass/fail. It does not issue certificates.
+Cognito on every method except OPTIONS. Students need a purchase. An assignment belongs to one module and is **403** `module_locked` until every **earlier** module with a visible quiz is passed. The owning teacher or an admin bypasses that lock. Any number of assignments may set `countsTowardCertificate` (including none). This slice stores the flag and pass/fail. Issuance is [Certificates (RS-12)](#certificates-rs-12).
 
 ```
 GET    /courses/{id}/assignments                         // { assignments: [...] }. Students: published only.
@@ -219,7 +219,24 @@ POST   .../submissions/{submissionId}/grade              // Teacher. scores[{cri
 
 **Rules:** Pass percent default **70** (instructor **1–100**). Score is integer half-up `(100 * awarded + maxTotal // 2) // maxTotal`. A passing grade closes further attempts. A failing grade allows a new draft. Grades are immutable. Instructions and the optional rubric narrative are plain text, sanitized rich text (`p`, `br`, `strong`, `em`, `ul`, `ol`, `li`, `https` links), or one picture. Scoring uses plain-text criterion labels and points (1–12 criteria). Caps: **20** assignments per course, **10** files per submission. Unknown JSON keys **400**.
 
-**Storage:** `{courseId}/assignments/{assignmentId}/images/{slot}.{ext}` and `{courseId}/assignments/{assignmentId}/submissions/{submissionId}/{fileId}.{ext}`. Catalog **`s3:GetObject`** includes `*/assignments/*`. Course delete collects those keys before the row delete. Migration **020**. API deployment **CatalogApiDeploymentV42**.
+**Storage:** `{courseId}/assignments/{assignmentId}/images/{slot}.{ext}` and `{courseId}/assignments/{assignmentId}/submissions/{submissionId}/{fileId}.{ext}`. Catalog **`s3:GetObject`** includes `*/assignments/*`. Course delete collects those keys before the row delete. Migration **020**. API stage deployment **CatalogApiDeploymentV43** (RS-12).
+
+### Certificates (RS-12)
+
+An entitled student receives **one** certificate per course when every **visible** module quiz is passed (published question bank, `served_count_n >= 1`, any attempt at that module’s pass mark) and every **published** assignment with `countsTowardCertificate` is passed. Lesson watch progress does not count. A course with no visible quiz and no published flagged assignment does not issue. Draft flagged assignments do not count. Entitlement is a paid course purchase at any course status, or a paid bundle of a **published** course. A bundle also covers an unpublished course when that student already has a quiz attempt or assignment submission on it, so unpublishing does not strand someone who already started. Untouched drafts are not listed. Teacher or admin ownership is not an entitlement. Unpublishing does not revoke a certificate already issued.
+
+The row snapshots `givenName` + `familyName`, the course title, and the instructor line **Dr. Bahaa Aburayya** / **Founder & Instructor, Research Spectrum**. Later profile edits do not change it. A blank name blocks insert until both names exist. Revoke keeps the row (`revoked`) and does not mint a replacement.
+
+Credential ID: `RS-{course 6 hex}-{UTC year}-{10 hex}` (example `RS-A1B7F3-2026-9C2E10B4D8`). `courses.certificate_code` is assigned at course create. Lookup is case-insensitive.
+
+```
+GET  /me/certificates                                      // Cognito. Issues when eligible, then { certificates, inProgress, profileIncomplete }. No email or userSub.
+GET  /certificates/{credentialId}                          // Public. Valid/revoked: credentialId, status, studentName, courseTitle, issueDate (Month YYYY). Unknown: 404 { status: not_found } with no name. Malformed: 400, no DB read.
+GET  /courses/{courseId}/certificates                      // Course owner or admin.
+POST /courses/{courseId}/certificates/{certificateId}/revoke  // Owner or admin. Certificate must belong to the course.
+```
+
+Public verify is rate-limited: `certificate.verify.ip` 20 / 10 min per IP, `certificate.verify.global` 200 / hour. PDF download is client-side (`jspdf`, dynamic import on the student certificates page). There is no server PDF and no NAT path. Migration **021**. API deployment **CatalogApiDeploymentV43**. Prod apply of **021** is still pending (pre-launch).
 
 ### Video provider webhooks
 ```
@@ -233,7 +250,7 @@ POST /webhooks/kinescope/drm-auth     // DRM auth callback; validates signed tok
 
 ## 8. React Frontend (MVP)
 
-**User-visible brand:** **Research Spectrum** (strings, titles/meta, logo/favicons via [`frontend/src/lib/brand.ts`](frontend/src/lib/brand.ts) and shared header/footer). Repo, stacks, and infra names remain **StreamMyCourse**. Shared visual foundation (Tailwind `rs-*` tokens, self-hosted Plus Jakarta Sans, UI primitives) is in place. Public marketing routes (`/`, `/about`, `/faq`, `/contact`, `/research-team`), student app flows (catalog, detail, player, quiz, login, account), and instructor app pages (dashboard, course management, question banks, payment setup, assignment create/review) use that system. Student assignment page: `/courses/:courseId/assignments/:assignmentId`. Teacher: `/courses/:courseId/assignments` and `.../review`. Legacy student paths (`/learn`, unrouted Figma pages) may still use older styling until cleaned up.
+**User-visible brand:** **Research Spectrum** (strings, titles/meta, logo/favicons via [`frontend/src/lib/brand.ts`](frontend/src/lib/brand.ts) and shared header/footer). Repo, stacks, and infra names remain **StreamMyCourse**. Shared visual foundation (Tailwind `rs-*` tokens, self-hosted Plus Jakarta Sans, UI primitives) is in place. Public marketing routes (`/`, `/about`, `/faq`, `/contact`, `/research-team`), student app flows (catalog, detail, player, quiz, login, account), and instructor app pages (dashboard, course management, question banks, payment setup, assignment create/review) use that system. Student assignment page: `/courses/:courseId/assignments/:assignmentId`. Teacher: `/courses/:courseId/assignments` and `.../review`. Student certificates: `/certificates` (client PDF download). Public verification: `/verify/:credentialId`. Legacy student paths (`/learn`, unrouted Figma pages) may still use older styling until cleaned up.
 
 ### Tech Stack
 - **React 19** + **Vite**
