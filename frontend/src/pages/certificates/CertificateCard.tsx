@@ -2,7 +2,7 @@ import { Check, Download, Link2, ShieldCheck } from 'lucide-react'
 import { Button } from '../../components/ui/Button'
 import type { CertificateFixture } from './certificateFixture'
 
-export type CertificateCardProps = {
+type CertificateCardProps = {
   certificate: CertificateFixture
   onDownload?: () => void
   onCopyShareLink?: () => void

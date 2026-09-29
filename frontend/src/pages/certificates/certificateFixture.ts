@@ -1,4 +1,4 @@
-export type CertificateStatus = 'valid' | 'revoked'
+type CertificateStatus = 'valid' | 'revoked'
 
 export type CertificateFixture = {
   studentName: string

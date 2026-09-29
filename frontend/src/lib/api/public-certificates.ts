@@ -3,7 +3,7 @@
  * Does not import Amplify or the authenticated API client.
  */
 
-export type PublicCertificate = {
+type PublicCertificate = {
   credentialId: string
   status: 'valid' | 'revoked'
   studentName: string
@@ -14,7 +14,7 @@ export type PublicCertificate = {
   instructorTitle?: string
 }
 
-export type PublicCertificateNotFound = {
+type PublicCertificateNotFound = {
   status: 'not_found'
   credentialId?: string
 }

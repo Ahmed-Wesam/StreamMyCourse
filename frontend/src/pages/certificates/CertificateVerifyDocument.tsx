@@ -1,7 +1,7 @@
 import { Check, Shield } from 'lucide-react'
 import type { CertificateFixture, CertificateNotFoundFixture } from './certificateFixture'
 
-export type CertificateVerifyDocumentProps =
+type CertificateVerifyDocumentProps =
   | { certificate: CertificateFixture; result?: undefined }
   | { result: CertificateNotFoundFixture; certificate?: undefined }
 
