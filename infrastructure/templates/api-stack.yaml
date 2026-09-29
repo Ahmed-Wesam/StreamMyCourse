@@ -571,6 +571,14 @@ Resources:
       ParentId: !Ref CourseCertificateIdResource
       PathPart: revoke
 
+  # API Gateway Resource: /courses/{courseId}/research-team-requirement
+  CourseResearchTeamRequirementResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref CatalogApi
+      ParentId: !Ref CourseIdResource
+      PathPart: research-team-requirement
+
   # API Gateway Resource: /courses/{courseId}/assignments/{assignmentId}
   CourseAssignmentIdResource:
     Type: AWS::ApiGateway::Resource
@@ -921,6 +929,62 @@ Resources:
       RestApiId: !Ref CatalogApi
       ParentId: !Ref MeResource
       PathPart: certificates
+
+  # API Gateway Resource: /me/research-team
+  MeResearchTeamResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref CatalogApi
+      ParentId: !Ref MeResource
+      PathPart: research-team
+
+  # API Gateway Resource: /me/research-team/applications
+  MeResearchTeamApplicationsResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref CatalogApi
+      ParentId: !Ref MeResearchTeamResource
+      PathPart: applications
+
+  # API Gateway Resource: /research-team
+  ResearchTeamResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref CatalogApi
+      ParentId: !GetAtt CatalogApi.RootResourceId
+      PathPart: research-team
+
+  # API Gateway Resource: /research-team/requirements
+  ResearchTeamRequirementsResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref CatalogApi
+      ParentId: !Ref ResearchTeamResource
+      PathPart: requirements
+
+  # API Gateway Resource: /research-team/applications
+  ResearchTeamApplicationsResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref CatalogApi
+      ParentId: !Ref ResearchTeamResource
+      PathPart: applications
+
+  # API Gateway Resource: /research-team/applications/{id}
+  ResearchTeamApplicationIdResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref CatalogApi
+      ParentId: !Ref ResearchTeamApplicationsResource
+      PathPart: '{id}'
+
+  # API Gateway Resource: /research-team/applications/{id}/allow-reapply
+  ResearchTeamAllowReapplyResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref CatalogApi
+      ParentId: !Ref ResearchTeamApplicationIdResource
+      PathPart: allow-reapply
 
   # API Gateway Resource: /certificates/{credentialId} (public verify)
   CertificatesResource:
@@ -2895,6 +2959,206 @@ Resources:
         Type: AWS_PROXY
         Uri: !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${CatalogLambda.Arn}/invocations'
 
+  ResearchTeamRequirementsGetMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref CatalogApi
+      ResourceId: !Ref ResearchTeamRequirementsResource
+      HttpMethod: GET
+      AuthorizationType: NONE
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Uri: !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${CatalogLambda.Arn}/invocations'
+
+  ResearchTeamRequirementsOptionsMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref CatalogApi
+      ResourceId: !Ref ResearchTeamRequirementsResource
+      HttpMethod: OPTIONS
+      AuthorizationType: NONE
+      Integration:
+        IntegrationHttpMethod: POST
+        Type: AWS_PROXY
+        Uri: !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${CatalogLambda.Arn}/invocations'
+
+  ResearchTeamApplicationsGetMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref CatalogApi
+      ResourceId: !Ref ResearchTeamApplicationsResource
+      HttpMethod: GET
+      AuthorizationType: COGNITO_USER_POOLS
+      AuthorizerId: !Ref CatalogApiTokenAuthorizer
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Uri: !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${CatalogLambda.Arn}/invocations'
+
+  ResearchTeamApplicationsOptionsMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref CatalogApi
+      ResourceId: !Ref ResearchTeamApplicationsResource
+      HttpMethod: OPTIONS
+      AuthorizationType: NONE
+      Integration:
+        IntegrationHttpMethod: POST
+        Type: AWS_PROXY
+        Uri: !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${CatalogLambda.Arn}/invocations'
+
+  ResearchTeamApplicationIdGetMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref CatalogApi
+      ResourceId: !Ref ResearchTeamApplicationIdResource
+      HttpMethod: GET
+      AuthorizationType: COGNITO_USER_POOLS
+      AuthorizerId: !Ref CatalogApiTokenAuthorizer
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Uri: !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${CatalogLambda.Arn}/invocations'
+
+  ResearchTeamApplicationIdPatchMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref CatalogApi
+      ResourceId: !Ref ResearchTeamApplicationIdResource
+      HttpMethod: PATCH
+      AuthorizationType: COGNITO_USER_POOLS
+      AuthorizerId: !Ref CatalogApiTokenAuthorizer
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Uri: !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${CatalogLambda.Arn}/invocations'
+
+  ResearchTeamApplicationIdOptionsMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref CatalogApi
+      ResourceId: !Ref ResearchTeamApplicationIdResource
+      HttpMethod: OPTIONS
+      AuthorizationType: NONE
+      Integration:
+        IntegrationHttpMethod: POST
+        Type: AWS_PROXY
+        Uri: !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${CatalogLambda.Arn}/invocations'
+
+  ResearchTeamAllowReapplyPostMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref CatalogApi
+      ResourceId: !Ref ResearchTeamAllowReapplyResource
+      HttpMethod: POST
+      AuthorizationType: COGNITO_USER_POOLS
+      AuthorizerId: !Ref CatalogApiTokenAuthorizer
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Uri: !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${CatalogLambda.Arn}/invocations'
+
+  ResearchTeamAllowReapplyOptionsMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref CatalogApi
+      ResourceId: !Ref ResearchTeamAllowReapplyResource
+      HttpMethod: OPTIONS
+      AuthorizationType: NONE
+      Integration:
+        IntegrationHttpMethod: POST
+        Type: AWS_PROXY
+        Uri: !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${CatalogLambda.Arn}/invocations'
+
+  MeResearchTeamGetMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref CatalogApi
+      ResourceId: !Ref MeResearchTeamResource
+      HttpMethod: GET
+      AuthorizationType: COGNITO_USER_POOLS
+      AuthorizerId: !Ref CatalogApiTokenAuthorizer
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Uri: !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${CatalogLambda.Arn}/invocations'
+
+  MeResearchTeamOptionsMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref CatalogApi
+      ResourceId: !Ref MeResearchTeamResource
+      HttpMethod: OPTIONS
+      AuthorizationType: NONE
+      Integration:
+        IntegrationHttpMethod: POST
+        Type: AWS_PROXY
+        Uri: !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${CatalogLambda.Arn}/invocations'
+
+  MeResearchTeamApplicationsPostMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref CatalogApi
+      ResourceId: !Ref MeResearchTeamApplicationsResource
+      HttpMethod: POST
+      AuthorizationType: COGNITO_USER_POOLS
+      AuthorizerId: !Ref CatalogApiTokenAuthorizer
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Uri: !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${CatalogLambda.Arn}/invocations'
+
+  MeResearchTeamApplicationsOptionsMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref CatalogApi
+      ResourceId: !Ref MeResearchTeamApplicationsResource
+      HttpMethod: OPTIONS
+      AuthorizationType: NONE
+      Integration:
+        IntegrationHttpMethod: POST
+        Type: AWS_PROXY
+        Uri: !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${CatalogLambda.Arn}/invocations'
+
+  CourseResearchTeamRequirementPutMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref CatalogApi
+      ResourceId: !Ref CourseResearchTeamRequirementResource
+      HttpMethod: PUT
+      AuthorizationType: COGNITO_USER_POOLS
+      AuthorizerId: !Ref CatalogApiTokenAuthorizer
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Uri: !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${CatalogLambda.Arn}/invocations'
+
+  CourseResearchTeamRequirementGetMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref CatalogApi
+      ResourceId: !Ref CourseResearchTeamRequirementResource
+      HttpMethod: GET
+      AuthorizationType: COGNITO_USER_POOLS
+      AuthorizerId: !Ref CatalogApiTokenAuthorizer
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Uri: !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${CatalogLambda.Arn}/invocations'
+
+  CourseResearchTeamRequirementOptionsMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref CatalogApi
+      ResourceId: !Ref CourseResearchTeamRequirementResource
+      HttpMethod: OPTIONS
+      AuthorizationType: NONE
+      Integration:
+        IntegrationHttpMethod: POST
+        Type: AWS_PROXY
+        Uri: !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${CatalogLambda.Arn}/invocations'
+
   CatalogApiDeploymentV43:
     Type: AWS::ApiGateway::Deployment
     DependsOn:
@@ -3025,12 +3289,158 @@ Resources:
       RestApiId: !Ref CatalogApi
       Description: !Sub 'catalog-${LambdaCodeS3Key}'
 
+  CatalogApiDeploymentV44:
+    Type: AWS::ApiGateway::Deployment
+    DependsOn:
+      - CatalogLambdaApiPermission
+      - CatalogApiTokenAuthorizer
+      - CatalogApiPublicReadAuthorizer
+      - CoursesGetMethod
+      - CoursesPostMethod
+      - CoursesOptionsMethod
+      - CoursesMineGetMethod
+      - CoursesMineOptionsMethod
+      - CourseIdGetMethod
+      - CourseEnrollPostMethod
+      - CourseEnrollOptionsMethod
+      - CourseIdPutMethod
+      - CourseIdDeleteMethod
+      - CourseIdOptionsMethod
+      - CoursePublishPutMethod
+      - CoursePublishOptionsMethod
+      - CourseThumbnailReadyPutMethod
+      - CourseThumbnailReadyOptionsMethod
+      - LessonsGetMethod
+      - LessonsPostMethod
+      - LessonsOptionsMethod
+      - LessonIdPutMethod
+      - LessonIdDeleteMethod
+      - LessonIdOptionsMethod
+      - LessonVideoReadyPutMethod
+      - LessonVideoReadyOptionsMethod
+      - PlaybackGetMethod
+      - PlaybackOptionsMethod
+      - UploadUrlPostMethod
+      - UploadUrlOptionsMethod
+      - ContactPostMethod
+      - ContactOptionsMethod
+      - UsersMeGetMethod
+      - UsersMePatchMethod
+      - UsersMeOptionsMethod
+      - CourseProgressGetMethod
+      - CourseProgressOptionsMethod
+      - LessonProgressPutMethod
+      - LessonProgressOptionsMethod
+      - LessonFilesGetMethod
+      - LessonFilesPostMethod
+      - LessonFilesOptionsMethod
+      - LessonFileIdDeleteMethod
+      - LessonFileIdOptionsMethod
+      - LessonFileCompletePutMethod
+      - LessonFileCompleteOptionsMethod
+      - LessonFileUrlGetMethod
+      - LessonFileUrlOptionsMethod
+      - LessonNotesGetMethod
+      - LessonNotesPostMethod
+      - LessonNotesOptionsMethod
+      - LessonNoteIdPatchMethod
+      - LessonNoteIdDeleteMethod
+      - LessonNoteIdOptionsMethod
+      - CourseModulesGetMethod
+      - CourseModulesPostMethod
+      - CourseModulesOptionsMethod
+      - CourseModuleIdDeleteMethod
+      - CourseModuleIdOptionsMethod
+      - CourseQuestionBanksPostMethod
+      - CourseQuestionBanksGetMethod
+      - CourseQuestionBanksOptionsMethod
+      - CourseQuestionBankIdPatchMethod
+      - CourseQuestionBankIdOptionsMethod
+      - CourseModuleQuizzesGetMethod
+      - CourseModuleQuizzesOptionsMethod
+      - CourseQuestionBankPublishPostMethod
+      - CourseQuestionBankPublishOptionsMethod
+      - CourseQuestionBankQuestionsPostMethod
+      - CourseQuestionBankQuestionsGetMethod
+      - CourseQuestionBankQuestionsOptionsMethod
+      - CourseQuestionBankQuestionIdPatchMethod
+      - CourseQuestionBankQuestionIdDeleteMethod
+      - CourseQuestionBankQuestionIdOptionsMethod
+      - CourseModuleQuizPatchMethod
+      - CourseModuleQuizPostMethod
+      - CourseModuleQuizOptionsMethod
+      - CourseModuleQuizSubmitPostMethod
+      - CourseModuleQuizSubmitOptionsMethod
+      - CourseModuleQuizAttemptsGetMethod
+      - CourseModuleQuizAttemptsOptionsMethod
+      - CourseModuleQuizStartPostMethod
+      - CourseModuleQuizStartOptionsMethod
+      - WebhooksKinescopePostMethod
+      - WebhooksKinescopeOptionsMethod
+      - WebhooksKinescopeDrmAuthPostMethod
+      - WebhooksKinescopeDrmAuthOptionsMethod
+      - CourseAssignmentsGetMethod
+      - CourseAssignmentsPostMethod
+      - CourseAssignmentsOptionsMethod
+      - CourseAssignmentIdGetMethod
+      - CourseAssignmentIdPatchMethod
+      - CourseAssignmentIdDeleteMethod
+      - CourseAssignmentIdOptionsMethod
+      - CourseAssignmentImagesPostMethod
+      - CourseAssignmentImagesOptionsMethod
+      - CourseAssignmentImageCompletePostMethod
+      - CourseAssignmentImageCompleteOptionsMethod
+      - CourseAssignmentImageUrlGetMethod
+      - CourseAssignmentImageUrlOptionsMethod
+      - CourseAssignmentSubmissionsGetMethod
+      - CourseAssignmentSubmissionsPostMethod
+      - CourseAssignmentSubmissionsOptionsMethod
+      - CourseAssignmentSubmissionIdGetMethod
+      - CourseAssignmentSubmissionIdOptionsMethod
+      - CourseAssignmentSubmissionFilesPostMethod
+      - CourseAssignmentSubmissionFilesOptionsMethod
+      - CourseAssignmentSubmissionFileCompletePostMethod
+      - CourseAssignmentSubmissionFileCompleteOptionsMethod
+      - CourseAssignmentSubmissionFileUrlGetMethod
+      - CourseAssignmentSubmissionFileUrlOptionsMethod
+      - CourseAssignmentSubmitPostMethod
+      - CourseAssignmentSubmitOptionsMethod
+      - CourseAssignmentGradePostMethod
+      - CourseAssignmentGradeOptionsMethod
+      - MeCertificatesGetMethod
+      - MeCertificatesOptionsMethod
+      - CertificatesCredentialIdGetMethod
+      - CertificatesCredentialIdOptionsMethod
+      - CourseCertificatesGetMethod
+      - CourseCertificatesOptionsMethod
+      - CourseCertificateRevokePostMethod
+      - CourseCertificateRevokeOptionsMethod
+      - ResearchTeamRequirementsGetMethod
+      - ResearchTeamRequirementsOptionsMethod
+      - ResearchTeamApplicationsGetMethod
+      - ResearchTeamApplicationsOptionsMethod
+      - ResearchTeamApplicationIdGetMethod
+      - ResearchTeamApplicationIdPatchMethod
+      - ResearchTeamApplicationIdOptionsMethod
+      - ResearchTeamAllowReapplyPostMethod
+      - ResearchTeamAllowReapplyOptionsMethod
+      - MeResearchTeamGetMethod
+      - MeResearchTeamOptionsMethod
+      - MeResearchTeamApplicationsPostMethod
+      - MeResearchTeamApplicationsOptionsMethod
+      - CourseResearchTeamRequirementPutMethod
+      - CourseResearchTeamRequirementGetMethod
+      - CourseResearchTeamRequirementOptionsMethod
+    Properties:
+      RestApiId: !Ref CatalogApi
+      Description: !Sub 'catalog-${LambdaCodeS3Key}'
+
   # API Gateway Stage
   CatalogApiStage:
     Type: AWS::ApiGateway::Stage
     Properties:
       RestApiId: !Ref CatalogApi
-      DeploymentId: !Ref CatalogApiDeploymentV43
+      DeploymentId: !Ref CatalogApiDeploymentV44
       StageName: !Ref Environment
       Description: !Sub '${Environment} stage for Catalog API'
       MethodSettings:

@@ -98,6 +98,10 @@ from services.certificates.rds_repo import CertificatesRdsRepository
 
 from services.certificates.service import CertificatesService
 
+from services.research_team.rds_repo import ResearchTeamRdsRepository
+
+from services.research_team.service import ResearchTeamService
+
 from services.purchases.checkout_service import PurchaseCheckoutService
 
 from services.purchases.manage_service import PurchaseManageService
@@ -592,7 +596,7 @@ class _AssignmentMailAdapter:
 
                 "subject": message.subject,
 
-                "body": message.body,
+                "bodyText": message.body,
 
             },
 
@@ -623,6 +627,32 @@ class _UserEmailAdapter:
             return ""
 
         return str(profile.get("email") or "")
+
+
+
+
+
+@dataclass(frozen=True)
+
+class _ResearchTeamCertificateAdapter:
+
+    """Composition-root adapter: research_team cert lookup → certificates repo."""
+
+
+
+    _repo: CertificatesRdsRepository
+
+
+
+    def get_status_for_user_course(self, user_sub: str, course_id: str) -> Optional[str]:
+
+        row = self._repo.get_by_user_course(user_sub, course_id)
+
+        if row is None:
+
+            return None
+
+        return str(row.status)
 
 
 
@@ -991,6 +1021,8 @@ class AwsDeps:
     assignments_service: Optional[AssignmentsService]
 
     certificates_service: CertificatesService
+
+    research_team_service: ResearchTeamService
 
 
 
@@ -1376,6 +1408,22 @@ def build_aws_deps(cfg: AppConfig) -> AwsDeps:
 
 
 
+    research_team_repo = ResearchTeamRdsRepository(conn_factory)
+
+    research_team_service = ResearchTeamService(
+
+        research_team_repo,
+
+        _ResearchTeamCertificateAdapter(certificates_repo),
+
+        _UserEmailAdapter(auth_repo),
+
+        _AssignmentMailAdapter(cfg.transactional_mail_queue_url),
+
+    )
+
+
+
     authorizer = _CourseMutateAuthorizerAdapter(service)
 
     course_read = _CourseReadAdapter(course_repo)
@@ -1469,6 +1517,8 @@ def build_aws_deps(cfg: AppConfig) -> AwsDeps:
         assignments_service=assignments_service,
 
         certificates_service=certificates_service,
+
+        research_team_service=research_team_service,
 
     )
 
