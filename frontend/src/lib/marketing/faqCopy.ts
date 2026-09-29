@@ -55,7 +55,7 @@ export const faqCategories: readonly FaqCategory[] = [
       {
         id: "getting-started-what-is-research-spectrum",
         question: "What is Research Spectrum?",
-        answer: "Research Spectrum is a structured online research education platform designed specifically for healthcare professionals. It provides four comprehensive courses covering Research Methodology, Statistics & SPSS, Scientific Writing, and Systematic Reviews & Meta-Analysis. Each course includes expert-led video lectures, module quizzes, a graded final assignment, and a competency-based certificate. The platform also features a Research Team pathway for students who complete all four courses.",
+        answer: "Research Spectrum is a structured online research education platform designed specifically for healthcare professionals. It provides four comprehensive courses covering Research Methodology, Statistics & SPSS, Scientific Writing, and Systematic Reviews & Meta-Analysis. Each course includes expert-led video lectures, module quizzes, a graded final assignment, and a competency-based certificate. The platform also features a Research Team pathway; see /research-team for the live list of admin-required courses.",
       },
       {
         id: "getting-started-who-are-the-courses-designed-for",
@@ -98,7 +98,7 @@ export const faqCategories: readonly FaqCategory[] = [
       {
         id: "courses-can-i-purchase-courses-individually-or-must-i-buy-the-bundle",
         question: "Can I purchase courses individually, or must I buy the bundle?",
-        answer: "Each course can be purchased individually. The Research Mastery Bundle — which includes all four courses — is also available. Individual course purchases are suitable if you want to focus on a specific topic. The bundle is recommended for students pursuing the full Research Team pathway, as all four certificates are required for eligibility.",
+        answer: "Each course can be purchased individually. The Research Mastery Bundle — which includes all four courses — is also available. Individual course purchases are suitable if you want to focus on a specific topic. The bundle is recommended if you plan to pursue the full Research Team pathway; see the Research Team page (/research-team) for the live list of admin-required courses and certificates.",
       },
       {
         id: "courses-what-is-included-in-each-course",
@@ -188,7 +188,7 @@ export const faqCategories: readonly FaqCategory[] = [
       {
         id: "certificates-what-does-certificate-eligibility-mean",
         question: "What does \"certificate eligibility\" mean?",
-        answer: "\"Certificate Eligible\" means you have completed all module quizzes and are eligible to submit the final assignment. The certificate itself is issued automatically after the assignment is submitted and receives a passing evaluation. So eligibility is the stage just before certificate issuance — it confirms you have completed all prerequisite steps and just need to submit and pass the final assignment.",
+        answer: "In everyday language, certificate eligibility just means you are on track to earn a certificate: you must pass all module quizzes and then submit and pass the final assignment. The platform does not use a separate pre-issuance eligibility stage. Once quizzes and the assignment are passed, the certificate is issued automatically.",
       },
       {
         id: "certificates-can-research-spectrum-certificates-be-verified",
@@ -221,22 +221,22 @@ export const faqCategories: readonly FaqCategory[] = [
       {
         id: "research-team-what-is-the-research-team",
         question: "What is the Research Team?",
-        answer: "The Research Spectrum Research Team is a selective group of graduates who collaborate on real research projects — including systematic reviews, meta-analyses, observational studies, and other academic publications. Team members contribute based on their demonstrated skills, with the goal of producing peer-reviewed publications. Membership requires completing all four Research Spectrum courses and earning their certificates, followed by a competitive application process.",
+        answer: "The Research Spectrum Research Team is a selective group of graduates who collaborate on real research projects — including systematic reviews, meta-analyses, observational studies, and other academic publications. Team members contribute based on their demonstrated skills, with the goal of producing peer-reviewed publications. Membership requires earning certificates for the admin-required courses listed on the Research Team page (/research-team), followed by a competitive application process.",
       },
       {
         id: "research-team-who-can-apply-for-the-research-team",
         question: "Who can apply for the Research Team?",
-        answer: "Students who have earned certificates from all four Research Spectrum courses — Research Methodology, Statistics & SPSS, Scientific Writing, and Systematic Reviews & Meta-Analysis — are eligible to apply for the Research Team. Completing the courses makes you eligible to apply; it does not guarantee acceptance. Applications are reviewed competitively based on skills demonstrated across all four certifications.",
+        answer: "Students who have earned certificates for the admin-required courses shown on the Research Team page (/research-team) are eligible to apply. Completing those required courses makes you eligible to apply; it does not guarantee acceptance. Applications are reviewed competitively based on skills demonstrated across the required certifications.",
       },
       {
         id: "research-team-q3",
         question: "Does completing all courses guarantee acceptance to the Research Team?",
-        answer: "No. Completing all four courses and earning their certificates makes you eligible to apply — it does not guarantee acceptance. Applications are reviewed competitively and acceptance depends on the quality of work demonstrated in the assignments, the skills shown across certifications, and current team capacity. Eligible students are strongly encouraged to apply, and all applicants receive a decision with clear reasoning.",
+        answer: "No. Completing the admin-required courses and earning their certificates makes you eligible to apply — it does not guarantee acceptance. Applications are reviewed competitively and acceptance depends on the quality of work demonstrated in the assignments, the skills shown across certifications, and current team capacity. Eligible students are strongly encouraged to apply, and all applicants receive a decision with clear reasoning. See /research-team for the live required list.",
       },
       {
         id: "research-team-how-are-research-team-applicants-selected",
         question: "How are Research Team applicants selected?",
-        answer: "Research Team applications are reviewed based on the quality of work demonstrated in final assignments across all four courses, the overall competency profile shown in the certification history, and — for shortlisted applicants — a brief interview to assess interest, availability, and fit with current projects. Details of the selection process are explained on the Research Team page.",
+        answer: "Research Team applications are reviewed based on the quality of work demonstrated in final assignments for the required courses, the overall competency profile shown in the certification history, and current team capacity. Details of the selection process are explained on the Research Team page (/research-team).",
       },
       {
         id: "research-team-what-types-of-research-projects-are-available",
@@ -310,12 +310,12 @@ export const faqCategories: readonly FaqCategory[] = [
       {
         id: "account-how-do-notification-settings-work",
         question: "How do notification settings work?",
-        answer: "Notification preferences are managed from the Settings page. You can control notifications for assignment feedback, certificate issuance, Research Team updates, and platform announcements. Settings are saved per account and apply across all devices where you are signed in.",
+        answer: "Research Spectrum does not offer separate notification preference controls. Assignment feedback, certificate issuance, and important account messages are delivered by email to the address on your Account profile. For help with account email or missing messages, use the Contact page.",
       },
       {
         id: "account-can-i-manage-my-privacy-settings",
         question: "Can I manage my privacy settings?",
-        answer: "Yes. Privacy settings are available from the Settings page. You can control profile visibility, certificate sharing preferences, and data usage settings. Research Spectrum's full privacy practices are detailed in the Privacy Policy.",
+        answer: "There are no separate privacy preference controls for profile visibility or certificate sharing toggles. You can update your profile details from the Account page. Research Spectrum's full privacy practices — including how we collect and use data — are detailed in the Privacy Policy.",
       },
       {
         id: "account-how-do-i-reset-my-password",

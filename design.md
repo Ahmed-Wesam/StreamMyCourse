@@ -1,16 +1,16 @@
 # StreamMyCourse — MVP Design Document
 
-> **Status:** The **MVP defined in this document is shipped** and running in **prod**. Further product scope, Phase 2 work, and the **engineering quality bar** (clean, maintainable code—prefer supported APIs over brittle UI hacks) are tracked in **[roadmap.md](./roadmap.md)** and **[ImplementationHistory.md](./ImplementationHistory.md)**. **Last updated:** 2026-09-25 · **Stack:** React 19 + AWS (Serverless) · **Frontend tests:** Vitest (optional **`npm run test:coverage`** — v8 only when `--coverage`; see **`frontend/vitest.config.ts`**).
+> **Status:** The **MVP defined in this document is shipped** and running in **prod** (some Research Spectrum migrations **015–022** may still be pending remote apply — see §13 / RS-15). Further product scope, Phase 2 work, and the **engineering quality bar** (clean, maintainable code—prefer supported APIs over brittle UI hacks) are tracked in **[roadmap.md](./roadmap.md)** and **[ImplementationHistory.md](./ImplementationHistory.md)**. **Last updated:** 2026-09-29 · **Stack:** React 19 + AWS (Serverless) · **Frontend tests:** Vitest (optional **`npm run test:coverage`** — v8 only when `--coverage`; see **`frontend/vitest.config.ts`**).
 
-A free video course platform where instructors upload content and students stream it. No payments in MVP — all courses are free.
+**Research Spectrum** course platform: instructors publish modules/lessons; students browse, **purchase** (per-course or bundle), watch, complete quizzes/assignments, earn certificates, and may apply to the Research Team. Repo/infra names remain **StreamMyCourse**.
 
 ---
 
 ## 1. MVP Goals
 
-- **Launch fast:** 4-5 weeks to first users
-- **Zero-cost start:** AWS free tier + on-demand pricing
-- **Core loop:** Browse → Watch → Instructors upload → Publish
+- **Launch:** Research Spectrum student + teacher SPAs on prod edge hosting
+- **Core loop:** Browse → Purchase → Watch / quiz / assignments → Certificate → (optional) Research Team apply
+- **Commerce (MVP):** USD **one-time** course + platform bundle via PayTabs (mock by default until live go-live) — not Stripe subscriptions ([ADR-0013](plans/architecture/adr-0013-one-time-purchases-bundle-entitlements.md))
 
 ---
 
@@ -20,14 +20,16 @@ A free video course platform where instructors upload content and students strea
 |----|-------------|--------|
 | FR-1 | Course catalog (browse) | Required |
 | FR-2 | Course detail page (lessons list) | Required |
-| FR-3 | Video playback (MP4) | Required |
-| FR-4 | Minimal backend API (courses/lessons/playback URL) | Required |
-| FR-5 | Instructor flows: create/edit course, lessons, presigned upload, mark video ready, publish (**optional** Cognito auth; can run open for demos) | Required |
-| FR-6 | Catalog persistence: **RDS PostgreSQL** is the canonical store (`DB_*` + Secrets Manager from RDS stack). Lambda returns **503** `catalog_unconfigured` when RDS is not wired | Required |
+| FR-3 | Video playback (provider contract; Kinescope default) | Required |
+| FR-4 | Backend API (courses/lessons/playback, billing, quizzes, …) | Required |
+| FR-5 | Instructor flows: create/edit course, lessons, uploads, publish, banks, assignments | Required |
+| FR-6 | Catalog persistence: **RDS PostgreSQL** (`DB_*` + Secrets Manager). **503** `catalog_unconfigured` when RDS is not wired | Required |
+| FR-7 | One-time purchases + bundle entitlements (RS-5) | Required |
+| FR-8 | Student Google + email/password (SRP) + Zoho mail (RS-6) | Required |
 
-**Out of scope:** Payments, enrollments, progress tracking, transcoding, DRM.
+**Out of scope (MVP):** Live PayTabs go-live, Stripe subscriptions, SES as the mail path, transcoding pipeline ownership beyond the active video provider, formal counsel/legal letter (eng alignment only — RS-15).
 
-**In scope:** Instructor upload via presigned S3 URLs; draft/publish workflow backed by **PostgreSQL** in deployed environments (see §6).
+**In scope:** Instructor upload via provider/S3 contracts; draft/publish; purchase-gated lesson access; progress, quizzes, lesson files/notes, assignments, certificates, Research Team applications (see §6–§7).
 
 ---
 
@@ -64,7 +66,7 @@ React (Vite + TS + Tailwind)
 | **API Gateway** | Minimal REST API | Free tier friendly |
 | **Lambda** | Minimal API handler | Free tier friendly |
 | **DynamoDB** | **Removed** — legacy single-table model was deprecated and is now fully removed. Existing tables may be orphaned (retained) until manual cleanup | None (unused) |
-| **RDS PostgreSQL** | **Canonical catalog store**: courses, lessons, enrollments, user profiles, lesson progress ([`rds-stack.yaml`](infrastructure/templates/rds-stack.yaml), migrations under [`infrastructure/database/migrations/`](infrastructure/database/migrations/)) | `db.t4g.micro` (eligible free tier when applicable) |
+| **RDS PostgreSQL** | **Canonical catalog store**: courses, lessons, purchases/bundle, profiles, progress, quizzes, files/notes, assignments, certificates, research_team ([`rds-stack.yaml`](infrastructure/templates/rds-stack.yaml), migrations under [`infrastructure/database/migrations/`](infrastructure/database/migrations/)) | `db.t4g.micro` (eligible free tier when applicable) |
 | **CloudWatch** | Logs/metrics | Free tier |
 | **Total** | | **Target: $0 on free tier** |
 
@@ -99,7 +101,24 @@ Student playback contract (`GET /playback/{courseId}/{lessonId}`):
 
 ## 6. Data (MVP)
 
-**RDS PostgreSQL (deployed prod):** The managed **prod** API uses **only** the relational path (`USE_RDS=true`). Schema: [`001_initial_schema.sql`](infrastructure/database/migrations/001_initial_schema.sql) — tables `courses`, **`course_modules`** (sections; every lesson belongs to one module), **`lessons`** (`module_id` FK, `lesson_order` unique per course+module), `enrollments`, `users`, `lesson_progress` (see [ADR-0008](plans/architecture/adr-0008-dynamodb-to-rds-migration.md), [ADR-0010](plans/architecture/adr-0010-lesson-progress-rds.md)). **`POST /courses`** inserts one default module (`module_order = 0`) in the same transaction as the course row. **DynamoDB catalog tables are deprecated** and are **not** used for application reads/writes.
+**RDS PostgreSQL (deployed prod):** The managed **prod** API uses **only** the relational path (`USE_RDS=true`). Base schema: [`001_initial_schema.sql`](infrastructure/database/migrations/001_initial_schema.sql) — `courses`, **`course_modules`**, **`lessons`**, `enrollments` (history/analytics; **does not** grant lesson access), `users`, `lesson_progress` (see [ADR-0008](plans/architecture/adr-0008-dynamodb-to-rds-migration.md), [ADR-0010](plans/architecture/adr-0010-lesson-progress-rds.md)). **`POST /courses`** inserts one default module (`module_order = 0`) in the same transaction as the course row. **DynamoDB catalog tables are deprecated** and are **not** used for application reads/writes.
+
+**Later migrations (015–022 summary — concise):**
+
+| Migration | Adds / changes |
+|-----------|----------------|
+| **015** | `courses.price_amount_minor`; `bundle_offers`; `purchases` (course\|bundle, pending\|paid\|revoked\|failed); drops `user_subscriptions` / `subscription_plans` ([ADR-0013](plans/architecture/adr-0013-one-time-purchases-bundle-entitlements.md)) |
+| **016** | Profile columns on `users`: given/family name, country, profession, institution, research_interests, terms/privacy accepted timestamps ([ADR-0014](plans/architecture/adr-0014-student-google-cognito-srp-zoho-mail.md)) |
+| **017** | `courses.page_content` (JSONB marketing document, RS-7) |
+| **018** | `module_quizzes.pass_percent` (1–100, default 70; RS-8 gating) |
+| **019** | `lesson_files`, `lesson_notes` (RS-11) |
+| **020** | `assignments`, criteria, submissions, submission files, grades (RS-13) |
+| **021** | `courses.certificate_code`; `certificates` (RS-12) |
+| **022** | `research_team_required_courses`, `research_team_applications` (RS-14) |
+
+Prod apply of **015–022** (and matching API stage) is tracked under **RS-15 prod-qa** — do not assume they are live until remote CI Deploy has run.
+
+**Access:** Lesson/playback/assignment entitlement is **purchase-based** (`paid` course or bundle for published courses; owner/admin bypass) — not enrollment-only. See [ADR-0013](plans/architecture/adr-0013-one-time-purchases-bundle-entitlements.md).
 
 **Misconfiguration:** When RDS is not wired (missing `RdsStackName` or incomplete DB env), catalog routes return **503** with `code: catalog_unconfigured` (OPTIONS still returns CORS preflight). When `ALLOWED_ORIGINS` is unset or parses to an empty allowlist, the handler returns **503** with `code: cors_misconfigured` and **no** `Access-Control-Allow-*` headers (fail-secure); set `ALLOWED_ORIGINS=*` only for deliberate local/dev tooling. Local UI must call a deployed API or a stack with persistence and CORS env set.
 
@@ -122,7 +141,7 @@ POST   /courses/{id}/enroll              // Idempotent self-service enrollment (
 
 ### Course modules (sections)
 ```
-GET    /courses/{id}/modules             // List modules (order, title, description); public for PUBLISHED; DRAFT 404 unless owner/admin (same rule as lesson list). **QB-D + RS-8:** optional per-module `moduleQuiz` when visibility passes — `{ "available": true, "servedCountN": <n>, "passPercent": <1–100> }` (draw size + pass threshold; default **70** when stored; no question text); when the signed-in viewer has submitted attempts, also `latestScorePercent` (whole percent, rounded half away from zero, e.g. 2/3 → 67) and `passed` (true when **any** submission meets `passPercent`). **`locked`** (boolean): for enrolled students, true when an **earlier** module with a visible quiz is not passed; publisher/admin bypass (field false/absent). Omitted when course is DRAFT, viewer lacks lesson access (not enrolled and not publisher/admin), bank is not PUBLISHED, or `served_count_n` is unset.
+GET    /courses/{id}/modules             // List modules (order, title, description); public for PUBLISHED; DRAFT 404 unless owner/admin (same rule as lesson list). **QB-D + RS-8:** optional per-module `moduleQuiz` when visibility passes — `{ "available": true, "servedCountN": <n>, "passPercent": <1–100> }` (draw size + pass threshold; default **70** when stored; no question text); when the signed-in viewer has submitted attempts, also `latestScorePercent` (whole percent, rounded half away from zero, e.g. 2/3 → 67) and `passed` (true when **any** submission meets `passPercent`). **`locked`** (boolean): for entitled students, true when an **earlier** module with a visible quiz is not passed; publisher/admin bypass (field false/absent). Omitted when course is DRAFT, viewer lacks lesson access (no purchase entitlement and not publisher/admin), bank is not PUBLISHED, or `served_count_n` is unset.
 POST   /courses/{id}/modules             // Create module (body: title, optional description); Cognito teacher/admin when enforced
 POST   /courses/{id}/question-banks      // Create DRAFT question bank for course; body `{ "name": "..." }` where name is trimmed, non-empty, max 80 chars, and not required to be unique. Cognito teacher/admin; **course publisher** (or admin) only — same `courses.created_by` vs `sub` rule as other course mutations. **201** + `{ "questionBankId": "<uuid>", "name": "<trimmed name>" }`
 GET    /courses/{id}/question-banks      // **QB-L:** List banks for course (publisher read). Cognito teacher/admin; **same publisher scope as GET modules on drafts** (404 `not_found` when course missing or caller cannot manage — not **403**). **200** JSON array of `{ "questionBankId", "name", "status", "createdAt", "updatedAt" }`; no banks → `[]`. **401** if unauthenticated when authorizer enforced.
@@ -152,7 +171,7 @@ PUT    /courses/{id}/lessons/{lid}/video-ready   // Mark uploaded video ready (M
 
 ### Playback
 ```
-GET  /playback/{courseId}/{lessonId}   // Provider playback contract; Kinescope `{ provider, videoId, drmAuthToken, watermarkText }` (name from given_name and/or family_name + email; 403 when email missing or both name claims blank), S3 `{ provider, playbackUrl }`; Cognito + enrollment (or owner/admin) when auth enforced. **RS-8:** **403** `module_locked` when the lesson’s module is quiz-gated locked for this student (prior module quiz not passed).
+GET  /playback/{courseId}/{lessonId}   // Provider playback contract; Kinescope `{ provider, videoId, drmAuthToken, watermarkText }` (name from given_name and/or family_name + email; 403 when email missing or both name claims blank), S3 `{ provider, playbackUrl }`; Cognito + **purchase entitlement** (or owner/admin) when auth enforced — **`purchase_required`** when no access. **RS-8:** **403** `module_locked` when the lesson’s module is quiz-gated locked for this student (prior module quiz not passed).
 ```
 
 ### Upload (Instructor)
@@ -260,7 +279,7 @@ Migration **022**. API deployment **CatalogApiDeploymentV44**. Prod apply of **0
 POST /webhooks/kinescope              // Provider status callback (`media.update.status`); optional
                                        // shared secret via ?token= or X-Kinescope-Webhook-Secret;
                                        // mutating events re-verified against Kinescope GET /videos/{id}
-POST /webhooks/kinescope/drm-auth     // DRM auth callback; validates signed token + enrollment/access
+POST /webhooks/kinescope/drm-auth     // DRM auth callback; validates signed token + purchase entitlement / owner-admin access
 ```
 
 ---
@@ -317,38 +336,54 @@ The frontend is built as **two separate SPAs** deployed to different subdomains:
 
 | Site | Domain | Purpose | Routes |
 |------|--------|---------|--------|
-| **Student** | `streammycourse.com` | Browse and watch courses | `/`, `/about`, `/faq`, `/contact`, `/research-team`, `/research-team/apply`, `/courses`, `/dashboard`, `/login`, `/privacy`, `/terms`, `/refund`, `/delivery`, `/educational-disclaimer`, `/courses/:id`, `/courses/:id/lessons/:id`, `/courses/:id/modules/:moduleId/quiz` (legacy `/details`, `/course`, `/catalog` redirect to `/courses`; **`/my-course`** → **`/dashboard`**) |
-| **Teacher** | `teach.streammycourse.com` | Create, edit, upload content | `/`, `/courses/:id`, `/courses/:id/question-banks`, `/courses/:id/question-banks/:bankId`, `/settings/payments`, `/research-team/applications` (admin) |
+| **Student** | `streammycourse.com` | Browse, purchase, learn | `/`, `/about`, `/faq`, `/contact`, `/research-team`, `/research-team/apply`, `/courses`, `/dashboard`, `/certificates`, `/verify`, `/verify/:credentialId`, `/login`, `/register`, `/verify-email`, `/forgot-password`, `/reset-password`, `/account/profile`, `/account/purchases`, `/checkout`, `/billing/success`, `/billing/cancel`, `/privacy`, `/terms`, `/refund`, `/delivery`, `/educational-disclaimer`, `/courses/:id`, `/courses/:id/lessons/:id`, `/courses/:id/modules/:moduleId/quiz`, `/courses/:id/assignments/:assignmentId` (legacy `/details`, `/course`, `/catalog` → `/courses`; **`/my-course`** → **`/dashboard`**; **`/account/subscription`** → **`/account/purchases`**) |
+| **Teacher** | `teach.streammycourse.com` | Create, edit, upload, grade | `/`, `/courses/:id`, `/courses/:id/question-banks`, `/courses/:id/question-banks/:bankId`, `/courses/:id/assignments`, `/courses/:id/assignments/:assignmentId/review`, `/settings/payments`, `/research-team/applications`, `/research-team/applications/:applicationId` (admin) |
 
 ### Student Site Routes (View-Only)
 ```
-/                                    # Research Spectrum marketing home (catalog cards from public GET /courses; no prices)
+/                                    # Research Spectrum marketing home (catalog cards from public GET /courses; USD prices when set)
 /about                               # About instructor (public)
 /faq                                 # FAQ (public)
 /contact                             # Contact form → public POST /contact (RS-10)
 /research-team                       # Research Team info + eligibility (lists admin-required published courses)
 /research-team/apply                 # Signed-in application form (RS-14; eligibility enforced on submit)
 /details                             # Legacy path → redirects to `/courses` (same as `/course`, `/catalog`)
-/my-course                           # Legacy enrolled hub → redirects to `/dashboard`
-/courses                             # Published course catalog (public `GET /courses`)
+/my-course                           # Legacy hub → redirects to `/dashboard`
+/courses                             # Published course catalog (public `GET /courses`; prices when set)
 /dashboard                           # Signed-in learning hub (purchases + progress/quizzes; RS-9; Research Team block RS-14)
-/login                               # Student sign-in (Hosted UI / auth shell)
-/courses/:courseId                   # Course detail
-/courses/:courseId/lessons/:lessonId # Video player
+/certificates                        # Signed-in certificates list + client PDF (RS-12)
+/verify                              # Public certificate verify (empty / prompt)
+/verify/:credentialId                # Public certificate verification (RS-12)
+/login                               # Student sign-in (Google Hosted UI + email/password)
+/register                            # Native email/password sign-up (RS-6)
+/verify-email                        # Confirm sign-up code
+/forgot-password                     # Forgot password
+/reset-password                      # Reset password
+/account/profile                     # Signed-in profile (PATCH /users/me)
+/account/purchases                   # Purchase history (RS-5)
+/checkout                            # One-time checkout (course or bundle)
+/billing/success                     # PayTabs return success
+/billing/cancel                      # PayTabs return cancel
+/courses/:courseId                   # Course detail (purchase CTA when hasAccess === false)
+/courses/:courseId/lessons/:lessonId # Video player (+ files/notes/assignments tabs)
 /courses/:courseId/modules/:moduleId/quiz # Module quiz (signed-in when Cognito enforced)
+/courses/:courseId/assignments/:assignmentId # Student assignment (RS-13)
+/privacy /terms /refund /delivery /educational-disclaimer  # Public legal pages
 ```
 
-**Design vs backend gaps (student UI):** Tracked in **[`reports/figma-student-ui-gap-report.md`](reports/figma-student-ui-gap-report.md)** (e.g. catalog pacing, instructor display, pricing plans where the API remains MVP-free).
+**Design vs backend gaps (student UI):** Tracked in **[`reports/figma-student-ui-gap-report.md`](reports/figma-student-ui-gap-report.md)** (catalog pacing, instructor display, and other UX polish — pricing/purchases are in the shipped API).
 
 ### Teacher Site Routes
 ```
 /                                    # Instructor dashboard (create/list courses)
-/courses/:courseId                   # Course management (edit, modules, lessons, upload, publish)
+/courses/:courseId                   # Course management (edit, modules, lessons, upload, publish, certificate revoke)
 /courses/:courseId/question-banks    # Question bank list + create
 /courses/:courseId/question-banks/:bankId # Question bank studio (draft/publish)
+/courses/:courseId/assignments       # Assignment list / create (RS-13)
+/courses/:courseId/assignments/:assignmentId/review # Grade submissions
 /settings/payments                   # PayTabs merchant setup + bundle USD price (billing teacher)
 /research-team/applications          # Admin-only Research Team application review (RS-14)
-/research-team/applications/:id      # Admin-only application detail + status / allow-reapply
+/research-team/applications/:applicationId # Admin-only application detail + status / allow-reapply
 ```
 
 ### Build Configuration
@@ -526,17 +561,18 @@ Prod API (`deploy-backend.sh`):
 
 ## 13. Near-term backlog (after current MVP)
 
-Ordered engineering priorities before large Phase 2 (monetization / DRM) work. Details and history: [`ImplementationHistory.md`](./ImplementationHistory.md); architecture decisions: [`plans/architecture/`](./plans/architecture/).
+Ordered engineering priorities before large Phase 2 work. Details and history: [`ImplementationHistory.md`](./ImplementationHistory.md); architecture decisions: [`plans/architecture/`](./plans/architecture/).
 
 | Priority | Item | Goal |
 |----------|------|------|
 | 1 | **CloudFront (video)** | **Shipped:** CDN for MP4 via [`video-stack.yaml`](infrastructure/templates/video-stack.yaml); PriceClass_200; OAC + bucket policy so CloudFront can read the private video bucket; presigned **S3** playback remains primary; **`StreamMyCourse-CfInvalidate-<env>`** Lambda for `CreateInvalidation`. |
 | 2 | **Frontend hosting** | **Shipped:** dual SPAs (student + teacher) to S3 + CloudFront + Route 53 via [`edge-hosting-stack.yaml`](infrastructure/templates/edge-hosting-stack.yaml) and the deploy pipeline (see §10). **Remaining:** ops polish (monitoring, cache tuning, domain/certificate hygiene). |
-| 3 | **Auth** | **Shipped:** Cognito pool + required Google IdP; **student** client **Google + native email/password (SRP)** + **PreSignUp** linking + **Zoho CustomEmailSender**; **teacher** client Google-only; API authorizer + **`GET` / `PATCH /users/me`** (migration **016**); student register/verify/forgot flows + **terms gate**. **Ops:** **`GOOGLE_OAUTH_*`**, **`STUDENT_*` / `TEACHER_*` callback URLs**, GitHub **`ZOHO_SMTP_PASSWORD`** (Zoho app password for transactional mail), API **`CorsAllowOrigin`**. **Remaining:** tighten which routes are public vs Cognito-only (catalog still has open reads by design). |
-| 4 | **RDS PostgreSQL (catalog)** | **Shipped and live in deployed prod:** [`rds-stack.yaml`](infrastructure/templates/rds-stack.yaml), PostgreSQL adapters (`services/*/rds_repo.py`), migrator [`scripts/migrate-dynamodb-to-rds.py`](scripts/migrate-dynamodb-to-rds.py). **DynamoDB catalog fully removed** — api stack now requires `RdsStackName` and uses RDS exclusively. See [ADR-0008](plans/architecture/adr-0008-dynamodb-to-rds-migration.md) and [`tests/integration/README.md`](tests/integration/README.md). **Question banks (repo + pipeline):** migrations **006**–**010** (bank name schema is folded into [`006_question_banks_module_quizzes.sql`](infrastructure/database/migrations/006_question_banks_module_quizzes.sql)); **QB-B** create bank + module quiz; stored publisher-editable bank names on create/list/rename; **QB-C/QB-E** draft question + publish ([`mcq_validation.py`](infrastructure/lambda/catalog/services/question_banks/mcq_validation.py)); **QB-D** optional `moduleQuiz` on `GET /courses/{id}/modules` ([`visibility.py`](infrastructure/lambda/catalog/services/question_banks/visibility.py)); **QB-F** binding draw + **QB-G** attempts + shuffle + **QB-H/I** submit, equal-weight grading ([`grading.py`](infrastructure/lambda/catalog/services/question_banks/grading.py)), discriminated **`POST .../quiz/start`** (`phase` `in_progress` \| `latest_results`, optional `retake`, `latestSubmission`), and **`POST .../quiz/submit`** ([`contracts.py`](infrastructure/lambda/catalog/services/question_banks/contracts.py), [`controller.py`](infrastructure/lambda/catalog/services/question_banks/controller.py)); student quiz UI [`ModuleQuizPage.tsx`](frontend/src/pages/ModuleQuizPage.tsx) + [`api.ts`](frontend/src/lib/api.ts). **RS-8 (repo):** migration **018** `pass_percent`, **`PATCH …/quiz`**, **`GET …/quiz/attempts`**, sequential module lock ([`gating.py`](infrastructure/lambda/catalog/services/question_banks/gating.py)), pass outcome fields on submit/start — child plan [`plans/ui-overhaul/rs-8-quiz-gating.md`](plans/ui-overhaul/rs-8-quiz-gating.md). **Prod:** migration **018** not applied pre-launch. API **CatalogApiDeploymentV27**+ in [`api-stack.yaml`](infrastructure/templates/api-stack.yaml). Unit: [`tests/unit/services/question_banks/`](tests/unit/services/question_banks/) (incl. submit, grading, gating, attempts). Integration: [`test_question_bank_start.py`](tests/integration/test_question_bank_start.py), [`test_question_bank_submit.py`](tests/integration/test_question_bank_submit.py) (authored for HTTPS post-deploy), permissions/publish/visibility, publisher reads. Normative: [`plans/question-banks-requirements.md`](plans/question-banks-requirements.md) §5–§11. **Remaining (repo backlog):** **QB-J** cross-stack audit ([`plans/question-banks-mega-plan.md`](plans/question-banks-mega-plan.md)). |
+| 3 | **Auth** | **Shipped:** Cognito pool + required Google IdP; **student** client **Google + native email/password (SRP)** + **PreSignUp** linking + **Zoho CustomEmailSender**; **teacher** client Google-only; API authorizer + **`GET` / `PATCH /users/me`** (migration **016**); student register/verify/forgot flows + **terms gate**. Decision record: [ADR-0014](plans/architecture/adr-0014-student-google-cognito-srp-zoho-mail.md). **Ops:** **`GOOGLE_OAUTH_*`**, **`STUDENT_*` / `TEACHER_*` callback URLs**, GitHub **`ZOHO_SMTP_PASSWORD`** (Zoho app password for transactional mail), API **`CorsAllowOrigin`**. **Remaining:** tighten which routes are public vs Cognito-only (catalog still has open reads by design). |
+| 4 | **RDS PostgreSQL (catalog)** | **Shipped and live in deployed prod:** [`rds-stack.yaml`](infrastructure/templates/rds-stack.yaml), PostgreSQL adapters (`services/*/rds_repo.py`), migrator [`scripts/migrate-dynamodb-to-rds.py`](scripts/migrate-dynamodb-to-rds.py). **DynamoDB catalog fully removed** — api stack now requires `RdsStackName` and uses RDS exclusively. See [ADR-0008](plans/architecture/adr-0008-dynamodb-to-rds-migration.md) and [`tests/integration/README.md`](tests/integration/README.md). **Question banks (repo + pipeline):** migrations **006**–**010** (bank name schema is folded into [`006_question_banks_module_quizzes.sql`](infrastructure/database/migrations/006_question_banks_module_quizzes.sql)); **QB-B** create bank + module quiz; stored publisher-editable bank names on create/list/rename; **QB-C/QB-E** draft question + publish ([`mcq_validation.py`](infrastructure/lambda/catalog/services/question_banks/mcq_validation.py)); **QB-D** optional `moduleQuiz` on `GET /courses/{id}/modules` ([`visibility.py`](infrastructure/lambda/catalog/services/question_banks/visibility.py)); **QB-F** binding draw + **QB-G** attempts + shuffle + **QB-H/I** submit, equal-weight grading ([`grading.py`](infrastructure/lambda/catalog/services/question_banks/grading.py)), discriminated **`POST .../quiz/start`** (`phase` `in_progress` \| `latest_results`, optional `retake`, `latestSubmission`), and **`POST .../quiz/submit`** ([`contracts.py`](infrastructure/lambda/catalog/services/question_banks/contracts.py), [`controller.py`](infrastructure/lambda/catalog/services/question_banks/controller.py)); student quiz UI [`ModuleQuizPage.tsx`](frontend/src/pages/ModuleQuizPage.tsx) + [`api.ts`](frontend/src/lib/api.ts). **RS-8 (repo):** migration **018** `pass_percent`, **`PATCH …/quiz`**, **`GET …/quiz/attempts`**, sequential module lock ([`gating.py`](infrastructure/lambda/catalog/services/question_banks/gating.py)), pass outcome fields on submit/start — child plan [`plans/ui-overhaul/rs-8-quiz-gating.md`](plans/ui-overhaul/rs-8-quiz-gating.md). **Prod:** migrations **018**–**022** (and related) pending remote apply under **RS-15 prod-qa**. API **CatalogApiDeploymentV27**+ in [`api-stack.yaml`](infrastructure/templates/api-stack.yaml) (**V44** for Research Team). Unit: [`tests/unit/services/question_banks/`](tests/unit/services/question_banks/) (incl. submit, grading, gating, attempts). Integration: [`test_question_bank_start.py`](tests/integration/test_question_bank_start.py), [`test_question_bank_submit.py`](tests/integration/test_question_bank_submit.py) (authored for HTTPS post-deploy), permissions/publish/visibility, publisher reads. Normative: [`plans/question-banks-requirements.md`](plans/question-banks-requirements.md) §5–§11. **Remaining (repo backlog):** **QB-J** cross-stack audit ([`plans/question-banks-mega-plan.md`](plans/question-banks-mega-plan.md)). |
 | 5 | **Security scanning in CI** | **Shipped baseline:** [`ci.yml`](.github/workflows/ci.yml) runs `npm audit --audit-level=high`, **Checkov** CloudFormation scanning with [`.checkov.yaml`](.checkov.yaml) baseline skips, **pip-audit** on Python requirements, and **Gitleaks** Git secret scanning via [`.gitleaks.toml`](.gitleaks.toml). RDS PostgreSQL now enforces TLS via `rds.force_ssl`. **Remaining:** burn down Checkov baseline skips as hardening items land. |
-| 6 | **Billing / one-time purchases (RS-5)** | Shipped in repo — **USD** per-course price (`courses.price_amount_minor`) + platform **bundle** (`bundle_offers`); access via **`purchases`** (`paid` course or bundle grants all **published** courses for bundle buyers, including courses published later). **`POST /billing/checkout-session`** body `{ productType, courseId? }` → PayTabs HPP one-time sale (mock by default); IPN → SQS → fulfillment; refund IPN revokes by **`previous_tran_ref`**. Catalog: **`GET /billing/bundle`**, **`GET /billing/purchases`**, **`PATCH /billing/bundle`**, **`PATCH /billing/courses/{id}/price`**. Student **`/checkout`**, **`/account/purchases`**; **`purchase_required`** when no entitlement. Subscription routes/tables removed (**migration 015** drops `user_subscriptions` / `subscription_plans`). Ops: [`billing-ops-runbook.md`](infrastructure/docs/billing-ops-runbook.md). Pre-rollout: **`PAYTABS_USE_MOCK=true`**; live USD PayTabs profile is post-MVP ([WS9](plans/billing-workstream-9-paytabs-live-go-live.md) superseded in intent by RS-5 product model). |
-| 7 | **Legal / merchant disclosure** | **Shipped (frontend):** English **Privacy**, **Terms**, **Refund**, **Delivery**, and **Educational Disclaimer** on student SPA ([`legalConfig.ts`](frontend/src/lib/legalConfig.ts), [`frontend/src/lib/legal/content/`](frontend/src/lib/legal/content/)); teacher footer + PayTabs setup use absolute student URLs via [`legalUrls.ts`](frontend/src/lib/legalUrls.ts). **Remaining:** counsel review of EN copy before PayTabs go-live. |
+| 6 | **Billing / one-time purchases (RS-5)** | Shipped in repo — **USD** per-course price (`courses.price_amount_minor`) + platform **bundle** (`bundle_offers`); access via **`purchases`** (`paid` course or bundle grants all **published** courses for bundle buyers, including courses published later). Decision record: [ADR-0013](plans/architecture/adr-0013-one-time-purchases-bundle-entitlements.md). **`POST /billing/checkout-session`** body `{ productType, courseId? }` → PayTabs HPP one-time sale (mock by default); IPN → SQS → fulfillment; refund IPN revokes by **`previous_tran_ref`**. Catalog: **`GET /billing/bundle`**, **`GET /billing/purchases`**, **`PATCH /billing/bundle`**, **`PATCH /billing/courses/{id}/price`**. Student **`/checkout`**, **`/account/purchases`**; **`purchase_required`** when no entitlement. Subscription routes/tables removed (**migration 015** drops `user_subscriptions` / `subscription_plans`). Ops: [`billing-ops-runbook.md`](infrastructure/docs/billing-ops-runbook.md). Pre-rollout: **`PAYTABS_USE_MOCK=true`**; live USD PayTabs profile is post-MVP ([WS9](plans/billing-workstream-9-paytabs-live-go-live.md) superseded in intent by RS-5 product model). |
+| 7 | **Legal / merchant disclosure** | **Shipped (frontend):** English **Privacy**, **Terms**, **Refund**, **Delivery**, and **Educational Disclaimer** on student SPA ([`legalConfig.ts`](frontend/src/lib/legalConfig.ts), [`frontend/src/lib/legal/content/`](frontend/src/lib/legal/content/)); teacher footer + PayTabs setup use absolute student URLs via [`legalUrls.ts`](frontend/src/lib/legalUrls.ts). **Eng legal review (RS-15):** align privacy/marketing copy with collected data and admin-required Research Team eligibility (no counsel letter in this closeout). **Remaining:** optional formal counsel review before PayTabs go-live. |
+| 8 | **RS-15 closeout** | **Docs slice (this session):** contract docs + ADRs **0011–0014** + marketing/legal TDD alignment. **Still open:** remote CI Deploy so prod applies migrations **015–022** + API **V44**, then HTTPS integration + CI-parity (**prod-qa** slice). Child plan: [`plans/ui-overhaul/rs-15-docs-legal-qa.md`](plans/ui-overhaul/rs-15-docs-legal-qa.md). |
 
 **Technical hygiene (ongoing):** extend typed `contracts` at the controller edge as endpoints grow. (Lambda artifact keys: **shipped** in CI/`deploy.ps1` — see §10.)
 
@@ -544,7 +580,7 @@ Ordered engineering priorities before large Phase 2 (monetization / DRM) work. D
 
 ## 14. Post-MVP roadmap (Phase 2+)
 
-See [`roadmap.md`](./roadmap.md) for phased vision (payments, scale, admin, search, live streaming, and additional video/provider evolution) and cost notes. §13 is the **bridge** between today’s baseline and that document’s Phase 2+ items.
+See [`roadmap.md`](./roadmap.md) for phased vision (provider hardening, optional alternate PSPs, scale, admin, search, live streaming) and cost notes. §13 is the **bridge** between today’s baseline and that document’s Phase 2+ items. Monetization baseline is already **one-time purchases** ([ADR-0013](plans/architecture/adr-0013-one-time-purchases-bundle-entitlements.md)); Phase 2 is not “add first payments.”
 
 ---
 

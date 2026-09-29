@@ -110,8 +110,8 @@ export const homeBeyond = {
     },
     {
       step: 'Step 04',
-      title: 'Interview & Selection Process',
-      body: 'Selected applicants move through interviews and a structured review.',
+      title: 'Selection & Review',
+      body: 'Applications are reviewed competitively based on demonstrated skills and current team capacity.',
       peak: false,
     },
     {
@@ -129,8 +129,8 @@ export const homeBeyond = {
   ],
   eligibilityTitle: 'How Eligibility Works',
   eligibilityItems: [
-    'Students who complete all four courses become eligible to apply for the Research Spectrum Research Team.',
-    'Selection is based on interviews, course performance, assignments, English proficiency, and research skills.',
+    'Students who earn certificates for the admin-required courses become eligible to apply for the Research Spectrum Research Team. See /research-team for the live required list.',
+    'Selection considers course performance, assignments, English proficiency, and research skills.',
   ],
   eligibilityNote: 'Eligibility does not guarantee acceptance.',
   learnMore: 'Learn more',

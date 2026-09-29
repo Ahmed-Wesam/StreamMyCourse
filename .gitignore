@@ -79,7 +79,11 @@ infrastructure/lambda/catalog/_vendor/
 .cache/
 temp/
 tmp/
-plans/
+# Ignore plan trees by default; keep architecture ADRs / module-map tracked.
+# Use plans/* (not plans/) so !exceptions can re-include a subdirectory.
+plans/*
+!plans/architecture/
+!plans/architecture/**
 reports/
 
 # Prod pause/restore operator artifacts (export-pause-manifest.sh, teardown helpers)

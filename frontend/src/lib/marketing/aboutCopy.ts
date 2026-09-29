@@ -254,7 +254,7 @@ export const aboutDifference = {
     },
     {
       title: 'Research Team Pathway',
-      body: 'Graduates of all four courses become eligible to apply for the Research Team and continue their development beyond the curriculum.',
+      body: 'Students who earn certificates for the admin-required courses become eligible to apply for the Research Team and continue beyond the curriculum. See the Research Team page for the live required list.',
       tone: 'success' as const,
     },
     {

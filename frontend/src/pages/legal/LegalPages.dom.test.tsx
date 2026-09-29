@@ -97,4 +97,32 @@ describe('Legal pages', () => {
     expect(screen.getByRole('heading', { level: 1, name: title })).toBeTruthy()
     expect(container.firstElementChild?.className).toMatch(/text-rs-ink/)
   })
+
+  it('Privacy describes shipped data types and omits invented certificate visibility controls', () => {
+    const { container } = render(
+      <MemoryRouter>
+        <PrivacyPage />
+      </MemoryRouter>,
+    )
+
+    const pageText = container.textContent ?? ''
+
+    expect(pageText).toMatch(/profession/i)
+    expect(pageText).toMatch(/purchase/i)
+    expect(pageText).toMatch(/notes|lesson uploads?/i)
+    expect(pageText).toMatch(/Research Team application|application PII/i)
+    expect(pageText).not.toMatch(/Certificate Visibility Controls/i)
+  })
+
+  it('Refund still describes one-time purchases without a current subscription model', () => {
+    const { container } = render(
+      <MemoryRouter>
+        <RefundPage />
+      </MemoryRouter>,
+    )
+
+    const pageText = container.textContent ?? ''
+    expect(pageText).toMatch(/does not currently operate on a subscription model/i)
+    expect(pageText).toMatch(/no recurring subscription charges/i)
+  })
 })
