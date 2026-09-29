@@ -40,6 +40,11 @@ import {
 } from '../components/course/CourseManagementPageStates'
 import { TeacherCourseCertificates } from './teacher-certificates/TeacherCourseCertificates'
 import { setCoursePrice } from '../lib/api/pricing'
+import { fetchMe } from '../lib/api/session'
+import {
+  getCourseResearchTeamRequirement,
+  setCourseResearchTeamRequirement,
+} from '../lib/api/research-team-teacher'
 import { usePageTitle } from '../lib/page-title'
 import { parseUsdInputToMinor, usdMinorToInputValue } from '../lib/usdPriceInput'
 import { Badge } from '../components/ui/Badge'
@@ -52,6 +57,9 @@ export default function CourseManagement() {
   const { courseId } = useParams<{ courseId: string }>()
   const navigate = useNavigate()
   const [course, setCourse] = useState<Course | null>(null)
+  const [isAdmin, setIsAdmin] = useState(false)
+  const [researchTeamRequired, setResearchTeamRequired] = useState(false)
+  const [savingResearchTeamRequired, setSavingResearchTeamRequired] = useState(false)
   const [lessons, setLessons] = useState<Lesson[]>([])
   const [modules, setModules] = useState<CourseModule[]>([])
   const [moduleQuizRows, setModuleQuizRows] = useState<ModuleQuizRow[]>([])
@@ -176,6 +184,58 @@ export default function CourseManagement() {
       void loadCourseData()
     }
   }, [courseId, loadCourseData])
+
+  useEffect(() => {
+    let cancelled = false
+    ;(async () => {
+      try {
+        const me = await fetchMe()
+        if (cancelled) return
+        const admin = me.role.toLowerCase() === 'admin'
+        setIsAdmin(admin)
+        if (!admin || !courseId) {
+          setResearchTeamRequired(false)
+          return
+        }
+        try {
+          const { required } = await getCourseResearchTeamRequirement(courseId)
+          if (!cancelled) {
+            setResearchTeamRequired(required)
+          }
+        } catch (err) {
+          if (!cancelled) {
+            setResearchTeamRequired(false)
+            setError(catalogApiUserMessage(err))
+          }
+        }
+      } catch {
+        if (!cancelled) {
+          setIsAdmin(false)
+          setResearchTeamRequired(false)
+        }
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [courseId])
+
+  const handleToggleResearchTeamRequired = async (next: boolean) => {
+    if (!courseId || savingResearchTeamRequired) return
+    const previous = researchTeamRequired
+    setResearchTeamRequired(next)
+    setSavingResearchTeamRequired(true)
+    setError(null)
+    try {
+      const result = await setCourseResearchTeamRequirement(courseId, next)
+      setResearchTeamRequired(result.required)
+    } catch (err) {
+      setResearchTeamRequired(previous)
+      setError(catalogApiUserMessage(err))
+    } finally {
+      setSavingResearchTeamRequired(false)
+    }
+  }
 
   const handleSaveCourse = async () => {
     if (!courseId) return
@@ -569,6 +629,18 @@ export default function CourseManagement() {
             {savingPrice ? 'Saving price…' : 'Save price'}
           </Button>
         </div>
+        {isAdmin ? (
+          <label className="mb-4 flex min-h-11 cursor-pointer items-center gap-3 text-sm font-semibold text-rs-body">
+            <input
+              type="checkbox"
+              className="h-5 w-5 accent-rs-blue"
+              checked={researchTeamRequired}
+              disabled={savingResearchTeamRequired}
+              onChange={(e) => void handleToggleResearchTeamRequired(e.target.checked)}
+            />
+            Required for Research Team
+          </label>
+        ) : null}
         <div className="flex gap-3">
           <Button type="button" onClick={() => void handleSaveCourse()} disabled={saving}>
             {saving ? 'Saving...' : 'Save Changes'}

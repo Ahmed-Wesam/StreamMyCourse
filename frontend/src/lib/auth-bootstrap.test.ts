@@ -142,6 +142,10 @@ describe('needsAuthBootstrap', () => {
     it('returns true for /certificates', () => {
       expect(needsAuthBootstrap('/certificates', '')).toBe(true)
     })
+
+    it('returns true for research-team apply', () => {
+      expect(needsAuthBootstrap('/research-team/apply', '')).toBe(true)
+    })
   })
 
   describe('public certificate verification', () => {
