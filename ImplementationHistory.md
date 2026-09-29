@@ -6,7 +6,7 @@
 
 ---
 
-## 2026-09-29 — RS-15 docs, legal alignment, QA closeout (in progress)
+## 2026-09-29 — RS-15 docs, legal alignment, QA closeout
 
 ### Decisions (locked in child plan)
 
@@ -15,23 +15,25 @@
 - Eng legal alignment only (no counsel letter). Keep “four courses” catalog language; fix false eligibility / Settings / interview claims.
 - Next free ADR numbers after restore: **0013** (RS-5 purchases) and **0014** (RS-6 auth + Zoho).
 
-### What landed (docs / architecture slices)
+### What landed
 
 - [x] **Architecture restore** — `plans/architecture/` restored and tracked; `.gitignore` exception for that subtree.
 - [x] **ADRs** — re-authored [ADR-0011](plans/architecture/adr-0011-video-provider-port-kinescope-cutover.md), [ADR-0012](plans/architecture/adr-0012-api-abuse-protection.md); added [ADR-0013](plans/architecture/adr-0013-one-time-purchases-bundle-entitlements.md) (RS-5), [ADR-0014](plans/architecture/adr-0014-student-google-cognito-srp-zoho-mail.md) (RS-6); refreshed [`module-map.md`](plans/architecture/module-map.md).
-- [x] **Marketing / legal TDD** — eligibility and privacy copy aligned in prior RS-15 slices (Research Team / FAQ / home / about; privacy contract tests). Catalog “four courses” product language kept.
-- [x] **Contract docs sync (this slice)** — [`design.md`](design.md) (§6 migrations **015–022**, routes, purchase access wording, §13 RS-15 / ADR links); [`roadmap.md`](roadmap.md) (MVP = one-time purchases + Zoho; certificates/Research Team as shipped-in-repo; historical subscription appendix); mega-plan + [`rs-15-docs-legal-qa.md`](plans/ui-overhaul/rs-15-docs-legal-qa.md) status.
+- [x] **Marketing / legal TDD** — eligibility and privacy copy aligned (Research Team / FAQ / home / about; privacy contract tests). Catalog “four courses” product language kept.
+- [x] **Contract docs** — [`design.md`](design.md), [`roadmap.md`](roadmap.md), mega-plan + [`rs-15-docs-legal-qa.md`](plans/ui-overhaul/rs-15-docs-legal-qa.md).
+- [x] **Remote CI Deploy** — commit [`54a53f5`](https://github.com/Ahmed-Wesam/StreamMyCourse/commit/54a53f5fde1fdef5b8bdc461a8cd1bd6c75582c0); [CI](https://github.com/Ahmed-Wesam/StreamMyCourse/actions/runs/36615165198) + [Deploy](https://github.com/Ahmed-Wesam/StreamMyCourse/actions/runs/36615444598) green (schema apply **015–022**, backend, Actions HTTPS integ, verify RDS, SPAs).
 
-### Verification / still open (prod-qa slice)
+### Verification
 
-- [ ] Remote CI Deploy applies migrations **015–022** + API **V44** (do not claim prod migrate done yet)
-- [ ] `./scripts/run-local-integration-tests.sh` against prod after Deploy
-- [ ] Local CI-parity checklist (`AGENTS.md`) + light a11y sample
-- [ ] Final `/update_docs` + mark RS-15 Done
+- [x] Remote CI Deploy applied migrations **015–022** + API **V44** path
+- [x] Actions HTTPS integration green (prod bar). Local `./scripts/run-local-integration-tests.sh -q`: **149** passed / **9** failed — failures attributed to local env (CORS origin expectation, Python 3.14/botocore), not Deploy regress
+- [x] Local CI-parity: lint **0** errors; knip OK; Vitest **858** passed; `check:bundle` OK; `check_lambda_boundaries.py` OK
+- [ ] Light browser a11y sample (checkout / certificates / research-team apply / assignment review) — deferred; no browser in execute session
+- [x] Final `/update_docs` + mark RS-15 Done
 
 ### Docs
 
-- Child plan: [`plans/ui-overhaul/rs-15-docs-legal-qa.md`](plans/ui-overhaul/rs-15-docs-legal-qa.md); mega-plan RS-15 **In progress** (docs done; prod QA pending)
+- Child plan: [`plans/ui-overhaul/rs-15-docs-legal-qa.md`](plans/ui-overhaul/rs-15-docs-legal-qa.md); mega-plan RS-15 **Implemented**
 
 ---
 
@@ -58,7 +60,7 @@
 - [x] Pytest: `research_team` unit suite + API stack (**99** passed in parent re-run)
 - [x] `python scripts/check_lambda_boundaries.py`
 - [x] Vitest: full frontend (**841** passed); lint **0** errors; knip exit **0**; `check:bundle` OK (`firstLoadPublic` **78.06 KB**)
-- [ ] Prod RDS **022** and API **V44** deploy
+- [x] Prod RDS **022** and API **V44** deploy (closed under RS-15 remote Deploy [`36615444598`](https://github.com/Ahmed-Wesam/StreamMyCourse/actions/runs/36615444598))
 - [ ] Browser click-path
 
 ### Docs
