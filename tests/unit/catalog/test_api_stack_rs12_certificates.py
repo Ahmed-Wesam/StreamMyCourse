@@ -58,10 +58,9 @@ def test_rs12_certificate_methods_in_deployment_v43() -> None:
     text = _API_STACK.read_text(encoding="utf-8")
     assert "CatalogApiDeploymentV43:" in text
     deployment_block = text.split("CatalogApiDeploymentV43:", 1)[1].split(
-        "CatalogApiStage:", 1
+        "CatalogApiDeploymentV44:", 1
     )[0]
     for logical_id in _DEPLOYMENT_METHODS:
         assert logical_id in deployment_block, logical_id
-    assert "DeploymentId: !Ref CatalogApiDeploymentV43" in text
-    stage_block = text.split("CatalogApiStage:", 1)[1].split("\n\n", 1)[0]
-    assert "CatalogApiDeploymentV42" not in stage_block
+    # Stage advances with later RS deployments; V43 resource is retained.
+    assert "CatalogApiDeploymentV43" in text

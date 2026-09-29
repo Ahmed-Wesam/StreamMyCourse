@@ -536,6 +536,20 @@ def test_deploy_backend_bundles_migration_021() -> None:
     assert chunk.index("020_assignments.sql") < chunk.index(needle)
 
 
+def test_deploy_backend_bundles_migration_022() -> None:
+    """deploy-backend.yml must cat 022 after 021 in the prod schema bundle."""
+    path = _ROOT / ".github" / "workflows" / "deploy-backend.yml"
+    text = path.read_text(encoding="utf-8")
+    needle = "022_research_team.sql"
+    marker = "rds-schema-apply-prod-"
+    start = text.index(marker)
+    end = text.index('> "$PKG/schema.sql"', start)
+    chunk = text[start:end]
+    assert needle in chunk
+    assert "021_certificates.sql" in chunk
+    assert chunk.index("021_certificates.sql") < chunk.index(needle)
+
+
 def test_deploy_rds_stack_sh_bundles_migration_015() -> None:
     """scripts/deploy-rds-stack.sh must cat 015 after 014."""
     path = _ROOT / "scripts" / "deploy-rds-stack.sh"
@@ -627,6 +641,19 @@ def test_deploy_rds_stack_sh_bundles_migration_021() -> None:
     assert chunk.index("020_assignments.sql") < chunk.index(needle)
 
 
+def test_deploy_rds_stack_sh_bundles_migration_022() -> None:
+    """scripts/deploy-rds-stack.sh must cat 022 after 021."""
+    path = _ROOT / "scripts" / "deploy-rds-stack.sh"
+    text = path.read_text(encoding="utf-8")
+    needle = "022_research_team.sql"
+    start = text.index("cat \\")
+    end = text.index('> "$PKG/schema.sql"', start)
+    chunk = text[start:end]
+    assert needle in chunk
+    assert "021_certificates.sql" in chunk
+    assert chunk.index("021_certificates.sql") < chunk.index(needle)
+
+
 def test_deploy_ps1_lists_migration_015() -> None:
     """infrastructure/deploy.ps1 schema bundle must include 015 after 014."""
     path = _ROOT / "infrastructure" / "deploy.ps1"
@@ -716,6 +743,19 @@ def test_deploy_ps1_lists_migration_021() -> None:
     assert needle in chunk
     assert "020_assignments.sql" in chunk
     assert chunk.index("020_assignments.sql") < chunk.index(needle)
+
+
+def test_deploy_ps1_lists_migration_022() -> None:
+    """infrastructure/deploy.ps1 schema bundle must include 022 after 021."""
+    path = _ROOT / "infrastructure" / "deploy.ps1"
+    text = path.read_text(encoding="utf-8")
+    needle = "022_research_team.sql"
+    start = text.index("$schemaSqlFiles = @(")
+    end = text.index(")", start)
+    chunk = text[start:end]
+    assert needle in chunk
+    assert "021_certificates.sql" in chunk
+    assert chunk.index("021_certificates.sql") < chunk.index(needle)
 
 
 def test_split_real_migration_015_contains_expected_purchases_ddl(schema_apply):
@@ -887,6 +927,39 @@ def test_concatenated_deploy_schema_bundle_through_021_is_splittable(schema_appl
     joined = "\n".join(parts)
     assert "CREATE TABLE IF NOT EXISTS certificates" in joined
     assert "certificate_code" in joined
+    assert len(parts) >= 55
+
+
+def test_concatenated_deploy_schema_bundle_through_022_is_splittable(schema_apply):
+    """CI deploy-backend.yml concatenates 001–022 (skipping 002/005) into schema.sql."""
+    migrations_dir = _ROOT / "infrastructure" / "database" / "migrations"
+    names = (
+        "001_initial_schema.sql",
+        "003_progress_course_lesson_fk.sql",
+        "004_enforce_course_created_by.sql",
+        "006_question_banks_module_quizzes.sql",
+        "007_question_bank_questions.sql",
+        "008_student_module_quiz_bindings.sql",
+        "009_module_quiz_attempts.sql",
+        "010_module_quiz_attempt_submissions.sql",
+        "011_billing_subscription.sql",
+        "012_billing_plan_price_50_jod.sql",
+        "013_student_active_session.sql",
+        "014_rate_limit_counters.sql",
+        "015_one_time_purchases.sql",
+        "016_user_profile_fields.sql",
+        "017_course_page_content.sql",
+        "018_module_quiz_pass_percent.sql",
+        "019_lesson_files_and_notes.sql",
+        "020_assignments.sql",
+        "021_certificates.sql",
+        "022_research_team.sql",
+    )
+    bundle = "".join((migrations_dir / n).read_text(encoding="utf-8") for n in names)
+    parts = schema_apply._split_sql_statements(bundle)
+    joined = "\n".join(parts)
+    assert "CREATE TABLE IF NOT EXISTS research_team_applications" in joined
+    assert "research_team_applications_one_open" in joined
     assert len(parts) >= 55
 
 
