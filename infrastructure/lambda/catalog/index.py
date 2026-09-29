@@ -33,6 +33,7 @@ from services.contact.controller import handle_contact_request
 from services.lesson_notes.controller import handle_lesson_notes_request
 from services.assignments.controller import handle_assignments_request
 from services.certificates.controller import handle_certificates_request
+from services.research_team.controller import handle_research_team_request
 from services.rate_limit.http import check_rate_limit
 
 logger = logging.getLogger(__name__)
@@ -497,6 +498,44 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                                 event,
                                 origin=origin,
                                 assignments_svc=assign_deps.assignments_service,
+                            )
+                    elif (
+                        (
+                            (len(parts) >= 2 and parts[0] == "research-team")
+                            or (len(parts) >= 2 and parts[0] == "me" and parts[1] == "research-team")
+                            or (
+                                len(parts) == 3
+                                and parts[0] == "courses"
+                                and parts[2] == "research-team-requirement"
+                            )
+                        )
+                        and (
+                            method == "OPTIONS"
+                            or method in ("GET", "POST", "PUT", "PATCH")
+                        )
+                    ):
+                        rt_deps = get_cached_aws_deps()
+                        if rt_deps is None:
+                            if method == "OPTIONS":
+                                route_response = options_response(origin)
+                            else:
+                                route_response = json_response(
+                                    503,
+                                    {
+                                        "message": (
+                                            "Catalog is not configured: set DB_HOST, DB_NAME, and "
+                                            "DB_SECRET_ARN (deploy the api stack with RdsStackName "
+                                            "wired to the RDS stack)."
+                                        ),
+                                        "code": "catalog_unconfigured",
+                                    },
+                                    origin,
+                                )
+                        else:
+                            route_response = handle_research_team_request(
+                                event,
+                                origin=origin,
+                                research_team_svc=rt_deps.research_team_service,
                             )
                     elif (
                         (

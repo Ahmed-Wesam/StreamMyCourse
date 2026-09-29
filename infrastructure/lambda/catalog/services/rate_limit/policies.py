@@ -85,6 +85,25 @@ _CERTIFICATE_VERIFY_GLOBAL = RateLimitPolicy(
     bucket_key_template="rl:certificate:verify:global",
 )
 
+_RESEARCH_TEAM_REQUIREMENTS_IP = RateLimitPolicy(
+    policy_id="research_team.requirements.ip",
+    window_seconds=600,
+    max_count=20,
+    bucket_key_template="rl:research_team:requirements:ip:{actor}",
+)
+_RESEARCH_TEAM_REQUIREMENTS_GLOBAL = RateLimitPolicy(
+    policy_id="research_team.requirements.global",
+    window_seconds=3600,
+    max_count=200,
+    bucket_key_template="rl:research_team:requirements:global",
+)
+_RESEARCH_TEAM_APPLY = RateLimitPolicy(
+    policy_id="research_team.apply",
+    window_seconds=600,
+    max_count=5,
+    bucket_key_template="rl:research_team:apply:{actor}",
+)
+
 
 def resolve_actor(claims: Mapping[str, Any], source_ip: str) -> str:
     sub = str(claims.get("sub", "") or "").strip()
@@ -143,6 +162,14 @@ def _is_get_certificate_verify(method: str, parts: Sequence[str]) -> bool:
     return method == "GET" and len(parts) == 2 and parts[0] == "certificates"
 
 
+def _is_get_research_team_requirements(method: str, parts: Sequence[str]) -> bool:
+    return method == "GET" and list(parts) == ["research-team", "requirements"]
+
+
+def _is_post_research_team_apply(method: str, parts: Sequence[str]) -> bool:
+    return method == "POST" and list(parts) == ["me", "research-team", "applications"]
+
+
 def _is_get_catalog(method: str, parts: Sequence[str]) -> bool:
     if method != "GET" or not parts or parts[0] != "courses":
         return False
@@ -190,6 +217,12 @@ def classify_route(
 
     if _is_get_certificate_verify(method, normalized_parts):
         return [_CERTIFICATE_VERIFY_IP, _CERTIFICATE_VERIFY_GLOBAL]
+
+    if _is_get_research_team_requirements(method, normalized_parts):
+        return [_RESEARCH_TEAM_REQUIREMENTS_IP, _RESEARCH_TEAM_REQUIREMENTS_GLOBAL]
+
+    if _is_post_research_team_apply(method, normalized_parts):
+        return [_RESEARCH_TEAM_APPLY]
 
     return None
 
