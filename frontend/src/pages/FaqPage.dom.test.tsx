@@ -101,4 +101,35 @@ describe('FaqPage', () => {
     expect(bundle).not.toMatch(/all four certificates are required for eligibility/i)
     expect(bundle).toMatch(/\/research-team|Research Team page/i)
   })
+
+  it('describes certificate rules that match RS-12 (not always a mandatory final assignment)', () => {
+    renderFaq()
+
+    const howEarn = openFaqAnswer(/How do I earn a certificate\?/i)
+    expect(howEarn).not.toMatch(/submit the final assignment and receive a passing evaluation/i)
+    expect(howEarn).toMatch(/visible module quiz|module quiz/i)
+    expect(howEarn).toMatch(/counts toward|flagged for certificate|certificate-counting/i)
+
+    const doAllInclude = openFaqAnswer(/Do all courses include certificates\?/i)
+    expect(doAllInclude).not.toMatch(/issued upon successful completion of all module quizzes and the final assignment/i)
+    expect(doAllInclude).toMatch(/may|when|if|requirements|eligible/i)
+
+    const eligibility = openFaqAnswer(/What does ["']?certificate eligibility["']? mean\?/i)
+    expect(eligibility).not.toMatch(/must pass all module quizzes and then submit and pass the final assignment/i)
+    expect(eligibility).toMatch(/visible|published|assignment/i)
+
+    const howAssignments = openFaqAnswer(/How do final assignments work\?/i)
+    expect(howAssignments).not.toMatch(/Each course concludes with a final assignment/i)
+    expect(howAssignments).not.toMatch(/Passing the assignment triggers automatic certificate issuance/i)
+    expect(howAssignments).toMatch(/counts toward|certificate|instructor|published/i)
+  })
+
+  it('does not invent an Evaluator Status tracker or fictitious assignment pipeline stages', () => {
+    renderFaq()
+
+    const grading = openFaqAnswer(/How long does assignment grading take\?/i)
+    expect(grading).not.toMatch(/Evaluator Status tracker/i)
+    expect(grading).not.toMatch(/from submitted, through assigned, under review, and feedback ready/i)
+    expect(grading).toMatch(/assignment page|submitted|graded/i)
+  })
 })

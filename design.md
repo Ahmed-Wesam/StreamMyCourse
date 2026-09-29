@@ -255,7 +255,7 @@ GET  /courses/{courseId}/certificates                      // Course owner or ad
 POST /courses/{courseId}/certificates/{certificateId}/revoke  // Owner or admin. Certificate must belong to the course.
 ```
 
-Public verify is rate-limited: `certificate.verify.ip` 20 / 10 min per IP, `certificate.verify.global` 200 / hour. PDF download is client-side (`jspdf`, dynamic import on the student certificates page). There is no server PDF and no NAT path. Migration **021**. API deployment **CatalogApiDeploymentV43**. Prod apply of **021** is still pending (pre-launch).
+Public verify is rate-limited: `certificate.verify.ip` 20 / 10 min per IP, `certificate.verify.global` 200 / hour. PDF download is client-side (`jspdf`, dynamic import on the student certificates page). There is no server PDF and no NAT path. Migration **021**. API deployment advanced with later stages through **CatalogApiDeploymentV44**. Prod apply of **021** landed with RS-15 remote Deploy (**2026-09-29**).
 
 ### Research Team application (RS-14)
 
@@ -272,7 +272,7 @@ PATCH /research-team/applications/{id}                   // Admin. Status update
 POST /research-team/applications/{id}/allow-reapply      // Admin. Gate reapply after rejection.
 ```
 
-Migration **022**. API deployment **CatalogApiDeploymentV44**. Prod apply of **022** / **V44** is still pending (pre-launch).
+Migration **022**. API deployment **CatalogApiDeploymentV44**. Prod apply of **022** / **V44** landed with RS-15 remote Deploy (**2026-09-29**).
 
 ### Video provider webhooks
 ```
