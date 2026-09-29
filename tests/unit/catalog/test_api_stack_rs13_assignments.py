@@ -59,16 +59,16 @@ def test_rs13_assignment_methods_use_cognito_except_options() -> None:
 
 def test_rs13_assignment_methods_in_deployment_v42() -> None:
     text = _API_STACK.read_text(encoding="utf-8")
-    assert "CatalogApiDeploymentV42:" in text
-    deployment_block = text.split("CatalogApiDeploymentV42:", 1)[1].split(
+    assert "CatalogApiDeploymentV43:" in text
+    deployment_block = text.split("CatalogApiDeploymentV43:", 1)[1].split(
         "CatalogApiStage:", 1
     )[0]
     for logical_id in _DEPLOYMENT_METHODS:
         assert logical_id in deployment_block, logical_id
-    assert "DeploymentId: !Ref CatalogApiDeploymentV42" in text
+    assert "DeploymentId: !Ref CatalogApiDeploymentV43" in text
     # Stage must not remain pinned to the previous deployment.
     stage_block = text.split("CatalogApiStage:", 1)[1].split("\n\n", 1)[0]
-    assert "CatalogApiDeploymentV41" not in stage_block
+    assert "CatalogApiDeploymentV42" not in stage_block
 
 
 def test_rs13_s3_get_object_includes_assignments_prefix_not_whole_bucket() -> None:

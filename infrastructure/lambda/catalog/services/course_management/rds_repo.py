@@ -20,18 +20,22 @@ from __future__ import annotations
 
 import json
 import logging
+import secrets
 from contextlib import contextmanager
 from datetime import datetime
 from typing import Any, Callable, Dict, Iterator, List, Optional, Sequence, Tuple
 
 try:  # pragma: no cover - optional dependency path
     import psycopg2
+    from psycopg2 import errors as pg_errors
     from psycopg2.extras import Json as PgJson
 except Exception:  # pragma: no cover - surface at first DB call instead
     psycopg2 = None  # type: ignore[assignment]
+    pg_errors = None  # type: ignore[assignment]
     PgJson = None  # type: ignore[assignment]
 
 from services.common.errors import Conflict
+from services.course_management.certificate_code import generate_certificate_code
 from services.course_management.models import Course, CourseModule, Lesson, LessonFile
 
 
@@ -98,7 +102,7 @@ def _row_to_course(row: Tuple[Any, ...]) -> Course:
     Column order must match the SELECT used by all query sites in this module::
 
         id, title, description, status, created_by, thumbnail_key, created_at, updated_at,
-        price_amount_minor, page_content
+        price_amount_minor, page_content, certificate_code
     """
     (
         cid,
@@ -111,6 +115,7 @@ def _row_to_course(row: Tuple[Any, ...]) -> Course:
         updated_at,
         price_amount_minor,
         page_content,
+        certificate_code,
     ) = row
     price_minor: int | None
     if price_amount_minor is None:
@@ -128,6 +133,7 @@ def _row_to_course(row: Tuple[Any, ...]) -> Course:
         createdBy=str(created_by or ""),
         priceAmountMinor=price_minor,
         pageContent=_jsonb_to_page_content(page_content),
+        certificateCode=str(certificate_code or ""),
     )
 
 
@@ -214,8 +220,9 @@ def _row_to_lesson(row: Tuple[Any, ...]) -> Lesson:
 
 _COURSE_COLUMNS = (
     "id, title, description, status, created_by, thumbnail_key, created_at, updated_at, "
-    "price_amount_minor, page_content"
+    "price_amount_minor, page_content, certificate_code"
 )
+_CREATE_COURSE_CERT_CODE_ATTEMPTS = 20
 _MODULE_COLUMNS = "id, course_id, title, description, module_order, created_at, updated_at"
 _LESSON_SELECT = (
     "l.id, l.title, l.lesson_order, l.video_key, l.video_status, l.thumbnail_key, "
@@ -323,16 +330,61 @@ class CourseCatalogRdsRepository:
     def _create_course_atomic(
         self, title: str, description: str, created_by: str
     ) -> Course:
+        last_exc: Exception | None = None
+        for _ in range(_CREATE_COURSE_CERT_CODE_ATTEMPTS):
+            code = generate_certificate_code(rng=secrets.randbelow)
+            try:
+                return self._create_course_with_certificate_code(
+                    title, description, created_by, code
+                )
+            except Exception as exc:
+                if self._is_certificate_code_unique_violation(exc):
+                    last_exc = exc
+                    continue
+                raise
+        raise RuntimeError(
+            f"exhausted {_CREATE_COURSE_CERT_CODE_ATTEMPTS} attempts "
+            "inserting unique courses.certificate_code"
+        ) from last_exc
+
+    @staticmethod
+    def _is_certificate_code_unique_violation(exc: BaseException) -> bool:
+        if pg_errors is None or not isinstance(exc, pg_errors.UniqueViolation):
+            return False
+        diag = getattr(exc, "diag", None)
+        constraint = str(getattr(diag, "constraint_name", "") or "")
+        column = str(getattr(diag, "column_name", "") or "")
+        message = str(exc).lower()
+        return (
+            "certificate_code" in constraint
+            or "certificate_code" in column
+            or "certificate_code" in message
+            or "courses_certificate_code" in constraint
+        )
+
+    def _create_course_with_certificate_code(
+        self,
+        title: str,
+        description: str,
+        created_by: str,
+        certificate_code: str,
+    ) -> Course:
         conn = self._connection()
         with _atomic_transaction(conn):
             cur = conn.cursor()
             cur.execute(
                 f"""
-                INSERT INTO courses (title, description, status, created_by)
-                VALUES (%s, %s, %s, %s)
+                INSERT INTO courses (title, description, status, created_by, certificate_code)
+                VALUES (%s, %s, %s, %s, %s)
                 RETURNING {_COURSE_COLUMNS}
                 """,
-                (title, description, "DRAFT", created_by.strip()),
+                (
+                    title,
+                    description,
+                    "DRAFT",
+                    created_by.strip(),
+                    certificate_code,
+                ),
             )
             row = cur.fetchone()
             if row is None:

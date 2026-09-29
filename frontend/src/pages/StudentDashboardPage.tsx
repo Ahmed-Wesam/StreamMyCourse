@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 
 import { getCourseProgress, listCourseModules, listLessons } from '../lib/api/catalog'
+import { listMyCertificates } from '../lib/api/certificates'
 import { getPurchases } from '../lib/api/billing'
 import { listPublishedCourses } from '../lib/api/public-catalog'
 import { fetchMe } from '../lib/api/session'
@@ -25,6 +26,8 @@ type DashboardLoadState =
       givenName: string | null
       ownedCourses: Course[]
       loadResults: CourseDashboardLoadResult[]
+      /** Non-revoked count; null when the certificates request failed. */
+      certificatesCount: number | null
     }
 
 function errorMessage(err: unknown): string {
@@ -64,6 +67,12 @@ async function loadCourseDashboardRow(courseId: string): Promise<CourseDashboard
   }
 }
 
+function countNonRevokedCertificates(
+  certificates: Awaited<ReturnType<typeof listMyCertificates>>['certificates'],
+): number {
+  return certificates.filter((row) => row.status !== 'revoked').length
+}
+
 export default function StudentDashboardPage() {
   usePageTitle('Dashboard')
 
@@ -81,12 +90,19 @@ export default function StudentDashboardPage() {
     void (async () => {
       setState({ status: 'loading' })
       try {
-        const [catalog, purchases, meResult] = await Promise.all([
+        const [catalog, purchases, meResult, certificatesResult] = await Promise.all([
           listPublishedCourses(),
           getPurchases(),
           fetchMe().then(
             (profile) => ({ ok: true as const, givenName: profile.givenName ?? null }),
             () => ({ ok: false as const, givenName: null }),
+          ),
+          listMyCertificates().then(
+            (payload) => ({
+              ok: true as const,
+              count: countNonRevokedCertificates(payload.certificates),
+            }),
+            () => ({ ok: false as const, count: null as number | null }),
           ),
         ])
         const courses = publishedCatalogAsCourses(catalog)
@@ -98,6 +114,7 @@ export default function StudentDashboardPage() {
           givenName: meResult.givenName,
           ownedCourses,
           loadResults,
+          certificatesCount: certificatesResult.ok ? certificatesResult.count : null,
         })
       } catch (err) {
         if (!cancelled) {
@@ -141,7 +158,12 @@ export default function StudentDashboardPage() {
 
           {ready ? (
             <>
-              {stats ? <StudentDashboardStatsRow stats={stats} /> : null}
+              {stats ? (
+                <StudentDashboardStatsRow
+                  stats={stats}
+                  certificatesCount={ready.certificatesCount}
+                />
+              ) : null}
               <div>
                 <h2 className="mb-5 text-xl font-extrabold text-rs-ink">Continue learning</h2>
                 <StudentDashboardContinueSection rows={rows} />

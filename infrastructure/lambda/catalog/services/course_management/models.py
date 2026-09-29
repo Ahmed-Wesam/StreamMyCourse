@@ -16,6 +16,7 @@ class Course:
     thumbnailKey: str = ""
     priceAmountMinor: int | None = None
     pageContent: dict[str, Any] = field(default_factory=dict)
+    certificateCode: str = ""
 
 
 @dataclass(frozen=True)

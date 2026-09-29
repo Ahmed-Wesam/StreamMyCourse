@@ -74,7 +74,9 @@ def options_response(origin: Optional[str]) -> Dict[str, Any]:
     }
 
 
-_API_ROOTS = frozenset({"courses", "playback", "upload-url", "users"})
+_API_ROOTS = frozenset(
+    {"courses", "playback", "upload-url", "users", "me", "certificates", "contact"}
+)
 
 
 def _strip_api_stage_prefix(stage: object, path: str) -> str:

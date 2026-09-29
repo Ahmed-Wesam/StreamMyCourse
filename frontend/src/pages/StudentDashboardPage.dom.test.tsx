@@ -11,6 +11,7 @@ const fetchMe = vi.fn()
 const getCourseProgress = vi.fn()
 const listLessons = vi.fn()
 const listCourseModules = vi.fn()
+const listMyCertificates = vi.fn()
 
 vi.mock('../lib/api/billing', async (importOriginal) => {
   const mod = await importOriginal<typeof import('../lib/api/billing')>()
@@ -46,6 +47,14 @@ vi.mock('../lib/api/catalog', async (importOriginal) => {
   }
 })
 
+vi.mock('../lib/api/certificates', async (importOriginal) => {
+  const mod = await importOriginal<typeof import('../lib/api/certificates')>()
+  return {
+    ...mod,
+    listMyCertificates: (...args: unknown[]) => listMyCertificates(...args),
+  }
+})
+
 import StudentDashboardPage from './StudentDashboardPage'
 
 function renderDashboard() {
@@ -64,6 +73,7 @@ describe('StudentDashboardPage', () => {
     getCourseProgress.mockReset()
     listLessons.mockReset()
     listCourseModules.mockReset()
+    listMyCertificates.mockReset()
 
     listPublishedCourses.mockResolvedValue([
       { id: 'c1', title: 'Alpha Course', description: 'Desc' },
@@ -107,6 +117,11 @@ describe('StudentDashboardPage', () => {
       completedCount: 0,
       percentComplete: 0,
       lessons: [{ lessonId: 'l1', completed: false, lastPositionSec: 0 }],
+    })
+    listMyCertificates.mockResolvedValue({
+      certificates: [],
+      inProgress: [],
+      profileIncomplete: [],
     })
   })
 
@@ -214,5 +229,55 @@ describe('StudentDashboardPage', () => {
       expect(screen.getByTestId('student-dashboard-course-c1')).toBeTruthy()
     })
     expect(screen.getByText(/Progress unavailable/i)).toBeTruthy()
+  })
+
+  it('counts non-revoked certificates and links to /certificates', async () => {
+    listMyCertificates.mockResolvedValue({
+      certificates: [
+        {
+          id: 'cert-1',
+          credentialId: 'RS-AAAAAA-2026-ABCDEF1234',
+          status: 'valid',
+          studentName: 'Ada Lovelace',
+          courseTitle: 'Alpha Course',
+          issueDate: 'September 2026',
+          instructorName: 'Research Spectrum',
+          instructorTitle: 'Instructor',
+          courseId: 'c1',
+        },
+        {
+          id: 'cert-2',
+          credentialId: 'RS-BBBBBB-2026-ABCDEF1234',
+          status: 'revoked',
+          studentName: 'Ada Lovelace',
+          courseTitle: 'Beta Course',
+          issueDate: 'August 2026',
+          instructorName: 'Research Spectrum',
+          instructorTitle: 'Instructor',
+          courseId: 'c2',
+        },
+        {
+          id: 'cert-3',
+          credentialId: 'RS-CCCCCC-2026-ABCDEF1234',
+          status: 'valid',
+          studentName: 'Ada Lovelace',
+          courseTitle: 'Alpha Course',
+          issueDate: 'July 2026',
+          instructorName: 'Research Spectrum',
+          instructorTitle: 'Instructor',
+          courseId: 'c1',
+        },
+      ],
+      inProgress: [],
+      profileIncomplete: [],
+    })
+    renderDashboard()
+    await waitFor(() => {
+      expect(screen.getByTestId('student-dashboard-stats')).toBeTruthy()
+    })
+    const certLink = screen.getByRole('link', { name: /Certificates/i })
+    expect(certLink.getAttribute('href')).toBe('/certificates')
+    expect(certLink.textContent).toMatch(/2/)
+    expect(certLink.textContent).not.toMatch(/3/)
   })
 })

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Protocol
+from typing import Any, Optional, Protocol
 
 
 class CourseMutateAuthorizerPort(Protocol):
@@ -23,3 +23,11 @@ class StudentLessonAccessPort(Protocol):
 
 class CourseReadPort(Protocol):
     def get_course_status(self, course_id: str) -> str | None: ...
+
+
+class CertificateIssuerPort(Protocol):
+    """Optional RS-12 hook; duck-typed to CertificatesService.try_issue."""
+
+    def try_issue(
+        self, *, user_sub: str, course_id: str, role: str
+    ) -> Optional[Any]: ...

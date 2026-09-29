@@ -475,6 +475,18 @@ class AssignmentsRdsRepository(AssignmentsRepositoryPort):
         )
         return [self._submission_from_db(r) for r in cur.fetchall()]
 
+    def user_has_submission_for_course(self, *, course_id: str, user_sub: str) -> bool:
+        cur = self._execute(
+            """
+            SELECT 1
+            FROM assignment_submissions
+            WHERE course_id = %s AND user_sub = %s
+            LIMIT 1
+            """,
+            (course_id, user_sub),
+        )
+        return cur.fetchone() is not None
+
     def list_submissions_for_user(
         self, *, course_id: str, assignment_id: str, user_sub: str
     ) -> List[SubmissionRow]:

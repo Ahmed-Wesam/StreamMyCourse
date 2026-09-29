@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime
-from typing import List, Optional, Protocol, Sequence
+from typing import Any, List, Optional, Protocol, Sequence
 
 
 @dataclass(frozen=True)
@@ -181,6 +181,15 @@ class CourseLookupPort(Protocol):
         ...
 
     def module_belongs_to_course(self, course_id: str, module_id: str) -> bool:
+        ...
+
+
+class CertificateIssuerPort(Protocol):
+    """Optional RS-12 hook; duck-typed to CertificatesService.try_issue."""
+
+    def try_issue(
+        self, *, user_sub: str, course_id: str, role: str
+    ) -> Optional[Any]:
         ...
 
 
