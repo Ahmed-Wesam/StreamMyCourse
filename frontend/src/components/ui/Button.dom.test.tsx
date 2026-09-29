@@ -53,4 +53,18 @@ describe('Button', () => {
     const link = screen.getByRole('link', { name: 'Account' })
     expect(link.getAttribute('aria-disabled')).toBe('true')
   })
+
+  it('onDark clears the primary gradient so white fill can show on blue bands', () => {
+    render(<Button variant="onDark">Explore courses</Button>)
+    const el = screen.getByRole('button', { name: 'Explore courses' })
+    expect(el.className).toMatch(/\brs-btn-on-dark\b/)
+    expect(el.className).not.toMatch(/\brs-btn-primary\b/)
+  })
+
+  it('ghostOnDark uses the on-dark outline class instead of light ghost', () => {
+    render(<Button variant="ghostOnDark">Learn More</Button>)
+    const el = screen.getByRole('button', { name: 'Learn More' })
+    expect(el.className).toMatch(/\brs-btn-ghost-on-dark\b/)
+    expect(el.className.split(/\s+/)).not.toContain('rs-btn-ghost')
+  })
 })

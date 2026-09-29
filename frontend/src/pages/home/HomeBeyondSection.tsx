@@ -85,11 +85,7 @@ export function HomeBeyondSection() {
 
         <div className="mt-8 text-center">
           <Reveal>
-            <Button
-              to="/research-team"
-              variant="ghost"
-              className="!border-white/40 !bg-transparent !text-white hover:!bg-white/10 hover:!text-white"
-            >
+            <Button to="/research-team" variant="ghostOnDark">
               {homeBeyond.learnMore}
             </Button>
           </Reveal>

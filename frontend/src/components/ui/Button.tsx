@@ -2,7 +2,7 @@ import { ArrowRight } from 'lucide-react'
 import type { AnchorHTMLAttributes, ButtonHTMLAttributes, ReactNode } from 'react'
 import { Link, type LinkProps } from 'react-router-dom'
 
-type Variant = 'primary' | 'ghost'
+type Variant = 'primary' | 'ghost' | 'onDark' | 'ghostOnDark'
 type Size = 'md' | 'sm'
 
 type CommonProps = {
@@ -34,6 +34,13 @@ type ButtonAsAnchor = CommonProps &
 
 type ButtonProps = ButtonAsButton | ButtonAsLink | ButtonAsAnchor
 
+const VARIANT_CLASS: Record<Variant, string> = {
+  primary: 'rs-btn-primary',
+  ghost: 'rs-btn-ghost',
+  onDark: 'rs-btn-on-dark',
+  ghostOnDark: 'rs-btn-ghost-on-dark',
+}
+
 function cx(...parts: Array<string | undefined | false>) {
   return parts.filter(Boolean).join(' ')
 }
@@ -41,21 +48,15 @@ function cx(...parts: Array<string | undefined | false>) {
 function ButtonContent({
   children,
   arrow,
-  variant,
 }: {
   children: ReactNode
   arrow?: boolean
-  variant: Variant
 }) {
   return (
     <>
       {children}
       {arrow ? (
-        <ArrowRight
-          aria-hidden
-          size={17}
-          className={cx('rs-btn-arrow', variant === 'primary' && 'rs-btn-arrow-primary')}
-        />
+        <ArrowRight aria-hidden size={17} className="rs-btn-arrow rs-btn-arrow-slide" />
       ) : null}
     </>
   )
@@ -72,13 +73,7 @@ export function Button(props: ButtonProps) {
     ...rest
   } = props
 
-  const classes = cx(
-    'group',
-    'rs-btn',
-    variant === 'primary' ? 'rs-btn-primary' : 'rs-btn-ghost',
-    size === 'sm' && 'rs-btn-sm',
-    className,
-  )
+  const classes = cx('group', 'rs-btn', VARIANT_CLASS[variant], size === 'sm' && 'rs-btn-sm', className)
 
   if ('to' in props && props.to != null) {
     const { to, onClick, ...linkRest } = rest as Omit<ButtonAsLink, keyof CommonProps>
@@ -97,9 +92,7 @@ export function Button(props: ButtonProps) {
           onClick?.(event)
         }}
       >
-        <ButtonContent arrow={arrow} variant={variant}>
-          {children}
-        </ButtonContent>
+        <ButtonContent arrow={arrow}>{children}</ButtonContent>
       </Link>
     )
   }
@@ -121,9 +114,7 @@ export function Button(props: ButtonProps) {
           onClick?.(event)
         }}
       >
-        <ButtonContent arrow={arrow} variant={variant}>
-          {children}
-        </ButtonContent>
+        <ButtonContent arrow={arrow}>{children}</ButtonContent>
       </a>
     )
   }
@@ -131,9 +122,7 @@ export function Button(props: ButtonProps) {
   const { type = 'button', ...buttonRest } = rest as Omit<ButtonAsButton, keyof CommonProps>
   return (
     <button {...buttonRest} type={type} disabled={disabled} className={classes}>
-      <ButtonContent arrow={arrow} variant={variant}>
-        {children}
-      </ButtonContent>
+      <ButtonContent arrow={arrow}>{children}</ButtonContent>
     </button>
   )
 }

@@ -27,7 +27,7 @@ vi.mock('../lib/api/session', async (importOriginal) => {
 })
 
 import { ApiError } from '../lib/api/client'
-import ApplyResearchTeamPage from './ApplyResearchTeamPage'
+import ApplyResearchTeamPage from './ApplyResearchTeamPage.tsx'
 
 function renderApply() {
   return render(

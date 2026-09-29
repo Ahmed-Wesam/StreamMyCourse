@@ -167,11 +167,7 @@ export function CoursesCatalogGridSection({ catalog, onRetry, bundleOffer, owner
                   {bundleOffer ? (
                     <p className="mb-3 text-2xl font-extrabold">{formatUsdMinor(bundleOffer.amountMinor)}</p>
                   ) : null}
-                  <Button
-                    to="/checkout?productType=bundle"
-                    arrow
-                    className="!bg-white !text-rs-blue hover:!-translate-y-0.5 hover:!shadow-[0_20px_40px_-12px_rgba(0,0,0,.3)]"
-                  >
+                  <Button to="/checkout?productType=bundle" arrow variant="onDark">
                     {homeBundle.cta}
                   </Button>
                 </div>
