@@ -50,11 +50,7 @@ export function CoursesCatalogBundleSection({ bundleOffer }: CoursesCatalogBundl
               <p className="mt-3 text-[clamp(28px,4vw,40px)] font-extrabold leading-none tracking-tight">
                 {bundleOffer ? formatUsdMinor(bundleOffer.amountMinor) : coursesCatalogBundle.accessLabel}
               </p>
-              <Button
-                to="/checkout?productType=bundle"
-                arrow
-                className="mt-6 !bg-white !text-rs-blue hover:!-translate-y-0.5 hover:!shadow-[0_20px_40px_-12px_rgba(0,0,0,.3)]"
-              >
+              <Button to="/checkout?productType=bundle" arrow variant="onDark" className="mt-6">
                 {coursesCatalogBundle.cta}
               </Button>
             </div>

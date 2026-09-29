@@ -27,17 +27,10 @@ export function AboutFinalCtaSection() {
                 {aboutFinalCta.lead}
               </p>
               <div className="mt-8 flex flex-wrap justify-center gap-3">
-                <Button
-                  to="/courses"
-                  arrow
-                  className="!bg-white !text-rs-blue hover:!-translate-y-0.5 hover:!shadow-[0_20px_40px_-12px_rgba(0,0,0,.3)]"
-                >
+                <Button to="/courses" arrow variant="onDark">
                   {aboutFinalCta.primaryCta}
                 </Button>
-                <Button
-                  href="#story"
-                  className="!border-[1.5px] !border-white/22 !bg-white/14 !text-white hover:!-translate-y-0.5"
-                >
+                <Button href="#story" variant="ghostOnDark">
                   {aboutFinalCta.secondaryCta}
                 </Button>
               </div>
