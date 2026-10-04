@@ -16,5 +16,5 @@ export const loginHero = {
 
 export const loginAuthCard = {
   title: 'Sign in to your account',
-  sub: 'Use Google to access your courses and progress.',
+  sub: 'Access your courses, certificates, and progress.',
 } as const

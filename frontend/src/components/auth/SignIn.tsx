@@ -16,6 +16,11 @@ type SignInProps = {
   children?: ReactNode
   /** Teacher app: Google only. Student login page: email + password + Google. */
   variant?: 'student' | 'teacher'
+  /**
+   * When true, render only the card (login page supplies the surrounding layout).
+   * Gate routes leave this false so the form is centered with a max width.
+   */
+  embedded?: boolean
 }
 
 function GoogleIcon() {
@@ -41,10 +46,28 @@ function GoogleIcon() {
   )
 }
 
+function SignInFormChrome({
+  embedded,
+  children,
+}: {
+  embedded?: boolean
+  children: ReactNode
+}) {
+  if (embedded) return <>{children}</>
+  return (
+    <div
+      className="flex min-h-[calc(100vh-4rem)] justify-center bg-gradient-to-b from-rs-sky-2 to-white px-5 py-12 sm:px-7 sm:py-16"
+      data-testid="signin-page-chrome"
+    >
+      {children}
+    </div>
+  )
+}
+
 function AuthCardShell({ children }: { children: ReactNode }) {
   return (
     <div
-      className="relative overflow-hidden rounded-[24px] border border-rs-line bg-white p-8 shadow-rs-lg sm:p-[30px]"
+      className="relative mx-auto w-full max-w-[420px] overflow-hidden rounded-[24px] border border-rs-line bg-white p-8 shadow-rs-lg sm:p-[30px]"
       data-testid="login-auth-card"
     >
       <div
@@ -56,49 +79,53 @@ function AuthCardShell({ children }: { children: ReactNode }) {
   )
 }
 
-function SignInConfiguring() {
+function SignInConfiguring({ embedded }: { embedded?: boolean }) {
   usePageTitle('Sign in')
   return (
-    <AuthCardShell>
-      <div role="status" aria-live="polite" className="py-4 text-center">
-        <p className="text-sm font-semibold text-rs-body">Signing you in…</p>
-        <div className="mx-auto mt-4 h-1.5 w-40 overflow-hidden rounded-full bg-rs-sky-2">
-          <div className="h-full w-1/2 animate-pulse rounded-full bg-rs-blue/80" />
+    <SignInFormChrome embedded={embedded}>
+      <AuthCardShell>
+        <div role="status" aria-live="polite" className="py-4 text-center">
+          <p className="text-sm font-semibold text-rs-body">Signing you in…</p>
+          <div className="mx-auto mt-4 h-1.5 w-40 overflow-hidden rounded-full bg-rs-sky-2">
+            <div className="h-full w-1/2 animate-pulse rounded-full bg-rs-blue/80" />
+          </div>
         </div>
-      </div>
-    </AuthCardShell>
+      </AuthCardShell>
+    </SignInFormChrome>
   )
 }
 
-function TeacherSignInForm() {
+function TeacherSignInForm({ embedded }: { embedded?: boolean }) {
   usePageTitle('Sign in')
   return (
-    <AuthCardShell>
-      <h2 className="text-lg font-extrabold tracking-tight text-rs-ink">{loginAuthCard.title}</h2>
-      <p className="mt-1 text-sm font-semibold text-rs-muted">{loginAuthCard.sub}</p>
-      <div className="mt-6 flex flex-col gap-2.5">
-        <Button
-          type="button"
-          variant="ghost"
-          className="w-full"
-          onClick={() => {
-            persistReturnPathBeforeHostedUi()
-            void signInWithRedirect({ provider: 'Google' })
-          }}
-        >
-          <GoogleIcon />
-          {GOOGLE_SIGN_IN_LABEL}
-        </Button>
-      </div>
-      <div className="my-5 h-px bg-rs-line" aria-hidden />
-      <p className="text-center text-sm font-semibold text-rs-body">
-        By continuing, you agree to our use of authentication cookies for this session.
-      </p>
-    </AuthCardShell>
+    <SignInFormChrome embedded={embedded}>
+      <AuthCardShell>
+        <h2 className="text-lg font-extrabold tracking-tight text-rs-ink">{loginAuthCard.title}</h2>
+        <p className="mt-1 text-sm font-semibold text-rs-muted">{loginAuthCard.sub}</p>
+        <div className="mt-6 flex flex-col gap-2.5">
+          <Button
+            type="button"
+            variant="ghost"
+            className="w-full"
+            onClick={() => {
+              persistReturnPathBeforeHostedUi()
+              void signInWithRedirect({ provider: 'Google' })
+            }}
+          >
+            <GoogleIcon />
+            {GOOGLE_SIGN_IN_LABEL}
+          </Button>
+        </div>
+        <div className="my-5 h-px bg-rs-line" aria-hidden />
+        <p className="text-center text-sm font-semibold text-rs-body">
+          By continuing, you agree to our use of authentication cookies for this session.
+        </p>
+      </AuthCardShell>
+    </SignInFormChrome>
   )
 }
 
-function StudentSignInForm() {
+function StudentSignInForm({ embedded }: { embedded?: boolean }) {
   usePageTitle('Sign in')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -123,67 +150,72 @@ function StudentSignInForm() {
   }
 
   return (
-    <AuthCardShell>
-      <h2 className="text-lg font-extrabold tracking-tight text-rs-ink">{loginAuthCard.title}</h2>
-      <p className="mt-1 text-sm font-semibold text-rs-muted">{loginAuthCard.sub}</p>
+    <SignInFormChrome embedded={embedded}>
+      <AuthCardShell>
+        <h2 className="text-lg font-extrabold tracking-tight text-rs-ink">{loginAuthCard.title}</h2>
+        <p className="mt-1 text-sm font-semibold text-rs-muted">{loginAuthCard.sub}</p>
 
-      <form className="mt-6 space-y-1" onSubmit={(e) => void onSubmit(e)}>
-        <Field
-          label="Email"
-          type="email"
-          autoComplete="email"
-          value={email}
-          onChange={(ev) => setEmail(ev.target.value)}
-        />
-        <Field
-          label="Password"
-          type="password"
-          autoComplete="current-password"
-          value={password}
-          onChange={(ev) => setPassword(ev.target.value)}
-        />
-        <p className="mb-4 text-right">
-          <Link to="/forgot-password" className="text-sm font-bold text-rs-blue hover:underline">
-            Forgot password?
+        <form className="mt-6 space-y-1" onSubmit={(e) => void onSubmit(e)}>
+          <Field
+            label="Email"
+            type="email"
+            autoComplete="email"
+            value={email}
+            onChange={(ev) => setEmail(ev.target.value)}
+          />
+          <Field
+            label="Password"
+            type="password"
+            autoComplete="current-password"
+            value={password}
+            onChange={(ev) => setPassword(ev.target.value)}
+          />
+          <p className="mb-4 text-right">
+            <Link to="/forgot-password" className="text-sm font-bold text-rs-blue hover:underline">
+              Forgot password?
+            </Link>
+          </p>
+          {error ? (
+            <p className="mb-3 text-sm font-semibold text-red-700" role="alert">
+              {error}
+            </p>
+          ) : null}
+          <Button type="submit" className="w-full" disabled={submitting}>
+            Sign in
+          </Button>
+        </form>
+
+        <div className="my-5 flex items-center gap-3" aria-hidden>
+          <div className="h-px flex-1 bg-rs-line" />
+          <span className="text-xs font-bold uppercase tracking-wide text-rs-muted">or</span>
+          <div className="h-px flex-1 bg-rs-line" />
+        </div>
+
+        <Button
+          type="button"
+          variant="ghost"
+          className="w-full"
+          onClick={() => {
+            persistReturnPathBeforeHostedUi()
+            void signInWithRedirect({ provider: 'Google' })
+          }}
+        >
+          <GoogleIcon />
+          {GOOGLE_SIGN_IN_LABEL}
+        </Button>
+
+        <p className="mt-5 text-center text-sm font-semibold text-rs-body">
+          Don&apos;t have an account?{' '}
+          <Link to="/register" className="font-bold text-rs-blue hover:underline">
+            Create Account
           </Link>
         </p>
-        {error ? (
-          <p className="mb-3 text-sm font-semibold text-red-700" role="alert">
-            {error}
-          </p>
-        ) : null}
-        <Button type="submit" className="w-full" disabled={submitting}>
-          Sign in
-        </Button>
-      </form>
-
-      <div className="my-5 flex items-center gap-3" aria-hidden>
-        <div className="h-px flex-1 bg-rs-line" />
-        <span className="text-xs font-bold uppercase tracking-wide text-rs-muted">or</span>
-        <div className="h-px flex-1 bg-rs-line" />
-      </div>
-
-      <Button
-        type="button"
-        variant="ghost"
-        className="w-full"
-        onClick={() => {
-          persistReturnPathBeforeHostedUi()
-          void signInWithRedirect({ provider: 'Google' })
-        }}
-      >
-        <GoogleIcon />
-        {GOOGLE_SIGN_IN_LABEL}
-      </Button>
-
-      <Button to="/register" variant="ghost" className="mt-2.5 w-full">
-        Create Account
-      </Button>
-    </AuthCardShell>
+      </AuthCardShell>
+    </SignInFormChrome>
   )
 }
 
-export function SignIn({ children, variant = 'student' }: SignInProps) {
+export function SignIn({ children, variant = 'student', embedded = false }: SignInProps) {
   const { authStatus } = useAuthenticator((ctx) => [ctx.authStatus])
 
   if (authStatus === 'authenticated') {
@@ -191,12 +223,12 @@ export function SignIn({ children, variant = 'student' }: SignInProps) {
   }
 
   if (authStatus === 'configuring') {
-    return <SignInConfiguring />
+    return <SignInConfiguring embedded={embedded} />
   }
 
   if (variant === 'teacher') {
-    return <TeacherSignInForm />
+    return <TeacherSignInForm embedded={embedded} />
   }
 
-  return <StudentSignInForm />
+  return <StudentSignInForm embedded={embedded} />
 }

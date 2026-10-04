@@ -65,6 +65,17 @@ describe('SignIn', () => {
     expect(screen.getByLabelText(/^password$/i)).toBeTruthy()
     expect(screen.getByRole('link', { name: /forgot password/i }).getAttribute('href')).toBe('/forgot-password')
     expect(screen.getByRole('button', { name: GOOGLE_SIGN_IN_LABEL })).toBeTruthy()
+    expect(screen.getByRole('link', { name: /create account/i }).getAttribute('href')).toBe('/register')
+    expect(screen.getByTestId('signin-page-chrome')).toBeTruthy()
+    expect(screen.getByTestId('login-auth-card').className).toMatch(/max-w-\[420px\]/)
+  })
+
+  it('embedded mode skips page chrome', async () => {
+    render(<SignIn variant="student" embedded />, { wrapper: TestRoot })
+
+    expect(await screen.findByLabelText(/^email$/i)).toBeTruthy()
+    expect(screen.queryByTestId('signin-page-chrome')).toBeNull()
+    expect(screen.getByTestId('login-auth-card').className).toMatch(/max-w-\[420px\]/)
   })
 
   it('teacher variant shows Google only (no email/password form)', async () => {
