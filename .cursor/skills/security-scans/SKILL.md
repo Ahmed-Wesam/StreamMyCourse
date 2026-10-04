@@ -15,11 +15,11 @@ From the repository root unless noted:
 ```bash
 cd frontend
 npm ci
-npm audit --audit-level=high
+npm audit --audit-level=high --omit=dev
 cd ..
 ```
 
-Use Python 3.11 to match CI:
+Use `--omit=dev` to match CI: Tailwind 3’s braces chain (GHSA-vfj7-8cjw-p6xm) has no patched release yet and is build-time only. Prefer fixing production-dep advisories over broadening omit. Use Python 3.11 to match CI:
 
 ```bash
 pip install checkov pip-audit

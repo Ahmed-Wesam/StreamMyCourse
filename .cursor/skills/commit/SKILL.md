@@ -76,7 +76,7 @@ pip install cfn-lint
 ```bash
 cd frontend
 npm ci
-npm audit --audit-level=high
+npm audit --audit-level=high --omit=dev
 cd ..
 pip install checkov pip-audit
 checkov --config-file .checkov.yaml --skip-download

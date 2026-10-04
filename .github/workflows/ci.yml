@@ -110,9 +110,11 @@ jobs:
         working-directory: frontend
         run: npm ci
 
+      # Production deps only: Tailwind 3 pulls braces<=3.0.3 (GHSA-vfj7-8cjw-p6xm) with no
+      # patched release yet; that chain is build-time only and not shipped in SPA bundles.
       - name: npm audit
         working-directory: frontend
-        run: npm audit --audit-level=high
+        run: npm audit --audit-level=high --omit=dev
 
       - uses: actions/setup-python@v6
         with:

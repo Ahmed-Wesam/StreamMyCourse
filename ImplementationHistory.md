@@ -6,6 +6,19 @@
 
 ---
 
+## 2026-10-04 — Sign-in card width + npm audit prod-only
+
+### What landed
+
+- [x] **Auth UI** — [`SignIn.tsx`](frontend/src/components/auth/SignIn.tsx) caps the auth card at **420px**, adds page chrome for gate routes (`/dashboard`, etc.), and keeps `/login` embedded via `embedded`. Copy + Create Account link polish in [`loginCopy.ts`](frontend/src/lib/marketing/loginCopy.ts).
+- [x] **npm audit CI** — `npm audit fix` cleared production high findings (`undici`, `brace-expansion`). Remaining **braces** high (GHSA-vfj7-8cjw-p6xm) has **no patched release**; CI now uses `npm audit --audit-level=high --omit=dev` so Tailwind 3’s build-time chain does not block merges.
+
+### Docs
+
+- [`design.md`](design.md) §13 / security scanning, [`roadmap.md`](roadmap.md) bridge row 5, [`AGENTS.md`](AGENTS.md), commit/security-scan skills aligned with `--omit=dev`.
+
+---
+
 ## 2026-09-29 — RS-15 docs, legal alignment, QA closeout
 
 ### Decisions (locked in child plan)
