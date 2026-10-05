@@ -31,21 +31,12 @@ export function isStudentIdleProbePath(pathname: string): boolean {
   )
 }
 
-const TERMS_GATE_LEGAL_PATHS = new Set([
-  '/terms',
-  '/privacy',
-  '/refund',
-  '/delivery',
-  '/educational-disclaimer',
-])
-
 /** Routes where missing terms acceptance must not force redirect to account. */
 export function isStudentTermsGateExemptPath(pathname: string): boolean {
-  if (pathname === '/') return true
+  // Public marketing/catalog/legal surfaces (same as idle-probe paths).
+  if (isStudentIdleProbePath(pathname)) return true
   if (pathname.startsWith('/account') || pathname === '/settings') return true
   if (AUTH_SELF_SERVICE.test(pathname)) return true
-  if (TERMS_GATE_LEGAL_PATHS.has(pathname)) return true
-  if (CERTIFICATE_VERIFY.test(pathname)) return true
   return false
 }
 

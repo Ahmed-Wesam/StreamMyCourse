@@ -36,7 +36,8 @@ export function StudentTermsGate({ children }: { children: ReactNode }) {
           return
         }
       } catch {
-        if (!cancelled) setState('redirect')
+        // Do not trap the site on profile when /users/me is unavailable.
+        if (!cancelled) setState('ready')
         return
       }
       if (!cancelled) setState('ready')

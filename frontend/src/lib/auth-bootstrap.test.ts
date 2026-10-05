@@ -165,8 +165,8 @@ describe('isStudentTermsGateExemptPath', () => {
     expect(isStudentTermsGateExemptPath('/settings')).toBe(true)
     expect(isStudentTermsGateExemptPath('/verify-email')).toBe(true)
     expect(isStudentTermsGateExemptPath('/forgot-password')).toBe(true)
-    expect(isStudentTermsGateExemptPath('/courses')).toBe(false)
-    expect(isStudentTermsGateExemptPath('/about')).toBe(false)
+    expect(isStudentTermsGateExemptPath('/courses')).toBe(true)
+    expect(isStudentTermsGateExemptPath('/about')).toBe(true)
     expect(isStudentTermsGateExemptPath('/checkout')).toBe(false)
   })
 

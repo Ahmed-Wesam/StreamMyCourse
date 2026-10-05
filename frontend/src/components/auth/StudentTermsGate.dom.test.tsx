@@ -25,6 +25,7 @@ function renderAt(path: string) {
       <StudentTermsGate>
         <Routes>
           <Route path="/courses" element={<div>Courses</div>} />
+          <Route path="/dashboard" element={<div>Dashboard</div>} />
           <Route path="/account/profile" element={<div>Account</div>} />
           <Route path="/register" element={<div>Register</div>} />
         </Routes>
@@ -53,7 +54,7 @@ describe('StudentTermsGate', () => {
       privacyAcceptedAt: '',
     })
 
-    renderAt('/courses')
+    renderAt('/dashboard')
 
     await waitFor(() => {
       expect(screen.getByText('Account')).toBeTruthy()
@@ -78,15 +79,16 @@ describe('StudentTermsGate', () => {
     expect(screen.queryByText('Account')).toBeNull()
   })
 
-  it('redirects to account when profile fetch fails for a signed-in student', async () => {
+  it('allows courses when profile fetch fails for a signed-in student', async () => {
     hasSignedInMock.mockResolvedValue(true)
     fetchMeMock.mockRejectedValue(new Error('network'))
 
     renderAt('/courses')
 
     await waitFor(() => {
-      expect(screen.getByText('Account')).toBeTruthy()
+      expect(screen.getByText('Courses')).toBeTruthy()
     })
+    expect(screen.queryByText('Account')).toBeNull()
   })
 
   it('allows courses when both acceptance timestamps are set', async () => {

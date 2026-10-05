@@ -1,8 +1,12 @@
 import React, { lazy, Suspense } from 'react'
 import ReactDOM from 'react-dom/client'
 import { BrowserRouter } from 'react-router-dom'
+
+import { configureAmplify } from './lib/auth'
 import './style.css'
 import './styles/prototype-base.css'
+
+configureAmplify()
 
 const StudentApp = lazy(() => import('./student-app/App'))
 
