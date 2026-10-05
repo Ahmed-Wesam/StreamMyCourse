@@ -8,7 +8,7 @@ import { isStudentSessionSuperseded } from './student-session-superseded-state'
 
 let profileWarmDone = false
 let amplifyConfigured = false
-export type ProfileHeaderIdentity = {
+type ProfileHeaderIdentity = {
   name: string
   email: string
   givenName: string
