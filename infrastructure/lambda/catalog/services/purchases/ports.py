@@ -69,7 +69,7 @@ class PurchaseRepositoryPort(Protocol):
         amount_minor: int,
         currency: str,
         ttl_minutes: int,
-        provider: str = "paytabs",
+        provider: str = "hyperpay",
     ) -> str: ...
 
 

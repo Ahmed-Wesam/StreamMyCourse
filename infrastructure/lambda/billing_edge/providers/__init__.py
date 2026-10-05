@@ -1,13 +1,14 @@
 """Payment provider adapters."""
 
-from providers.mock_adapter import MockPayTabsAdapter
-from providers.paytabs_adapter import BillingUnconfiguredError, PayTabsAdapter
-from providers.port import PaymentProviderPort, SubscribeSessionResult
+from providers.hyperpay_adapter import BillingUnconfiguredError, HyperPayAdapter
+from providers.mock_adapter import MockHyperPayAdapter
+from providers.port import HyperPayCheckoutResult, PaymentProviderPort, SubscribeSessionResult
 
 __all__ = [
     "BillingUnconfiguredError",
-    "MockPayTabsAdapter",
-    "PayTabsAdapter",
+    "HyperPayAdapter",
+    "HyperPayCheckoutResult",
+    "MockHyperPayAdapter",
     "PaymentProviderPort",
     "SubscribeSessionResult",
 ]

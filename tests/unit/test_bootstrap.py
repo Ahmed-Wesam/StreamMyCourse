@@ -84,7 +84,6 @@ class TestLambdaBootstrap:
             auth_repo,
             progress_service,
             question_bank_service,
-            merchant_service,
             purchase_manage_service,
             rate_limit_service,
         ) = bootstrap_mod.lambda_bootstrap()
@@ -94,7 +93,6 @@ class TestLambdaBootstrap:
         assert auth_repo is None
         assert progress_service is None
         assert question_bank_service is None
-        assert merchant_service is None
         assert purchase_manage_service is None
         assert rate_limit_service is None
 
@@ -109,10 +107,10 @@ class TestLambdaBootstrap:
         )
         monkeypatch.setenv("VIDEO_BUCKET", "my-bucket")
 
-        _cfg1, svc1, auth1, repo1, prog1, qb1, merch1, purchase_manage1, rl1 = (
+        _cfg1, svc1, auth1, repo1, prog1, qb1, purchase_manage1, rl1 = (
             bootstrap_mod.lambda_bootstrap()
         )
-        _cfg2, svc2, auth2, repo2, prog2, qb2, merch2, purchase_manage2, rl2 = (
+        _cfg2, svc2, auth2, repo2, prog2, qb2, purchase_manage2, rl2 = (
             bootstrap_mod.lambda_bootstrap()
         )
 
@@ -123,7 +121,6 @@ class TestLambdaBootstrap:
         assert repo1 is repo2
         assert prog1 is prog2
         assert qb1 is qb2
-        assert merch1 is merch2
         assert purchase_manage1 is purchase_manage2
         assert rl1 is rl2
 
@@ -143,7 +140,6 @@ class TestLambdaBootstrap:
             auth_repo,
             progress_service,
             question_bank_service,
-            merchant_service,
             purchase_manage_service,
             rate_limit_service,
         ) = bootstrap_mod.lambda_bootstrap()
@@ -152,7 +148,6 @@ class TestLambdaBootstrap:
         assert auth_repo is not None
         assert progress_service is not None
         assert question_bank_service is not None
-        assert merchant_service is not None
         assert purchase_manage_service is not None
         assert rate_limit_service is not None
 
@@ -177,7 +172,6 @@ class TestBuildAwsDeps:
         assert deps.auth_repo is not None
         assert deps.progress_service is not None
         assert deps.question_bank_service is not None
-        assert deps.merchant_service is not None
         assert deps.purchase_manage_service is not None
         assert deps.rate_limit_service is not None
         assert deps.lesson_notes_service is not None

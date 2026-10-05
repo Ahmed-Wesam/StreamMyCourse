@@ -10,7 +10,7 @@ import pytest
 
 from billing._imports import billing_handler
 from edge_config import BillingEdgeConfig
-from providers.mock_adapter import MockPayTabsAdapter
+from providers.mock_adapter import MockHyperPayAdapter
 
 _CATALOG_ARN = "arn:aws:lambda:eu-west-1:1:function:catalog"
 _COURSE_ID = "b0000000-0000-4000-8000-000000000001"
@@ -20,16 +20,13 @@ def _edge_config() -> BillingEdgeConfig:
     return BillingEdgeConfig(
         deployment_environment="dev",
         payment_provider="mock",
-        paytabs_use_mock=True,
-        paytabs_secret_arn=None,
-        paytabs_server_key=None,
-        paytabs_profile_id=None,
-        paytabs_api_domain=None,
+        hyperpay_secret_arn=None,
+        hyperpay_access_token=None,
+        hyperpay_entity_id=None,
+        hyperpay_webhook_secret=None,
         fulfillment_queue_url="https://sqs.eu-west-1.amazonaws.com/1/q",
         catalog_lambda_arn=_CATALOG_ARN,
-        billing_return_success_url="https://student.example.com/billing/success",
-        billing_return_cancel_url="https://student.example.com/billing/cancel",
-        billing_ipn_callback_url="https://api.example.com/webhooks/payments/paytabs",
+        billing_shopper_result_url="https://student.example.com/billing/result",
     )
 
 
@@ -39,15 +36,31 @@ def _checkout_event() -> Dict[str, Any]:
         "path": "/billing/checkout-session",
         "requestContext": {
             "resourcePath": "/billing/checkout-session",
-            "authorizer": {"claims": {"sub": "student-sub-1"}},
+            "authorizer": {
+                "claims": {"sub": "student-sub-1", "email": "student@example.com"},
+            },
         },
         "headers": {"content-type": "application/json"},
-        "body": json.dumps({"productType": "course", "courseId": _COURSE_ID}),
+        "body": json.dumps(
+            {
+                "productType": "course",
+                "courseId": _COURSE_ID,
+                "billing": {
+                    "givenName": "Ada",
+                    "surname": "Student",
+                    "street": "1 King Hussein St",
+                    "city": "Amman",
+                    "state": "Amman",
+                    "postcode": "11118",
+                    "country": "JO",
+                },
+            }
+        ),
     }
 
 
 def test_checkout_in_progress_returns_409(monkeypatch: pytest.MonkeyPatch) -> None:
-    mock_provider = MagicMock(spec=MockPayTabsAdapter)
+    mock_provider = MagicMock(spec=MockHyperPayAdapter)
     monkeypatch.setattr(billing_handler, "_load_config", lambda: _edge_config())
     monkeypatch.setattr(billing_handler, "_get_payment_provider", lambda _cfg: mock_provider)
     monkeypatch.setattr(
@@ -61,4 +74,4 @@ def test_checkout_in_progress_returns_409(monkeypatch: pytest.MonkeyPatch) -> No
     body = json.loads(resp["body"])
     assert resp["statusCode"] == 409
     assert body["code"] == "checkout_in_progress"
-    mock_provider.create_sale_session.assert_not_called()
+    mock_provider.create_checkout.assert_not_called()

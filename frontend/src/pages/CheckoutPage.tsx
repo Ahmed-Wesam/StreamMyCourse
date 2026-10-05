@@ -2,16 +2,17 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } fro
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 
 import instructorPhoto from '../assets/prototype/instructor.jpg'
+import { HyperPayWidget } from '../components/billing/HyperPayWidget'
 import { usePageReveal } from '../components/auth/usePageReveal'
 import { createCheckoutSession, getBundle, getPurchases } from '../lib/api/billing'
 import { getCourse } from '../lib/api/catalog'
 import { listPublishedCourses, type PublicCatalogCourse } from '../lib/api/public-catalog'
 import { hasSignedInIdToken } from '../lib/api/session'
-import type { CheckoutProductType } from '../lib/api/types'
+import type { CheckoutProductType, CheckoutSessionResponse } from '../lib/api/types'
 import { catalogApiUserMessage } from '../lib/apiUserMessages'
 import { displayNameFromAttributes, loadMergedProfileAttributes } from '../lib/cognito-display-name'
-import { formatUsdMinor } from '../lib/formatUsdMinor'
-import { isHttpsUrl } from '../lib/isHttpsUrl'
+import { setCheckoutPendingPurchaseId } from '../lib/checkoutPendingPurchase'
+import { formatJodMinor } from '../lib/formatJodMinor'
 import { ownedCoursesFromPurchases } from '../lib/ownedFromPurchases'
 import { usePageTitle } from '../lib/page-title'
 import { checkoutLoadingLabel } from '../lib/purchaseCopy'
@@ -30,18 +31,19 @@ const TITLE_ORDER = [
 ]
 
 const CHECKOUT_COUNTRIES = [
-  'Jordan',
-  'United States',
-  'United Kingdom',
-  'Canada',
-  'Saudi Arabia',
-  'United Arab Emirates',
-  'Germany',
-  'France',
-  'Australia',
-  'India',
-  'Other',
+  { code: 'JO', label: 'Jordan' },
+  { code: 'US', label: 'United States' },
+  { code: 'GB', label: 'United Kingdom' },
+  { code: 'CA', label: 'Canada' },
+  { code: 'SA', label: 'Saudi Arabia' },
+  { code: 'AE', label: 'United Arab Emirates' },
+  { code: 'DE', label: 'Germany' },
+  { code: 'FR', label: 'France' },
+  { code: 'AU', label: 'Australia' },
+  { code: 'IN', label: 'India' },
 ] as const
+
+type BillingFieldKey = 'givenName' | 'surname' | 'street' | 'city' | 'state' | 'postcode' | 'country'
 
 const CHECKOUT_FAQ: { q: string; a: ReactNode }[] = [
   {
@@ -58,7 +60,7 @@ const CHECKOUT_FAQ: { q: string; a: ReactNode }[] = [
   },
   {
     q: 'What payment methods are supported?',
-    a: 'We accept credit and debit cards (Visa, Mastercard, American Express) and HyperPay. All transactions are encrypted and Research Spectrum does not store card details.',
+    a: 'We accept Visa and Mastercard through HyperPay. All transactions are encrypted and Research Spectrum does not store card details.',
   },
   {
     q: 'What is the refund policy?',
@@ -100,11 +102,9 @@ function byCatalogOrder(courses: PublicCatalogCourse[]): PublicCatalogCourse[] {
     .map((item) => item.course)
 }
 
-function dollars(amountMinor: number | null | undefined): string | null {
+function jodPrice(amountMinor: number | null | undefined): string | null {
   if (typeof amountMinor !== 'number' || !Number.isFinite(amountMinor) || amountMinor <= 0) return null
-  const formatted = formatUsdMinor(amountMinor)
-  if (amountMinor % 100 === 0) return formatted.replace(/\.00$/, '')
-  return formatted
+  return formatJodMinor(amountMinor)
 }
 
 function Icon({ children, strokeWidth = '2' }: { children: ReactNode; strokeWidth?: string }) {
@@ -157,16 +157,21 @@ export default function CheckoutPage() {
   const [ownedAll, setOwnedAll] = useState(false)
   const [ownedCourseIds, setOwnedCourseIds] = useState<Set<string>>(() => new Set())
 
-  const [billName, setBillName] = useState('')
+  const [givenName, setGivenName] = useState('')
+  const [surname, setSurname] = useState('')
+  const [street, setStreet] = useState('')
+  const [city, setCity] = useState('')
+  const [stateRegion, setStateRegion] = useState('')
+  const [postcode, setPostcode] = useState('')
   const [billCountry, setBillCountry] = useState('')
-  const [payMethod, setPayMethod] = useState<'card' | 'hyperpay'>('card')
   const [termsOk, setTermsOk] = useState(false)
   const [privacyOk, setPrivacyOk] = useState(false)
   const [refundOk, setRefundOk] = useState(false)
-  const [fieldErrors, setFieldErrors] = useState<{ name?: string; country?: string }>({})
+  const [fieldErrors, setFieldErrors] = useState<Partial<Record<BillingFieldKey, string>>>({})
   const [checkboxErrors, setCheckboxErrors] = useState<{ terms?: boolean; privacy?: boolean; refund?: boolean }>({})
   const [submitting, setSubmitting] = useState(false)
   const [submitError, setSubmitError] = useState<string | null>(null)
+  const [widgetSession, setWidgetSession] = useState<CheckoutSessionResponse | null>(null)
   const [openFaq, setOpenFaq] = useState<number | null>(null)
 
   const orderedCourses = useMemo(() => byCatalogOrder(catalogCourses), [catalogCourses])
@@ -217,7 +222,16 @@ export default function CheckoutPage() {
         if (cancelled) return
         const username = attrs.email?.trim() || attrs.name?.trim() || 'Student'
         const name = displayNameFromAttributes(attrs, username)
-        if (name) setBillName((prev) => prev || name)
+        const rawAttrs = attrs as Record<string, string | undefined>
+        const profileGiven = (rawAttrs.givenName ?? rawAttrs.given_name ?? '').trim()
+        const profileFamily = (rawAttrs.familyName ?? rawAttrs.family_name ?? '').trim()
+        if (profileGiven) setGivenName((prev) => prev || profileGiven)
+        else if (name) {
+          const parts = name.split(/\s+/)
+          setGivenName((prev) => prev || parts[0] || '')
+          setSurname((prev) => prev || parts.slice(1).join(' ') || '')
+        }
+        if (profileFamily) setSurname((prev) => prev || profileFamily)
       })
       .catch(() => undefined)
     void getPurchases()
@@ -287,9 +301,9 @@ export default function CheckoutPage() {
       ? origMinor - priceMinor
       : null
 
-  const priceLabel = dollars(priceMinor)
-  const origLabel = origMinor != null ? dollars(origMinor) : null
-  const discountLabel = discountMinor != null ? dollars(discountMinor) : null
+  const priceLabel = jodPrice(priceMinor)
+  const origLabel = origMinor != null ? jodPrice(origMinor) : null
+  const discountLabel = discountMinor != null ? jodPrice(discountMinor) : null
 
   const alreadyOwned = useMemo(() => {
     if (!checkoutParams) return false
@@ -323,9 +337,14 @@ export default function CheckoutPage() {
   const onSubmit = useCallback(async () => {
     if (!checkoutParams || signedIn !== true || alreadyOwned) return
 
-    const nextFieldErrors: { name?: string; country?: string } = {}
+    const nextFieldErrors: Partial<Record<BillingFieldKey, string>> = {}
     const nextCheckboxErrors: { terms?: boolean; privacy?: boolean; refund?: boolean } = {}
-    if (!billName.trim()) nextFieldErrors.name = 'Please enter your full name.'
+    if (!givenName.trim()) nextFieldErrors.givenName = 'Please enter your first name.'
+    if (!surname.trim()) nextFieldErrors.surname = 'Please enter your surname.'
+    if (!street.trim()) nextFieldErrors.street = 'Please enter your street address.'
+    if (!city.trim()) nextFieldErrors.city = 'Please enter your city.'
+    if (!stateRegion.trim()) nextFieldErrors.state = 'Please enter your state or region.'
+    if (!postcode.trim()) nextFieldErrors.postcode = 'Please enter your postcode.'
     if (!billCountry) nextFieldErrors.country = 'Please select your country.'
     if (!termsOk) nextCheckboxErrors.terms = true
     if (!privacyOk) nextCheckboxErrors.privacy = true
@@ -335,7 +354,12 @@ export default function CheckoutPage() {
     setCheckboxErrors(nextCheckboxErrors)
 
     if (
-      nextFieldErrors.name ||
+      nextFieldErrors.givenName ||
+      nextFieldErrors.surname ||
+      nextFieldErrors.street ||
+      nextFieldErrors.city ||
+      nextFieldErrors.state ||
+      nextFieldErrors.postcode ||
       nextFieldErrors.country ||
       nextCheckboxErrors.terms ||
       nextCheckboxErrors.privacy ||
@@ -348,19 +372,35 @@ export default function CheckoutPage() {
     setSubmitting(true)
     setSubmitError(null)
     try {
-      const body =
+      const productBody =
         checkoutParams.productType === 'bundle'
           ? { productType: 'bundle' as CheckoutProductType }
           : {
               productType: 'course' as CheckoutProductType,
               courseId: checkoutParams.courseId,
             }
-      const { redirect_url } = await createCheckoutSession(body)
-      if (!isHttpsUrl(redirect_url)) {
-        setSubmitError(catalogApiUserMessage(new Error('invalid redirect'), 'checkout'))
+      const session = await createCheckoutSession({
+        ...productBody,
+        billing: {
+          givenName: givenName.trim(),
+          surname: surname.trim(),
+          street: street.trim(),
+          city: city.trim(),
+          state: stateRegion.trim(),
+          postcode: postcode.trim(),
+          country: billCountry,
+        },
+      })
+      if (
+        !session.checkoutId?.trim() ||
+        !session.widgetScriptUrl?.trim() ||
+        !session.shopperResultUrl?.trim()
+      ) {
+        setSubmitError(catalogApiUserMessage(new Error('invalid checkout session'), 'checkout'))
         return
       }
-      window.location.href = redirect_url
+      setCheckoutPendingPurchaseId(session.purchaseId ?? '')
+      setWidgetSession(session)
     } catch (err) {
       setSubmitError(catalogApiUserMessage(err, 'checkout'))
     } finally {
@@ -369,8 +409,13 @@ export default function CheckoutPage() {
   }, [
     alreadyOwned,
     billCountry,
-    billName,
+    city,
     checkoutParams,
+    givenName,
+    postcode,
+    stateRegion,
+    street,
+    surname,
     privacyOk,
     refundOk,
     signedIn,
@@ -499,7 +544,7 @@ export default function CheckoutPage() {
           <div className="prod-switcher">
             {orderedCourses.map((course) => {
               const active = activeCourseId === course.id
-              const price = dollars(course.amountMinor)
+              const price = jodPrice(course.amountMinor)
               return (
                 <button
                   key={course.id}
@@ -519,7 +564,7 @@ export default function CheckoutPage() {
             >
               <div className="pb-badge">Best Value</div>
               <div className="pb-label">Research Mastery Bundle</div>
-              <div className="pb-price">{dollars(bundleAmountMinor) ?? '…'}</div>
+              <div className="pb-price">{jodPrice(bundleAmountMinor) ?? '…'}</div>
             </button>
           </div>
         </div>
@@ -546,18 +591,87 @@ export default function CheckoutPage() {
                   <div className="fc-sec-title">Billing Information</div>
                 </div>
                 <div className="field-grid">
-                  <div className={`field${fieldErrors.name ? ' has-err' : ''}`}>
-                    <label htmlFor="billName">Full Name</label>
+                  <div className={`field${fieldErrors.givenName ? ' has-err' : ''}`}>
+                    <label htmlFor="billGivenName">First name</label>
                     <input
-                      id="billName"
+                      id="billGivenName"
                       type="text"
-                      placeholder="Your full name"
-                      autoComplete="name"
-                      value={billName}
-                      onChange={(e) => setBillName(e.target.value)}
-                      disabled={signedIn !== true}
+                      placeholder="First name"
+                      autoComplete="given-name"
+                      value={givenName}
+                      onChange={(e) => setGivenName(e.target.value)}
+                      disabled={signedIn !== true || Boolean(widgetSession)}
                     />
-                    {fieldErrors.name ? <span className="err-msg">{fieldErrors.name}</span> : null}
+                    {fieldErrors.givenName ? <span className="err-msg">{fieldErrors.givenName}</span> : null}
+                  </div>
+                  <div className={`field${fieldErrors.surname ? ' has-err' : ''}`}>
+                    <label htmlFor="billSurname">Surname</label>
+                    <input
+                      id="billSurname"
+                      type="text"
+                      placeholder="Surname"
+                      autoComplete="family-name"
+                      value={surname}
+                      onChange={(e) => setSurname(e.target.value)}
+                      disabled={signedIn !== true || Boolean(widgetSession)}
+                    />
+                    {fieldErrors.surname ? <span className="err-msg">{fieldErrors.surname}</span> : null}
+                  </div>
+                </div>
+                <div className={`field${fieldErrors.street ? ' has-err' : ''}`}>
+                  <label htmlFor="billStreet">Street address</label>
+                  <input
+                    id="billStreet"
+                    type="text"
+                    placeholder="Street and number"
+                    autoComplete="street-address"
+                    value={street}
+                    onChange={(e) => setStreet(e.target.value)}
+                    disabled={signedIn !== true || Boolean(widgetSession)}
+                  />
+                  {fieldErrors.street ? <span className="err-msg">{fieldErrors.street}</span> : null}
+                </div>
+                <div className="field-grid">
+                  <div className={`field${fieldErrors.city ? ' has-err' : ''}`}>
+                    <label htmlFor="billCity">City</label>
+                    <input
+                      id="billCity"
+                      type="text"
+                      placeholder="City"
+                      autoComplete="address-level2"
+                      value={city}
+                      onChange={(e) => setCity(e.target.value)}
+                      disabled={signedIn !== true || Boolean(widgetSession)}
+                    />
+                    {fieldErrors.city ? <span className="err-msg">{fieldErrors.city}</span> : null}
+                  </div>
+                  <div className={`field${fieldErrors.state ? ' has-err' : ''}`}>
+                    <label htmlFor="billState">State / region</label>
+                    <input
+                      id="billState"
+                      type="text"
+                      placeholder="State or region"
+                      autoComplete="address-level1"
+                      value={stateRegion}
+                      onChange={(e) => setStateRegion(e.target.value)}
+                      disabled={signedIn !== true || Boolean(widgetSession)}
+                    />
+                    {fieldErrors.state ? <span className="err-msg">{fieldErrors.state}</span> : null}
+                  </div>
+                </div>
+                <div className="field-grid">
+                  <div className={`field${fieldErrors.postcode ? ' has-err' : ''}`}>
+                    <label htmlFor="billPostcode">Postcode</label>
+                    <input
+                      id="billPostcode"
+                      type="text"
+                      placeholder="Postcode"
+                      autoComplete="postal-code"
+                      value={postcode}
+                      onChange={(e) => setPostcode(e.target.value)}
+                      disabled={signedIn !== true || Boolean(widgetSession)}
+                    />
+                    {fieldErrors.postcode ? <span className="err-msg">{fieldErrors.postcode}</span> : null}
                   </div>
                   <div className={`field${fieldErrors.country ? ' has-err' : ''}`}>
                     <label htmlFor="billCountry">Country</label>
@@ -565,138 +679,44 @@ export default function CheckoutPage() {
                       id="billCountry"
                       value={billCountry}
                       onChange={(e) => setBillCountry(e.target.value)}
-                      disabled={signedIn !== true}
+                      disabled={signedIn !== true || Boolean(widgetSession)}
                     >
                       <option value="">Select…</option>
                       {CHECKOUT_COUNTRIES.map((country) => (
-                        <option key={country} value={country}>
-                          {country}
+                        <option key={country.code} value={country.code}>
+                          {country.label}
                         </option>
                       ))}
                     </select>
                     {fieldErrors.country ? <span className="err-msg">{fieldErrors.country}</span> : null}
                   </div>
                 </div>
-                <div className="field">
-                  <label htmlFor="billInstitution">
-                    Institution <span className="field-opt">(optional)</span>
-                  </label>
-                  <input id="billInstitution" type="text" placeholder="e.g. University of Jordan" autoComplete="organization" disabled={signedIn !== true} />
-                </div>
-                <div className="field">
-                  <label htmlFor="billReferral">
-                    How did you hear about us? <span className="field-opt">(optional)</span>
-                  </label>
-                  <select id="billReferral" defaultValue="" disabled={signedIn !== true}>
-                    <option value="">Select…</option>
-                    <option>Social media</option>
-                    <option>Friend or colleague</option>
-                    <option>Search engine</option>
-                    <option>Instagram</option>
-                    <option>WhatsApp</option>
-                    <option>University or hospital</option>
-                    <option>Other</option>
-                  </select>
-                </div>
               </div>
             </div>
 
-            <div className="form-card" style={{ marginBottom: 16 }}>
-              <div className="fc-section">
-                <div className="fc-sec-head">
-                  <div className="fc-sec-num">2</div>
-                  <div className="fc-sec-title">Payment Method</div>
-                </div>
-                <div className="payment-methods">
-                  <label className={`pay-opt${payMethod === 'card' ? ' selected' : ''}`}>
-                    <input
-                      type="radio"
-                      name="payMethod"
-                      value="card"
-                      checked={payMethod === 'card'}
-                      onChange={() => setPayMethod('card')}
-                      disabled={signedIn !== true}
-                    />
-                    <div className="pay-opt-icon">CARD</div>
-                    <div className="pay-opt-label">
-                      <b>Credit / Debit Card</b>
-                      <span>Visa, Mastercard, American Express</span>
-                    </div>
-                    <span className="pay-opt-badge">Recommended</span>
-                  </label>
-                  <label className={`pay-opt${payMethod === 'hyperpay' ? ' selected' : ''}`}>
-                    <input
-                      type="radio"
-                      name="payMethod"
-                      value="hyperpay"
-                      checked={payMethod === 'hyperpay'}
-                      onChange={() => setPayMethod('hyperpay')}
-                      disabled={signedIn !== true}
-                    />
-                    <div className="pay-opt-icon" style={{ fontSize: '8.5px' }}>
-                      HYPER
-                      <br />
-                      PAY
-                    </div>
-                    <div className="pay-opt-label">
-                      <b>HyperPay</b>
-                      <span>Middle East payment gateway</span>
-                    </div>
-                  </label>
-                </div>
-                {payMethod === 'card' ? (
-                  <div className="card-fields show">
-                    <div className="field" style={{ marginBottom: 0 }}>
-                      <label
-                        style={{
-                          fontSize: '12.5px',
-                          marginBottom: 6,
-                          display: 'block',
-                          fontWeight: 700,
-                          color: 'var(--muted)',
-                          textTransform: 'uppercase',
-                          letterSpacing: '.07em',
-                        }}
-                      >
-                        Card Details
-                      </label>
-                      <input className="card-input" type="text" placeholder="Card number" disabled={signedIn !== true} />
-                    </div>
-                    <div className="card-row">
-                      <input className="card-input" type="text" placeholder="MM / YY" disabled={signedIn !== true} />
-                      <input className="card-input" type="text" placeholder="CVC" disabled={signedIn !== true} />
-                    </div>
-                    <div className="card-secure-note">
-                      <Icon>
-                        <rect x="3" y="11" width="18" height="11" rx="2" />
-                        <path d="M7 11V7a5 5 0 0 1 10 0v4" />
-                      </Icon>
-                      Card details are collected on the secure payment page after you continue.
-                    </div>
+            {widgetSession ? (
+              <div className="form-card" style={{ marginBottom: 16 }} data-testid="checkout-hyperpay-widget">
+                <div className="fc-section">
+                  <div className="fc-sec-head">
+                    <div className="fc-sec-num">2</div>
+                    <div className="fc-sec-title">Secure payment</div>
                   </div>
-                ) : (
-                  <div
-                    style={{
-                      marginTop: 14,
-                      background: 'var(--sky-2)',
-                      border: '1px solid var(--line-2)',
-                      borderRadius: 12,
-                      padding: '14px 16px',
-                      fontSize: '13.5px',
-                      color: 'var(--body)',
-                      fontWeight: 600,
-                    }}
-                  >
-                    You will be redirected to HyperPay to complete payment securely.
-                  </div>
-                )}
+                  <p style={{ fontSize: '13.5px', color: 'var(--body)', marginBottom: 12 }}>
+                    Enter your card details below. Visa and Mastercard are accepted through HyperPay.
+                  </p>
+                  <HyperPayWidget
+                    widgetScriptUrl={widgetSession.widgetScriptUrl}
+                    integrity={widgetSession.integrity}
+                    shopperResultUrl={widgetSession.shopperResultUrl}
+                  />
+                </div>
               </div>
-            </div>
+            ) : null}
 
             <div className="form-card">
               <div className="fc-section">
                 <div className="fc-sec-head">
-                  <div className="fc-sec-num">3</div>
+                  <div className="fc-sec-num">{widgetSession ? '3' : '2'}</div>
                   <div className="fc-sec-title">Confirmation</div>
                 </div>
                 <div className="cb-row">
@@ -824,7 +844,7 @@ export default function CheckoutPage() {
                   type="button"
                   className="btn btn-primary os-btn"
                   data-testid="checkout-submit"
-                  disabled={submitting || Boolean(loadError) || alreadyOwned}
+                  disabled={submitting || Boolean(loadError) || alreadyOwned || Boolean(widgetSession)}
                   onClick={() => void onSubmit()}
                 >
                   <span>{submitLabel}</span>
@@ -849,7 +869,7 @@ export default function CheckoutPage() {
                   color: 'var(--muted)',
                 }}
               >
-                <div style={{ marginBottom: 8 }}>Accepted: Visa, Mastercard, American Express, HyperPay</div>
+                <div style={{ marginBottom: 8 }}>Accepted: Visa, Mastercard (HyperPay)</div>
                 <div style={{ marginBottom: 8 }}>
                   Your certificate will be issued with a unique credential ID that employers and institutions can verify
                   online.
@@ -943,14 +963,14 @@ export default function CheckoutPage() {
                 Individual Course
                 <br />
                 <span style={{ fontSize: 17, fontWeight: 800, color: 'var(--blue)' }}>
-                  {dollars(orderedCourses[0]?.amountMinor) ?? '$50'}
+                  {jodPrice(orderedCourses[0]?.amountMinor) ?? '50 JOD'}
                 </span>
               </div>
               <div className="ct-head-cell featured">
                 Research Mastery Bundle
                 <br />
                 <span style={{ fontSize: 17, fontWeight: 800 }}>
-                  {dollars(bundleAmountMinor) ?? '$150'}{' '}
+                  {jodPrice(bundleAmountMinor) ?? '150 JOD'}{' '}
                   {origLabel ? (
                     <span style={{ fontSize: 12, opacity: 0.85, textDecoration: 'line-through' }}>{origLabel}</span>
                   ) : null}
@@ -985,7 +1005,7 @@ export default function CheckoutPage() {
                     <CheckIcon strokeWidth="2.5" />
                   ) : bundle === 'save' ? (
                     <span style={{ fontWeight: 800, color: '#0d6f3e', fontSize: 14 }}>
-                      {discountLabel ? `${discountLabel} saved` : '$50 saved'}
+                      {discountLabel ? `${discountLabel} saved` : '50 JOD saved'}
                     </span>
                   ) : (
                     <Icon strokeWidth="2.5">

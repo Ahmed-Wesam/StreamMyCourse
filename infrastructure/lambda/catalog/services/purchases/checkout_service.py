@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import Any, Dict, Optional
 
+from services.purchases.amounts import DEFAULT_PURCHASE_CURRENCY
 from services.purchases.repo import PurchaseRdsRepository
 
 BlockReason = Optional[str]  # None | already_owned | checkout_in_progress
@@ -54,7 +55,7 @@ class PurchaseCheckoutService:
             product_type=normalized_type,
             course_id=course_id if normalized_type == "course" else None,
             amount_minor=int(product["amount_minor"]),
-            currency=str(product.get("currency") or "USD"),
+            currency=str(product.get("currency") or DEFAULT_PURCHASE_CURRENCY),
             ttl_minutes=INCOMPLETE_CHECKOUT_TTL_MINUTES,
         )
         if reservation_status == "checkout_in_progress":
@@ -62,6 +63,23 @@ class PurchaseCheckoutService:
         if purchase_id:
             product = {**product, "purchase_id": purchase_id}
         return {"blockReason": None, "product": product}
+
+    def verify_pending_purchase_for_checkout_status(
+        self,
+        user_sub: str,
+        *,
+        purchase_id: str,
+        amount_minor: int | None = None,
+        currency: str | None = None,
+    ) -> Dict[str, Any]:
+        row = self._repo.get_pending_purchase_for_user(user_sub, purchase_id)
+        if row is None:
+            return {"blockReason": "not_found"}
+        if amount_minor is not None and int(row["amount_minor"]) != amount_minor:
+            return {"blockReason": "amount_mismatch"}
+        if currency and str(row.get("currency") or "").upper() != currency.upper():
+            return {"blockReason": "amount_mismatch"}
+        return {"ok": True}
 
     def rollback_purchase_checkout_precheck(
         self,

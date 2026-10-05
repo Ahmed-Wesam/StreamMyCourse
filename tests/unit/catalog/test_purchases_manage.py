@@ -7,7 +7,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from services.common.errors import Forbidden, NotFound
+from services.common.errors import BadRequest, Forbidden, NotFound
 from services.course_management.models import Course
 from services.purchases.manage_service import PurchaseManageService
 from services.purchases.models import BundleOffer, PurchaseRecord
@@ -32,17 +32,24 @@ def _manage(
 class TestPurchaseManageService:
     def test_set_bundle_price_billing_teacher_only(self) -> None:
         svc, purchase_repo, _ = _manage()
-        purchase_repo.get_bundle_offer.return_value = BundleOffer(12000, "USD")
+        purchase_repo.get_bundle_offer.return_value = BundleOffer(150_000, "JOD")
 
-        offer = svc.set_bundle_price(caller_sub="billing-teacher", amount_minor=12000)
+        offer = svc.set_bundle_price(caller_sub="billing-teacher", amount_minor=150_000)
 
-        assert offer.amount_minor == 12000
-        purchase_repo.set_bundle_price.assert_called_once_with(12000)
+        assert offer.amount_minor == 150_000
+        assert offer.currency == "JOD"
+        purchase_repo.set_bundle_price.assert_called_once_with(150_000)
+
+    def test_set_bundle_price_rejects_fractional_jod_fils(self) -> None:
+        svc, purchase_repo, _ = _manage()
+        with pytest.raises(BadRequest, match="whole JOD"):
+            svc.set_bundle_price(caller_sub="billing-teacher", amount_minor=50_050)
+        purchase_repo.set_bundle_price.assert_not_called()
 
     def test_set_bundle_price_forbidden_for_other_teacher(self) -> None:
         svc, purchase_repo, _ = _manage()
         with pytest.raises(Forbidden):
-            svc.set_bundle_price(caller_sub="other-teacher", amount_minor=12000)
+            svc.set_bundle_price(caller_sub="other-teacher", amount_minor=150_000)
         purchase_repo.set_bundle_price.assert_not_called()
 
     def test_set_course_price_owner_teacher(self) -> None:
@@ -60,11 +67,30 @@ class TestPurchaseManageService:
             course_id=COURSE_ID,
             caller_sub="teacher-sub",
             role="teacher",
-            amount_minor=4900,
+            amount_minor=50_000,
         )
 
-        assert payload["amountMinor"] == 4900
-        purchase_repo.set_course_price.assert_called_once_with(COURSE_ID, 4900)
+        assert payload["amountMinor"] == 50_000
+        assert payload["currency"] == "JOD"
+        purchase_repo.set_course_price.assert_called_once_with(COURSE_ID, 50_000)
+
+    def test_set_course_price_rejects_fractional_jod_fils(self) -> None:
+        svc, purchase_repo, course_repo = _manage()
+        course_repo.get_course.return_value = Course(
+            id=COURSE_ID,
+            title="T",
+            description="D",
+            status="PUBLISHED",
+            createdBy="teacher-sub",
+        )
+        with pytest.raises(BadRequest, match="whole JOD"):
+            svc.set_course_price(
+                course_id=COURSE_ID,
+                caller_sub="teacher-sub",
+                role="teacher",
+                amount_minor=50_050,
+            )
+        purchase_repo.set_course_price.assert_not_called()
 
     def test_set_course_price_forbidden_non_owner(self) -> None:
         svc, _, course_repo = _manage()
@@ -80,7 +106,7 @@ class TestPurchaseManageService:
                 course_id=COURSE_ID,
                 caller_sub="other-sub",
                 role="teacher",
-                amount_minor=4900,
+                amount_minor=50_000,
             )
 
     def test_list_purchases_delegates_to_repo(self) -> None:
@@ -92,8 +118,8 @@ class TestPurchaseManageService:
                 product_type="bundle",
                 course_id=None,
                 status="paid",
-                amount_minor=15000,
-                currency="USD",
+                amount_minor=150_000,
+                currency="JOD",
                 created_at=created,
             )
         ]

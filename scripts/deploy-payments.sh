@@ -24,9 +24,7 @@ PAYMENTS_STACK="StreamMyCourse-Payments-${ENV}"
 RDS_STACK="${RDS_STACK_NAME:-StreamMyCourse-Rds-${ENV}}"
 
 CATALOG_LAMBDA_ARN="${CATALOG_LAMBDA_ARN:-}"
-BILLING_RETURN_SUCCESS_URL="${BILLING_RETURN_SUCCESS_URL:-}"
-BILLING_RETURN_CANCEL_URL="${BILLING_RETURN_CANCEL_URL:-}"
-BILLING_IPN_CALLBACK_URL="${BILLING_IPN_CALLBACK_URL:-}"
+BILLING_SHOPPER_RESULT_URL="${BILLING_SHOPPER_RESULT_URL:-}"
 
 EDGE_ZIP="/tmp/billing-edge-${ENV}-$$.zip"
 FULFILL_ZIP="/tmp/billing-fulfillment-${ENV}-$$.zip"
@@ -146,17 +144,16 @@ aws s3 cp "$EDGE_ZIP" "s3://${ARTIFACT_BUCKET}/${EDGE_KEY}" --region "$REGION"
 echo "Uploading billing fulfillment s3://${ARTIFACT_BUCKET}/${FULFILL_KEY}"
 aws s3 cp "$FULFILL_ZIP" "s3://${ARTIFACT_BUCKET}/${FULFILL_KEY}" --region "$REGION"
 
-PAYMENT_PROVIDER="${PAYMENT_PROVIDER:-}"
-PAYTABS_API_DOMAIN="${PAYTABS_API_DOMAIN:-secure-jordan.paytabs.com}"
-PAYTABS_PROFILE_ID="${PAYTABS_PROFILE_ID:-}"
-PAYTABS_SERVER_KEY="${PAYTABS_SERVER_KEY:-}"
-PAYTABS_SECRET_ARN="${PAYTABS_SECRET_ARN:-}"
-PAYTABS_USE_MOCK="${PAYTABS_USE_MOCK:-false}"
+PAYMENT_PROVIDER="${PAYMENT_PROVIDER:-hyperpay}"
+HYPERPAY_SECRET_ARN="${HYPERPAY_SECRET_ARN:-}"
+HYPERPAY_ACCESS_TOKEN="${HYPERPAY_ACCESS_TOKEN:-}"
+HYPERPAY_ENTITY_ID="${HYPERPAY_ENTITY_ID:-}"
+HYPERPAY_WEBHOOK_SECRET="${HYPERPAY_WEBHOOK_SECRET:-}"
 BILLING_FULFILLMENT_ALERT_EMAIL="${BILLING_FULFILLMENT_ALERT_EMAIL:-}"
 
-# Hydrate inline CFN params from streammycourse/paytabs/{env} when GitHub/SM-only (prod) omits inline keys.
-if [[ -z "${PAYTABS_SERVER_KEY}" || -z "${PAYTABS_PROFILE_ID}" ]]; then
-  SM_NAME="streammycourse/paytabs/${ENV}"
+# Hydrate HyperPay inline CFN params from streammycourse/hyperpay/{env} when GitHub/SM-only omits inline keys.
+if [[ -z "${HYPERPAY_ACCESS_TOKEN}" || -z "${HYPERPAY_ENTITY_ID}" ]]; then
+  SM_NAME="streammycourse/hyperpay/${ENV}"
   if aws secretsmanager describe-secret --secret-id "$SM_NAME" --region "$REGION" >/dev/null 2>&1; then
     SM_JSON="$(aws secretsmanager get-secret-value \
       --secret-id "$SM_NAME" \
@@ -164,8 +161,8 @@ if [[ -z "${PAYTABS_SERVER_KEY}" || -z "${PAYTABS_PROFILE_ID}" ]]; then
       --query SecretString \
       --output text 2>/dev/null || true)"
     if [[ -n "${SM_JSON}" && "${SM_JSON}" != "None" ]]; then
-      if [[ -z "${PAYTABS_SECRET_ARN}" ]]; then
-        PAYTABS_SECRET_ARN="$(aws secretsmanager describe-secret \
+      if [[ -z "${HYPERPAY_SECRET_ARN}" ]]; then
+        HYPERPAY_SECRET_ARN="$(aws secretsmanager describe-secret \
           --secret-id "$SM_NAME" \
           --region "$REGION" \
           --query ARN \
@@ -178,35 +175,40 @@ if [[ -z "${PAYTABS_SERVER_KEY}" || -z "${PAYTABS_PROFILE_ID}" ]]; then
       fi
       export SM_JSON
       {
-        read -r _sk || _sk=""
-        read -r _pid || _pid=""
-        read -r _dom || _dom=""
-      } < <("$PY" -c 'import json, os; d=json.loads(os.environ["SM_JSON"]); print(d.get("server_key","")); print(d.get("profile_id","")); print(d.get("api_domain",""))' 2>/dev/null)
+        read -r _token || _token=""
+        read -r _entity || _entity=""
+        read -r _webhook || _webhook=""
+      } < <("$PY" -c 'import json, os; d=json.loads(os.environ["SM_JSON"]); print(d.get("access_token","")); print(d.get("entity_id","")); print(d.get("webhook_secret",""))' 2>/dev/null)
       unset SM_JSON
-      if [[ -z "${PAYTABS_SERVER_KEY}" && -n "${_sk}" ]]; then
-        PAYTABS_SERVER_KEY="$_sk"
+      if [[ -z "${HYPERPAY_ACCESS_TOKEN}" && -n "${_token}" ]]; then
+        HYPERPAY_ACCESS_TOKEN="$_token"
       fi
-      if [[ -z "${PAYTABS_PROFILE_ID}" && -n "${_pid}" ]]; then
-        PAYTABS_PROFILE_ID="$_pid"
+      if [[ -z "${HYPERPAY_ENTITY_ID}" && -n "${_entity}" ]]; then
+        HYPERPAY_ENTITY_ID="$_entity"
       fi
-      if [[ -n "${_dom}" ]]; then
-        PAYTABS_API_DOMAIN="$_dom"
+      if [[ -z "${HYPERPAY_WEBHOOK_SECRET}" && -n "${_webhook}" ]]; then
+        HYPERPAY_WEBHOOK_SECRET="$_webhook"
       fi
-      unset _sk _pid _dom
+      unset _token _entity _webhook
     fi
   fi
 fi
-if [[ "$PAYTABS_USE_MOCK" != "true" && "$PAYTABS_USE_MOCK" != "false" ]]; then
-  echo "PAYTABS_USE_MOCK must be true or false, got: $PAYTABS_USE_MOCK" >&2
+
+if [[ "$PAYMENT_PROVIDER" != "mock" && "$PAYMENT_PROVIDER" != "hyperpay" ]]; then
+  echo "PAYMENT_PROVIDER must be mock or hyperpay, got: $PAYMENT_PROVIDER" >&2
   exit 1
 fi
 
-# WS3: fail deploy when server_key is empty after GitHub env + SM hydration (dev and prod).
-# Non-empty placeholder values in streammycourse/paytabs/{env} (or GitHub dev PAYTABS_SERVER_KEY)
-# satisfy this guard until live PayTabs keys are configured.
-if [[ -z "${PAYTABS_SERVER_KEY}" ]]; then
-  echo "PAYTABS_SERVER_KEY is empty after hydration; set GitHub secret or SM streammycourse/paytabs/${ENV} with non-empty server_key" >&2
-  exit 1
+# Fail deploy when HyperPay credentials are empty after GitHub env + SM hydration (mock skips).
+if [[ "$PAYMENT_PROVIDER" != "mock" ]]; then
+  if [[ -z "${HYPERPAY_ACCESS_TOKEN}" ]]; then
+    echo "HYPERPAY_ACCESS_TOKEN is empty after hydration; set GitHub secrets or SM streammycourse/hyperpay/${ENV} with non-empty access_token" >&2
+    exit 1
+  fi
+  if [[ -z "${HYPERPAY_ENTITY_ID}" ]]; then
+    echo "HYPERPAY_ENTITY_ID is empty after hydration; set GitHub secrets or SM streammycourse/hyperpay/${ENV} with non-empty entity_id" >&2
+    exit 1
+  fi
 fi
 
 PAYMENTS_TEMPLATE="${TEMPLATE_DIR}/payments-stack.yaml"
@@ -233,19 +235,10 @@ aws cloudformation deploy \
   "BillingFulfillmentCodeS3Key=${FULFILL_KEY}" \
   "RdsStackName=${RDS_STACK}" \
   "PaymentProvider=${PAYMENT_PROVIDER}" \
-  "PaytabsApiDomain=${PAYTABS_API_DOMAIN}" \
-  "PaytabsProfileId=${PAYTABS_PROFILE_ID}" \
-  "PaytabsServerKey=${PAYTABS_SERVER_KEY}" \
-  "PaytabsSecretArn=${PAYTABS_SECRET_ARN}" \
-  "PaytabsUseMock=${PAYTABS_USE_MOCK}" \
+  "HyperpaySecretArn=${HYPERPAY_SECRET_ARN}" \
+  "HyperpayAccessToken=${HYPERPAY_ACCESS_TOKEN}" \
+  "HyperpayEntityId=${HYPERPAY_ENTITY_ID}" \
+  "HyperpayWebhookSecret=${HYPERPAY_WEBHOOK_SECRET}" \
   "BillingFulfillmentAlertEmail=${BILLING_FULFILLMENT_ALERT_EMAIL}" \
   "CatalogLambdaArn=${CATALOG_LAMBDA_ARN}" \
-  "BillingReturnSuccessUrl=${BILLING_RETURN_SUCCESS_URL}" \
-  "BillingReturnCancelUrl=${BILLING_RETURN_CANCEL_URL}" \
-  "BillingIpnCallbackUrl=${BILLING_IPN_CALLBACK_URL}"
-
-# W4-P4: sync teacher_merchant_accounts when teacher sub is configured (skip if RDS unreachable).
-if [[ -n "${BILLING_TEACHER_SUB:-}" ]]; then
-  export DEPLOYMENT_ENVIRONMENT="${ENV}"
-  bash "${ROOT}/scripts/billing-sync-merchant-account.sh" "${ENV}"
-fi
+  "BillingShopperResultUrl=${BILLING_SHOPPER_RESULT_URL}"

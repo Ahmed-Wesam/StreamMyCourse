@@ -9,7 +9,7 @@ import {
   type CoursePageDocument,
   type CoursePageTextCard,
 } from '../../lib/course-page'
-import { formatUsdMinor } from '../../lib/formatUsdMinor'
+import { formatJodMinor } from '../../lib/formatJodMinor'
 import { isHttpsUrl } from '../../lib/isHttpsUrl'
 import { groupLessonsByModule, type LessonModuleSection } from '../../lib/lessonGrouping'
 import { courseDetailNoAccessPrompt } from '../../lib/marketing/courseDetailShellCopy'
@@ -107,9 +107,7 @@ function priceMinorOf(course: Course): number | undefined {
 
 function dollars(amountMinor: number | undefined): string | null {
   if (typeof amountMinor !== 'number' || !Number.isFinite(amountMinor) || amountMinor <= 0) return null
-  const formatted = formatUsdMinor(amountMinor)
-  if (amountMinor % 100 === 0) return formatted.replace(/\.00$/, '')
-  return formatted
+  return formatJodMinor(amountMinor)
 }
 
 function Emphasized({ text }: { text: string }) {

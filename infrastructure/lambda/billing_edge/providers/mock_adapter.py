@@ -1,85 +1,83 @@
-"""Mock PayTabs adapter — no outbound HTTP (dev/CI only)."""
+"""Mock HyperPay adapter — no outbound HTTP (dev/CI only)."""
 
 from __future__ import annotations
 
 import json
+from typing import Any
 
 from domain.events import BillingDomainEvent
-from providers.paytabs_adapter import PayTabsAdapter, parse_paytabs_webhook
-from providers.port import CheckoutProduct, SubscribeSessionResult
+from providers.hyperpay_adapter import HyperPayAdapter, parse_hyperpay_webhook
+from domain.checkout_billing import CheckoutBillingContact
+from providers.port import CheckoutProduct, HyperPayCheckoutResult, SubscribeSessionResult
 
-_MOCK_CHECKOUT_URL = "https://mock.paytabs.example/checkout/session"
-_MOCK_SIGNATURE = "test"
+_MOCK_HYPERPAY_WIDGET_URL = (
+    "https://mock.hyperpay.example/v1/paymentWidgets.js?checkoutId=MOCK-HP-CHECKOUT"
+)
 
 _PURCHASE_ID = "c0000000-0000-4000-8000-000000000001"
 _COURSE_ID = "b0000000-0000-4000-8000-000000000001"
-_PLAN_ID = "00000000-0000-4000-8000-000000000001"
-
-MOCK_IPN_SALE_PAID = {
-    "tran_ref": "MOCK-ACT-001",
-    "tran_type": "Sale",
-    "payment_result": "A",
-    "cart_id": f"v2|dev|mock-user-sub|course|{_COURSE_ID}|{_PURCHASE_ID}",
-    "cart_amount": 99.0,
-    "cart_currency": "USD",
-    "transaction_time": "2026-05-18T12:00:00Z",
-}
-
-# Legacy subscription samples (v1 cart) retained for cancel-agreement IPN tests.
-MOCK_IPN_SALE_ACTIVATED = {
-    "tran_ref": "MOCK-ACT-001",
-    "tran_type": "Sale",
-    "payment_result": "A",
-    "cart_id": f"v1|dev|mock-user-sub|{_PLAN_ID}",
-    "agreement_id": "MOCK-AGR-001",
-    "is_recurring": False,
-    "transaction_time": "2026-05-18T12:00:00Z",
-}
-
-MOCK_IPN_SALE_RENEWED = {
-    "tran_ref": "MOCK-REN-001",
-    "tran_type": "Sale",
-    "payment_result": "A",
-    "cart_id": f"v1|dev|mock-user-sub|{_PLAN_ID}",
-    "agreement_id": "MOCK-AGR-001",
-    "is_recurring": True,
-    "recurring_count": 2,
-    "transaction_time": "2026-06-18T12:00:00Z",
-}
-
-MOCK_IPN_SALE_DECLINED = {
-    "tran_ref": "MOCK-DEC-001",
-    "tran_type": "Sale",
-    "payment_result": "D",
-    "cart_id": f"v2|dev|mock-user-sub|bundle|{_PURCHASE_ID}",
-    "cart_amount": 150.0,
-    "cart_currency": "USD",
-}
-
-MOCK_IPN_AGREEMENT_CANCELED = {
-    "tran_ref": "MOCK-CAN-001",
-    "tran_type": "Agreement",
-    "agreement_action": "cancelled",
-    "cart_id": f"v1|dev|mock-user-sub|{_PLAN_ID}",
-    "agreement_id": "MOCK-AGR-001",
-}
-
-MOCK_IPN_REFUND_REVOKED = {
-    "tran_ref": "MOCK-REF-001",
-    "tran_type": "Refund",
-    "payment_result": "A",
-    "previous_tran_ref": "MOCK-ACT-001",
-    "cart_id": f"v2|dev|mock-user-sub|course|{_COURSE_ID}|{_PURCHASE_ID}",
-    "cart_amount": 99.0,
-    "cart_currency": "USD",
-}
+_USER_SUB = "student-sub-1"
+_CART_V2 = f"v2|dev|{_USER_SUB}|course|{_COURSE_ID}|{_PURCHASE_ID}"
 
 
-class MockPayTabsAdapter:
-    """Fake provider for local runs and CI when PayTabs keys are unavailable."""
+class MockHyperPayAdapter:
+    """Fake HyperPay provider for local runs and CI."""
 
-    def __init__(self, *, allow_mock_signature: bool = True) -> None:
-        self._allow_mock_signature = allow_mock_signature
+    def create_checkout(
+        self,
+        *,
+        user_sub: str,
+        purchase_id: str,
+        product_type: str,
+        course_id: str | None,
+        product: CheckoutProduct,
+        customer_email: str,
+        billing: CheckoutBillingContact,
+    ) -> HyperPayCheckoutResult:
+        _ = user_sub, purchase_id, product_type, course_id, product, customer_email, billing
+        return HyperPayCheckoutResult(
+            checkout_id="MOCK-HP-CHECKOUT",
+            widget_url=_MOCK_HYPERPAY_WIDGET_URL,
+            integrity="sha384-mock",
+        )
+
+    def fetch_checkout_result(self, checkout_id: str) -> dict[str, Any]:
+        _ = checkout_id
+        return {
+            "id": "MOCK-PAYMENT",
+            "merchantTransactionId": _CART_V2,
+            "amount": "50.000",
+            "currency": "JOD",
+            "result": {"code": "000.200.000", "description": "Pending"},
+        }
+
+    @staticmethod
+    def decrypt_webhook(
+        *,
+        ciphertext_hex: bytes | str,
+        iv_hex: str,
+        auth_tag_hex: str,
+        webhook_secret_hex: str,
+    ) -> bytes:
+        return HyperPayAdapter.decrypt_webhook(
+            ciphertext_hex=ciphertext_hex,
+            iv_hex=iv_hex,
+            auth_tag_hex=auth_tag_hex,
+            webhook_secret_hex=webhook_secret_hex,
+        )
+
+    def parse_webhook(
+        self,
+        raw_body: bytes,
+        *,
+        deployment_environment: str,
+        payload_digest: str = "",
+    ) -> list[BillingDomainEvent]:
+        return parse_hyperpay_webhook(
+            raw_body,
+            deployment_environment=deployment_environment,
+            payload_digest=payload_digest,
+        )
 
     def create_sale_session(
         self,
@@ -91,7 +89,7 @@ class MockPayTabsAdapter:
         product: CheckoutProduct,
     ) -> SubscribeSessionResult:
         _ = user_sub, purchase_id, product_type, course_id, product
-        return SubscribeSessionResult(redirect_url=_MOCK_CHECKOUT_URL)
+        raise NotImplementedError()
 
     def verify_webhook(
         self,
@@ -99,28 +97,12 @@ class MockPayTabsAdapter:
         signature_header: str,
         server_key: str = "",
     ) -> bool:
-        if server_key:
-            return PayTabsAdapter.verify_webhook(raw_body, signature_header, server_key)
-        if not self._allow_mock_signature:
-            return False
-        return signature_header == _MOCK_SIGNATURE
-
-    def parse_webhook(
-        self,
-        raw_body: bytes,
-        *,
-        deployment_environment: str,
-        payload_digest: str = "",
-    ) -> list[BillingDomainEvent]:
-        return parse_paytabs_webhook(
-            raw_body,
-            deployment_environment=deployment_environment,
-            payload_digest=payload_digest,
-        )
+        _ = raw_body, signature_header, server_key
+        return False
 
     def cancel_agreement(self, agreement_id: str) -> None:
         _ = agreement_id
 
     @staticmethod
-    def sample_ipn_bytes(sample: dict) -> bytes:
+    def sample_notification_bytes(sample: dict) -> bytes:
         return json.dumps(sample, separators=(",", ":")).encode("utf-8")

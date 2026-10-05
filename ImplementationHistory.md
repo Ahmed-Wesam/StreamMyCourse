@@ -6,6 +6,22 @@
 
 ---
 
+## 2026-10-05 — HyperPay COPYandPAY (JOD) billing integration (Slice 8)
+
+### What landed
+
+- [x] **ADR 0015** — [`plans/architecture/adr-0015-hyperpay-copyandpay-jod.md`](plans/architecture/adr-0015-hyperpay-copyandpay-jod.md); ADR 0013 note for PSP/currency supersession.
+- [x] **Docs** — [`design.md`](design.md) commerce (HyperPay, JOD, `/billing/result`), [`roadmap.md`](roadmap.md), [`infrastructure/docs/billing-ops-runbook.md`](infrastructure/docs/billing-ops-runbook.md), [`plans/architecture/module-map.md`](plans/architecture/module-map.md).
+- [x] **Integration tests** — [`tests/integration/helpers/billing_access.py`](tests/integration/helpers/billing_access.py), [`tests/integration/test_billing_checkout_e2e.py`](tests/integration/test_billing_checkout_e2e.py), [`tests/integration/README.md`](tests/integration/README.md) (HyperPay webhook path, JOD fils, `checkoutId` in checkout response).
+- [x] **Cleanup** — removed unused [`frontend/src/lib/formatUsdMinor.ts`](frontend/src/lib/formatUsdMinor.ts) and [`frontend/src/lib/usdPriceInput.ts`](frontend/src/lib/usdPriceInput.ts).
+
+### Decisions
+
+- Whole **JOD** list prices (**50** / **150** defaults in fils); billing edge stays **no-VPC**; fulfillment authority remains webhook → SQS (browser **`/billing/result`** polls **`checkout-status` only).
+- Secrets Manager **`streammycourse/hyperpay/prod`**; test API host **`eu-test.oppwa.com`**.
+
+---
+
 ## 2026-10-05 — Student auth UX: sign-in without terms gate; RT apply profile prompt
 
 ### What landed

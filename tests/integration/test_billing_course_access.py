@@ -1,18 +1,14 @@
-"""Subscription-gated course access via mock PayTabs IPN (WS5 Phase C / W5-P6)."""
+"""Purchase-gated course access via checkout + HyperPay webhook (RS-5)."""
 
 from __future__ import annotations
-
-import os
 
 import pytest
 
 from helpers.api import ApiClient
 from helpers.billing_access import (
-    decode_jwt_sub,
-    post_mock_subscription_activated,
+    ensure_student_subscription,
     skip_if_billing_webhook_unavailable,
     skip_if_student_has_subscription,
-    wait_for_subscription_access,
 )
 
 
@@ -59,36 +55,12 @@ def test_playback_after_mock_ipn_returns_200(
     """Mock subscription IPN grants platform access; playback returns presigned URL."""
     skip_if_billing_webhook_unavailable()
 
-    token = os.environ.get("INTEGRATION_COGNITO_JWT_STUDENT", "").strip()
-    if not token:
-        pytest.skip("INTEGRATION_COGNITO_JWT_STUDENT not set")
-
     course_id, lesson_id = _publish_course_with_lesson(
         api, course_factory, lesson_factory, label="billing-mock-ipn"
     )
 
-    user_sub = decode_jwt_sub(token)
-    probe = student_api.get_playback(course_id, lesson_id)
-    if probe.status_code == 200:
-        playback_resp = probe
-    else:
-        ipn_resp = post_mock_subscription_activated(api_base_url, user_sub)
-        if ipn_resp.status_code == 404:
-            pytest.skip("payments webhook route not deployed (404)")
-        if ipn_resp.status_code == 503:
-            try:
-                code = ipn_resp.json().get("code")
-            except Exception:
-                code = None
-            if code == "billing_unconfigured":
-                pytest.skip("billing not configured on API (503 billing_unconfigured)")
-        if ipn_resp.status_code != 200:
-            pytest.skip(
-                f"mock subscription IPN unavailable (HTTP {ipn_resp.status_code}): "
-                f"{ipn_resp.text[:200]}"
-            )
-        wait_for_subscription_access(student_api, course_id, lesson_id)
-        playback_resp = student_api.get_playback(course_id, lesson_id)
+    ensure_student_subscription(api_base_url, student_api, course_id, lesson_id)
+    playback_resp = student_api.get_playback(course_id, lesson_id)
 
     assert playback_resp.status_code == 200, playback_resp.text
     from helpers.playback_contract import assert_playback_contract

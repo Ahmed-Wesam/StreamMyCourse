@@ -44,7 +44,7 @@ import {
   setCourseResearchTeamRequirement,
 } from '../lib/api/research-team-teacher'
 import { usePageTitle } from '../lib/page-title'
-import { parseUsdInputToMinor, usdMinorToInputValue } from '../lib/usdPriceInput'
+import { jodMinorToInputValue, parseJodInputToMinor } from '../lib/jodPriceInput'
 import { Badge } from '../components/ui/Badge'
 import { Button } from '../components/ui/Button'
 import { Card } from '../components/ui/Card'
@@ -141,7 +141,7 @@ export default function CourseManagement() {
         setEditDescription(courseData.description)
         setEditPriceUsd(
           typeof courseData.amountMinor === 'number' && courseData.amountMinor > 0
-            ? usdMinorToInputValue(courseData.amountMinor)
+            ? jodMinorToInputValue(courseData.amountMinor)
             : '',
         )
         setPriceError(null)
@@ -267,9 +267,9 @@ export default function CourseManagement() {
   const handleSaveCoursePrice = async () => {
     if (!courseId) return
 
-    const amountMinor = parseUsdInputToMinor(editPriceUsd)
+    const amountMinor = parseJodInputToMinor(editPriceUsd)
     if (amountMinor == null) {
-      setPriceError('Enter a positive USD amount (for example 49.00).')
+      setPriceError('Enter a positive whole-number JOD amount (for example 50).')
       return
     }
 
@@ -279,7 +279,7 @@ export default function CourseManagement() {
 
     try {
       const result = await setCoursePrice(courseId, amountMinor)
-      setEditPriceUsd(usdMinorToInputValue(result.amountMinor))
+      setEditPriceUsd(jodMinorToInputValue(result.amountMinor))
       setCourse((prev) =>
         prev ? { ...prev, amountMinor: result.amountMinor, currency: result.currency } : prev,
       )
@@ -600,7 +600,7 @@ export default function CourseManagement() {
           <textarea value={editDescription} onChange={(e) => setEditDescription(e.target.value)} rows={3} />
         </Field>
         <Field
-          label="Price (USD)"
+          label="Price (JOD)"
           hint="One-time purchase price in US dollars. Saved separately from title and description."
           type="text"
           inputMode="decimal"

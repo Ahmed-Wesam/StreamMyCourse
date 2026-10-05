@@ -343,11 +343,11 @@ export const faqEntries: FaqEntry[] = [
   },
   {
     id: "faq-q-30",
-    dataQ: "What payment methods are supported? Credit debit card Visa Mastercard PayTabs HyperPay",
+    dataQ: "What payment methods are supported? Credit debit card Visa Mastercard HyperPay",
     question: "What payment methods are supported?",
-    plain: "Research Spectrum accepts Credit and Debit cards (Visa, Mastercard, American Express) as well as regional payment gateways including PayTabs and HyperPay. Additional payment methods may be available over time. All transactions are processed through secure, encrypted payment channels.",
+    plain: "Research Spectrum accepts credit and debit cards (Visa, Mastercard) through HyperPay. All transactions are processed through secure, encrypted payment channels and Research Spectrum does not store card details.",
     parts: [
-        "Research Spectrum accepts Credit and Debit cards (Visa, Mastercard, American Express) as well as regional payment gateways including PayTabs and HyperPay. Additional payment methods may be available over time. All transactions are processed through secure, encrypted payment channels.",
+        "Research Spectrum accepts credit and debit cards (Visa, Mastercard) through HyperPay. All transactions are processed through secure, encrypted payment channels and Research Spectrum does not store card details.",
     ],
   },
   {

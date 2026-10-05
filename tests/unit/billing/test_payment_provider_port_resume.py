@@ -1,8 +1,8 @@
-"""W8-P4 — PaymentProviderPort.cancel_agreement (mock adapter satisfies port)."""
+"""PaymentProviderPort.cancel_agreement (mock no-op)."""
 
 from __future__ import annotations
 
-from providers.mock_adapter import MockPayTabsAdapter
+from providers.mock_adapter import MockHyperPayAdapter
 from providers.port import PaymentProviderPort
 
 
@@ -11,6 +11,6 @@ def test_payment_provider_port_declares_cancel_agreement() -> None:
 
 
 def test_mock_adapter_satisfies_port_with_cancel() -> None:
-    adapter: PaymentProviderPort = MockPayTabsAdapter()
+    adapter: PaymentProviderPort = MockHyperPayAdapter()
     assert isinstance(adapter, PaymentProviderPort)
     adapter.cancel_agreement("agreement-1")

@@ -6,12 +6,7 @@ import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { ApiError } from '../lib/api/client'
-import type { MerchantStatusResponse } from '../lib/billing'
 import TeacherPaymentSetup from './TeacherPaymentSetup'
-
-const billing = vi.hoisted(() => ({
-  getMerchantStatus: vi.fn(),
-}))
 
 const billingApi = vi.hoisted(() => ({
   getBundle: vi.fn(),
@@ -20,15 +15,6 @@ const billingApi = vi.hoisted(() => ({
 const pricingApi = vi.hoisted(() => ({
   setBundlePrice: vi.fn(),
 }))
-
-vi.mock('../lib/billing', async (importOriginal) => {
-  const mod = (await importOriginal()) as typeof import('../lib/billing')
-  return {
-    ...mod,
-    getMerchantStatus: (...args: unknown[]) =>
-      billing.getMerchantStatus(...args) as ReturnType<typeof mod.getMerchantStatus>,
-  }
-})
 
 vi.mock('../lib/api/billing', async (importOriginal) => {
   const mod = (await importOriginal()) as typeof import('../lib/api/billing')
@@ -41,38 +27,6 @@ vi.mock('../lib/api/billing', async (importOriginal) => {
 vi.mock('../lib/api/pricing', () => ({
   setBundlePrice: (...args: unknown[]) => pricingApi.setBundlePrice(...args),
 }))
-
-const pendingStatus: MerchantStatusResponse = {
-  provider: 'paytabs',
-  providerProfileId: 'mock-profile',
-  payoutReady: false,
-  payoutReadyAt: null,
-  setupChecklist: {
-    paytabsAccountCreated: false,
-    profileIdConfigured: true,
-    repeatBillingEnabled: false,
-    termsUrlSet: false,
-    ipnRegistered: false,
-    testChargeSucceeded: false,
-    payoutMarkedReady: false,
-  },
-}
-
-const readyStatus: MerchantStatusResponse = {
-  provider: 'paytabs',
-  providerProfileId: 'pt-live-profile-99',
-  payoutReady: true,
-  payoutReadyAt: '2026-05-01T12:00:00Z',
-  setupChecklist: {
-    paytabsAccountCreated: true,
-    profileIdConfigured: true,
-    repeatBillingEnabled: false,
-    termsUrlSet: false,
-    ipnRegistered: false,
-    testChargeSucceeded: false,
-    payoutMarkedReady: true,
-  },
-}
 
 const FORBIDDEN_CLASS_SUBSTRINGS = [
   'emerald-',
@@ -121,12 +75,10 @@ function renderPaymentSetup(initialEntries: string[] = ['/settings/payments']) {
 
 describe('TeacherPaymentSetup', () => {
   beforeEach(() => {
-    billing.getMerchantStatus.mockReset()
-    billing.getMerchantStatus.mockResolvedValue(pendingStatus)
     billingApi.getBundle.mockReset()
-    billingApi.getBundle.mockResolvedValue({ amountMinor: 15000, currency: 'USD' })
+    billingApi.getBundle.mockResolvedValue({ amountMinor: 150_000, currency: 'JOD' })
     pricingApi.setBundlePrice.mockReset()
-    pricingApi.setBundlePrice.mockResolvedValue({ amountMinor: 12000, currency: 'USD' })
+    pricingApi.setBundlePrice.mockResolvedValue({ amountMinor: 120_000, currency: 'JOD' })
   })
 
   afterEach(() => {
@@ -134,124 +86,46 @@ describe('TeacherPaymentSetup', () => {
     vi.restoreAllMocks()
   })
 
-  it('shows pending checklist items when payout is not ready', async () => {
+  it('shows pricing heading and HyperPay copy without PayTabs checklist', async () => {
     renderPaymentSetup()
 
-    await waitFor(() => {
-      expect(billing.getMerchantStatus).toHaveBeenCalledTimes(1)
-    })
-
-    expect(screen.getByTestId('merchant-payout-status').textContent).toMatch(/setup in progress/i)
-    expect(screen.queryByTestId('checklist-repeatBillingEnabled')).toBeNull()
-    expect(screen.getByTestId('checklist-payoutMarkedReady').textContent).toMatch(/pending/i)
-    expect(screen.getByTestId('checklist-profileIdConfigured').textContent).toMatch(/complete/i)
-    expect(screen.getByTestId('checklist-paytabsAccountCreated').textContent).toMatch(/pending/i)
+    expect(await screen.findByRole('heading', { name: /^Pricing$/i })).toBeTruthy()
+    expect(screen.getByText(/HyperPay/i)).toBeTruthy()
+    expect(document.body.textContent?.includes('PayTabs')).toBe(false)
+    expect(screen.queryByTestId('merchant-payout-status')).toBeNull()
   })
 
-  it('shows ready checklist when payout is ready', async () => {
-    billing.getMerchantStatus.mockResolvedValue(readyStatus)
+  it('loads bundle price and saves via setBundlePrice (whole JOD)', async () => {
     renderPaymentSetup()
 
-    await waitFor(() => {
-      expect(screen.getByTestId('merchant-payout-status').textContent).toMatch(/payout ready/i)
-    })
+    const input = await screen.findByLabelText(/bundle price \(jod\)/i)
+    expect(input).toHaveProperty('value', '150')
 
-    expect(screen.getByTestId('checklist-payoutMarkedReady').textContent).toMatch(/complete/i)
-    expect(screen.getByTestId('checklist-profileIdConfigured').textContent).toMatch(/complete/i)
-    expect(screen.getByTestId('checklist-testChargeSucceeded').textContent).toMatch(/pending/i)
-    expect(screen.queryByTestId('checklist-repeatBillingEnabled')).toBeNull()
+    fireEvent.change(input, { target: { value: '120' } })
+    fireEvent.click(screen.getByRole('button', { name: /save bundle price/i }))
+
+    await waitFor(() => {
+      expect(pricingApi.setBundlePrice).toHaveBeenCalledWith(120_000)
+    })
+    expect(input).toHaveProperty('value', '120')
   })
 
-  it('shows a permission message when merchant status returns 403', async () => {
-    billing.getMerchantStatus.mockRejectedValue(new ApiError('Forbidden', 403, 'forbidden'))
+  it('shows a permission message when bundle price returns 403', async () => {
+    billingApi.getBundle.mockRejectedValue(new ApiError('Forbidden', 403, 'forbidden'))
     renderPaymentSetup()
 
     await waitFor(() => {
       expect(
-        screen.getByText(/only the designated billing teacher can view payment setup/i),
+        screen.getByText(/only the designated billing teacher can change the bundle price/i),
       ).toBeTruthy()
     })
   })
 
-  it('shows student-site PayTabs URLs from VITE_STUDENT_SITE_URL, not teacher origin', async () => {
-    vi.stubEnv('VITE_STUDENT_SITE_URL', 'https://example-student.test')
-    vi.resetModules()
-    const { default: PaymentSetup } = await import('./TeacherPaymentSetup')
-
-    render(
-      <MemoryRouter initialEntries={['/settings/payments']}>
-        <Routes>
-          <Route path="/settings/payments" element={<PaymentSetup />} />
-        </Routes>
-      </MemoryRouter>,
-    )
-
-    await waitFor(() => {
-      expect(billing.getMerchantStatus).toHaveBeenCalledTimes(1)
-    })
-
-    expect(screen.getByRole('heading', { name: /paytabs urls/i })).toBeTruthy()
-    expect(screen.getByText('https://example-student.test/terms')).toBeTruthy()
-    expect(screen.getByText('https://example-student.test/privacy')).toBeTruthy()
-    expect(screen.queryByText(/teach\./i)).toBeNull()
-  })
-
-  it('links to PayTabs docs and refresh reloads status', async () => {
-    renderPaymentSetup()
-
-    await waitFor(() => {
-      expect(screen.getByRole('link', { name: /going live/i })).toBeTruthy()
-    })
-
-    const goingLive = screen.getByRole('link', { name: /going live/i })
-    expect(goingLive.getAttribute('href')).toContain('paytabs.com')
-    expect(goingLive.getAttribute('target')).toBe('_blank')
-    expect(goingLive.getAttribute('rel')).toBe('noopener noreferrer')
-
-    const apiKeys = screen.getByRole('link', { name: /api keys/i })
-    expect(apiKeys.getAttribute('href')).toContain('paytabs.com')
-    expect(apiKeys.getAttribute('target')).toBe('_blank')
-    expect(apiKeys.getAttribute('rel')).toBe('noopener noreferrer')
-
-    expect(screen.getByText(/one-time usd all-access bundle/i)).toBeTruthy()
-    expect(screen.getByText(/merchant of record/i)).toBeTruthy()
-
-    await waitFor(() => {
-      expect(billing.getMerchantStatus).toHaveBeenCalledTimes(1)
-    })
-    const refreshButton = screen.getByRole('button', { name: /refresh status/i })
-    await waitFor(() => {
-      expect((refreshButton as HTMLButtonElement).disabled).toBe(false)
-    })
-
-    billing.getMerchantStatus.mockClear()
-    fireEvent.click(refreshButton)
-
-    await waitFor(() => {
-      expect(billing.getMerchantStatus).toHaveBeenCalledTimes(1)
-    })
-  })
-
-  it('loads bundle price and saves via setBundlePrice', async () => {
-    renderPaymentSetup()
-
-    const input = await screen.findByLabelText(/bundle price \(usd\)/i)
-    expect(input).toHaveProperty('value', '150.00')
-
-    fireEvent.change(input, { target: { value: '120.00' } })
-    fireEvent.click(screen.getByRole('button', { name: /save bundle price/i }))
-
-    await waitFor(() => {
-      expect(pricingApi.setBundlePrice).toHaveBeenCalledWith(12000)
-    })
-    expect(input).toHaveProperty('value', '120.00')
-  })
-
-  it('uses RS palette on settled payment setup view (no legacy Tailwind color utilities)', async () => {
+  it('uses RS palette on settled pricing view (no legacy Tailwind color utilities)', async () => {
     const { container } = renderPaymentSetup()
 
     await waitFor(() => {
-      expect(screen.getByTestId('merchant-payout-status')).toBeTruthy()
+      expect(screen.getByLabelText(/bundle price \(jod\)/i)).toBeTruthy()
     })
 
     const pageRoot = container.firstElementChild

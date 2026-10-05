@@ -10,7 +10,6 @@ from bootstrap import get_cached_aws_deps, lambda_bootstrap, warm_aws_deps_if_ne
 from config import load_config, AppConfig
 from services.auth.controller import handle_users_me, handle_users_me_patch
 from services.auth.session import check_student_session
-from services.billing_merchant.controller import handle_merchant_status
 from services.purchases.controller import (
     handle_get_bundle_offer,
     handle_get_purchases,
@@ -45,6 +44,7 @@ _student_session_guard_warned = False
 
 _INTERNAL_BILLING_CHECKOUT = "billing.checkout"
 _INTERNAL_BILLING_ROLLBACK = "billing.rollback_checkout"
+_INTERNAL_BILLING_CHECKOUT_STATUS = "billing.checkout_status"
 _INTERNAL_VIDEO_PREPARE = "video.prepare_upload"
 _INTERNAL_VIDEO_COMMIT = "video.commit_pending_upload"
 _INTERNAL_VIDEO_PREPARE_MARK_READY = "video.prepare_mark_ready"
@@ -55,6 +55,7 @@ _INTERNAL_EVENTS = frozenset(
     {
         _INTERNAL_BILLING_CHECKOUT,
         _INTERNAL_BILLING_ROLLBACK,
+        _INTERNAL_BILLING_CHECKOUT_STATUS,
         _INTERNAL_VIDEO_PREPARE,
         _INTERNAL_VIDEO_COMMIT,
         _INTERNAL_VIDEO_PREPARE_MARK_READY,
@@ -81,12 +82,17 @@ def _handle_internal_billing_event(event: Dict[str, Any]) -> Dict[str, Any]:
         raise RuntimeError("Catalog dependencies are not available")
     from services.purchases.internal_checkout import (
         handle_internal_purchase_checkout,
+        handle_internal_purchase_checkout_status,
         handle_internal_purchase_rollback,
     )
 
     internal = event.get("internal")
     if internal == _INTERNAL_BILLING_CHECKOUT:
         return handle_internal_purchase_checkout(
+            event, checkout_service=deps.purchase_checkout_service
+        )
+    if internal == _INTERNAL_BILLING_CHECKOUT_STATUS:
+        return handle_internal_purchase_checkout_status(
             event, checkout_service=deps.purchase_checkout_service
         )
     if internal == _INTERNAL_BILLING_ROLLBACK:
@@ -154,6 +160,7 @@ def _handle_internal_event(event: Dict[str, Any]) -> Dict[str, Any]:
     if internal in (
         _INTERNAL_BILLING_CHECKOUT,
         _INTERNAL_BILLING_ROLLBACK,
+        _INTERNAL_BILLING_CHECKOUT_STATUS,
     ):
         return _handle_internal_billing_event(event)
     if internal in (
@@ -217,7 +224,6 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 auth_repo,
                 progress_service,
                 question_bank_service,
-                merchant_service,
                 purchase_manage_service,
                 rate_limit_service,
             ) = lambda_bootstrap()
@@ -355,17 +361,6 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                             event,
                             origin=origin,
                             auth_svc=auth_service,
-                        )
-                    elif (
-                        method == "GET"
-                        and parts == ["billing", "merchant", "status"]
-                        and merchant_service is not None
-                    ):
-                        route_response = handle_merchant_status(
-                            event,
-                            origin=origin,
-                            merchant_svc=merchant_service,
-                            billing_teacher_sub=cfg.billing_teacher_sub,
                         )
                     elif (
                         method == "GET"

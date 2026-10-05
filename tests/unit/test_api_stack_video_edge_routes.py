@@ -95,4 +95,4 @@ def test_api_stack_video_edge_deployment_v34() -> None:
     assert "CatalogApiDeploymentV38:" not in text
     deployment_block = text.split("CatalogApiDeploymentV44:")[1].split("CatalogApiStage:")[0]
     assert "VideoProviderEdgeLambdaApiPermission" not in deployment_block
-    assert "DeploymentId: !Ref CatalogApiDeploymentV45" in text
+    assert "DeploymentId: !Ref CatalogApiDeploymentV46" in text

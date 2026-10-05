@@ -33,16 +33,16 @@ _REQUIRED_SQS_KEYS = frozenset(
 
 def test_edge_and_fulfillment_sqs_required_keys_match() -> None:
     sample = EdgeEvent(
-        event_type="subscription.activated",
-        provider="paytabs",
-        provider_event_id="paytabs:T1:A",
+        event_type="purchase.paid",
+        provider="hyperpay",
+        provider_event_id="hyperpay:T1:000.000.000",
         environment="dev",
         user_sub="sub-1",
-        plan_id="a0000000-0000-4000-8000-000000000011",
+        plan_id="",
         payload_digest="d" * 64,
-        provider_subscription_id="AGR-1",
-        current_period_start="2026-05-01T00:00:00Z",
-        current_period_end="2026-06-01T00:00:00Z",
+        purchase_id="c0000000-0000-4000-8000-000000000001",
+        amount_minor=50_000,
+        currency="JOD",
     )
     edge_body = sample.to_sqs_dict()
     assert _REQUIRED_SQS_KEYS <= frozenset(edge_body.keys())
@@ -50,7 +50,7 @@ def test_edge_and_fulfillment_sqs_required_keys_match() -> None:
     restored = FulfillmentEvent.from_sqs_dict(json.loads(json.dumps(edge_body)))
     assert restored.event_type == sample.event_type
     assert restored.provider_event_id == sample.provider_event_id
-    assert restored.current_period_end == sample.current_period_end
+    assert restored.purchase_id == sample.purchase_id
 
     round_trip = FulfillmentEvent.from_sqs_dict(restored.to_sqs_dict())
     assert round_trip == restored

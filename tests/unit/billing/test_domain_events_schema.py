@@ -9,13 +9,14 @@ from domain.events import SCHEMA_VERSION, BillingDomainEvent
 
 def _sample_event(**overrides: object) -> BillingDomainEvent:
     base = dict(
-        event_type="subscription.activated",
-        provider="paytabs",
-        provider_event_id="paytabs:TST1:A",
+        event_type="purchase.paid",
+        provider="hyperpay",
+        provider_event_id="hyperpay:pay-1:000.000.000",
         environment="dev",
         user_sub="cognito-sub-1",
-        plan_id="00000000-0000-4000-8000-000000000001",
+        plan_id="",
         payload_digest="a" * 64,
+        purchase_id="c0000000-0000-4000-8000-000000000001",
     )
     base.update(overrides)
     return BillingDomainEvent(**base)  # type: ignore[arg-type]
@@ -28,23 +29,14 @@ def test_schema_version_is_one() -> None:
 
 
 def test_to_sqs_dict_includes_required_fields() -> None:
-    event = _sample_event(
-        provider_subscription_id="AGR-1",
-        current_period_start="2026-05-01T00:00:00Z",
-        current_period_end="2026-06-01T00:00:00Z",
-    )
+    event = _sample_event(amount_minor=50_000, currency="JOD")
     data = event.to_sqs_dict()
     assert data["schema_version"] == 1
-    assert data["event_type"] == "subscription.activated"
-    assert data["provider"] == "paytabs"
-    assert data["provider_event_id"] == "paytabs:TST1:A"
-    assert data["environment"] == "dev"
-    assert data["user_sub"] == "cognito-sub-1"
-    assert data["plan_id"] == "00000000-0000-4000-8000-000000000001"
-    assert data["payload_digest"] == "a" * 64
-    assert data["provider_subscription_id"] == "AGR-1"
-    assert data["current_period_start"] == "2026-05-01T00:00:00Z"
-    assert data["current_period_end"] == "2026-06-01T00:00:00Z"
+    assert data["event_type"] == "purchase.paid"
+    assert data["provider"] == "hyperpay"
+    assert data["purchase_id"] == "c0000000-0000-4000-8000-000000000001"
+    assert data["amount_minor"] == 50_000
+    assert data["currency"] == "JOD"
 
 
 def test_to_sqs_dict_omits_unset_optional_fields() -> None:
@@ -54,22 +46,16 @@ def test_to_sqs_dict_omits_unset_optional_fields() -> None:
 
 
 def test_from_sqs_dict_round_trip() -> None:
-    original = _sample_event(cancel_at_period_end=True, canceled_at="2026-05-18T12:00:00Z")
+    original = _sample_event(provider_tran_ref="pay-1")
     restored = BillingDomainEvent.from_sqs_dict(original.to_sqs_dict())
     assert restored == original
 
 
 def test_rejects_unknown_event_type() -> None:
     with pytest.raises(ValueError, match="event_type"):
-        _sample_event(event_type="subscription.unknown")
+        _sample_event(event_type="purchase.unknown")
 
 
-def test_purchase_paid_event_type_allowed() -> None:
-    event = _sample_event(
-        event_type="purchase.paid",
-        plan_id="",
-        purchase_id="c0000000-0000-4000-8000-000000000001",
-    )
-    assert event.event_type == "purchase.paid"
-    data = event.to_sqs_dict()
-    assert data["purchase_id"] == "c0000000-0000-4000-8000-000000000001"
+def test_purchase_revoked_event_type_allowed() -> None:
+    event = _sample_event(event_type="purchase.revoked", provider_tran_ref="orig-pay")
+    assert event.event_type == "purchase.revoked"

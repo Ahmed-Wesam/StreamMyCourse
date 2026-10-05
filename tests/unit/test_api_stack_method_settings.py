@@ -18,7 +18,7 @@ def test_webhook_throttles_use_explicit_post_paths_not_star_star() -> None:
     for path in (
         "ResourcePath: '/webhooks/kinescope'",
         "ResourcePath: '/webhooks/kinescope/drm-auth'",
-        "ResourcePath: '/webhooks/payments/paytabs'",
+        "ResourcePath: '/webhooks/payments/hyperpay'",
     ):
         assert path in stage_block
     assert stage_block.count("HttpMethod: 'POST'") >= 3

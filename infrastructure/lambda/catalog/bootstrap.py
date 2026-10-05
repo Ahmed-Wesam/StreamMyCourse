@@ -48,10 +48,6 @@ from services.auth.rds_repo import UserProfileRdsRepository
 
 from services.auth.service import UserProfileService
 
-from services.billing_merchant.repo import MerchantAccountRdsRepository
-
-from services.billing_merchant.service import MerchantStatusService
-
 from services.course_management.models import Course
 
 from services.course_management.image_storage import CourseImageStorage
@@ -1006,8 +1002,6 @@ class AwsDeps:
 
     question_bank_service: QuestionBankService
 
-    merchant_service: MerchantStatusService
-
     purchase_checkout_service: PurchaseCheckoutService
 
     purchase_manage_service: PurchaseManageService
@@ -1446,16 +1440,6 @@ def build_aws_deps(cfg: AppConfig) -> AwsDeps:
 
     )
 
-    merchant_repo = MerchantAccountRdsRepository(conn_factory)
-
-    merchant_service = MerchantStatusService(
-
-        merchant_repo,
-
-        deployment_environment=cfg.deployment_environment,
-
-    )
-
     purchase_checkout_service = PurchaseCheckoutService(purchase_repo)
 
     purchase_manage_service = PurchaseManageService(
@@ -1501,8 +1485,6 @@ def build_aws_deps(cfg: AppConfig) -> AwsDeps:
         progress_service=progress_service,
 
         question_bank_service=question_bank_service,
-
-        merchant_service=merchant_service,
 
         purchase_checkout_service=purchase_checkout_service,
 
@@ -1554,8 +1536,6 @@ def lambda_bootstrap() -> Tuple[
 
     Optional[QuestionBankService],
 
-    Optional[MerchantStatusService],
-
     Optional[PurchaseManageService],
 
     Optional[RateLimitService],
@@ -1568,7 +1548,7 @@ def lambda_bootstrap() -> Tuple[
 
     When RDS settings are incomplete the catalog cannot be wired, so
 
-    ``(cfg, None, …)`` (nine ``None`` service slots) is returned and the handler responds
+    ``(cfg, None, …)`` (eight ``None`` service slots) is returned and the handler responds
 
     with a configuration error.
 
@@ -1578,7 +1558,7 @@ def lambda_bootstrap() -> Tuple[
 
     if not _rds_config_complete(cfg):
 
-        return cfg, None, None, None, None, None, None, None, None
+        return cfg, None, None, None, None, None, None, None
 
 
 
@@ -1599,8 +1579,6 @@ def lambda_bootstrap() -> Tuple[
             existing.progress_service,
 
             existing.question_bank_service,
-
-            existing.merchant_service,
 
             existing.purchase_manage_service,
 
@@ -1627,8 +1605,6 @@ def lambda_bootstrap() -> Tuple[
         deps.progress_service,
 
         deps.question_bank_service,
-
-        deps.merchant_service,
 
         deps.purchase_manage_service,
 

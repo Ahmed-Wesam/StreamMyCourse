@@ -12,17 +12,18 @@ Course **modules**: `tests/integration/test_course_modules.py` covers `GET/POST/
 
 **Kinescope (prod default):** When `INTEGRATION_VIDEO_PROVIDER=kinescope`, `tests/integration/test_kinescope_drm_auth.py` posts the provider-shaped `{id, token}` payload to `POST /webhooks/kinescope/drm-auth` after playback mints `drmAuthToken`. Requires catalog deploy with `KINESCOPE_DRM_JWT_SECRET` and Kinescope project auth URL registered (`scripts/configure-kinescope-drm-auth.sh`, also run from `deploy-backend.sh` on kinescope envs).
 
-## Billing / subscription access (WS5)
+## Billing / purchase access (RS-5 + HyperPay)
 
-Catalog lesson access, progress, and related student flows require an **active platform subscription** (not course enrollment). Integration tests seed access by POSTing a **mock PayTabs IPN** to `POST /webhooks/payments/paytabs` with header **`X-Mock-Signature: test`** (billing edge mock adapter on prod).
+Catalog lesson access requires a **paid course or bundle purchase** (not enrollment). Integration tests seed access via **`POST /billing/checkout-session`** (response includes **`checkoutId`**, **`currency": "JOD"`**, **`amountMinor`** in fils) followed by an encrypted mock **`POST /webhooks/payments/hyperpay`** (AES-GCM headers `X-Initialization-Vector`, `X-Authentication-Tag`).
 
-- **`INTEGRATION_BILLING_WEBHOOK`**: set to `0`, `false`, `no`, or `off` to skip tests that need the webhook (including `subscribed_course` / `enrolled_course` fixture path and most subscription-dependent cases).
-- **`INTEGRATION_BILLING_ENV`**: optional; default `prod` — must match the deployment segment inside `cart_id` (`v1|{env}|{user_sub}|{plan_id}`).
-- Tests that assert **403 `subscription_required`** without a subscription may **skip** if the shared student JWT already has an active subscription on prod (**`skip_if_student_has_subscription`**).
+- **`INTEGRATION_HYPERPAY_WEBHOOK_SECRET`**: 64-char hex webhook key (same as billing edge / Secrets Manager `webhook_secret`). Falls back to **`HYPERPAY_WEBHOOK_SECRET`**. Never commit or log this value.
+- **`INTEGRATION_BILLING_WEBHOOK`**: set to `0`, `false`, `no`, or `off` to skip tests that need the webhook (including `subscribed_course` / `enrolled_course` fixture path and purchase-dependent cases).
+- **`INTEGRATION_BILLING_ENV`**: optional; default `prod` — must match the deployment segment inside v2 cart ids (`v2|{env}|{user_sub}|bundle|{purchaseId}`).
+- Tests that assert **403 `purchase_required`** without a purchase may **skip** if the shared student JWT already has bundle access on prod (**`skip_if_student_has_subscription`**).
 
-If the payments stack is missing or billing is unconfigured, helpers skip with reasons such as **404** (route missing), **503 `billing_unconfigured`**, or **401** (mock signature not accepted).
+If the payments stack is missing or billing is unconfigured, helpers skip with reasons such as **404** (route missing), **503 `billing_unconfigured`**, or **401** (webhook decrypt failed — check webhook secret).
 
-**Checkout E2E (WS6):** `tests/integration/test_billing_checkout_e2e.py` exercises `POST /billing/checkout-session` (mock `redirect_url`) → mock IPN → playback **200**, **409 `already_subscribed`** when the student already has a granting row (`ensure_student_subscription`), **409 `checkout_in_progress`** on a second checkout before IPN (fresh `incomplete` row), and **200** checkout after a **lapsed** `active` row (`seed_lapsed_subscription_via_ipn`: grant IPN → playback **200**, lapsed IPN → poll until **403** `subscription_required`, then checkout). Same skip flags as above; requires **`INTEGRATION_COGNITO_JWT_STUDENT`**. Run only that file:
+**Checkout E2E (WS6):** `tests/integration/test_billing_checkout_e2e.py` exercises `POST /billing/checkout-session` → HyperPay webhook → playback **200**, **409 `already_owned`** when the student already has a paid bundle (`ensure_student_subscription`), and **409 `checkout_in_progress`** on a second checkout before webhook (pending row). Requires **`INTEGRATION_COGNITO_JWT_STUDENT`** and webhook secret. Run only that file:
 
 ```bash
 python -m pytest tests/integration/test_billing_checkout_e2e.py -q

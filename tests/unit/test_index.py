@@ -27,7 +27,6 @@ def _bootstrap_returning(
     auth_repo: Optional[Any] = None,
     progress_service: Optional[Any] = None,
     question_bank_service: Optional[Any] = None,
-    merchant_service: Optional[Any] = None,
     purchase_manage_service: Optional[Any] = None,
     rate_limit_service: Optional[Any] = None,
 ):
@@ -41,7 +40,6 @@ def _bootstrap_returning(
         Optional[Any],
         Optional[Any],
         Optional[Any],
-        Optional[Any],
     ]:
         return (
             cfg,
@@ -50,7 +48,6 @@ def _bootstrap_returning(
             auth_repo,
             progress_service,
             question_bank_service,
-            merchant_service,
             purchase_manage_service,
             rate_limit_service,
         )
@@ -104,7 +101,7 @@ class TestServiceUnconfigured:
         monkeypatch.setattr(
             index_mod,
             "lambda_bootstrap",
-            _bootstrap_returning(cfg_wildcard, None, None, None, None, None, None, None, None),
+            _bootstrap_returning(cfg_wildcard, None, None, None, None, None, None, None),
         )
         evt = make_lambda_event(method="GET", path="/courses")
 
@@ -128,7 +125,7 @@ class TestServiceUnconfigured:
         monkeypatch.setattr(
             index_mod,
             "lambda_bootstrap",
-            _bootstrap_returning(cfg_wildcard, None, None, None, None, None, None, None, None),
+            _bootstrap_returning(cfg_wildcard, None, None, None, None, None, None, None),
         )
         evt = make_lambda_event(
             method="OPTIONS",
@@ -157,7 +154,7 @@ class TestServiceUnconfigured:
         monkeypatch.setattr(
             index_mod,
             "lambda_bootstrap",
-            _bootstrap_returning(cfg_wildcard, None, None, None, None, None, None, None, None),
+            _bootstrap_returning(cfg_wildcard, None, None, None, None, None, None, None),
         )
         evt = make_lambda_event(
             method="GET",
@@ -183,7 +180,7 @@ class TestServiceUnconfigured:
             allowed_origins=["https://app.example.com", "http://localhost:5173"],
         )
         monkeypatch.setattr(
-            index_mod, "lambda_bootstrap", _bootstrap_returning(cfg, None, None, None, None, None, None, None, None)
+            index_mod, "lambda_bootstrap", _bootstrap_returning(cfg, None, None, None, None, None, None, None)
         )
         evt = make_lambda_event(
             method="GET", path="/courses", headers={"origin": "https://evil.com"}
@@ -214,7 +211,7 @@ class TestServiceConfigured:
         monkeypatch.setattr(
             index_mod,
             "lambda_bootstrap",
-            _bootstrap_returning(cfg_wildcard, mock_service, mock_auth, None, mock_progress, None, None, None, None),
+            _bootstrap_returning(cfg_wildcard, mock_service, mock_auth, None, mock_progress, None, None, None),
         )
 
         evt = make_lambda_event(method="GET", path="/courses")
@@ -232,7 +229,7 @@ class TestServiceConfigured:
         monkeypatch.setattr(
             index_mod,
             "lambda_bootstrap",
-            _bootstrap_returning(cfg_wildcard, None, None, None, None, None, None, None, None),
+            _bootstrap_returning(cfg_wildcard, None, None, None, None, None, None, None),
         )
         # API Gateway v1-style: `httpMethod` instead of `requestContext.http.method`.
         evt: Dict[str, Any] = {"httpMethod": "OPTIONS", "headers": {}}
@@ -272,7 +269,7 @@ class TestProgressRouting:
             monkeypatch.setattr(
                 index_mod,
                 "lambda_bootstrap",
-                _bootstrap_returning(cfg_wildcard, mock_service, mock_auth, None, mock_progress, None, None, None, None),
+                _bootstrap_returning(cfg_wildcard, mock_service, mock_auth, None, mock_progress, None, None, None),
             )
 
             evt = make_lambda_event(method="GET", path="/courses/course-123/progress")
@@ -305,7 +302,7 @@ class TestProgressRouting:
             monkeypatch.setattr(
                 index_mod,
                 "lambda_bootstrap",
-                _bootstrap_returning(cfg_wildcard, mock_service, mock_auth, None, mock_progress, None, None, None, None),
+                _bootstrap_returning(cfg_wildcard, mock_service, mock_auth, None, mock_progress, None, None, None),
             )
 
             evt = make_lambda_event(
@@ -339,7 +336,7 @@ class TestProgressRouting:
             monkeypatch.setattr(
                 index_mod,
                 "lambda_bootstrap",
-                _bootstrap_returning(cfg_wildcard, mock_service, mock_auth, None, mock_progress, None, None, None, None),
+                _bootstrap_returning(cfg_wildcard, mock_service, mock_auth, None, mock_progress, None, None, None),
             )
             evt = make_lambda_event(method="GET", path="/me/activity")
             resp = index_mod.lambda_handler(evt, None)
@@ -362,7 +359,7 @@ class TestProgressRouting:
         monkeypatch.setattr(
             index_mod,
             "lambda_bootstrap",
-            _bootstrap_returning(cfg_wildcard, mock_service, mock_auth, None, mock_progress, None, None, None, None),
+            _bootstrap_returning(cfg_wildcard, mock_service, mock_auth, None, mock_progress, None, None, None),
         )
 
         evt = make_lambda_event(
@@ -384,7 +381,7 @@ class TestProgressRouting:
         monkeypatch.setattr(
             index_mod,
             "lambda_bootstrap",
-            _bootstrap_returning(cfg_wildcard, None, None, None, None, None, None, None, None),
+            _bootstrap_returning(cfg_wildcard, None, None, None, None, None, None, None),
         )
         evt = make_lambda_event(method="GET", path="/courses/course-123/progress")
         resp = index_mod.lambda_handler(evt, None)
@@ -435,7 +432,6 @@ class TestRateLimitMiddleware:
                 MagicMock(),
                 None,
                 None,
-                None,
                 mock_rl,
             ),
         )
@@ -473,7 +469,6 @@ class TestRateLimitMiddleware:
                 MagicMock(),
                 None,
                 None,
-                None,
                 mock_rl,
             ),
         )
@@ -506,7 +501,6 @@ class TestRateLimitMiddleware:
                 mock_auth,
                 None,
                 MagicMock(),
-                None,
                 None,
                 None,
                 mock_rl,
@@ -546,7 +540,6 @@ class TestRateLimitMiddleware:
                 None,
                 None,
                 None,
-                None,
             ),
         )
 
@@ -582,7 +575,6 @@ class TestRateLimitMiddleware:
                     mock_auth,
                     None,
                     MagicMock(),
-                    None,
                     None,
                     None,
                     mock_rl,

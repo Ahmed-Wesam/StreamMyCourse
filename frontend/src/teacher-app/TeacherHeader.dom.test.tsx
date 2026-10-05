@@ -71,7 +71,7 @@ describe('TeacherHeader', () => {
     vi.resetModules()
   })
 
-  it('shows Instructor badge and Dashboard and Payments links on home', async () => {
+  it('shows Instructor badge and Dashboard and Pricing links on home', async () => {
     useAuthenticatorMock.mockReturnValue({
       user: { username: 'teacher@example.com' },
       signOut: vi.fn(),
@@ -81,7 +81,7 @@ describe('TeacherHeader', () => {
     expect(screen.getAllByText('Instructor').length).toBeGreaterThanOrEqual(1)
     const main = screen.getByRole('navigation', { name: 'Primary' })
     expect(within(main).getByRole('link', { name: 'Dashboard' }).getAttribute('href')).toBe('/')
-    expect(within(main).getByRole('link', { name: 'Payments' }).getAttribute('href')).toBe(
+    expect(within(main).getByRole('link', { name: 'Pricing' }).getAttribute('href')).toBe(
       '/settings/payments',
     )
   })

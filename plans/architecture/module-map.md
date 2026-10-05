@@ -96,7 +96,7 @@ Enrollment rows do **not** grant lesson access under RS-5 (purchases do); table 
 
 **Supersedes** subscription module / `access-policy-v1` subscription rules (ADR 0013).
 
-**Sibling:** `infrastructure/lambda/billing_edge/` — no-VPC PayTabs session + IPN → SQS events (`purchase.paid|failed|revoked`).
+**Sibling:** `infrastructure/lambda/billing_edge/` — no-VPC HyperPay checkout + encrypted webhook → SQS events (`purchase.paid|failed|revoked`) — [ADR 0015](./adr-0015-hyperpay-copyandpay-jod.md).
 
 ### `services/billing_merchant/` (implemented)
 
@@ -182,7 +182,7 @@ Cross-cutting utilities shared by multiple contexts:
 | Package / stack | Role |
 |-----------------|------|
 | `infrastructure/lambda/video_provider_edge/` | Kinescope HTTP (no VPC) — ADR 0011 |
-| `infrastructure/lambda/billing_edge/` | PayTabs HPP / IPN → SQS — ADR 0013 |
+| `infrastructure/lambda/billing_edge/` | HyperPay COPYandPAY + webhook → SQS — ADR 0013 / 0015 |
 | `infrastructure/lambda/transactional_mail/` | Zoho SMTP consumer — contact + notify; same secret posture as CustomEmailSender |
 | `infrastructure/lambda/media_cleanup/` | Async S3 deletes after course/media delete |
 | `infrastructure/lambda/cognito_pre_signup/` | Account linking / duplicate email — ADR 0014 |

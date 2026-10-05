@@ -20,10 +20,7 @@ _SCRIPT_DIR = Path(__file__).resolve().parent
 if str(_SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(_SCRIPT_DIR))
 
-from billing_sync_merchant_account import (  # noqa: E402
-    _load_db_config,
-    build_connection_factory,
-)
+from billing_rds_connect import build_connection_factory, load_db_config  # noqa: E402
 
 
 def build_mark_payout_ready_sql() -> str:
@@ -51,7 +48,7 @@ def main(argv: Optional[list[str]] = None) -> int:
         print("billing_mark_payout_ready: DEPLOYMENT_ENVIRONMENT is required", file=sys.stderr)
         return 1
 
-    host, secret_arn, db_name, db_port = _load_db_config(os.environ)
+    host, secret_arn, db_name, db_port = load_db_config(os.environ)
     if not host or not secret_arn:
         print(
             "billing_mark_payout_ready: DB_HOST/DB_SECRET_ARN unset; "

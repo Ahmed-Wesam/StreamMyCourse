@@ -287,8 +287,8 @@ describe('CourseManagement', () => {
     })
     pricingApi.setCoursePrice.mockResolvedValue({
       courseId: 'c1',
-      amountMinor: 5999,
-      currency: 'USD',
+      amountMinor: 55_000,
+      currency: 'JOD',
     })
     mockNavigate.mockReset()
     mockConfirm.mockReset()
@@ -441,28 +441,28 @@ describe('CourseManagement', () => {
     })
   })
 
-  it('loads USD course price and saves via setCoursePrice', async () => {
+  it('loads JOD course price and saves via setCoursePrice', async () => {
     api.getCourse.mockResolvedValue({
       id: 'c1',
       title: 'Test Course',
       description: 'Test Description',
       status: 'DRAFT',
-      amountMinor: 4900,
-      currency: 'USD',
+      amountMinor: 50_000,
+      currency: 'JOD',
     })
 
     renderCourseManagement()
 
-    const priceInput = await screen.findByLabelText(/price \(usd\)/i)
-    expect(priceInput).toHaveProperty('value', '49.00')
+    const priceInput = await screen.findByLabelText(/price \(jod\)/i)
+    expect(priceInput).toHaveProperty('value', '50')
 
-    fireEvent.change(priceInput, { target: { value: '59.99' } })
+    fireEvent.change(priceInput, { target: { value: '55' } })
     fireEvent.click(screen.getByRole('button', { name: /save price/i }))
 
     await waitFor(() => {
-      expect(pricingApi.setCoursePrice).toHaveBeenCalledWith('c1', 5999)
+      expect(pricingApi.setCoursePrice).toHaveBeenCalledWith('c1', 55_000)
     })
-    expect(priceInput).toHaveProperty('value', '59.99')
+    expect(priceInput).toHaveProperty('value', '55')
   })
 
   it('shows Publish Course button for draft with ready lessons', async () => {
@@ -1137,19 +1137,19 @@ describe('CourseManagement', () => {
         title: 'Test Course',
         description: 'Test Description',
         status: 'DRAFT',
-        amountMinor: 4900,
-        currency: 'USD',
+        amountMinor: 50_000,
+        currency: 'JOD',
         subtitle: 'Catalog line',
       })
 
       renderCourseManagement()
 
-      const priceInput = await screen.findByLabelText(/price \(usd\)/i)
-      fireEvent.change(priceInput, { target: { value: '59.99' } })
+      const priceInput = await screen.findByLabelText(/price \(jod\)/i)
+      fireEvent.change(priceInput, { target: { value: '55' } })
       fireEvent.click(screen.getByRole('button', { name: /save price/i }))
 
       await waitFor(() => {
-        expect(pricingApi.setCoursePrice).toHaveBeenCalledWith('c1', 5999)
+        expect(pricingApi.setCoursePrice).toHaveBeenCalledWith('c1', 55_000)
       })
       expect(api.updateCourse).not.toHaveBeenCalled()
     })

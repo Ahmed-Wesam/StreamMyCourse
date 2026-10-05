@@ -4,7 +4,7 @@ import { Link } from 'react-router-dom'
 import { getBundle } from '../lib/api/billing'
 import { listPublishedCourses, type PublicCatalogCourse } from '../lib/api/public-catalog'
 import type { BundleOffer } from '../lib/api/types'
-import { formatUsdMinor } from '../lib/formatUsdMinor'
+import { formatJodMinor } from '../lib/formatJodMinor'
 import { usePageTitle } from '../lib/page-title'
 import './CoursesCatalogPage.css'
 
@@ -62,9 +62,7 @@ function errorMessage(err: unknown): string {
 
 function dollars(amountMinor: number | null | undefined): string | null {
   if (typeof amountMinor !== 'number' || !Number.isFinite(amountMinor) || amountMinor <= 0) return null
-  const formatted = formatUsdMinor(amountMinor)
-  if (amountMinor % 100 === 0) return formatted.replace(/\.00$/, '')
-  return formatted
+  return formatJodMinor(amountMinor)
 }
 
 function byCatalogOrder(courses: PublicCatalogCourse[]): PublicCatalogCourse[] {

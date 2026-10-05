@@ -1,13 +1,14 @@
 ---
 description: >-
-  On /review, flag new or materially changed AWS resources with significant recurring
-  cost (WAF, NAT Gateway, VPC endpoints, RDS scale-up, etc.). Evidence from diff only.
+  On /review, /review-recursive, or /review_and_commit Phase 1, flag new or
+  materially changed AWS resources with significant recurring cost (WAF, NAT
+  Gateway, VPC endpoints, RDS scale-up, etc.). Evidence from diff only.
 alwaysApply: false
 ---
 
 # /review — AWS cost impact alerts
 
-When the user runs **`/review`** (or **`/review_and_commit`** Phase 1), scan the **diff** for infrastructure and deploy changes. This is **separate** from severity-ranked code findings: use a dedicated section, not Critical/Medium/Low.
+When the user runs **`/review`**, **`/review-recursive`**, or **`/review_and_commit`** Phase 1, scan the **diff** for infrastructure and deploy changes. This is **separate** from severity-ranked code findings: use a dedicated section, not Critical/Medium/Low.
 
 ## Output (required)
 

@@ -39,37 +39,33 @@ Parameters:
 
   PaymentProvider:
     Type: String
-    Default: ''
-    Description: PAYMENT_PROVIDER env (e.g. mock, paytabs); empty when unset
+    Default: hyperpay
+    AllowedValues:
+      - hyperpay
+      - mock
+    Description: PAYMENT_PROVIDER env (hyperpay live checkout or mock adapter)
 
-  PaytabsApiDomain:
-    Type: String
-    Default: secure-jordan.paytabs.com
-    Description: PAYTABS_API_DOMAIN for PayTabs HPP (placeholder until dashboard confirms)
-
-  PaytabsProfileId:
+  HyperpaySecretArn:
     Type: String
     Default: ''
-    Description: PAYTABS_PROFILE_ID (optional; prod uses Secrets Manager when PAYTABS_SECRET_ARN is set)
+    Description: HYPERPAY_SECRET_ARN (Secrets Manager streammycourse/hyperpay/{env})
 
-  PaytabsServerKey:
+  HyperpayAccessToken:
     Type: String
     Default: ''
     NoEcho: true
-    Description: PAYTABS_SERVER_KEY from deploy overrides; omit when using PAYTABS_SECRET_ARN only
+    Description: Optional inline HYPERPAY_ACCESS_TOKEN (prod prefers Secrets Manager)
 
-  PaytabsSecretArn:
+  HyperpayEntityId:
     Type: String
     Default: ''
-    Description: Optional PAYTABS_SECRET_ARN (Secrets Manager)
+    Description: Optional inline HYPERPAY_ENTITY_ID (prod prefers Secrets Manager)
 
-  PaytabsUseMock:
+  HyperpayWebhookSecret:
     Type: String
-    Default: 'false'
-    AllowedValues:
-      - 'true'
-      - 'false'
-    Description: PAYTABS_USE_MOCK — explicit mock checkout (non-live PayTabs)
+    Default: ''
+    NoEcho: true
+    Description: Optional HYPERPAY_WEBHOOK_SECRET (64-char hex for AES-GCM webhooks)
 
   BillingFulfillmentAlertEmail:
     Type: String
@@ -85,23 +81,11 @@ Parameters:
       ARN of the catalog Lambda (checkout precheck invoke). Empty skips invoke IAM
       and leaves CATALOG_LAMBDA_ARN unset until a follow-up deploy.
 
-  BillingReturnSuccessUrl:
+  BillingShopperResultUrl:
     Type: String
     Default: ''
     Description: >-
-      PayTabs return URL after successful HPP (student edge host /billing/success).
-
-  BillingReturnCancelUrl:
-    Type: String
-    Default: ''
-    Description: >-
-      PayTabs return URL when checkout is canceled (student edge /billing/cancel).
-
-  BillingIpnCallbackUrl:
-    Type: String
-    Default: ''
-    Description: >-
-      PayTabs IPN webhook URL (BILLING_IPN_CALLBACK_URL) for server-to-server callbacks.
+      HyperPay shopperResultUrl (student edge /billing/hyperpay/return after widget checkout).
 
 Conditions:
   HasBillingFulfillmentAlertEmail: !Not [!Equals [!Ref BillingFulfillmentAlertEmail, '']]
@@ -186,14 +170,14 @@ Resources:
                 Action:
                   - sqs:SendMessage
                 Resource: !GetAtt BillingFulfillmentQueue.Arn
-        - PolicyName: SecretsManagerPaytabs
+        - PolicyName: SecretsManagerHyperpay
           PolicyDocument:
             Version: '2012-10-17'
             Statement:
               - Effect: Allow
                 Action:
                   - secretsmanager:GetSecretValue
-                Resource: !Sub 'arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:streammycourse/paytabs/*'
+                Resource: !Sub 'arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:streammycourse/hyperpay/*'
       Tags:
         - Key: Project
           Value: StreamMyCourse
@@ -232,15 +216,12 @@ Resources:
           DEPLOYMENT_ENVIRONMENT: !Ref Environment
           FULFILLMENT_QUEUE_URL: !Ref BillingFulfillmentQueue
           PAYMENT_PROVIDER: !Ref PaymentProvider
-          PAYTABS_API_DOMAIN: !Ref PaytabsApiDomain
-          PAYTABS_PROFILE_ID: !Ref PaytabsProfileId
-          PAYTABS_SERVER_KEY: !Ref PaytabsServerKey
-          PAYTABS_SECRET_ARN: !Ref PaytabsSecretArn
-          PAYTABS_USE_MOCK: !Ref PaytabsUseMock
+          HYPERPAY_SECRET_ARN: !Ref HyperpaySecretArn
+          HYPERPAY_ACCESS_TOKEN: !Ref HyperpayAccessToken
+          HYPERPAY_ENTITY_ID: !Ref HyperpayEntityId
+          HYPERPAY_WEBHOOK_SECRET: !Ref HyperpayWebhookSecret
           CATALOG_LAMBDA_ARN: !Ref CatalogLambdaArn
-          BILLING_RETURN_SUCCESS_URL: !Ref BillingReturnSuccessUrl
-          BILLING_RETURN_CANCEL_URL: !Ref BillingReturnCancelUrl
-          BILLING_IPN_CALLBACK_URL: !Ref BillingIpnCallbackUrl
+          BILLING_SHOPPER_RESULT_URL: !Ref BillingShopperResultUrl
           LOG_LEVEL: INFO
       Tags:
         - Key: Project

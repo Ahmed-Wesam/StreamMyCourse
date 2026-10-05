@@ -16,7 +16,7 @@ class TestInternalBillingCheckoutInvoke:
             "blockReason": None,
             "product": {
                 "amount_minor": 9900,
-                "currency": "USD",
+                "currency": "JOD",
                 "course_id": _COURSE_ID,
                 "purchase_id": "c0000000-0000-4000-8000-000000000001",
             },

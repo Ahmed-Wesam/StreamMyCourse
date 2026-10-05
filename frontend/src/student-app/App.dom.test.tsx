@@ -78,11 +78,8 @@ vi.mock('../components/auth/StudentLessonAuth', () => ({
 vi.mock('../components/auth/StudentModuleQuizAuth', () => ({
   StudentModuleQuizAuth: () => <div data-testid="student-page-quiz" />,
 }))
-vi.mock('../pages/BillingSuccessPage', () => ({
-  default: () => <div data-testid="student-page-billing-success" />,
-}))
-vi.mock('../pages/BillingCancelPage', () => ({
-  default: () => <div data-testid="student-page-billing-cancel" />,
+vi.mock('../pages/BillingResultPage', () => ({
+  default: () => <div data-testid="student-page-billing-result" />,
 }))
 vi.mock('../pages/account/AccountProfilePage', () => ({
   default: () => <div data-testid="student-page-account-profile" />,
@@ -236,10 +233,10 @@ describe('StudentApp', () => {
     })
   })
 
-  it('mounts billing success at /billing/success', async () => {
+  it('redirects legacy billing success to the result page', async () => {
     renderAt('/billing/success')
     await waitFor(() => {
-      expect(screen.getByTestId('student-page-billing-success')).toBeTruthy()
+      expect(screen.getByTestId('student-page-billing-result')).toBeTruthy()
     })
   })
 

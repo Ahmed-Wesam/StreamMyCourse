@@ -24,16 +24,16 @@ from service import FulfillmentRepository, process_domain_event  # noqa: E402
 def _purchase_event(**overrides: object) -> BillingDomainEvent:
     base: dict[str, Any] = dict(
         event_type="purchase.paid",
-        provider="paytabs",
-        provider_event_id="paytabs:TST1:A",
+        provider="hyperpay",
+        provider_event_id="hyperpay:TST1:A",
         environment="dev",
         user_sub="cognito-sub-1",
         plan_id="",
         payload_digest="a" * 64,
         purchase_id="c0000000-0000-4000-8000-000000000001",
         product_type="course",
-        amount_minor=9900,
-        currency="USD",
+        amount_minor=50_000,
+        currency="JOD",
         provider_tran_ref="TST1",
     )
     base.update(overrides)

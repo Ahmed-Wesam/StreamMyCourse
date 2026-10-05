@@ -1,5 +1,7 @@
 # ADR 0013 — One-Time Purchases and Bundle Entitlements (RS-5)
 
+> **Payment provider / currency:** HyperPay COPYandPAY in **JOD** ([ADR 0015](./adr-0015-hyperpay-copyandpay-jod.md)) supersedes PayTabs / **USD** sections below for PSP and currency. Entitlement rules, cart metadata, and checkout precheck in this ADR remain normative.
+
 ## Status
 
 Accepted (Research Spectrum)

@@ -6,6 +6,7 @@ from typing import Any
 
 from services.common.errors import BadRequest, Forbidden, NotFound
 from services.course_management.ports import CourseCatalogRepositoryPort
+from services.purchases.amounts import DEFAULT_PURCHASE_CURRENCY, validate_whole_jod_fils
 from services.purchases.models import BundleOffer, PurchaseRecord
 from services.purchases.repo import PurchaseRdsRepository
 
@@ -38,6 +39,10 @@ class PurchaseManageService:
             raise Forbidden("Forbidden")
         if amount_minor <= 0:
             raise BadRequest("amountMinor must be a positive integer", code="invalid_amount")
+        try:
+            validate_whole_jod_fils(amount_minor)
+        except ValueError as exc:
+            raise BadRequest(str(exc), code="invalid_amount") from exc
         self._purchase_repo.set_bundle_price(amount_minor)
         offer = self._purchase_repo.get_bundle_offer()
         if offer is None:
@@ -54,6 +59,10 @@ class PurchaseManageService:
     ) -> dict[str, Any]:
         if amount_minor <= 0:
             raise BadRequest("amountMinor must be a positive integer", code="invalid_amount")
+        try:
+            validate_whole_jod_fils(amount_minor)
+        except ValueError as exc:
+            raise BadRequest(str(exc), code="invalid_amount") from exc
         course = self._course_repo.get_course(course_id)
         if course is None:
             raise NotFound("Course not found", code="course_not_found")
@@ -67,4 +76,8 @@ class PurchaseManageService:
         updated = self._purchase_repo.set_course_price(course_id, amount_minor)
         if not updated:
             raise NotFound("Course not found", code="course_not_found")
-        return {"courseId": course_id, "amountMinor": amount_minor, "currency": "USD"}
+        return {
+            "courseId": course_id,
+            "amountMinor": amount_minor,
+            "currency": DEFAULT_PURCHASE_CURRENCY,
+        }

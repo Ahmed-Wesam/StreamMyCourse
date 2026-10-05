@@ -234,53 +234,52 @@ def test_deploy_backend_sh_passes_billing_teacher_sub_to_api_stack() -> None:
 def test_deploy_backend_sh_redeploys_payments_with_catalog_invoke() -> None:
     text = _deploy_backend_sh_text()
     assert "CATALOG_LAMBDA_ARN" in text
-    assert "BILLING_RETURN_SUCCESS_URL" in text
-    assert "BILLING_IPN_CALLBACK_URL" in text
-    assert "webhooks/payments/paytabs" in text
+    assert "BILLING_SHOPPER_RESULT_URL" in text
+    assert "billing/result" in text
     assert "StudentSiteUrl" in text
     assert "deploy-payments.sh" in text
     assert "EDGE_REGION" in text
 
 
-def test_deploy_payments_sh_passes_ipn_callback_url() -> None:
+def test_deploy_payments_sh_passes_shopper_result_url() -> None:
     path = _repo_root() / "scripts" / "deploy-payments.sh"
     text = path.read_text(encoding="utf-8")
-    assert "BILLING_IPN_CALLBACK_URL" in text
-    assert "BillingIpnCallbackUrl=" in text
+    assert "BILLING_SHOPPER_RESULT_URL" in text
+    assert "BillingShopperResultUrl=" in text
 
 
-def test_api_stack_exposes_billing_and_paytabs_webhook_routes() -> None:
+def test_api_stack_exposes_billing_and_hyperpay_webhook_routes() -> None:
     text = (_repo_root() / "infrastructure" / "templates" / "api-stack.yaml").read_text(
         encoding="utf-8"
     )
     assert "BillingEdgeLambdaArn:" in text
     assert "PathPart: checkout-session" in text
-    assert "PathPart: paytabs" in text
-    assert "/webhooks/payments/paytabs" in text
+    assert "PathPart: checkout-status" in text
+    assert "PathPart: hyperpay" in text
+    assert "/webhooks/payments/hyperpay" in text
     assert "BillingCheckoutSessionPostMethod:" in text
-    assert "WebhooksPaytabsPostMethod:" in text
+    assert "BillingCheckoutStatusPostMethod:" in text
+    assert "WebhooksHyperpayPostMethod:" in text
     assert "AuthorizationType: NONE" in text
     assert "${BillingEdgeLambdaArn}/invocations" in text
 
 
-def test_deploy_workflow_prod_passes_paytabs_secret_arn_only() -> None:
+def test_deploy_workflow_prod_passes_hyperpay_secret_arn_only() -> None:
     text = _workflow_text()
     block = _job_block(text, "deploy-backend-prod", "\n  # Prod-only")
     deploy_prod = block[block.index("- name: Deploy prod") :]
-    assert "PAYTABS_SECRET_ARN: ${{ secrets.PAYTABS_SECRET_ARN }}" in deploy_prod
-    assert "PAYTABS_USE_MOCK: ${{ vars.PAYTABS_USE_MOCK }}" in deploy_prod
+    assert "HYPERPAY_SECRET_ARN: ${{ secrets.HYPERPAY_SECRET_ARN }}" in deploy_prod
+    assert "PAYMENT_PROVIDER: ${{ vars.PAYMENT_PROVIDER }}" in deploy_prod
     assert "BILLING_TEACHER_SUB: ${{ vars.BILLING_TEACHER_SUB }}" in deploy_prod
-    assert "PAYTABS_SERVER_KEY" not in deploy_prod
-    assert "aws secretsmanager describe-secret" in deploy_prod
-    assert "--secret-id streammycourse/paytabs/prod" in deploy_prod
+    assert "HYPERPAY_ACCESS_TOKEN" not in deploy_prod
+    assert "ensure-hyperpay-secret.sh" in block
 
 
-def test_deploy_workflow_upserts_paytabs_placeholder_secret_prod() -> None:
+def test_deploy_workflow_runs_ensure_hyperpay_secret_prod() -> None:
     text = _workflow_text()
     prod_block = _job_block(text, "deploy-backend-prod", "\n  # Prod-only")
-    assert "Ensure PayTabs placeholder secret (prod)" in prod_block
-    assert "streammycourse/paytabs/prod" in prod_block
-    assert "aws secretsmanager create-secret" in prod_block
-    assert "describe-secret" in prod_block
-    assert "streammycourse/paytabs/dev" not in prod_block
-    assert "Ensure PayTabs placeholder secret (dev)" not in prod_block
+    assert "Ensure HyperPay secret (prod)" in prod_block
+    assert "ensure-hyperpay-secret.sh" in prod_block
+    assert "streammycourse/hyperpay/prod" in prod_block
+    assert "streammycourse/paytabs/prod" not in prod_block
+    assert "Ensure PayTabs placeholder secret (prod)" not in prod_block

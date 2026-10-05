@@ -24,7 +24,7 @@ TRANSACTIONAL_MAIL_GLOB = os.path.join(
     ROOT, "infrastructure", "lambda", "transactional_mail", "**", "*.py"
 )
 
-# Outbound HTTP (stdlib) — billing_edge WS2: only PayTabs adapter may import these.
+# Outbound HTTP (stdlib) — billing_edge WS2: only HyperPay adapter may import these.
 _HTTP_CLIENT_ROOTS = frozenset({"urllib", "http", "httplib"})
 
 
@@ -56,7 +56,6 @@ _CATALOG_PSYCOPG2_ALLOWED = frozenset(
         _p("infrastructure/lambda/catalog/services/certificates/rds_repo.py"),
         _p("infrastructure/lambda/catalog/services/research_team/rds_repo.py"),
         _p("infrastructure/lambda/catalog/services/question_banks/rds_repo.py"),
-        _p("infrastructure/lambda/catalog/services/billing_merchant/repo.py"),
         _p("infrastructure/lambda/catalog/services/subscription/repo.py"),
         _p("infrastructure/lambda/catalog/services/purchases/repo.py"),
         _p("infrastructure/lambda/catalog/services/rate_limit/rds_repo.py"),
@@ -68,7 +67,7 @@ _CATALOG_PSYCOPG2_ALLOWED = frozenset(
 _BILLING_EDGE_BOTO3_ALLOWED = frozenset(
     {
         _p("infrastructure/lambda/billing_edge/catalog_invoke.py"),
-        _p("infrastructure/lambda/billing_edge/paytabs_secrets.py"),
+        _p("infrastructure/lambda/billing_edge/hyperpay_secrets.py"),
         _p("infrastructure/lambda/billing_edge/billing_sqs/enqueue.py"),
     }
 )
@@ -87,7 +86,7 @@ _BILLING_FULFILLMENT_PSYCOPG2_ALLOWED = frozenset(
 
 _BILLING_EDGE_HTTP_ALLOWED = frozenset(
     {
-        _p("infrastructure/lambda/billing_edge/providers/paytabs_adapter.py"),
+        _p("infrastructure/lambda/billing_edge/providers/hyperpay_adapter.py"),
     }
 )
 
@@ -207,7 +206,7 @@ def _check_billing_edge_http(rel: str, norm: str, roots: Set[str]) -> List[Viola
     return [
         Violation(
             rel,
-            f"HTTP client imports ({', '.join(bad)}) only allowed in providers/paytabs_adapter.py",
+            f"HTTP client imports ({', '.join(bad)}) only allowed in providers/hyperpay_adapter.py",
         )
     ]
 

@@ -12,6 +12,7 @@ try:  # pragma: no cover
 except Exception:  # pragma: no cover
     psycopg2 = None  # type: ignore[assignment]
 
+from services.purchases.amounts import DEFAULT_PURCHASE_CURRENCY, validate_whole_jod_fils
 from services.purchases.models import BundleOffer, PurchaseRecord
 
 logger = logging.getLogger(__name__)
@@ -92,6 +93,16 @@ WHERE user_sub = %s AND environment = %s
     OR (product_type = 'bundle' AND course_id IS NULL)
   )
   AND updated_at <= (NOW() AT TIME ZONE 'UTC') - (INTERVAL '1 minute' * %s)
+"""
+
+_GET_PENDING_PURCHASE_FOR_USER_SQL = """
+SELECT amount_minor, currency, status
+FROM purchases
+WHERE id = %s::uuid
+  AND user_sub = %s
+  AND environment = %s
+  AND status = 'pending'
+LIMIT 1
 """
 
 _DELETE_PENDING_CHECKOUT_SQL = """
@@ -234,6 +245,7 @@ class PurchaseRdsRepository:
     def set_bundle_price(self, amount_minor: int) -> None:
         if amount_minor <= 0:
             raise ValueError("amount_minor must be positive")
+        validate_whole_jod_fils(amount_minor)
         self._execute(
             _SET_BUNDLE_PRICE_SQL,
             (int(amount_minor), self._deployment_environment),
@@ -245,6 +257,7 @@ class PurchaseRdsRepository:
             return False
         if amount_minor <= 0:
             raise ValueError("amount_minor must be positive")
+        validate_whole_jod_fils(amount_minor)
         cur = self._execute(
             _SET_COURSE_PRICE_SQL,
             (int(amount_minor), normalized_course),
@@ -264,7 +277,7 @@ class PurchaseRdsRepository:
             return None
         return {
             "amount_minor": int(price_minor),
-            "currency": "USD",
+            "currency": DEFAULT_PURCHASE_CURRENCY,
             "course_id": normalized_course,
         }
 
@@ -358,6 +371,28 @@ class PurchaseRdsRepository:
         )
         return cur.fetchone() is not None
 
+    def get_pending_purchase_for_user(
+        self,
+        user_sub: str,
+        purchase_id: str,
+    ) -> dict[str, Any] | None:
+        normalized_sub = (user_sub or "").strip()
+        pid = (purchase_id or "").strip()
+        if not normalized_sub or not pid:
+            return None
+        cur = self._execute(
+            _GET_PENDING_PURCHASE_FOR_USER_SQL,
+            (pid, normalized_sub, self._deployment_environment),
+        )
+        row = cur.fetchone()
+        if row is None:
+            return None
+        return {
+            "amount_minor": int(row[0]),
+            "currency": str(row[1]),
+            "status": str(row[2]),
+        }
+
     def delete_pending_checkout(
         self,
         user_sub: str,
@@ -383,7 +418,7 @@ class PurchaseRdsRepository:
         amount_minor: int,
         currency: str,
         ttl_minutes: int,
-        provider: str = "paytabs",
+        provider: str = "hyperpay",
     ) -> tuple[str, str | None]:
         """Atomically supersede stale pending, block fresh pending, or insert pending row.
 

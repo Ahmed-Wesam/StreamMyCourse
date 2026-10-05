@@ -13,11 +13,11 @@ if str(_INTEGRATION_DIR) not in sys.path:
 
 from helpers.billing_access import (  # noqa: E402
     billing_environment,
-    build_mock_ipn_activated,
-    seed_plan_id,
+    build_merchant_transaction_id,
 )
 
 _USER_SUB = "cognito-sub-for-cart-test"
+_PURCHASE_ID = "c0000000-0000-4000-8000-000000000099"
 
 
 def test_billing_environment_defaults_to_prod(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -25,19 +25,23 @@ def test_billing_environment_defaults_to_prod(monkeypatch: pytest.MonkeyPatch) -
     assert billing_environment() == "prod"
 
 
-def test_build_mock_ipn_activated_cart_id_uses_billing_environment(
+def test_merchant_transaction_id_uses_billing_environment(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setenv("INTEGRATION_BILLING_ENV", "prod")
-    body = build_mock_ipn_activated(_USER_SUB)
+    cart = build_merchant_transaction_id(
+        _USER_SUB, _PURCHASE_ID, product_type="bundle"
+    )
     env = billing_environment()
-    assert body["cart_id"] == f"v1|{env}|{_USER_SUB}|{seed_plan_id(env)}"
+    assert cart == f"v2|{env}|{_USER_SUB}|bundle|{_PURCHASE_ID}"
 
 
-def test_build_mock_ipn_activated_cart_id_reflects_env_override_not_hardcoded_dev(
+def test_merchant_transaction_id_reflects_env_override_not_hardcoded_dev(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setenv("INTEGRATION_BILLING_ENV", "staging")
-    body = build_mock_ipn_activated(_USER_SUB)
-    assert body["cart_id"].startswith("v1|staging|")
-    assert "|dev|" not in body["cart_id"]
+    cart = build_merchant_transaction_id(
+        _USER_SUB, _PURCHASE_ID, product_type="bundle"
+    )
+    assert cart.startswith("v2|staging|")
+    assert "|dev|" not in cart

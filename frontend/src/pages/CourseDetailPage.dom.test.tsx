@@ -760,20 +760,20 @@ describe('CourseDetailPage', () => {
     expect(container.textContent ?? '').not.toMatch(/\$/)
   })
 
-  it('renders the live dollar amount from priceAmountMinor', async () => {
+  it('renders the live JOD amount from priceAmountMinor', async () => {
     api.getCourse.mockResolvedValue({
       id: 'c1',
       title: 'Test Course',
       description: 'Test Description',
       status: 'PUBLISHED',
-      enrolled: true,
-      priceAmountMinor: 5000,
+      enrolled: false,
+      priceAmountMinor: 50_000,
     })
 
     renderCourseDetail()
 
     await waitFor(() => {
-      expect(screen.getByText('$50')).toBeTruthy()
+      expect(screen.getAllByText(/JOD\s*50/).length).toBeGreaterThan(0)
     })
   })
 

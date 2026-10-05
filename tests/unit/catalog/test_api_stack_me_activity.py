@@ -26,9 +26,9 @@ def test_api_stack_declares_me_activity_get_method() -> None:
 def test_me_activity_get_method_is_in_catalog_api_deployment() -> None:
     """Stage export must include GET /me/activity (DependsOn on deployment resource)."""
     text = _API_STACK.read_text(encoding="utf-8")
-    deployment_block = text.split("CatalogApiDeploymentV45:", 1)[1].split(
+    deployment_block = text.split("CatalogApiDeploymentV46:", 1)[1].split(
         "CatalogApiStage:", 1
     )[0]
     assert "MeActivityGetMethod" in deployment_block
     assert "MeActivityOptionsMethod" in deployment_block
-    assert "DeploymentId: !Ref CatalogApiDeploymentV45" in text
+    assert "DeploymentId: !Ref CatalogApiDeploymentV46" in text

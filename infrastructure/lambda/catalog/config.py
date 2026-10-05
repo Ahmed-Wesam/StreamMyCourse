@@ -26,7 +26,7 @@ class AppConfig:
     # Progress tracking configuration (lesson completion thresholds)
     progress_complete_ratio: float = 0.92
     progress_position_slack_sec: int = 30
-    # Billing (merchant status teacher gate + RDS environment key)
+    # Billing (bundle price teacher gate + RDS environment key)
     billing_teacher_sub: str = ""
     deployment_environment: str = "prod"
     student_cognito_client_id: str = ""

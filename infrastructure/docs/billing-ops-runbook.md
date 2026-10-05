@@ -1,35 +1,134 @@
-# Billing ops runbook (pre-go-live, mock on)
+# Billing ops runbook (HyperPay, JOD one-time purchases)
 
 **Stack:** `StreamMyCourse-Payments-prod` ([`payments-stack.yaml`](../templates/payments-stack.yaml))  
-**Scope:** **One-time purchase** billing edge + fulfillment while **`PAYTABS_USE_MOCK=true`** on prod. Checkout body: `{ "productType": "course"|"bundle", "courseId"? }`. Access follows RDS **`purchases`** (`paid` / `revoked`), not subscriptions (tables dropped by migration **015**).
+**Decision records:** [ADR-0013](../../plans/architecture/adr-0013-one-time-purchases-bundle-entitlements.md) (entitlements), [ADR-0015](../../plans/architecture/adr-0015-hyperpay-copyandpay-jod.md) (HyperPay / JOD).
 
-**Env (edge):** `BILLING_RETURN_SUCCESS_URL`, `BILLING_RETURN_CANCEL_URL` (browser return), **`BILLING_IPN_CALLBACK_URL`** (PayTabs sale **`callback`** → `POST /webhooks/payments/paytabs`). Do **not** set `PAYTABS_USE_MOCK=false` until a **USD** PayTabs profile is verified — a JOD charge with USD grant rules will not grant access.
-
-**Contracts (legacy subscription docs may be stale):** [access-policy-v1](../../plans/billing/access-policy-v1.md) (superseded note at top).
+**Scope:** One-time **course** or **bundle** checkout; access follows RDS **`purchases`** (`paid` / `revoked`). Subscription tables were removed (migration **015**). Prices are **JOD fils** (whole dinars only; migration **024**).
 
 ---
 
-## Mock guard (`PAYTABS_USE_MOCK=true`)
+## Architecture (no NAT)
 
-**Invariant (WS8):** Prod must run the mock PayTabs adapter — **no outbound PayTabs HTTP**, no real charges.
+| Component | VPC | Role |
+|-----------|-----|------|
+| Catalog Lambda | **In VPC** | Checkout precheck, price manage, internal fulfillment — **no** outbound HyperPay HTTP |
+| Billing edge Lambda | **No VPC** | `POST /billing/checkout-session`, `POST /billing/checkout-status`, decrypt **`POST /webhooks/payments/hyperpay`** → enqueue SQS |
+| Billing fulfillment Lambda | In VPC | Apply `purchase.paid|failed|revoked` to RDS |
+
+---
+
+## Environment (billing edge)
+
+| Variable | Purpose |
+|----------|---------|
+| `PAYMENT_PROVIDER` | `mock` (no outbound OPPWA) or `hyperpay` (live/test entity) |
+| `HYPERPAY_SECRET_ARN` | Secrets Manager ARN — preferred on prod |
+| `HYPERPAY_ACCESS_TOKEN` / `HYPERPAY_ENTITY_ID` | Optional inline (CI/local); prod uses SM |
+| `HYPERPAY_WEBHOOK_SECRET` | **64-char hex** AES-GCM key for encrypted webhooks (also stored in SM JSON as `webhook_secret`) |
+| `BILLING_SHOPPER_RESULT_URL` | Student SPA **`https://<student-host>/billing/result`** (HyperPay `shopperResultUrl`) |
+
+Deploy sets `BILLING_SHOPPER_RESULT_URL` from the student site URL ([`deploy-backend.sh`](../../scripts/deploy-backend.sh)).
+
+---
+
+## Secrets Manager
+
+**Name:** `streammycourse/hyperpay/prod` (override with `HYPERPAY_SECRET_ID` in [`ensure-hyperpay-secret.sh`](../../scripts/ensure-hyperpay-secret.sh)).
+
+**JSON shape (no secrets in tickets):**
+
+```json
+{
+  "access_token": "<Bearer token from HyperPay back office>",
+  "entity_id": "<Channel entity id>",
+  "api_host": "eu-test.oppwa.com",
+  "webhook_secret": "<64 hex chars>"
+}
+```
+
+**GitHub Environment `prod` secrets (operator):**
+
+- `HYPERPAY_ACCESS_TOKEN`
+- `HYPERPAY_ENTITY_ID`
+- `HYPERPAY_WEBHOOK_SECRET`
+
+Deploy job runs `ensure-hyperpay-secret.sh` before payments stack update. **Do not commit tokens.**
+
+---
+
+## HyperPay test vs production
+
+| Mode | API host | When |
+|------|----------|------|
+| **Test** | `eu-test.oppwa.com` | Default in SM `api_host`; use test entity + test cards |
+| **Production** | `eu-prod.oppwa.com` | Live entity after HyperPay production approval |
+
+**Test cards (Research Spectrum test entity on `eu-test.oppwa.com`; amounts must be whole JOD, e.g. `50.00`):**
+
+| PAN | Expiry | CVV | Result |
+|-----|--------|-----|--------|
+| **4012000033330026** | 01/39 | 100 | Success (Visa) |
+| **5123450000000008** | 01/39 | 100 | Success (Mastercard) |
+| **5204730000002514** | 01/39 | 251 | Fail |
+
+Cardholder name: any name.
+
+Use only on **`eu-test.oppwa.com`**. Student widget brands: **VISA**, **MASTER** ([`HyperPayWidget.tsx`](../../frontend/src/components/billing/HyperPayWidget.tsx)).
+
+**Canonical list prices:** **50 JOD** per course (`50_000` fils), **150 JOD** bundle (`150_000` fils) unless instructors change published prices.
+
+---
+
+## Webhook URL (register with HyperPay)
+
+HyperPay sends **encrypted** `POST` notifications. Register in the HyperPay back office (exact menu varies):
+
+```text
+https://<api-gateway-host>/<stage>/webhooks/payments/hyperpay
+```
+
+Example prod pattern: resolve **`ApiEndpoint`** from `StreamMyCourse-Api-prod` stack output + stage name (typically `prod`).
+
+**Headers (HyperPay → API Gateway):**
+
+- Body: hex-encoded ciphertext
+- `X-Initialization-Vector`
+- `X-Authentication-Tag`
+
+**Verification:** webhook secret in SM must match HyperPay portal. Mismatch → **401** `invalid_webhook`. Missing secret on edge → **503** `billing_unconfigured`.
+
+**Integration tests:** set **`INTEGRATION_HYPERPAY_WEBHOOK_SECRET`** (or `HYPERPAY_WEBHOOK_SECRET`) to the same hex key — never log the value. See [`tests/integration/README.md`](../../tests/integration/README.md).
+
+---
+
+## Mock provider (`PAYMENT_PROVIDER=mock`)
+
+**Invariant:** No outbound OPPWA HTTP; checkout returns fixed **`checkoutId`** `MOCK-HP-CHECKOUT` and mock widget URL.
 
 | Check | Where |
 |-------|--------|
-| Deploy input | GitHub Environment variable **`PAYTABS_USE_MOCK`** = `true` on **prod** ([`deploy-backend.yml`](../../.github/workflows/deploy-backend.yml)) |
-| Runtime | Lambda **`StreamMyCourse-BillingEdge-prod`** env **`PAYTABS_USE_MOCK`** = `true` |
-
-**Verify (no secret values):**
+| Deploy var | GitHub Environment **`PAYMENT_PROVIDER`** = `mock` (pre-go-live) |
+| Runtime | Lambda **`StreamMyCourse-BillingEdge-prod`** env **`PAYMENT_PROVIDER`** |
 
 ```bash
-# Replace env with prod
 aws lambda get-function-configuration \
   --function-name "StreamMyCourse-BillingEdge-prod" \
-  --query 'Environment.Variables.PAYTABS_USE_MOCK' --output text
+  --query 'Environment.Variables.PAYMENT_PROVIDER' --output text
 ```
 
-Expect **`true`**. If `false` or missing on prod, **stop** and fix deploy vars before any go-live work.
+Encrypted webhooks still require **`HYPERPAY_WEBHOOK_SECRET`** (or SM `webhook_secret`) even in mock mode.
 
-**Do not** set `PAYTABS_USE_MOCK=false` until WS9 pre-flight is complete.
+---
+
+## Student checkout flow (support)
+
+1. Signed-in **`POST /billing/checkout-session`** `{ "productType": "course"|"bundle", "courseId"? }`.
+2. Response includes **`checkoutId`**, **`widgetScriptUrl`**, **`integrity`**, **`shopperResultUrl`**, **`amountMinor`**, **`currency": "JOD"`**.
+3. Student pays in embedded widget; browser returns to **`/billing/result?id=<checkoutId>`**.
+4. SPA polls **`POST /billing/checkout-status`** — does **not** alone grant access.
+5. HyperPay **`POST /webhooks/payments/hyperpay`** → SQS → fulfillment marks **`purchases`** `paid`.
+
+Missing purchase → playback **403** `purchase_required`.
 
 ---
 
@@ -43,124 +142,59 @@ Expect **`true`**. If `false` or missing on prod, **stop** and fix deploy vars b
 | DLQ alarm | `StreamMyCourse-BillingFulfillment-DLQ-{env}-Visible` |
 | SNS (DLQ + edge errors) | `StreamMyCourse-BillingFulfillment-Alerts-{env}` |
 
-**Alarm:** `ApproximateNumberOfMessagesVisible` on the DLQ **> 0** (5‑minute period) → same SNS topic as billing edge errors.
+**Alarm:** `ApproximateNumberOfMessagesVisible` on the DLQ **> 0** (5‑minute period) → SNS topic shared with billing edge error alarm.
 
 ### Triage steps
 
-1. **Confirm env** — stack `StreamMyCourse-Payments-{env}`, account, and region before touching queues.
-2. **Sample one DLQ message** — SQS console or `receive-message` (do not log full bodies in tickets if they contain PII).
-3. **Correlate** — CloudWatch log group `/aws/lambda/StreamMyCourse-BillingFulfillment-{env}` around the message timestamp; look for RDS errors, idempotency conflicts, or poison payloads.
-4. **Classify**
-   - **Transient** (timeout, throttling, DB blip): fix underlying issue, then **redrive** DLQ → primary queue only after the root cause is resolved.
-   - **Bad payload / unknown event**: capture `provider_event_id` / event type from logs; fix parser or ignore-list in code before redrive.
-   - **Duplicate / already applied**: fulfillment is idempotent; verify RDS `billing_subscription` / webhook ledger — message may be safe to delete after confirmation.
-5. **Student impact** — access follows RDS `current_period_end` ([access-policy-v1](../../plans/billing/access-policy-v1.md)), not queue depth. DLQ backlog means **IPN/renewal state may lag**, not necessarily immediate loss of access.
+1. **Confirm env** — stack `StreamMyCourse-Payments-{env}`, account, region.
+2. **Sample one DLQ message** — do not paste full bodies with PII into tickets.
+3. **Correlate** — CloudWatch `/aws/lambda/StreamMyCourse-BillingFulfillment-{env}` at message time; RDS errors, idempotency, bad payload.
+4. **Classify** — transient (redrive after fix) vs poison (fix parser/code first).
+5. **Student impact** — access follows **`purchases`**, not queue depth; DLQ backlog means paid webhooks may not have applied yet.
 
-Optional stack param **`BillingFulfillmentAlertEmail`** subscribes the SNS topic at deploy time.
+Optional stack param **`BillingFulfillmentAlertEmail`** subscribes SNS at deploy.
 
 ---
 
-## Billing edge Errors alarm (W8-P8)
+## Billing edge Errors alarm
 
 | Resource | Name pattern |
 |----------|----------------|
 | Alarm | `StreamMyCourse-BillingEdge-{env}-Errors` |
-| Metric | `AWS/Lambda` · `Errors` · function `StreamMyCourse-BillingEdge-{env}` |
-| Threshold | **Sum ≥ 1** over **86400 s** (1 day), 1 evaluation period |
+| Metric | Lambda **`Errors`** · **`StreamMyCourse-BillingEdge-{env}`** |
+| Threshold | Sum ≥ 1 over **86400 s** |
 | Action | `StreamMyCourse-BillingFulfillment-Alerts-{env}` |
 
-### Triage steps
+**Triage:** Logs `/aws/lambda/StreamMyCourse-BillingEdge-{env}` — filter by route:
 
-1. Open log group `/aws/lambda/StreamMyCourse-BillingEdge-{env}` for the alarm window.
-2. Filter by **request ID** and route:
-   - `POST /billing/cancel-subscription` — see [Provider cancel failed](#provider-cancel-failed-502)
-   - `POST /webhooks/payments/paytabs` — see [IPN signature failures](#ipn-signature-failures-draft)
-   - `POST /billing/checkout-session` — catalog precheck / `billing_unconfigured`
-3. **Mock era:** most edge errors are config, catalog invoke, or test traffic — not PayTabs outages.
+- `POST /billing/checkout-session` — catalog precheck / `billing_unconfigured`
+- `POST /webhooks/payments/hyperpay` — decrypt / parse / enqueue
+- `POST /billing/checkout-status` — poll after shopper return
 
 ---
 
-## Student cancel (immediate provider cancel)
+## Legal page URLs (merchant / HyperPay profile)
 
-**Design (WS8):** No period-end scheduler. Cancel stops **renewals at the provider** as soon as the student cancel succeeds in RDS.
+Paste into HyperPay or merchant **terms** / **privacy** fields after student SPA is live:
 
-**Flow:**
+| Env | Terms | Privacy |
+|-----|-------|---------|
+| **prod** | `https://researchspectrum.org/terms` | `https://researchspectrum.org/privacy` |
 
-1. Student **`POST /billing/cancel-subscription`** (Cognito `sub` only).
-2. Catalog internal **`billing.cancel_at_period_end`** → RDS: `status=canceled`, `cancel_at_period_end=true`, period unchanged.
-3. Billing edge **`cancel_agreement(provider_subscription_id)`** — mock no-op while mock is on; real HTTP at WS9.
-4. **200** only if RDS **and** provider cancel succeed.
-
-**Access:** Lesson access remains until **`current_period_end`** (canceled-in-period is still granting). Checkout returns **409 `already_subscribed`** until period ends.
+Teachers copy from **Payment setup** (`/settings/payments`) if preferred.
 
 ---
 
-## Provider cancel failed (502)
+## Go-live checklist (operator → HyperPay / Zaid)
 
-**Symptom:** Student receives **502** with code **`provider_cancel_failed`** — *“Unable to cancel subscription with payment provider.”*
-
-**Meaning:** RDS cancel-at-period-end **already committed**. PayTabs **`cancel_agreement`** failed (network, 4xx/5xx, bad agreement id). Renewals might still be possible at PayTabs until cancel succeeds.
-
-| Actor | Action |
-|-------|--------|
-| **Student** | Retry **`POST /billing/cancel-subscription`** after a short wait. Subscription UI should show canceled-in-period if RDS step succeeded. |
-| **Ops** | 1) Confirm RDS row: `canceled`, `cancel_at_period_end=true`, future `current_period_end`. 2) Logs: `provider_cancel_agreement_failed` with `user_sub` and `provider_subscription_id` (no secrets). 3) At WS9: verify agreement canceled in PayTabs dashboard; re-run cancel or manual agreement cancel per PayTabs support if retries fail. |
-
-**Not** fixed by reactivate — route removed (see below).
-
----
-
-## IPN signature failures (draft)
-
-**Symptom:** PayTabs IPN **`POST /webhooks/payments/paytabs`** returns **401** `invalid_signature`.
-
-**Verification (live / WS9):**
-
-- Header **`Signature`**: HMAC-SHA256 of **raw body** with **Server Key** (from Secrets Manager `streammycourse/paytabs/{env}` — compare in console, do not paste keys into tickets).
-- Body must be unmodified (no API Gateway transformation of the payload).
-- Wrong env: **400** `environment_mismatch` — different from signature failure.
-
-**Mock (WS8):**
-
-- Adapter accepts header **`X-Mock-Signature: test`** when `PAYTABS_USE_MOCK=true`.
-- Fixture IPNs in tests only; production traffic should not rely on mock signature in WS9.
-
-**Ops checklist (draft):** dashboard IPN URL matches API stage; server key rotated in SM and redeployed; clock/skew N/A for HMAC; repeated 401s — capture PayTabs delivery logs and one redacted request id from edge logs.
-
----
-
-## No reactivate — wait, then new subscribe
-
-**Removed in WS8:** `POST /billing/reactivate-subscription`, catalog `billing.reactivate*`, and `reactivation_required` checkout gate.
-
-| Student state | Cancel button | Checkout |
-|---------------|---------------|----------|
-| Active / past_due in period | Cancel → provider + RDS | **409 `already_subscribed`** |
-| Canceled-in-period (future `current_period_end`) | No (already canceled) | **409 `already_subscribed`** |
-| Period ended (no granting access) | N/A | **200** — new HPP / subscribe |
-
-**Support script:** “Cancel stops renewal; you keep access until {date}. To subscribe again, wait until after that date and use Subscribe — we can’t undo cancel.”
+1. **GitHub `prod` secrets:** `HYPERPAY_ACCESS_TOKEN`, `HYPERPAY_ENTITY_ID`, `HYPERPAY_WEBHOOK_SECRET` (64-char hex); confirm `ensure-hyperpay-secret.sh` updated SM **`streammycourse/hyperpay/prod`**.
+2. **Set `PAYMENT_PROVIDER=hyperpay`** (GitHub Environment variable) when moving off mock; redeploy payments stack.
+3. **Email Zaid (HyperPay):** register webhook URL `https://<api-endpoint>/<stage>/webhooks/payments/hyperpay`; confirm test entity on **`eu-test.oppwa.com`**; request production entity when ready.
+4. **Smoke:** test card checkout → webhook in CloudWatch → `purchases` `paid` → playback **200**.
+5. **Alarms:** confirm SNS email on `StreamMyCourse-BillingFulfillment-Alerts-prod`.
 
 ---
 
 ## Related alarms (cost only)
 
-Monthly **billing cost** alarm lives in [`billing-alarm.yaml`](../templates/billing-alarm.yaml) — not subscription fulfillment. Do not confuse with DLQ/edge SNS above.
-
----
-
-## Legal page URLs (PayTabs merchant dashboard)
-
-Paste these into the PayTabs merchant profile **terms** and **privacy** fields (field names vary by dashboard version). Do this **after** the student SPA is deployed and legal routes are live — verify with a browser or `curl -I` that `/terms` and `/privacy` return **200** before saving in PayTabs.
-
-| Env | Terms | Privacy |
-|-----|-------|---------|
-| **prod** (live profile) | `https://researchspectrum.org/terms` | `https://researchspectrum.org/privacy` |
-
-Teachers see the same URLs on **Payment setup** (`/payment-setup`); copy from there if preferred. The **`termsUrlSet`** checklist item remains **manual** until PayTabs API verification is implemented — operator marks complete only after confirming the URL in the PayTabs dashboard.
-
----
-
-## WS9 handoff
-
-Before `PAYTABS_USE_MOCK=false`: confirm SNS email subscriptions, run live cancel + IPN smoke, paste legal URLs per section above, and extend IPN section with PayTabs dashboard screenshots and escalation contacts.
+Monthly **billing cost** alarm: [`billing-alarm.yaml`](../templates/billing-alarm.yaml) — not purchase fulfillment.

@@ -1,4 +1,4 @@
-"""Checkout session → mock IPN → playback (WS6 W6-P10)."""
+"""Checkout session → HyperPay webhook → playback (WS6 / RS-5)."""
 
 from __future__ import annotations
 
@@ -10,13 +10,13 @@ import pytest
 
 from helpers.api import ApiClient
 from helpers.billing_access import (
-    billing_environment,
     checkout_then_wait_for_access,
     ensure_student_subscription,
     post_checkout_session,
     skip_if_billing_webhook_unavailable,
     skip_if_checkout_unavailable,
-    skip_if_mock_ipn_unavailable,
+    post_hyperpay_webhook_probe,
+    skip_if_hyperpay_webhook_unavailable,
     skip_if_student_has_subscription,
 )
 
@@ -84,25 +84,9 @@ def _student_jwt_or_skip() -> str:
     return token
 
 
-def _probe_mock_webhook(api_base_url: str) -> httpx.Response:
-    """POST an ignored mock IPN type to verify mock signature without granting access."""
-    env = billing_environment()
-    url = f"{api_base_url.rstrip('/')}/webhooks/payments/paytabs"
-    body = {
-        "tran_ref": "MOCK-PROBE-001",
-        "tran_type": "Refund",
-        "payment_result": "A",
-        "cart_id": f"v1|{env}|probe-user|00000000-0000-4000-8000-000000000001",
-    }
-    with httpx.Client(timeout=30.0) as client:
-        return client.post(
-            url,
-            json=body,
-            headers={
-                "Content-Type": "application/json",
-                "X-Mock-Signature": "test",
-            },
-        )
+def _probe_hyperpay_webhook(api_base_url: str) -> httpx.Response:
+    """POST ignored HyperPay notification to verify webhook decrypt without granting access."""
+    return post_hyperpay_webhook_probe(api_base_url)
 
 
 def test_checkout_session_then_ipn_grants_playback(
@@ -114,7 +98,7 @@ def test_checkout_session_then_ipn_grants_playback(
 ) -> None:
     """POST checkout (mock redirect) → mock IPN → GET playback returns 200."""
     skip_if_billing_webhook_unavailable()
-    skip_if_mock_ipn_unavailable(_probe_mock_webhook(api_base_url))
+    skip_if_hyperpay_webhook_unavailable(_probe_hyperpay_webhook(api_base_url))
     jwt = _student_jwt_or_skip()
 
     course_id, lesson_id = _publish_course_with_lesson(

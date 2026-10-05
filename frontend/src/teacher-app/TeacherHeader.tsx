@@ -17,7 +17,7 @@ const studentSiteUrl =
 
 const TEACHER_NAV: SiteNavLink[] = [
   { href: '/', label: 'Dashboard' },
-  { href: '/settings/payments', label: 'Payments' },
+  { href: '/settings/payments', label: 'Pricing' },
 ]
 
 const RESEARCH_TEAM_NAV: SiteNavLink = {

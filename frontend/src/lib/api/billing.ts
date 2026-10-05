@@ -2,6 +2,7 @@ import { httpGet, httpPost } from './client'
 import type {
   BundleOffer,
   CheckoutSessionResponse,
+  CheckoutStatusResponse,
   CreateCheckoutSessionBody,
   PurchaseRecord,
   PurchasesListResponse,
@@ -18,13 +19,21 @@ export async function getPurchases(): Promise<PurchaseRecord[]> {
   return body.purchases ?? []
 }
 
-/** Start PayTabs hosted checkout for a course or bundle (amount from server). */
+/** Start HyperPay widget checkout for a course or bundle (amount from server). */
 export async function createCheckoutSession(
   params: CreateCheckoutSessionBody,
 ): Promise<CheckoutSessionResponse> {
-  const body: Record<string, string> = { productType: params.productType }
+  const body: Record<string, unknown> = { productType: params.productType }
   if (params.courseId) {
     body.courseId = params.courseId
   }
+  if (params.billing) {
+    body.billing = params.billing
+  }
   return httpPost<CheckoutSessionResponse>('/billing/checkout-session', body)
+}
+
+/** Poll HyperPay checkout result after shopper return (POST /billing/checkout-status). */
+export async function getCheckoutStatus(checkoutId: string): Promise<CheckoutStatusResponse> {
+  return httpPost<CheckoutStatusResponse>('/billing/checkout-status', { checkoutId })
 }

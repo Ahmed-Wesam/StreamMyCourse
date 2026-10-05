@@ -120,7 +120,7 @@ def _apply_purchase_update(cur: Any, *, event: BillingDomainEvent, target: Purch
             return False
         if event.event_type == "purchase.paid":
             if event.amount_minor is None or not event.currency:
-                raise ValueError("purchase.paid IPN must include USD amount and currency")
+                raise ValueError("purchase.paid IPN must include JOD amount and currency")
         if event.amount_minor is not None and int(amount_minor) != int(event.amount_minor):
             raise ValueError("purchase amount_minor mismatch")
         if event.currency is not None and str(currency).upper() != str(event.currency).upper():

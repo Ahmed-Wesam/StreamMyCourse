@@ -9,7 +9,7 @@ import boto3
 
 from domain.events import BillingDomainEvent
 
-_PROVIDER = "paytabs"
+_PROVIDER = "hyperpay"
 
 
 class EnqueueError(Exception):

@@ -84,6 +84,7 @@ else
     "${ROOT}/infrastructure/database/migrations/021_certificates.sql" \
     "${ROOT}/infrastructure/database/migrations/022_research_team.sql" \
     "${ROOT}/infrastructure/database/migrations/023_rs16_learning_features.sql" \
+    "${ROOT}/infrastructure/database/migrations/024_hyperpay_jod.sql" \
     > "$PKG/schema.sql"
   pip install psycopg2-binary==2.9.9 \
     --quiet \

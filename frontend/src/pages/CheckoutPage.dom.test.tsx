@@ -64,15 +64,30 @@ function renderCheckout(path: string) {
 }
 
 const publishedCourses = [
-  { id: 'c1', title: 'Research Methodology', description: 'd', amountMinor: 5000 },
-  { id: 'c2', title: 'Statistics & SPSS', description: 'd', amountMinor: 5000 },
-  { id: 'c3', title: 'Scientific Writing', description: 'd', amountMinor: 5000 },
-  { id: 'c4', title: 'Systematic Reviews & Meta-Analysis', description: 'd', amountMinor: 5000 },
+  { id: 'c1', title: 'Research Methodology', description: 'd', amountMinor: 50_000 },
+  { id: 'c2', title: 'Statistics & SPSS', description: 'd', amountMinor: 50_000 },
+  { id: 'c3', title: 'Scientific Writing', description: 'd', amountMinor: 50_000 },
+  { id: 'c4', title: 'Systematic Reviews & Meta-Analysis', description: 'd', amountMinor: 50_000 },
 ]
 
+const mockWidgetSession = {
+  checkoutId: 'MOCK-HP-CHECKOUT',
+  integrity: 'sha384-mock',
+  widgetScriptUrl: 'https://eu-test.oppwa.com/v1/paymentWidgets.js?checkoutId=MOCK-HP-CHECKOUT',
+  shopperResultUrl: 'https://student.example.com/billing/result',
+  purchaseId: 'purchase-1',
+  amountMinor: 150_000,
+  currency: 'JOD',
+}
+
 async function fillCheckoutForm() {
-  fireEvent.change(await screen.findByLabelText(/Full Name/i), { target: { value: 'Ada Lovelace' } })
-  fireEvent.change(screen.getByLabelText(/^Country/i), { target: { value: 'Jordan' } })
+  fireEvent.change(await screen.findByLabelText(/^First name/i), { target: { value: 'Ada' } })
+  fireEvent.change(screen.getByLabelText(/^Surname/i), { target: { value: 'Lovelace' } })
+  fireEvent.change(screen.getByLabelText(/^Street address/i), { target: { value: '1 Analytical Engine Rd' } })
+  fireEvent.change(screen.getByLabelText(/^City/i), { target: { value: 'Amman' } })
+  fireEvent.change(screen.getByLabelText(/^State \/ region/i), { target: { value: 'Amman' } })
+  fireEvent.change(screen.getByLabelText(/^Postcode/i), { target: { value: '11118' } })
+  fireEvent.change(screen.getByLabelText(/^Country/i), { target: { value: 'JO' } })
   fireEvent.click(screen.getByLabelText(/Terms & Conditions/i))
   fireEvent.click(screen.getByLabelText(/Privacy Policy/i))
   fireEvent.click(screen.getByLabelText(/Refund Policy/i))
@@ -87,13 +102,14 @@ describe('CheckoutPage', () => {
     catalogApi.listPublishedCourses.mockReset()
     sessionApi.hasSignedInIdToken.mockReset()
     sessionApi.hasSignedInIdToken.mockResolvedValue(true)
-    billingApi.getBundle.mockResolvedValue({ amountMinor: 15000, currency: 'USD' })
+    billingApi.getBundle.mockResolvedValue({ amountMinor: 150_000, currency: 'JOD' })
     billingApi.getPurchases.mockResolvedValue([])
     catalogApi.listPublishedCourses.mockResolvedValue(publishedCourses)
   })
 
   afterEach(() => {
     cleanup()
+    document.querySelectorAll('script[src*="paymentWidgets"]').forEach((node) => node.remove())
   })
 
   it('shows invalid link state when productType is missing', async () => {
@@ -109,33 +125,38 @@ describe('CheckoutPage', () => {
     expect(document.body.textContent?.includes('PayTabs')).toBe(false)
   })
 
-  it('loads bundle summary and redirects only via API redirect_url', async () => {
-    billingApi.createCheckoutSession.mockResolvedValue({ redirect_url: 'https://pay.example/session' })
-
-    const hrefSetter = vi.fn()
-    Object.defineProperty(window, 'location', {
-      configurable: true,
-      value: {
-        ...window.location,
-        set href(v: string) {
-          hrefSetter(v)
-        },
-        get href() {
-          return ''
-        },
-      },
-    })
+  it('loads bundle summary and renders HyperPay widget after checkout-session', async () => {
+    billingApi.createCheckoutSession.mockResolvedValue(mockWidgetSession)
 
     renderCheckout('/checkout?productType=bundle')
 
-    expect(await screen.findByText('$150')).toBeTruthy()
+    expect(await screen.findByText(/150/)).toBeTruthy()
     await fillCheckoutForm()
     fireEvent.click(screen.getByTestId('checkout-submit'))
 
     await waitFor(() => {
-      expect(billingApi.createCheckoutSession).toHaveBeenCalledWith({ productType: 'bundle' })
+      expect(billingApi.createCheckoutSession).toHaveBeenCalledWith({
+        productType: 'bundle',
+        billing: {
+          givenName: 'Ada',
+          surname: 'Lovelace',
+          street: '1 Analytical Engine Rd',
+          city: 'Amman',
+          state: 'Amman',
+          postcode: '11118',
+          country: 'JO',
+        },
+      })
     })
-    expect(hrefSetter).toHaveBeenCalledWith('https://pay.example/session')
+
+    expect(await screen.findByTestId('checkout-hyperpay-widget')).toBeTruthy()
+    const form = screen.getByTestId('hyperpay-widget-form')
+    expect(form.getAttribute('action')).toBe('https://student.example.com/billing/result')
+    expect(form.getAttribute('data-brands')).toBe('VISA MASTER')
+    expect(window.wpwlOptions).toEqual({ paymentTarget: '_top' })
+    const script = document.querySelector('script[src*="paymentWidgets.js"]')
+    expect(script?.getAttribute('integrity')).toBe('sha384-mock')
+    expect(script?.getAttribute('crossorigin')).toBe('anonymous')
   })
 
   it('prompts sign in when viewer is logged out', async () => {
@@ -153,14 +174,14 @@ describe('CheckoutPage', () => {
       title: 'Statistics & SPSS',
       description: 'd',
       status: 'PUBLISHED',
-      amountMinor: 4900,
+      amountMinor: 49_000,
     })
 
     renderCheckout('/checkout?productType=course&courseId=c2')
 
     await waitFor(() => {
       expect(document.querySelector('.hsc-product')?.textContent).toBe('Statistics & SPSS')
-      expect(document.querySelector('.os-total-price')?.textContent).toBe('$49')
+      expect(document.querySelector('.os-total-price')?.textContent).toMatch(/49/)
     })
   })
 })

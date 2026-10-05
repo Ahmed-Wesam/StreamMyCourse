@@ -191,6 +191,7 @@ jobs:
             "${{ github.workspace }}/infrastructure/database/migrations/021_certificates.sql" \
             "${{ github.workspace }}/infrastructure/database/migrations/022_research_team.sql" \
             "${{ github.workspace }}/infrastructure/database/migrations/023_rs16_learning_features.sql" \
+            "${{ github.workspace }}/infrastructure/database/migrations/024_hyperpay_jod.sql" \
             > "$PKG/schema.sql"
           pip install psycopg2-binary==2.9.9 \
             --quiet \
@@ -549,40 +550,40 @@ jobs:
           GOOGLE_OAUTH_CLIENT_ID: ${{ secrets.GOOGLE_OAUTH_CLIENT_ID }}
           GOOGLE_OAUTH_CLIENT_SECRET: ${{ secrets.GOOGLE_OAUTH_CLIENT_SECRET }}
 
-      - name: Ensure PayTabs placeholder secret (prod)
+      - name: Ensure HyperPay secret (prod)
+        id: hyperpay_secret_prod
+        env:
+          HYPERPAY_ACCESS_TOKEN: ${{ secrets.HYPERPAY_ACCESS_TOKEN }}
+          HYPERPAY_ENTITY_ID: ${{ secrets.HYPERPAY_ENTITY_ID }}
+          HYPERPAY_WEBHOOK_SECRET: ${{ secrets.HYPERPAY_WEBHOOK_SECRET }}
         run: |
           set -euo pipefail
-          SECRET_ID="streammycourse/paytabs/prod"
-          REGION="${AWS_REGION:-eu-west-1}"
-          if aws secretsmanager describe-secret --secret-id "$SECRET_ID" --region "$REGION" >/dev/null 2>&1; then
-            echo "PayTabs secret already exists: $SECRET_ID"
-            exit 0
-          fi
-          aws secretsmanager create-secret \
-            --name "$SECRET_ID" \
-            --region "$REGION" \
-            --description "PayTabs credentials placeholder (WS3); replace with live keys before go-live" \
-            --secret-string '{"server_key":"placeholder-prod-paytabs-server-key","profile_id":"placeholder-prod-paytabs-profile-id","api_domain":"secure-jordan.paytabs.com"}'
+          chmod +x scripts/ensure-hyperpay-secret.sh
+          eval "$(./scripts/ensure-hyperpay-secret.sh | tail -n 1)"
+          echo "arn=${HYPERPAY_SECRET_ARN}" >> "$GITHUB_OUTPUT"
 
       - name: Deploy prod
         env:
-          PAYTABS_SECRET_ARN: ${{ secrets.PAYTABS_SECRET_ARN }}
-          PAYTABS_USE_MOCK: ${{ vars.PAYTABS_USE_MOCK }}
+          HYPERPAY_SECRET_ARN: ${{ secrets.HYPERPAY_SECRET_ARN }}
+          PAYMENT_PROVIDER: ${{ vars.PAYMENT_PROVIDER }}
           BILLING_FULFILLMENT_ALERT_EMAIL: ${{ vars.BILLING_FULFILLMENT_ALERT_EMAIL }}
           BILLING_TEACHER_SUB: ${{ vars.BILLING_TEACHER_SUB }}
           VIDEO_PROVIDER: s3
           ZOHO_SMTP_SECRET_ARN: ${{ steps.zoho_smtp_secret_prod.outputs.arn }}
         run: |
           set -euo pipefail
-          if [[ -z "${PAYTABS_SECRET_ARN:-}" ]]; then
-            PAYTABS_SECRET_ARN="$(aws secretsmanager describe-secret \
-              --secret-id streammycourse/paytabs/prod \
+          if [[ -z "${HYPERPAY_SECRET_ARN:-}" ]]; then
+            HYPERPAY_SECRET_ARN="$(aws secretsmanager describe-secret \
+              --secret-id streammycourse/hyperpay/prod \
               --region "${AWS_REGION:-eu-west-1}" \
               --query ARN \
               --output text 2>/dev/null || true)"
-            if [[ -n "${PAYTABS_SECRET_ARN}" && "${PAYTABS_SECRET_ARN}" != "None" ]]; then
-              export PAYTABS_SECRET_ARN
+            if [[ -n "${HYPERPAY_SECRET_ARN}" && "${HYPERPAY_SECRET_ARN}" != "None" ]]; then
+              export HYPERPAY_SECRET_ARN
             fi
+          fi
+          if [[ -z "${HYPERPAY_SECRET_ARN:-}" && -n "${{ steps.hyperpay_secret_prod.outputs.arn }}" ]]; then
+            export HYPERPAY_SECRET_ARN="${{ steps.hyperpay_secret_prod.outputs.arn }}"
           fi
           chmod +x scripts/deploy-backend.sh
           ./scripts/deploy-backend.sh prod

@@ -13,7 +13,7 @@ export type Course = {
   hasAccess?: boolean
   /** Deprecated alias of `hasAccess` for older clients. */
   enrolled?: boolean
-  /** One-time price in USD cents when configured (RS-5). */
+  /** One-time price in JOD fils when configured (RS-5). */
   amountMinor?: number
   currency?: string
 } & Partial<CoursePageDocument>
@@ -259,8 +259,29 @@ export type UpdateProgressResponse = {
   lessonProgress?: LessonProgressItem
 }
 
+type CheckoutBillingAddress = {
+  givenName: string
+  surname: string
+  street: string
+  city: string
+  state: string
+  postcode: string
+  /** ISO 3166-1 alpha-2 */
+  country: string
+}
+
 export type CheckoutSessionResponse = {
-  redirect_url: string
+  checkoutId: string
+  integrity: string
+  widgetScriptUrl: string
+  shopperResultUrl: string
+  purchaseId?: string
+  amountMinor?: number
+  currency?: string
+}
+
+export type CheckoutStatusResponse = {
+  status: string
 }
 
 export type CheckoutProductType = 'course' | 'bundle'
@@ -268,6 +289,7 @@ export type CheckoutProductType = 'course' | 'bundle'
 export type CreateCheckoutSessionBody = {
   productType: CheckoutProductType
   courseId?: string
+  billing?: CheckoutBillingAddress
 }
 
 export type BundleOffer = {

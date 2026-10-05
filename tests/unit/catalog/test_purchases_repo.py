@@ -87,13 +87,13 @@ class TestPurchasePaidAccessSql:
 class TestPurchasePricingSql:
     def test_get_bundle_offer(self) -> None:
         repo, conn = _repo()
-        conn.cursor_obj.fetchone_results = [(15000, "USD")]
+        conn.cursor_obj.fetchone_results = [(150_000, "JOD")]
 
         offer = repo.get_bundle_offer()
 
         assert offer is not None
-        assert offer.amount_minor == 15000
-        assert offer.currency == "USD"
+        assert offer.amount_minor == 150_000
+        assert offer.currency == "JOD"
         sql, params = conn.cursor_obj.executions[0]
         assert "bundle_offers" in sql
         assert params == ("dev",)
@@ -102,11 +102,23 @@ class TestPurchasePricingSql:
         repo, conn = _repo()
         conn.cursor_obj.rowcount = 1
 
-        assert repo.set_course_price(COURSE_ID, 9900) is True
+        assert repo.set_course_price(COURSE_ID, 50_000) is True
 
         sql, params = conn.cursor_obj.executions[0]
         assert "price_amount_minor" in sql
-        assert params == (9900, COURSE_ID)
+        assert params == (50_000, COURSE_ID)
+
+    def test_set_course_price_rejects_fractional_jod_fils(self) -> None:
+        repo, conn = _repo()
+        with pytest.raises(ValueError, match="whole JOD"):
+            repo.set_course_price(COURSE_ID, 50_050)
+        assert not conn.cursor_obj.executions
+
+    def test_set_bundle_price_rejects_fractional_jod_fils(self) -> None:
+        repo, conn = _repo()
+        with pytest.raises(ValueError, match="whole JOD"):
+            repo.set_bundle_price(50_050)
+        assert not conn.cursor_obj.executions
 
 
 class TestPurchaseListSql:
@@ -120,8 +132,8 @@ class TestPurchaseListSql:
                     "course",
                     COURSE_ID,
                     "paid",
-                    9900,
-                    "USD",
+                    50_000,
+                    "JOD",
                     created,
                 )
             ]
@@ -167,8 +179,8 @@ class TestPurchaseReservePending:
             "student-sub",
             product_type="course",
             course_id=COURSE_ID,
-            amount_minor=5000,
-            currency="USD",
+            amount_minor=50_000,
+            currency="JOD",
             ttl_minutes=30,
         )
 
@@ -183,8 +195,8 @@ class TestPurchaseReservePending:
             "student-sub",
             product_type="course",
             course_id=COURSE_ID,
-            amount_minor=5000,
-            currency="USD",
+            amount_minor=50_000,
+            currency="JOD",
             ttl_minutes=30,
         )
 

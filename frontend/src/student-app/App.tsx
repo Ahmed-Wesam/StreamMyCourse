@@ -44,8 +44,17 @@ const AccountProfilePage = lazy(() => import('../pages/account/AccountProfilePag
 const AccountPurchasesPage = lazy(() => import('../pages/account/AccountPurchasesPage'))
 const SettingsPage = lazy(() => import('../pages/SettingsPage'))
 const CheckoutPage = lazy(() => import('../pages/CheckoutPage'))
-const BillingSuccessPage = lazy(() => import('../pages/BillingSuccessPage'))
-const BillingCancelPage = lazy(() => import('../pages/BillingCancelPage'))
+const BillingResultPage = lazy(() => import('../pages/BillingResultPage'))
+const BillingLegacyRedirect = lazy(() =>
+  import('../pages/BillingLegacyRedirect').then((m) => ({
+    default: m.BillingSuccessRedirect,
+  })),
+)
+const BillingCancelLegacyRedirect = lazy(() =>
+  import('../pages/BillingLegacyRedirect').then((m) => ({
+    default: m.BillingCancelRedirect,
+  })),
+)
 const PrivacyPage = lazy(() => import('../pages/legal/PrivacyPage'))
 const TermsPage = lazy(() => import('../pages/legal/TermsPage'))
 const RefundPage = lazy(() => import('../pages/legal/RefundPage'))
@@ -268,10 +277,18 @@ function StudentApp() {
           }
         />
         <Route
+          path="/billing/result"
+          element={
+            <LazyRoute>
+              <BillingResultPage />
+            </LazyRoute>
+          }
+        />
+        <Route
           path="/billing/success"
           element={
             <LazyRoute>
-              <BillingSuccessPage />
+              <BillingLegacyRedirect />
             </LazyRoute>
           }
         />
@@ -279,7 +296,7 @@ function StudentApp() {
           path="/billing/cancel"
           element={
             <LazyRoute>
-              <BillingCancelPage />
+              <BillingCancelLegacyRedirect />
             </LazyRoute>
           }
         />

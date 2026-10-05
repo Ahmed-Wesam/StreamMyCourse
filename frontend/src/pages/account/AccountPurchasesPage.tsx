@@ -4,7 +4,7 @@ import { Link } from 'react-router-dom'
 import { getPurchases } from '../../lib/api/billing'
 import type { PurchaseRecord } from '../../lib/api/types'
 import { catalogApiUserMessage } from '../../lib/apiUserMessages'
-import { formatUsdMinor } from '../../lib/formatUsdMinor'
+import { formatJodMinor } from '../../lib/formatJodMinor'
 import { usePageTitle } from '../../lib/page-title'
 import { shouldSuppressInlineSessionSupersededMessage } from '../../lib/session-superseded-inline'
 import { IconArrow, IconBook } from './accountIcons'
@@ -140,7 +140,7 @@ export default function AccountPurchasesPage() {
                           <td className="order-num">{formatOrderId(row.id)}</td>
                           <td>{formatPurchasedAt(row.createdAt)}</td>
                           <td className="prod-name">{formatProductLabel(row)}</td>
-                          <td className="amount-col">{formatUsdMinor(row.amountMinor)}</td>
+                          <td className="amount-col">{formatJodMinor(row.amountMinor)}</td>
                           <td>
                             <span className={`bill-status ${formatStatusClass(row.status)}`}>
                               {formatStatusLabel(row.status)}

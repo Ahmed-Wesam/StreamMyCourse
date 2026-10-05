@@ -57,8 +57,8 @@ describe('AccountPurchasesPage', () => {
         id: 'p1',
         productType: 'bundle',
         status: 'paid',
-        amountMinor: 15000,
-        currency: 'USD',
+        amountMinor: 150_000,
+        currency: 'JOD',
         createdAt: '2026-03-01T12:00:00.000Z',
       },
     ])
@@ -72,7 +72,7 @@ describe('AccountPurchasesPage', () => {
     await waitFor(() => {
       expect(screen.getByText('Research Mastery Bundle')).toBeTruthy()
     })
-    expect(screen.getByText('$150.00')).toBeTruthy()
+    expect(screen.getByText(/JOD\s*150/)).toBeTruthy()
     expect(screen.getByText(/Paid/i)).toBeTruthy()
   })
 })

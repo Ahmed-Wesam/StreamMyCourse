@@ -10,3 +10,5 @@ boto3>=1.34,<2
 httpx>=0.27
 # cognito_custom_email_sender/decrypt.py (test_cognito_custom_email_sender.py loads the module)
 aws-encryption-sdk>=4.0,<5
+# billing_edge HyperPay webhook tests (AES-GCM; pin aligned with billing_edge/requirements.txt)
+cryptography>=42.0.0,<45

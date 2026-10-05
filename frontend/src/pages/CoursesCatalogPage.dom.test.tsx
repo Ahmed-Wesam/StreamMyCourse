@@ -53,7 +53,7 @@ describe('CoursesCatalogPage', () => {
     getBundle.mockReset()
     getPurchases.mockReset()
     listPublishedCourses.mockResolvedValue([])
-    getBundle.mockResolvedValue({ amountMinor: 15000, currency: 'USD' })
+    getBundle.mockResolvedValue({ amountMinor: 150_000, currency: 'JOD' })
     getPurchases.mockResolvedValue([])
   })
 
@@ -131,10 +131,10 @@ describe('CoursesCatalogPage', () => {
   it('renders the four catalog titles in prototype order and hides other published courses', async () => {
     listPublishedCourses.mockResolvedValue([
       course({ id: 'stray', title: 'integration-test-published-course' }),
-      course({ id: 'writing', title: 'Scientific Writing', amountMinor: 5000 }),
-      course({ id: 'sr', title: 'Systematic Reviews & Meta-Analysis', amountMinor: 5000 }),
-      course({ id: 'stats', title: 'Statistics & SPSS', amountMinor: 5000 }),
-      course({ id: 'method', title: 'Research Methodology', amountMinor: 5000 }),
+      course({ id: 'writing', title: 'Scientific Writing', amountMinor: 50_000 }),
+      course({ id: 'sr', title: 'Systematic Reviews & Meta-Analysis', amountMinor: 50_000 }),
+      course({ id: 'stats', title: 'Statistics & SPSS', amountMinor: 50_000 }),
+      course({ id: 'method', title: 'Research Methodology', amountMinor: 50_000 }),
     ])
 
     renderCatalog()
@@ -144,7 +144,7 @@ describe('CoursesCatalogPage', () => {
       expect(screen.queryByText(/integration-test-published-course/i)).toBeNull()
       expect(screen.getAllByText('one-time')).toHaveLength(4)
       expect(screen.getAllByText('one-time payment').length).toBeGreaterThan(0)
-      expect(screen.getAllByText(/Save \$50/).length).toBeGreaterThan(0)
+      expect(screen.getAllByText(/Save .*50/).length).toBeGreaterThan(0)
     })
 
     const cardTitles = screen.getAllByRole('heading', { level: 3 }).map((heading) => heading.textContent)
@@ -157,17 +157,17 @@ describe('CoursesCatalogPage', () => {
     ])
   })
 
-  it('shows course and bundle USD prices from API', async () => {
+  it('shows course and bundle JOD prices from API', async () => {
     listPublishedCourses.mockResolvedValue([
-      course({ id: 'methodology', title: 'Research Methodology', amountMinor: 9900 }),
+      course({ id: 'methodology', title: 'Research Methodology', amountMinor: 99_000 }),
     ])
 
     renderCatalog()
 
     expect((await screen.findAllByText('Research Methodology')).length).toBeGreaterThan(0)
-    expect((await screen.findAllByText('$99')).length).toBeGreaterThan(0)
+    expect((await screen.findAllByText(/99/)).length).toBeGreaterThan(0)
     await waitFor(() => {
-      expect(screen.getAllByText('$150').length).toBeGreaterThan(0)
+      expect(screen.getAllByText(/150/).length).toBeGreaterThan(0)
     })
   })
 

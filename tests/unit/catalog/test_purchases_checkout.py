@@ -71,7 +71,7 @@ class TestPurchaseCheckoutPrecheck:
         conn.cursor_obj.fetchone_results = [
             None,  # bundle
             None,  # course paid
-            (9900,),  # course price
+            (50_000,),  # course price (50 JOD fils)
             None,  # fresh pending in txn
             (PURCHASE_ID,),  # INSERT RETURNING id
         ]
@@ -81,7 +81,8 @@ class TestPurchaseCheckoutPrecheck:
         )
 
         assert result["blockReason"] is None
-        assert result["product"]["amount_minor"] == 9900
+        assert result["product"]["amount_minor"] == 50_000
+        assert result["product"]["currency"] == "JOD"
         assert result["product"]["purchase_id"] == PURCHASE_ID
         assert str(INCOMPLETE_CHECKOUT_TTL_MINUTES) in str(conn.cursor_obj.executions)
 
@@ -89,7 +90,7 @@ class TestPurchaseCheckoutPrecheck:
         svc, _repo, conn = _service()
         conn.cursor_obj.fetchone_results = [
             None,  # bundle paid check
-            (15000, "USD"),  # bundle offer
+            (150_000, "JOD"),  # bundle offer (150 JOD fils)
             None,  # fresh pending
             (PURCHASE_ID,),  # INSERT RETURNING id
         ]
@@ -99,8 +100,8 @@ class TestPurchaseCheckoutPrecheck:
         assert result == {
             "blockReason": None,
             "product": {
-                "amount_minor": 15000,
-                "currency": "USD",
+                "amount_minor": 150_000,
+                "currency": "JOD",
                 "product_type": "bundle",
                 "purchase_id": PURCHASE_ID,
             },
@@ -111,7 +112,7 @@ class TestPurchaseCheckoutPrecheck:
         conn.cursor_obj.fetchone_results = [
             None,
             None,
-            (9900,),
+            (50_000,),
             (1,),  # fresh pending
         ]
 
@@ -157,3 +158,48 @@ class TestPurchaseInternalCheckout:
         mock_svc.run_purchase_checkout_precheck.assert_called_once_with(
             "u", product_type="bundle", course_id=None
         )
+
+
+class TestPurchaseCheckoutStatusVerify:
+    def test_verify_pending_purchase_ok(self) -> None:
+        svc, repo, conn = _service()
+        conn.cursor_obj.fetchone_results = [(50_000, "JOD", "pending")]
+
+        result = svc.verify_pending_purchase_for_checkout_status(
+            "student-sub",
+            purchase_id=PURCHASE_ID,
+            amount_minor=50_000,
+            currency="JOD",
+        )
+
+        assert result == {"ok": True}
+
+    def test_verify_pending_purchase_not_found(self) -> None:
+        svc, _repo, conn = _service()
+        conn.cursor_obj.fetchone_results = [None]
+
+        result = svc.verify_pending_purchase_for_checkout_status(
+            "student-sub",
+            purchase_id=PURCHASE_ID,
+            amount_minor=50_000,
+            currency="JOD",
+        )
+
+        assert result == {"blockReason": "not_found"}
+
+    def test_internal_checkout_status_handler(self) -> None:
+        from services.purchases.internal_checkout import handle_internal_purchase_checkout_status
+
+        mock_svc = MagicMock()
+        mock_svc.verify_pending_purchase_for_checkout_status.return_value = {"ok": True}
+        out = handle_internal_purchase_checkout_status(
+            {
+                "userSub": "u",
+                "purchaseId": PURCHASE_ID,
+                "amountMinor": 50_000,
+                "currency": "JOD",
+            },
+            checkout_service=mock_svc,
+        )
+        assert out == {"ok": True}
+        mock_svc.verify_pending_purchase_for_checkout_status.assert_called_once()

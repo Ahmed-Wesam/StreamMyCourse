@@ -6,12 +6,12 @@ import os
 from dataclasses import dataclass
 from typing import Optional
 
-from paytabs_secrets import load_paytabs_from_secret
-from providers.mock_adapter import MockPayTabsAdapter
-from providers.paytabs_adapter import PayTabsAdapter
+from hyperpay_secrets import load_hyperpay_from_secret
+from providers.hyperpay_adapter import HyperPayAdapter
+from providers.mock_adapter import MockHyperPayAdapter
 from providers.port import PaymentProviderPort
 
-_DEFAULT_API_DOMAIN = "secure-jordan.paytabs.com"
+_DEFAULT_API_HOST = "eu-test.oppwa.com"
 
 
 def _env(name: str) -> str | None:
@@ -22,43 +22,29 @@ def _env(name: str) -> str | None:
     return stripped or None
 
 
-def _env_bool(name: str) -> bool:
-    raw = _env(name)
-    if raw is None:
-        return False
-    return raw.lower() in ("1", "true", "yes", "on")
-
-
 @dataclass(frozen=True)
 class BillingEdgeConfig:
     deployment_environment: str
     payment_provider: str | None
-    paytabs_use_mock: bool
-    paytabs_secret_arn: str | None
-    paytabs_server_key: str | None
-    paytabs_profile_id: str | None
-    paytabs_api_domain: str | None
+    hyperpay_secret_arn: str | None
+    hyperpay_access_token: str | None
+    hyperpay_entity_id: str | None
+    hyperpay_webhook_secret: str | None
     fulfillment_queue_url: str | None
     catalog_lambda_arn: str | None
-    billing_return_success_url: str | None
-    billing_return_cancel_url: str | None
-    billing_ipn_callback_url: str | None
+    billing_shopper_result_url: str | None
 
     def is_prod(self) -> bool:
         return self.deployment_environment.lower() == "prod"
 
     def wants_mock(self) -> bool:
-        if self.is_prod():
-            return self.paytabs_use_mock
-        if (self.payment_provider or "").lower() == "mock":
-            return True
-        return self.paytabs_use_mock
+        return (self.payment_provider or "").lower() == "mock"
 
-    def has_paytabs_inline_keys(self) -> bool:
-        return bool(self.paytabs_server_key and self.paytabs_profile_id)
+    def has_hyperpay_inline_keys(self) -> bool:
+        return bool(self.hyperpay_access_token and self.hyperpay_entity_id)
 
-    def has_paytabs_secret_arn(self) -> bool:
-        return bool(self.paytabs_secret_arn)
+    def has_hyperpay_secret_arn(self) -> bool:
+        return bool(self.hyperpay_secret_arn)
 
     def is_configured(self) -> bool:
         return get_payment_provider(self) is not None
@@ -69,77 +55,65 @@ def load_billing_edge_config() -> BillingEdgeConfig:
     return BillingEdgeConfig(
         deployment_environment=deployment,
         payment_provider=_env("PAYMENT_PROVIDER"),
-        paytabs_use_mock=_env_bool("PAYTABS_USE_MOCK"),
-        paytabs_secret_arn=_env("PAYTABS_SECRET_ARN"),
-        paytabs_server_key=_env("PAYTABS_SERVER_KEY"),
-        paytabs_profile_id=_env("PAYTABS_PROFILE_ID"),
-        paytabs_api_domain=_env("PAYTABS_API_DOMAIN") or _DEFAULT_API_DOMAIN,
+        hyperpay_secret_arn=_env("HYPERPAY_SECRET_ARN"),
+        hyperpay_access_token=_env("HYPERPAY_ACCESS_TOKEN"),
+        hyperpay_entity_id=_env("HYPERPAY_ENTITY_ID"),
+        hyperpay_webhook_secret=_env("HYPERPAY_WEBHOOK_SECRET"),
         fulfillment_queue_url=_env("FULFILLMENT_QUEUE_URL"),
         catalog_lambda_arn=_env("CATALOG_LAMBDA_ARN"),
-        billing_return_success_url=_env("BILLING_RETURN_SUCCESS_URL"),
-        billing_return_cancel_url=_env("BILLING_RETURN_CANCEL_URL"),
-        billing_ipn_callback_url=_env("BILLING_IPN_CALLBACK_URL"),
+        billing_shopper_result_url=_env("BILLING_SHOPPER_RESULT_URL"),
     )
 
 
-def resolve_paytabs_credentials(
+def resolve_hyperpay_credentials(
     cfg: BillingEdgeConfig,
-) -> tuple[str, str, str] | None:
-    """Inline env first, then Secrets Manager when PAYTABS_SECRET_ARN is set."""
-    server_key = cfg.paytabs_server_key or ""
-    profile_id = cfg.paytabs_profile_id or ""
-    api_domain = cfg.paytabs_api_domain or _DEFAULT_API_DOMAIN
+) -> tuple[str, str, str | None, str | None] | None:
+    """Inline env first, then Secrets Manager when HYPERPAY_SECRET_ARN is set."""
+    access_token = cfg.hyperpay_access_token or ""
+    entity_id = cfg.hyperpay_entity_id or ""
+    webhook_secret = cfg.hyperpay_webhook_secret
+    api_host = _DEFAULT_API_HOST
 
-    if server_key and profile_id:
-        return server_key, profile_id, api_domain
+    if access_token and entity_id:
+        return access_token, entity_id, webhook_secret, api_host
 
-    if cfg.paytabs_secret_arn:
-        loaded = load_paytabs_from_secret(cfg.paytabs_secret_arn)
+    if cfg.hyperpay_secret_arn:
+        loaded = load_hyperpay_from_secret(cfg.hyperpay_secret_arn)
         if loaded:
             return (
-                loaded.server_key,
-                loaded.profile_id,
-                loaded.api_domain or api_domain,
+                loaded.access_token,
+                loaded.entity_id,
+                loaded.webhook_secret or webhook_secret,
+                loaded.api_host or api_host,
             )
 
     return None
 
 
 def get_payment_provider(cfg: BillingEdgeConfig) -> Optional[PaymentProviderPort]:
-    """Select mock, PayTabs, or None (billing_unconfigured)."""
+    """Select mock HyperPay, live HyperPay, or None (billing_unconfigured)."""
     if cfg.wants_mock():
-        return MockPayTabsAdapter(allow_mock_signature=True)
+        return MockHyperPayAdapter()
 
     if cfg.is_prod():
-        if not cfg.has_paytabs_secret_arn() and not cfg.has_paytabs_inline_keys():
+        if not cfg.has_hyperpay_secret_arn() and not cfg.has_hyperpay_inline_keys():
             return None
-        creds = resolve_paytabs_credentials(cfg)
-        if creds is None:
+    elif (cfg.payment_provider or "").lower() != "hyperpay":
+        return None
+    else:
+        if not cfg.has_hyperpay_inline_keys() and not cfg.has_hyperpay_secret_arn():
             return None
-        server_key, profile_id, api_domain = creds
-        return PayTabsAdapter(
-            server_key=server_key,
-            profile_id=profile_id,
-            api_domain=api_domain,
-            deployment_environment=cfg.deployment_environment,
-            return_success_url=cfg.billing_return_success_url,
-            return_cancel_url=cfg.billing_return_cancel_url,
-            ipn_callback_url=cfg.billing_ipn_callback_url,
-        )
 
-    if (cfg.payment_provider or "").lower() == "paytabs":
-        creds = resolve_paytabs_credentials(cfg)
-        if creds is None:
-            return None
-        server_key, profile_id, api_domain = creds
-        return PayTabsAdapter(
-            server_key=server_key,
-            profile_id=profile_id,
-            api_domain=api_domain,
-            deployment_environment=cfg.deployment_environment,
-            return_success_url=cfg.billing_return_success_url,
-            return_cancel_url=cfg.billing_return_cancel_url,
-            ipn_callback_url=cfg.billing_ipn_callback_url,
-        )
-
-    return None
+    creds = resolve_hyperpay_credentials(cfg)
+    if creds is None:
+        return None
+    access_token, entity_id, _webhook_secret, api_host = creds
+    if not (cfg.billing_shopper_result_url or "").strip():
+        return None
+    return HyperPayAdapter(
+        access_token=access_token,
+        entity_id=entity_id,
+        api_host=api_host or _DEFAULT_API_HOST,
+        deployment_environment=cfg.deployment_environment,
+        shopper_result_url=cfg.billing_shopper_result_url,
+    )

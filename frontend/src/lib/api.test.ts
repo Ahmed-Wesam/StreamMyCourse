@@ -446,7 +446,7 @@ describe('getBundle', () => {
     vi.stubGlobal(
       'fetch',
       vi.fn(async () => {
-        return new Response(JSON.stringify({ amountMinor: 15000, currency: 'USD' }), {
+        return new Response(JSON.stringify({ amountMinor: 150_000, currency: 'JOD' }), {
           status: 200,
           headers: { 'Content-Type': 'application/json' },
         })
@@ -466,7 +466,7 @@ describe('getBundle', () => {
 
   it('GETs /billing/bundle', async () => {
     const result = await getBundle()
-    expect(result).toEqual({ amountMinor: 15000, currency: 'USD' })
+    expect(result).toEqual({ amountMinor: 150_000, currency: 'JOD' })
     const [url] = vi.mocked(fetch).mock.calls[0]
     expect(String(url)).toContain('/billing/bundle')
   })
@@ -487,8 +487,8 @@ describe('getPurchases', () => {
                 productType: 'course',
                 courseId: 'c1',
                 status: 'paid',
-                amountMinor: 4900,
-                currency: 'USD',
+                amountMinor: 50_000,
+                currency: 'JOD',
                 createdAt: '2026-03-01T00:00:00.000Z',
               },
             ],
@@ -527,10 +527,18 @@ describe('createCheckoutSession', () => {
     vi.stubGlobal(
       'fetch',
       vi.fn(async () => {
-        return new Response(JSON.stringify({ redirect_url: 'https://pay.example/checkout' }), {
-          status: 200,
-          headers: { 'Content-Type': 'application/json' },
-        })
+        return new Response(
+          JSON.stringify({
+            checkoutId: 'CHK-1',
+            integrity: 'sha384-test',
+            widgetScriptUrl: 'https://eu-test.oppwa.com/v1/paymentWidgets.js?checkoutId=CHK-1',
+            shopperResultUrl: 'https://student.example/billing/result',
+          }),
+          {
+            status: 200,
+            headers: { 'Content-Type': 'application/json' },
+          },
+        )
       }),
     )
     fetchAuthSessionMock.mockResolvedValue({ tokens: { idToken: 't' } })
@@ -547,7 +555,7 @@ describe('createCheckoutSession', () => {
 
   it('POSTs bundle checkout body', async () => {
     const result = await createCheckoutSession({ productType: 'bundle' })
-    expect(result).toEqual({ redirect_url: 'https://pay.example/checkout' })
+    expect(result.checkoutId).toBe('CHK-1')
     const [, init] = vi.mocked(fetch).mock.calls[0]
     expect(JSON.parse((init?.body as string) ?? '{}')).toEqual({ productType: 'bundle' })
   })

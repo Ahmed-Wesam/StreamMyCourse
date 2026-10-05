@@ -7,15 +7,6 @@ from typing import Any, Dict, Optional
 
 SCHEMA_VERSION = 1
 
-_SUBSCRIPTION_EVENT_TYPES = frozenset(
-    {
-        "subscription.activated",
-        "subscription.renewed",
-        "subscription.payment_failed",
-        "subscription.canceled",
-    }
-)
-
 _PURCHASE_EVENT_TYPES = frozenset(
     {
         "purchase.paid",
@@ -24,7 +15,7 @@ _PURCHASE_EVENT_TYPES = frozenset(
     }
 )
 
-_DOMAIN_EVENT_TYPES = _SUBSCRIPTION_EVENT_TYPES | _PURCHASE_EVENT_TYPES | frozenset({"payout.ready"})
+_DOMAIN_EVENT_TYPES = _PURCHASE_EVENT_TYPES
 
 
 @dataclass(frozen=True)

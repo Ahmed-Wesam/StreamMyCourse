@@ -1,43 +1,51 @@
-"""P4 / W3-P4 — billing_edge HTTP handler (API Gateway proxy events)."""
+"""P4 / W3-P4 — billing_edge HTTP handler (HyperPay checkout + webhooks)."""
 
 from __future__ import annotations
 
 import base64
-import hashlib
-import hmac
 import json
 from typing import Any, Dict, List
 from unittest.mock import MagicMock
 
 import pytest
+from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
 from billing._imports import billing_handler
 from domain.events import BillingDomainEvent
 from edge_config import BillingEdgeConfig
-from providers.mock_adapter import MOCK_IPN_SALE_ACTIVATED, MOCK_IPN_SALE_PAID, MockPayTabsAdapter
-from providers.paytabs_adapter import BillingUnconfiguredError, PayTabsAdapter
+from providers.mock_adapter import MockHyperPayAdapter
+from providers.hyperpay_adapter import BillingUnconfiguredError
 from queue_shim import EnqueueError
 
 _QUEUE_URL = "https://sqs.eu-west-1.amazonaws.com/1/test-queue"
-_PLAN_ID = "00000000-0000-4000-8000-000000000001"
 _COURSE_ID = "b0000000-0000-4000-8000-000000000001"
 _PURCHASE_ID = "c0000000-0000-4000-8000-000000000001"
+_USER_SUB = "student-sub-1"
+_CART_V2 = f"v2|dev|{_USER_SUB}|course|{_COURSE_ID}|{_PURCHASE_ID}"
+_WEBHOOK_KEY_HEX = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+_SHOPPER_RESULT_URL = "https://student.example.com/billing/result"
+_CHECKOUT_BILLING = {
+    "givenName": "Ada",
+    "surname": "Student",
+    "street": "1 King Hussein St",
+    "city": "Amman",
+    "state": "Amman",
+    "postcode": "11118",
+    "country": "JO",
+}
 
 
 def _edge_config(**overrides: Any) -> BillingEdgeConfig:
     base: Dict[str, Any] = {
         "deployment_environment": "dev",
         "payment_provider": "mock",
-        "paytabs_use_mock": True,
-        "paytabs_secret_arn": None,
-        "paytabs_server_key": None,
-        "paytabs_profile_id": None,
-        "paytabs_api_domain": None,
+        "hyperpay_secret_arn": None,
+        "hyperpay_access_token": None,
+        "hyperpay_entity_id": None,
+        "hyperpay_webhook_secret": _WEBHOOK_KEY_HEX,
         "fulfillment_queue_url": _QUEUE_URL,
         "catalog_lambda_arn": "arn:aws:lambda:eu-west-1:1:function:catalog",
-        "billing_return_success_url": "https://student.example.com/billing/success",
-        "billing_return_cancel_url": "https://student.example.com/billing/cancel",
-        "billing_ipn_callback_url": "https://api.example.com/webhooks/payments/paytabs",
+        "billing_shopper_result_url": _SHOPPER_RESULT_URL,
     }
     base.update(overrides)
     return BillingEdgeConfig(**base)
@@ -47,8 +55,8 @@ def _catalog_ok(**overrides: Any) -> Dict[str, Any]:
     payload: Dict[str, Any] = {
         "blockReason": None,
         "product": {
-            "amount_minor": 9900,
-            "currency": "USD",
+            "amount_minor": 50_000,
+            "currency": "JOD",
             "course_id": _COURSE_ID,
             "purchase_id": _PURCHASE_ID,
         },
@@ -64,89 +72,104 @@ def _checkout_event(**overrides: Any) -> Dict[str, Any]:
         "requestContext": {
             "resourcePath": "/billing/checkout-session",
             "stage": "dev",
-            "authorizer": {"claims": {"sub": "student-sub-1"}},
+            "authorizer": {
+                "claims": {"sub": _USER_SUB, "email": "student@example.com"},
+            },
         },
         "headers": {"content-type": "application/json"},
-        "body": json.dumps({"productType": "course", "courseId": _COURSE_ID}),
+        "body": json.dumps(
+            {
+                "productType": "course",
+                "courseId": _COURSE_ID,
+                "billing": _CHECKOUT_BILLING,
+            }
+        ),
     }
     evt.update(overrides)
     return evt
 
 
-def _webhook_event(
-    *,
-    body: bytes = b'{"tran_ref":"TST1"}',
-    signature: str | None = None,
-    mock_signature: str | None = None,
-    is_base64: bool = False,
-    request_id: str = "req-test-1",
-) -> Dict[str, Any]:
-    headers: Dict[str, str] = {"content-type": "application/json"}
-    if signature is not None:
-        headers["Signature"] = signature
-    if mock_signature is not None:
-        headers["X-Mock-Signature"] = mock_signature
+def _checkout_status_event(**overrides: Any) -> Dict[str, Any]:
     evt: Dict[str, Any] = {
         "httpMethod": "POST",
-        "path": "/webhooks/payments/paytabs",
+        "path": "/billing/checkout-status",
         "requestContext": {
-            "resourcePath": "/webhooks/payments/paytabs",
+            "resourcePath": "/billing/checkout-status",
+            "stage": "dev",
+            "authorizer": {"claims": {"sub": _USER_SUB}},
+        },
+        "headers": {"content-type": "application/json"},
+        "body": json.dumps({"checkoutId": "MOCK-HP-CHECKOUT"}),
+    }
+    evt.update(overrides)
+    return evt
+
+
+def _encrypt_notification(payload: dict[str, Any]) -> tuple[bytes, str, str]:
+    key = bytes.fromhex(_WEBHOOK_KEY_HEX)
+    iv = bytes.fromhex("000000000000000000000000")
+    plaintext = json.dumps(payload, separators=(",", ":")).encode("utf-8")
+    aesgcm = AESGCM(key)
+    ciphertext_with_tag = aesgcm.encrypt(iv, plaintext, None)
+    ciphertext = ciphertext_with_tag[:-16]
+    tag = ciphertext_with_tag[-16:]
+    return ciphertext.hex().encode("ascii"), iv.hex(), tag.hex()
+
+
+def _hyperpay_webhook_event(
+    *,
+    body_hex: bytes,
+    iv_hex: str,
+    tag_hex: str,
+    request_id: str = "req-test-1",
+) -> Dict[str, Any]:
+    return {
+        "httpMethod": "POST",
+        "path": "/webhooks/payments/hyperpay",
+        "requestContext": {
+            "resourcePath": "/webhooks/payments/hyperpay",
             "stage": "dev",
             "requestId": request_id,
         },
-        "headers": headers,
-        "isBase64Encoded": is_base64,
+        "headers": {
+            "content-type": "application/json",
+            "X-Initialization-Vector": iv_hex,
+            "X-Authentication-Tag": tag_hex,
+        },
+        "body": body_hex.decode("ascii"),
+        "isBase64Encoded": False,
     }
-    if is_base64:
-        evt["body"] = base64.b64encode(body).decode("ascii")
-    else:
-        evt["body"] = body.decode("utf-8")
-    return evt
 
 
 def _parse_body(resp: Dict[str, Any]) -> Dict[str, Any]:
     return json.loads(resp["body"])
 
 
-def _patch_mock_webhook(
-    monkeypatch: pytest.MonkeyPatch,
-    *,
-    enqueue: MagicMock | None = None,
-    config: BillingEdgeConfig | None = None,
-) -> MagicMock:
-    cfg = config or _edge_config()
-    enqueue_fn = enqueue if enqueue is not None else MagicMock()
+def _patch_mock_checkout(monkeypatch: pytest.MonkeyPatch, **config_overrides: Any) -> None:
+    cfg = _edge_config(**config_overrides)
     monkeypatch.setattr(billing_handler, "_load_config", lambda: cfg)
     monkeypatch.setattr(
         billing_handler,
         "_get_payment_provider",
-        lambda _cfg: MockPayTabsAdapter(allow_mock_signature=True),
+        lambda _cfg: MockHyperPayAdapter(),
     )
-    monkeypatch.setattr(billing_handler, "_enqueue_domain_events", enqueue_fn)
-    return enqueue_fn
 
 
 def test_checkout_returns_503_billing_unconfigured(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(
         billing_handler,
         "_load_config",
-        lambda: _edge_config(payment_provider=None, paytabs_use_mock=False),
+        lambda: _edge_config(payment_provider=None),
     )
     monkeypatch.setattr(billing_handler, "_get_payment_provider", lambda _cfg: None)
 
     resp = billing_handler.lambda_handler(_checkout_event(), None)
     assert resp["statusCode"] == 503
-    body = _parse_body(resp)
-    assert body["code"] == "billing_unconfigured"
+    assert _parse_body(resp)["code"] == "billing_unconfigured"
 
 
 def test_checkout_returns_401_without_auth(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(billing_handler, "_load_config", lambda: _edge_config())
-    monkeypatch.setattr(
-        billing_handler,
-        "_get_payment_provider",
-        lambda _cfg: MockPayTabsAdapter(allow_mock_signature=True),
-    )
+    _patch_mock_checkout(monkeypatch)
     evt = _checkout_event()
     evt["requestContext"] = {"resourcePath": "/billing/checkout-session"}
 
@@ -156,70 +179,24 @@ def test_checkout_returns_401_without_auth(monkeypatch: pytest.MonkeyPatch) -> N
 
 
 def test_checkout_empty_body_returns_invalid_request(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(billing_handler, "_load_config", lambda: _edge_config())
-    monkeypatch.setattr(
-        billing_handler,
-        "_get_payment_provider",
-        lambda _cfg: MockPayTabsAdapter(allow_mock_signature=True),
-    )
+    _patch_mock_checkout(monkeypatch)
     resp = billing_handler.lambda_handler(_checkout_event(body=""), None)
     assert resp["statusCode"] == 400
     assert _parse_body(resp)["code"] == "invalid_request"
 
 
-def test_checkout_paytabs_missing_return_urls_skips_catalog_invoke(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    invoked = False
-    adapter = PayTabsAdapter(
-        server_key="server-key",
-        profile_id="profile",
-        api_domain="secure-jordan.paytabs.com",
-        deployment_environment="dev",
-        return_success_url=None,
-        ipn_callback_url=None,
-    )
-
-    def _invoke(**_kw: Any) -> Dict[str, Any]:
-        nonlocal invoked
-        invoked = True
-        return _catalog_ok()
-
-    monkeypatch.setattr(
-        billing_handler,
-        "_load_config",
-        lambda: _edge_config(
-            payment_provider="paytabs",
-            paytabs_use_mock=False,
-            paytabs_server_key="server-key",
-            paytabs_profile_id="profile",
-            billing_return_success_url=None,
-            billing_ipn_callback_url=None,
-        ),
-    )
-    monkeypatch.setattr(billing_handler, "_get_payment_provider", lambda _cfg: adapter)
-    monkeypatch.setattr(billing_handler, "_invoke_billing_checkout", _invoke)
-
-    resp = billing_handler.lambda_handler(_checkout_event(), None)
-    assert resp["statusCode"] == 503
-    assert _parse_body(resp)["code"] == "billing_unconfigured"
-    assert invoked is False
-
-
-def test_checkout_not_implemented_invokes_rollback(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
+def test_checkout_not_implemented_invokes_rollback(monkeypatch: pytest.MonkeyPatch) -> None:
     rollback_calls: list[str] = []
 
-    class NotImplementedProvider(MockPayTabsAdapter):
-        def create_sale_session(self, **kwargs: Any) -> Any:
+    class NotImplementedProvider(MockHyperPayAdapter):
+        def create_checkout(self, **kwargs: Any) -> Any:
             raise NotImplementedError()
 
     monkeypatch.setattr(billing_handler, "_load_config", lambda: _edge_config())
     monkeypatch.setattr(
         billing_handler,
         "_get_payment_provider",
-        lambda _cfg: NotImplementedProvider(allow_mock_signature=True),
+        lambda _cfg: NotImplementedProvider(),
     )
     monkeypatch.setattr(
         billing_handler,
@@ -236,23 +213,21 @@ def test_checkout_not_implemented_invokes_rollback(
 
     resp = billing_handler.lambda_handler(_checkout_event(), None)
     assert resp["statusCode"] == 501
-    assert rollback_calls == ["student-sub-1"]
+    assert rollback_calls == [_USER_SUB]
 
 
-def test_checkout_session_failure_invokes_rollback(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
+def test_checkout_session_failure_invokes_rollback(monkeypatch: pytest.MonkeyPatch) -> None:
     rollback_calls: list[str] = []
 
-    class FailingProvider(MockPayTabsAdapter):
-        def create_sale_session(self, **kwargs: Any) -> Any:
+    class FailingProvider(MockHyperPayAdapter):
+        def create_checkout(self, **kwargs: Any) -> Any:
             raise BillingUnconfiguredError()
 
     monkeypatch.setattr(billing_handler, "_load_config", lambda: _edge_config())
     monkeypatch.setattr(
         billing_handler,
         "_get_payment_provider",
-        lambda _cfg: FailingProvider(allow_mock_signature=True),
+        lambda _cfg: FailingProvider(),
     )
     monkeypatch.setattr(
         billing_handler,
@@ -269,13 +244,11 @@ def test_checkout_session_failure_invokes_rollback(
 
     resp = billing_handler.lambda_handler(_checkout_event(), None)
     assert resp["statusCode"] == 503
-    assert rollback_calls == ["student-sub-1"]
+    assert rollback_calls == [_USER_SUB]
 
 
-def test_checkout_mock_returns_200_with_redirect(monkeypatch: pytest.MonkeyPatch) -> None:
-    mock = MockPayTabsAdapter()
-    monkeypatch.setattr(billing_handler, "_load_config", lambda: _edge_config())
-    monkeypatch.setattr(billing_handler, "_get_payment_provider", lambda _cfg: mock)
+def test_checkout_mock_returns_hyperpay_widget_fields(monkeypatch: pytest.MonkeyPatch) -> None:
+    _patch_mock_checkout(monkeypatch)
     monkeypatch.setattr(
         billing_handler,
         "_invoke_billing_checkout",
@@ -285,196 +258,125 @@ def test_checkout_mock_returns_200_with_redirect(monkeypatch: pytest.MonkeyPatch
     resp = billing_handler.lambda_handler(_checkout_event(), None)
     assert resp["statusCode"] == 200
     body = _parse_body(resp)
-    assert "redirect_url" in body
-    assert body["redirect_url"].startswith("https://")
-    assert body.get("purchaseId") == _PURCHASE_ID
-    assert body.get("amountMinor") == 9900
-    assert body.get("currency") == "USD"
+    assert body["checkoutId"] == "MOCK-HP-CHECKOUT"
+    assert body["integrity"] == "sha384-mock"
+    assert "paymentWidgets.js" in body["widgetScriptUrl"]
+    assert body["shopperResultUrl"] == _SHOPPER_RESULT_URL
+    assert body["purchaseId"] == _PURCHASE_ID
+    assert body["amountMinor"] == 50_000
+    assert body["currency"] == "JOD"
 
 
-def test_webhook_returns_503_when_unconfigured(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(billing_handler, "_get_payment_provider", lambda _cfg: None)
+def test_checkout_status_pending_does_not_enqueue(monkeypatch: pytest.MonkeyPatch) -> None:
+    _patch_mock_checkout(monkeypatch)
+    enqueue = MagicMock()
+    monkeypatch.setattr(billing_handler, "_enqueue_domain_events", enqueue)
     monkeypatch.setattr(
         billing_handler,
-        "_load_config",
-        lambda: _edge_config(payment_provider=None, paytabs_use_mock=False),
+        "_invoke_billing_checkout_status",
+        lambda **_kw: {"ok": True},
     )
 
-    resp = billing_handler.lambda_handler(_webhook_event(), None)
+    resp = billing_handler.lambda_handler(_checkout_status_event(), None)
+    assert resp["statusCode"] == 200
+    assert _parse_body(resp) == {"status": "pending"}
+    enqueue.assert_not_called()
+
+
+def test_checkout_status_requires_auth(monkeypatch: pytest.MonkeyPatch) -> None:
+    _patch_mock_checkout(monkeypatch)
+    evt = _checkout_status_event()
+    evt["requestContext"] = {"resourcePath": "/billing/checkout-status"}
+    resp = billing_handler.lambda_handler(evt, None)
+    assert resp["statusCode"] == 401
+
+
+def test_paytabs_webhook_route_is_gone(monkeypatch: pytest.MonkeyPatch) -> None:
+    _patch_mock_checkout(monkeypatch)
+    evt = {
+        "httpMethod": "POST",
+        "path": "/webhooks/payments/paytabs",
+        "requestContext": {"resourcePath": "/webhooks/payments/paytabs"},
+        "body": "{}",
+    }
+    resp = billing_handler.lambda_handler(evt, None)
+    assert resp["statusCode"] == 404
+
+
+def test_hyperpay_webhook_returns_503_when_webhook_secret_empty(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _patch_mock_checkout(monkeypatch, hyperpay_webhook_secret=None)
+    body_hex, iv_hex, tag_hex = _encrypt_notification({"type": "PAYMENT", "payload": {}})
+    resp = billing_handler.lambda_handler(
+        _hyperpay_webhook_event(body_hex=body_hex, iv_hex=iv_hex, tag_hex=tag_hex),
+        None,
+    )
     assert resp["statusCode"] == 503
     assert _parse_body(resp)["code"] == "billing_unconfigured"
 
 
-def test_webhook_mock_rejects_unsigned_with_401(monkeypatch: pytest.MonkeyPatch) -> None:
-    _patch_mock_webhook(monkeypatch)
-
-    resp = billing_handler.lambda_handler(_webhook_event(), None)
+def test_hyperpay_webhook_bad_decrypt_returns_401(monkeypatch: pytest.MonkeyPatch) -> None:
+    _patch_mock_checkout(monkeypatch)
+    body_hex, iv_hex, _tag_hex = _encrypt_notification({"type": "PAYMENT", "payload": {}})
+    bad_tag = "0" * 32
+    resp = billing_handler.lambda_handler(
+        _hyperpay_webhook_event(body_hex=body_hex, iv_hex=iv_hex, tag_hex=bad_tag),
+        None,
+    )
     assert resp["statusCode"] == 401
-    assert _parse_body(resp)["code"] == "invalid_signature"
+    assert _parse_body(resp)["code"] == "invalid_webhook"
 
 
-def test_webhook_mock_valid_signature_returns_200_and_enqueues(
+def test_hyperpay_webhook_valid_decrypt_enqueues_purchase_paid(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    enqueue = _patch_mock_webhook(monkeypatch)
-    body = MockPayTabsAdapter.sample_ipn_bytes(MOCK_IPN_SALE_PAID)
-
+    _patch_mock_checkout(monkeypatch)
+    enqueue = MagicMock()
+    monkeypatch.setattr(billing_handler, "_enqueue_domain_events", enqueue)
+    notification = {
+        "type": "PAYMENT",
+        "action": "CREATED",
+        "payload": {
+            "id": "pay-1",
+            "paymentType": "DB",
+            "amount": "50.00",
+            "currency": "JOD",
+            "merchantTransactionId": _CART_V2,
+            "result": {"code": "000.000.000"},
+        },
+    }
+    body_hex, iv_hex, tag_hex = _encrypt_notification(notification)
     resp = billing_handler.lambda_handler(
-        _webhook_event(body=body, mock_signature="test"),
+        _hyperpay_webhook_event(body_hex=body_hex, iv_hex=iv_hex, tag_hex=tag_hex),
         None,
     )
     assert resp["statusCode"] == 200
-    assert _parse_body(resp) == {"status": "ok"}
     enqueue.assert_called_once()
     events: List[BillingDomainEvent] = enqueue.call_args[0][0]
     assert len(events) == 1
     assert events[0].event_type == "purchase.paid"
-    assert events[0].provider_event_id == "paytabs:MOCK-ACT-001:A"
-
-
-def test_webhook_mock_valid_signature_does_not_return_501(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    _patch_mock_webhook(monkeypatch)
-    body = MockPayTabsAdapter.sample_ipn_bytes(MOCK_IPN_SALE_ACTIVATED)
-
-    resp = billing_handler.lambda_handler(
-        _webhook_event(body=body, mock_signature="test"),
-        None,
-    )
-    assert resp["statusCode"] != 501
-    body_json = _parse_body(resp)
-    assert body_json.get("code") != "not_implemented"
 
 
 def test_webhook_enqueue_failure_returns_500(monkeypatch: pytest.MonkeyPatch) -> None:
+    _patch_mock_checkout(monkeypatch)
     enqueue = MagicMock(side_effect=EnqueueError("SQS down"))
-    _patch_mock_webhook(monkeypatch, enqueue=enqueue)
-    body = MockPayTabsAdapter.sample_ipn_bytes(MOCK_IPN_SALE_ACTIVATED)
-
+    monkeypatch.setattr(billing_handler, "_enqueue_domain_events", enqueue)
+    notification = {
+        "type": "PAYMENT",
+        "payload": {
+            "id": "pay-2",
+            "paymentType": "DB",
+            "amount": "50.00",
+            "currency": "JOD",
+            "merchantTransactionId": _CART_V2,
+            "result": {"code": "000.000.000"},
+        },
+    }
+    body_hex, iv_hex, tag_hex = _encrypt_notification(notification)
     resp = billing_handler.lambda_handler(
-        _webhook_event(body=body, mock_signature="test"),
+        _hyperpay_webhook_event(body_hex=body_hex, iv_hex=iv_hex, tag_hex=tag_hex),
         None,
     )
     assert resp["statusCode"] == 500
     assert _parse_body(resp)["code"] == "enqueue_failed"
-
-
-def test_webhook_sale_missing_tran_ref_returns_400(monkeypatch: pytest.MonkeyPatch) -> None:
-    _patch_mock_webhook(monkeypatch)
-    body = MockPayTabsAdapter.sample_ipn_bytes(
-        {
-            "tran_type": "Sale",
-            "payment_result": "A",
-            "cart_id": f"v1|dev|mock-user-sub|{_PLAN_ID}",
-            "transaction_time": "2026-05-18T12:00:00Z",
-        }
-    )
-    resp = billing_handler.lambda_handler(
-        _webhook_event(body=body, mock_signature="test"),
-        None,
-    )
-    assert resp["statusCode"] == 400
-    assert _parse_body(resp)["code"] == "invalid_cart_metadata"
-
-
-def test_webhook_invalid_cart_metadata_returns_400(monkeypatch: pytest.MonkeyPatch) -> None:
-    _patch_mock_webhook(monkeypatch)
-    body = MockPayTabsAdapter.sample_ipn_bytes(
-        {
-            "tran_ref": "MOCK-BAD",
-            "tran_type": "Sale",
-            "payment_result": "A",
-            "cart_id": "bad-metadata",
-        }
-    )
-    resp = billing_handler.lambda_handler(
-        _webhook_event(body=body, mock_signature="test"),
-        None,
-    )
-    assert resp["statusCode"] == 400
-    assert _parse_body(resp)["code"] == "invalid_cart_metadata"
-
-
-def test_webhook_environment_mismatch_returns_400(monkeypatch: pytest.MonkeyPatch) -> None:
-    _patch_mock_webhook(monkeypatch)
-    payload = dict(MOCK_IPN_SALE_ACTIVATED)
-    payload["cart_id"] = f"v1|prod|mock-user-sub|{_PLAN_ID}"
-    body = MockPayTabsAdapter.sample_ipn_bytes(payload)
-
-    resp = billing_handler.lambda_handler(
-        _webhook_event(body=body, mock_signature="test"),
-        None,
-    )
-    assert resp["statusCode"] == 400
-    assert _parse_body(resp)["code"] == "environment_mismatch"
-
-
-def test_webhook_paytabs_invalid_signature_401(monkeypatch: pytest.MonkeyPatch) -> None:
-    adapter = PayTabsAdapter(
-        server_key="server-key",
-        profile_id="profile",
-        api_domain="secure-jordan.paytabs.com",
-        deployment_environment="dev",
-    )
-    monkeypatch.setattr(billing_handler, "_get_payment_provider", lambda _cfg: adapter)
-    monkeypatch.setattr(
-        billing_handler,
-        "_load_config",
-        lambda: _edge_config(
-            payment_provider="paytabs",
-            paytabs_use_mock=False,
-            paytabs_server_key="server-key",
-            paytabs_profile_id="profile",
-            paytabs_api_domain="secure-jordan.paytabs.com",
-        ),
-    )
-    monkeypatch.setattr(billing_handler, "_enqueue_domain_events", MagicMock())
-
-    resp = billing_handler.lambda_handler(
-        _webhook_event(body=b'{"x":1}', signature="bad-signature"),
-        None,
-    )
-    assert resp["statusCode"] == 401
-    assert _parse_body(resp)["code"] == "invalid_signature"
-
-
-def test_webhook_paytabs_valid_signature_returns_200_not_501(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    server_key = "server-key"
-    raw = json.dumps(
-        {
-            "tran_ref": "TST1",
-            "tran_type": "Sale",
-            "payment_result": "A",
-            "cart_id": f"v1|dev|student-sub-1|{_PLAN_ID}",
-            "transaction_time": "2026-05-18T12:00:00Z",
-        }
-    ).encode("utf-8")
-    sig = hmac.new(server_key.encode("utf-8"), raw, hashlib.sha256).hexdigest()
-    adapter = PayTabsAdapter(
-        server_key=server_key,
-        profile_id="profile",
-        api_domain="secure-jordan.paytabs.com",
-        deployment_environment="dev",
-    )
-    enqueue = MagicMock()
-    monkeypatch.setattr(billing_handler, "_get_payment_provider", lambda _cfg: adapter)
-    monkeypatch.setattr(
-        billing_handler,
-        "_load_config",
-        lambda: _edge_config(
-            payment_provider="paytabs",
-            paytabs_use_mock=False,
-            paytabs_server_key=server_key,
-            paytabs_profile_id="profile",
-            paytabs_api_domain="secure-jordan.paytabs.com",
-        ),
-    )
-    monkeypatch.setattr(billing_handler, "_enqueue_domain_events", enqueue)
-
-    resp = billing_handler.lambda_handler(_webhook_event(body=raw, signature=sig), None)
-    assert resp["statusCode"] == 200
-    assert _parse_body(resp)["status"] == "ok"
-    enqueue.assert_called_once()
