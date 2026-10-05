@@ -28,22 +28,24 @@ def _load_module(name: str, filename: str) -> ModuleType:
     return mod
 
 
-def test_decrypt_uses_kms_encryption_context() -> None:
+def test_decrypt_uses_encryption_sdk_with_pool_kms_key(monkeypatch: pytest.MonkeyPatch) -> None:
     decrypt = _load_module("ces_decrypt", "decrypt.py")
-    kms = MagicMock()
-    kms.decrypt.return_value = {"Plaintext": b"123456"}
+    monkeypatch.setenv("KMS_KEY_ARN", "arn:aws:kms:eu-west-1:111:key/abc")
+
+    client = MagicMock()
+    client.decrypt.return_value = (b"123456", object())
+
     event = {
         "userPoolId": "pool-1",
         "triggerSource": "CustomEmailSender_SignUp",
         "callerContext": {"clientId": "client-1"},
         "request": {"code": "YWFh", "userAttributes": {"email": "u@example.com"}},
     }
-    code = decrypt.decrypt_verification_code(event, kms_client=kms)
+    code = decrypt.decrypt_verification_code(event, encryption_client=client, key_arn="arn:aws:kms:eu-west-1:111:key/abc")
     assert code == "123456"
-    ctx = kms.decrypt.call_args.kwargs["EncryptionContext"]
-    assert ctx["userpool-id"] == "pool-1"
-    assert ctx["client-id"] == "client-1"
-    assert ctx["trigger-source"] == "CustomEmailSender_SignUp"
+    client.decrypt.assert_called_once()
+    call_kwargs = client.decrypt.call_args.kwargs
+    assert call_kwargs["source"] == b"aaa"
 
 
 def test_handler_sends_forgot_password_via_smtp() -> None:

@@ -442,6 +442,7 @@ jobs:
           PKG="$STAGE/pkg"
           mkdir -p "$PKG"
           WS="${{ github.workspace }}/infrastructure/lambda/cognito_custom_email_sender"
+          python -m pip install -r "$WS/requirements.txt" -t "$PKG" --upgrade --no-cache-dir
           cp "$WS"/*.py "$PKG/"
           (cd "$PKG" && zip -rq "$STAGE/bundle.zip" .)
           aws s3 cp "$STAGE/bundle.zip" "s3://${BUCKET}/${KEY}" --region "$REGION"

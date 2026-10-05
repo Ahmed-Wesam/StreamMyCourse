@@ -1,1 +1,1 @@
-# Runtime: boto3 + smtplib (stdlib) only; provided by Lambda.
+aws-encryption-sdk>=4.0,<5

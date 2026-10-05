@@ -374,6 +374,7 @@ Resources:
       Environment:
         Variables:
           ZOHO_SMTP_SECRET_ARN: !Ref ZohoSmtpSecretArn
+          KMS_KEY_ARN: !GetAtt CognitoCustomEmailKmsKey.Arn
       Code:
         S3Bucket: !Ref CognitoCustomEmailSenderCodeS3Bucket
         S3Key: !Ref CognitoCustomEmailSenderCodeS3Key

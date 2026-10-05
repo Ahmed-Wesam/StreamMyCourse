@@ -621,6 +621,7 @@ package_cognito_custom_email_sender_lambda() {
   pkg="${stage}/pkg"
   mkdir -p "$pkg"
   ws="${ROOT}/infrastructure/lambda/cognito_custom_email_sender"
+  python -m pip install -r "$ws/requirements.txt" -t "$pkg" --upgrade --no-cache-dir
   cp "$ws"/*.py "$pkg/"
   (cd "$pkg" && zip -rq "${stage}/bundle.zip" .)
   if ! aws s3api head-bucket --bucket "$bucket" --region "$REGION_EU" 2>/dev/null; then
