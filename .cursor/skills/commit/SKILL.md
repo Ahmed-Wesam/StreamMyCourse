@@ -197,6 +197,8 @@ For each logical group:
    git commit -m "<type>(<scope>): <description>"
    ```
 
+   Do not add `Co-authored-by: Cursor`, `Made-with: Cursor`, or any other Cursor agent attribution. The commit author is the human git identity only. A local `commit-msg` hook strips that trailer if the IDE still injects it.
+
 ### Step 5: Update docs (`/update-docs`)
 
 After the code/infra commits above, keep the project index docs aligned with what shipped in **this session**. Full procedure: [`.cursor/skills/update-docs/SKILL.md`](../update-docs/SKILL.md).
