@@ -1,9 +1,10 @@
-import React from 'react'
+import React, { lazy, Suspense } from 'react'
 import ReactDOM from 'react-dom/client'
 import { BrowserRouter } from 'react-router-dom'
-import StudentApp from './student-app/App'
 import './style.css'
 import './styles/prototype-base.css'
+
+const StudentApp = lazy(() => import('./student-app/App'))
 
 void import('./lib/install-session-superseded-rejection-handler').then(
   ({ installSessionSupersededRejectionHandler }) => {
@@ -14,7 +15,9 @@ void import('./lib/install-session-superseded-rejection-handler').then(
 ReactDOM.createRoot(document.getElementById('app')!).render(
   <React.StrictMode>
     <BrowserRouter>
-      <StudentApp />
+      <Suspense fallback={null}>
+        <StudentApp />
+      </Suspense>
     </BrowserRouter>
   </React.StrictMode>,
 )

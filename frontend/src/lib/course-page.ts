@@ -3,18 +3,18 @@ export type CoursePageTextCard = {
   body?: string
 }
 
-export type CoursePageListSection = {
+type CoursePageListSection = {
   heading?: string
   lead?: string
   items?: string[]
 }
 
-export type CoursePageProblemSection = CoursePageListSection & {
+type CoursePageProblemSection = CoursePageListSection & {
   calloutTitle?: string
   calloutBody?: string
 }
 
-export type CoursePageHandsOnSection = {
+type CoursePageHandsOnSection = {
   heading?: string
   lead?: string
   cards?: CoursePageTextCard[]

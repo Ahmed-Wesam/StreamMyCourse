@@ -240,18 +240,6 @@ function LessonItem({
   )
 }
 
-export function VideoSkeleton({ edgeToEdge = false }: { edgeToEdge?: boolean }) {
-  return (
-    <div
-      className={`flex aspect-video animate-pulse items-center justify-center overflow-hidden bg-gradient-to-br from-slate-900 to-slate-800 ${
-        edgeToEdge ? '' : 'rounded-xl shadow-sm'
-      }`}
-    >
-      <div className="h-12 w-12 rounded-full bg-slate-700/60" />
-    </div>
-  )
-}
-
 function ModuleQuizItem({
   courseId,
   module,

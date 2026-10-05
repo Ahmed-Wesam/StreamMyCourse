@@ -65,7 +65,7 @@ export function IconPeople({ strokeWidth = 2 }: StrokeIconProps) {
   )
 }
 
-export function IconClipboard({ strokeWidth = 1.9 }: StrokeIconProps) {
+function IconClipboard({ strokeWidth = 1.9 }: StrokeIconProps) {
   return (
     <StrokeIcon strokeWidth={strokeWidth}>
       <path d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2" />
@@ -74,7 +74,7 @@ export function IconClipboard({ strokeWidth = 1.9 }: StrokeIconProps) {
   )
 }
 
-export function IconBars({ strokeWidth = 1.9 }: StrokeIconProps) {
+function IconBars({ strokeWidth = 1.9 }: StrokeIconProps) {
   return (
     <StrokeIcon strokeWidth={strokeWidth}>
       <path d="M3 3v18h18" />
@@ -85,7 +85,7 @@ export function IconBars({ strokeWidth = 1.9 }: StrokeIconProps) {
   )
 }
 
-export function IconPen({ strokeWidth = 1.9 }: StrokeIconProps) {
+function IconPen({ strokeWidth = 1.9 }: StrokeIconProps) {
   return (
     <StrokeIcon strokeWidth={strokeWidth}>
       <path d="M12 20h9" />
@@ -94,7 +94,7 @@ export function IconPen({ strokeWidth = 1.9 }: StrokeIconProps) {
   )
 }
 
-export function IconSearch({ strokeWidth = 1.9 }: StrokeIconProps) {
+function IconSearch({ strokeWidth = 1.9 }: StrokeIconProps) {
   return (
     <StrokeIcon strokeWidth={strokeWidth}>
       <circle cx="11" cy="11" r="7" />

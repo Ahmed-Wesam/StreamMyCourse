@@ -26,5 +26,3 @@ export const RESEARCH_INTEREST_TOGGLES = [
     detail: 'Registry data, cohort studies, and administrative datasets.',
   },
 ] as const
-
-export type ResearchInterestTagKey = (typeof RESEARCH_INTEREST_TOGGLES)[number]['key']

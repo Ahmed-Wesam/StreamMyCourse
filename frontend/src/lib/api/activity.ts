@@ -5,12 +5,6 @@
 
 import { httpGet } from './client'
 
-export type LearningActivityKind =
-  | 'lesson_completion'
-  | 'quiz_attempt'
-  | 'assignment_submission'
-  | 'certificate'
-
 export type LearningActivityItem = {
   kind: string
   at: string
@@ -19,7 +13,7 @@ export type LearningActivityItem = {
   resourceId: string
 }
 
-export type LearningActivity = {
+type LearningActivity = {
   streakDays: number
   items: LearningActivityItem[]
 }
