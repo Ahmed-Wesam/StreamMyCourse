@@ -1,18 +1,22 @@
-import React from 'react'
+import React, { lazy, Suspense } from 'react'
 import ReactDOM from 'react-dom/client'
 import { AuthenticatorProvider } from '@aws-amplify/ui-react-core'
 import { BrowserRouter } from 'react-router-dom'
-import TeacherApp from './teacher-app/App'
+
 import { configureAmplify } from './lib/auth'
 import './style.css'
 
 configureAmplify()
 
+const TeacherApp = lazy(() => import('./teacher-app/App'))
+
 ReactDOM.createRoot(document.getElementById('app')!).render(
   <React.StrictMode>
     <AuthenticatorProvider>
       <BrowserRouter>
-        <TeacherApp />
+        <Suspense fallback={null}>
+          <TeacherApp />
+        </Suspense>
       </BrowserRouter>
     </AuthenticatorProvider>
   </React.StrictMode>,
