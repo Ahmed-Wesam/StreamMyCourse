@@ -104,7 +104,7 @@ export function keepDefaultAuthStorage(): void {
 
 /** Select storage from the persisted flag before Amplify reads tokens. */
 function applyPersistedAuthStorage(): void {
-  let flag: string | null = null
+  let flag: string | null
   try {
     flag = localStorage.getItem(AUTH_REMEMBER_ME_FLAG)
   } catch {
