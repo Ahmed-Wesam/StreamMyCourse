@@ -9,7 +9,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const signUpMock = vi.hoisted(() => vi.fn())
 const useAuthenticatorMock = vi.hoisted(() => vi.fn())
-const beginStudentGoogleSignInMock = vi.hoisted(() => vi.fn())
+const beginStudentGoogleSignInFromRegisterMock = vi.hoisted(() => vi.fn())
 
 vi.mock('aws-amplify/auth', () => ({
   signUp: (...args: unknown[]) => signUpMock(...args),
@@ -20,7 +20,8 @@ vi.mock('../lib/auth-ui', () => ({
 }))
 
 vi.mock('../lib/student-google-sign-in', () => ({
-  beginStudentGoogleSignIn: (...args: unknown[]) => beginStudentGoogleSignInMock(...args),
+  beginStudentGoogleSignInFromRegister: (...args: unknown[]) =>
+    beginStudentGoogleSignInFromRegisterMock(...args),
 }))
 
 const navigateMock = vi.hoisted(() => vi.fn())
@@ -56,7 +57,7 @@ describe('StudentRegisterPage', () => {
   beforeEach(() => {
     sessionStorage.clear()
     signUpMock.mockReset()
-    beginStudentGoogleSignInMock.mockReset()
+    beginStudentGoogleSignInFromRegisterMock.mockReset()
     navigateMock.mockReset()
     useAuthenticatorMock.mockReturnValue({ authStatus: 'unauthenticated' })
     vi.stubEnv('VITE_COGNITO_USER_POOL_ID', 'pool')
@@ -130,7 +131,7 @@ describe('StudentRegisterPage', () => {
     fireEvent.click(screen.getByRole('checkbox', { name: /terms & conditions/i }))
     fireEvent.click(screen.getByRole('checkbox', { name: /privacy policy/i }))
     fireEvent.click(screen.getByTestId('register-google'))
-    expect(beginStudentGoogleSignInMock).toHaveBeenCalledWith(true, true)
+    expect(beginStudentGoogleSignInFromRegisterMock).toHaveBeenCalledWith(true, true)
     const draft = JSON.parse(sessionStorage.getItem(REGISTER_PROFILE_DRAFT_KEY) ?? '{}')
     expect(draft.country).toBe('Jordan')
     expect(draft.profession).toBe('Researcher')

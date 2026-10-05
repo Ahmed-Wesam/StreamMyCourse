@@ -39,16 +39,6 @@ export function isStudentIdleProbePath(pathname: string): boolean {
   )
 }
 
-/** Routes where missing terms acceptance must not force redirect to account. */
-export function isStudentTermsGateExemptPath(pathname: string): boolean {
-  const path = normalizeStudentPath(pathname)
-  // Public marketing/catalog/legal surfaces (same as idle-probe paths).
-  if (isStudentIdleProbePath(path)) return true
-  if (path.startsWith('/account') || path === '/settings') return true
-  if (AUTH_SELF_SERVICE.test(path)) return true
-  return false
-}
-
 /**
  * Whether the current route should run auth bootstrap (session restore / OAuth callback).
  */

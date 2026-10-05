@@ -129,7 +129,7 @@ export default function VerifyEmailPage() {
   }
 
   if (done) {
-    return <Navigate to="/account/profile" replace />
+    return <Navigate to="/dashboard" replace />
   }
 
   async function onSubmit(e: FormEvent) {

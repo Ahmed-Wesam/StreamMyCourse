@@ -8,6 +8,7 @@ import { AuthenticatorProvider } from '@aws-amplify/ui-react-core'
 import { MemoryRouter } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
+import { GOOGLE_OAUTH_TERMS_ACK_KEY } from '../../lib/google-oauth-terms'
 import { POST_LOGIN_RETURN_TO_KEY } from '../../lib/post-login-return'
 import { GOOGLE_SIGN_IN_LABEL, SignIn } from './SignIn'
 
@@ -90,18 +91,18 @@ describe('SignIn', () => {
     expect(screen.queryByRole('link', { name: /forgot password/i })).toBeNull()
   })
 
-  it('calls signInWithRedirect with Google provider when terms are accepted', async () => {
+  it('calls signInWithRedirect with Google provider without terms checkboxes', async () => {
     render(<SignIn variant="student" />, { wrapper: TestRoot })
 
     const button = await waitFor(() => screen.getByRole('button', { name: GOOGLE_SIGN_IN_LABEL }))
-    expect((button as HTMLButtonElement).disabled).toBe(true)
+    expect((button as HTMLButtonElement).disabled).toBe(false)
+    expect(screen.queryByRole('checkbox', { name: /terms of service/i })).toBeNull()
 
-    fireEvent.click(screen.getByRole('checkbox', { name: /terms of service/i }))
-    fireEvent.click(screen.getByRole('checkbox', { name: /privacy policy/i }))
     fireEvent.click(button)
 
     expect(authMocks.signInWithRedirect).toHaveBeenCalledTimes(1)
     expect(authMocks.signInWithRedirect).toHaveBeenCalledWith(expect.objectContaining({ provider: 'Google' }))
+    expect(sessionStorage.getItem(GOOGLE_OAUTH_TERMS_ACK_KEY)).toBeNull()
   })
 
   it('persists a safe returnTo path in sessionStorage before redirect', async () => {
@@ -110,8 +111,6 @@ describe('SignIn', () => {
     render(<SignIn variant="student" />, { wrapper: TestRoot })
 
     const button = await waitFor(() => screen.getByRole('button', { name: GOOGLE_SIGN_IN_LABEL }))
-    fireEvent.click(screen.getByRole('checkbox', { name: /terms of service/i }))
-    fireEvent.click(screen.getByRole('checkbox', { name: /privacy policy/i }))
     fireEvent.click(button)
 
     expect(sessionStorage.getItem(POST_LOGIN_RETURN_TO_KEY)).toBe('/courses/abc?tab=lessons#l1')
@@ -124,8 +123,6 @@ describe('SignIn', () => {
     render(<SignIn variant="student" />, { wrapper: TestRoot })
 
     const button = await waitFor(() => screen.getByRole('button', { name: GOOGLE_SIGN_IN_LABEL }))
-    fireEvent.click(screen.getByRole('checkbox', { name: /terms of service/i }))
-    fireEvent.click(screen.getByRole('checkbox', { name: /privacy policy/i }))
     fireEvent.click(button)
 
     expect(sessionStorage.getItem(POST_LOGIN_RETURN_TO_KEY)).toBeNull()

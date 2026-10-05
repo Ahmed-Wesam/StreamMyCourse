@@ -4,8 +4,18 @@ import { keepDefaultAuthStorage } from './auth'
 import { saveGoogleOAuthTermsAck } from './google-oauth-terms'
 import { persistReturnPathBeforeHostedUi } from './post-login-return'
 
-/** Hosted UI Google sign-in for students (requires terms acceptance before redirect). */
-export function beginStudentGoogleSignIn(termsAccepted: boolean, privacyAccepted: boolean): void {
+/** Google sign-in from login (returning users; no pre-redirect terms ack). */
+export function beginStudentGoogleSignInForLogin(): void {
+  keepDefaultAuthStorage()
+  persistReturnPathBeforeHostedUi()
+  void signInWithRedirect({ provider: 'Google' })
+}
+
+/** Google sign-in from register after terms acceptance; persists ack for post-OAuth PATCH. */
+export function beginStudentGoogleSignInFromRegister(
+  termsAccepted: boolean,
+  privacyAccepted: boolean,
+): void {
   if (!termsAccepted || !privacyAccepted) {
     return
   }

@@ -3,7 +3,6 @@ import { Navigate, Route, Routes, useLocation } from 'react-router-dom'
 import { AuthGate } from '../components/auth/AuthGate'
 import { StudentAccountAuth } from '../components/auth/StudentAccountAuth'
 import { StudentDashboardAuth } from '../components/auth/StudentDashboardAuth'
-import { StudentTermsGate } from '../components/auth/StudentTermsGate'
 import { AccountLayout } from '../pages/account/AccountLayout'
 import { StudentHeader } from './StudentHeader'
 const StudentSessionGuard = lazy(() =>
@@ -63,7 +62,6 @@ function StudentApp() {
     <AuthGate>
       <Suspense fallback={null}>
         <StudentSessionGuard>
-        <StudentTermsGate>
         <Layout chromeHeader={<StudentHeader />} footerVariant="prototype">
         <ScrollToTop />
         <Routes>
@@ -344,7 +342,6 @@ function StudentApp() {
         <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </Layout>
-        </StudentTermsGate>
         </StudentSessionGuard>
       </Suspense>
     </AuthGate>

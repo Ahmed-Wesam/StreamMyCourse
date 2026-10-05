@@ -18,7 +18,7 @@ import { isAuthConfigured } from '../lib/auth'
 import { isPasswordPolicyMet } from '../lib/password-policy'
 import { COUNTRIES, PROFESSIONS } from '../lib/profile-options'
 import { saveRegisterProfileDraft } from '../lib/register-profile-draft'
-import { beginStudentGoogleSignIn } from '../lib/student-google-sign-in'
+import { beginStudentGoogleSignInFromRegister } from '../lib/student-google-sign-in'
 import { GOOGLE_SIGN_IN_LABEL } from '../components/auth/SignIn'
 import { usePageTitle } from '../lib/page-title'
 import './StudentRegisterPage.css'
@@ -443,7 +443,7 @@ export default function StudentRegisterPage() {
                         termsAccepted,
                         privacyAccepted,
                       })
-                      beginStudentGoogleSignIn(termsAccepted, privacyAccepted)
+                      beginStudentGoogleSignInFromRegister(termsAccepted, privacyAccepted)
                     }}
                     style={{ width: '100%', justifyContent: 'center', marginTop: 4, opacity: legalAccepted ? 1 : 0.55 }}
                   >

@@ -1,6 +1,6 @@
 import { fetchAuthSession, updatePassword, updateUserAttributes } from 'aws-amplify/auth'
-import { useEffect, useMemo, useState, type FormEvent } from 'react'
-import { Link } from 'react-router-dom'
+import { useEffect, useState, type FormEvent } from 'react'
+import { Link, useSearchParams } from 'react-router-dom'
 
 import { fetchMe, patchUsersMe } from '../../lib/api/session'
 import type { UserProfile } from '../../lib/api/types'
@@ -8,6 +8,7 @@ import { catalogApiUserMessage } from '../../lib/apiUserMessages'
 import { isNativeCognitoPasswordUser } from '../../lib/cognito-native-user'
 import { isPasswordPolicyMet, passwordChecks, type PasswordCheckId } from '../../lib/password-policy'
 import { COUNTRIES, PROFESSIONS } from '../../lib/profile-options'
+import { hasResearchTeamProfileFields } from '../../lib/student-profile-research-team'
 import { usePageTitle } from '../../lib/page-title'
 import { shouldSuppressInlineSessionSupersededMessage } from '../../lib/session-superseded-inline'
 import { IconBell, IconCheck, IconLock, IconUser } from './accountIcons'
@@ -37,6 +38,8 @@ const NOTIFICATION_ROWS = [
 
 export default function AccountProfilePage() {
   usePageTitle('Account')
+  const [searchParams] = useSearchParams()
+  const researchTeamCompletionPrompt = searchParams.get('complete') === 'research-team'
   const [state, setState] = useState<ProfileState>({ status: 'loading' })
   const [givenName, setGivenName] = useState('')
   const [familyName, setFamilyName] = useState('')
@@ -44,8 +47,6 @@ export default function AccountProfilePage() {
   const [profession, setProfession] = useState('')
   const [institution, setInstitution] = useState('')
   const [researchInterests, setResearchInterests] = useState('')
-  const [termsAccepted, setTermsAccepted] = useState(false)
-  const [privacyAccepted, setPrivacyAccepted] = useState(false)
   const [saveMessage, setSaveMessage] = useState<string | null>(null)
   const [saveError, setSaveError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
@@ -69,9 +70,7 @@ export default function AccountProfilePage() {
         setProfession(profile.profession ?? '')
         setInstitution(profile.institution ?? '')
         setResearchInterests(profile.researchInterests ?? '')
-        const { readGoogleOAuthTermsAck } = await import('../../lib/google-oauth-terms')
         const { readRegisterProfileDraft } = await import('../../lib/register-profile-draft')
-        const googleTermsAck = readGoogleOAuthTermsAck()
         const draft = readRegisterProfileDraft()
         const draftOk =
           draft &&
@@ -87,8 +86,6 @@ export default function AccountProfilePage() {
             setResearchInterests(draft.researchInterests.trim())
           }
         }
-        setTermsAccepted(Boolean(profile.termsAcceptedAt?.trim()) || Boolean(googleTermsAck))
-        setPrivacyAccepted(Boolean(profile.privacyAcceptedAt?.trim()) || Boolean(googleTermsAck))
         setState({ status: 'ready', profile })
         const session = await fetchAuthSession()
         const payload = session.tokens?.idToken?.payload as Record<string, unknown> | undefined
@@ -108,10 +105,9 @@ export default function AccountProfilePage() {
     }
   }, [])
 
-  const needsTermsUi = useMemo(() => {
-    if (state.status !== 'ready') return false
-    return !state.profile.termsAcceptedAt?.trim() || !state.profile.privacyAcceptedAt?.trim()
-  }, [state])
+  const showResearchTeamBanner =
+    researchTeamCompletionPrompt ||
+    (state.status === 'ready' && !hasResearchTeamProfileFields(state.profile))
 
   const pwChecks = passwordChecks(newPassword)
 
@@ -122,10 +118,6 @@ export default function AccountProfilePage() {
       setSaveError('Country and profession are required.')
       return
     }
-    if (needsTermsUi && (!termsAccepted || !privacyAccepted)) {
-      setSaveError('Accept the Terms of Service and Privacy Policy to continue.')
-      return
-    }
     setSaveError(null)
     setSaveMessage(null)
     setSaving(true)
@@ -133,11 +125,9 @@ export default function AccountProfilePage() {
     const { readGoogleOAuthTermsAck, clearGoogleOAuthTermsAck } = await import('../../lib/google-oauth-terms')
     const googleAck = readGoogleOAuthTermsAck()
     const termsAt =
-      state.profile.termsAcceptedAt?.trim() ||
-      (termsAccepted ? googleAck?.termsAcceptedAt ?? now : state.profile.termsAcceptedAt?.trim() || now)
+      state.profile.termsAcceptedAt?.trim() || googleAck?.termsAcceptedAt?.trim() || now
     const privacyAt =
-      state.profile.privacyAcceptedAt?.trim() ||
-      (privacyAccepted ? googleAck?.privacyAcceptedAt ?? now : state.profile.privacyAcceptedAt?.trim() || now)
+      state.profile.privacyAcceptedAt?.trim() || googleAck?.privacyAcceptedAt?.trim() || now
     try {
       await updateUserAttributes({
         userAttributes: {
@@ -248,6 +238,29 @@ export default function AccountProfilePage() {
               Profile Information
             </h3>
             <form onSubmit={(ev) => void onSaveProfile(ev)}>
+              {showResearchTeamBanner ? (
+                <div
+                  className="profile-complete-banner"
+                  role="status"
+                  data-testid="profile-research-team-banner"
+                  style={{
+                    marginBottom: 20,
+                    padding: '14px 16px',
+                    borderRadius: 12,
+                    border: '1px solid var(--line-2)',
+                    background: 'var(--sky-2)',
+                    fontSize: 14,
+                    fontWeight: 600,
+                    color: 'var(--body)',
+                  }}
+                >
+                  Add your country and profession below and save your profile to continue your{' '}
+                  <Link to="/research-team/apply" style={{ color: 'var(--blue)', fontWeight: 700 }}>
+                    Research Team application
+                  </Link>
+                  .
+                </div>
+              ) : null}
               <div className="field-grid">
                 <div className="field">
                   <label htmlFor="acct-first-name">First Name</label>
@@ -331,33 +344,6 @@ export default function AccountProfilePage() {
                   .
                 </p>
               </div>
-
-              {needsTermsUi ? (
-                <>
-                  <label className="terms-row">
-                    <input
-                      type="checkbox"
-                      checked={termsAccepted}
-                      onChange={(e) => setTermsAccepted(e.target.checked)}
-                    />
-                    <span>
-                      I agree to the{' '}
-                      <Link to="/terms">Terms of Service</Link>
-                    </span>
-                  </label>
-                  <label className="terms-row">
-                    <input
-                      type="checkbox"
-                      checked={privacyAccepted}
-                      onChange={(e) => setPrivacyAccepted(e.target.checked)}
-                    />
-                    <span>
-                      I agree to the{' '}
-                      <Link to="/privacy">Privacy Policy</Link>
-                    </span>
-                  </label>
-                </>
-              ) : null}
 
               {saveError ? (
                 <p className="save-error" role="alert">

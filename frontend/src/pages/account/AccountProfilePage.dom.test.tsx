@@ -169,20 +169,20 @@ describe('AccountProfilePage', () => {
     expect(screen.queryByRole('heading', { name: /change password/i })).toBeNull()
   })
 
-  it('shows terms checkboxes for Google users missing acceptance timestamps', async () => {
+  it('shows Research Team completion banner when complete=research-team', async () => {
     fetchMeMock.mockResolvedValue({
       ...baseProfile,
-      termsAcceptedAt: '',
-      privacyAcceptedAt: '',
+      country: '',
+      profession: '',
     })
 
     render(
-      <MemoryRouter>
+      <MemoryRouter initialEntries={['/account/profile?complete=research-team']}>
         <AccountProfilePage />
       </MemoryRouter>,
     )
 
-    expect(await screen.findByRole('checkbox', { name: /terms of service/i })).toBeTruthy()
-    expect(screen.getByRole('checkbox', { name: /privacy policy/i })).toBeTruthy()
+    expect(await screen.findByTestId('profile-research-team-banner')).toBeTruthy()
+    expect(screen.getByText(/country and profession/i)).toBeTruthy()
   })
 })

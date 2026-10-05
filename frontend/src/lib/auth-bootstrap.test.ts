@@ -1,10 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import {
-  isStudentIdleProbePath,
-  isStudentTermsGateExemptPath,
-  needsAuthBootstrap,
-} from './auth-bootstrap'
+import { isStudentIdleProbePath, needsAuthBootstrap } from './auth-bootstrap'
 
 describe('isStudentIdleProbePath', () => {
   it('returns true for current public catalog paths', () => {
@@ -153,34 +149,5 @@ describe('needsAuthBootstrap', () => {
     it('returns false for /verify/:credentialId', () => {
       expect(needsAuthBootstrap('/verify/RS-A1B7F3-2026-9C2E10B4D8', '')).toBe(false)
     })
-  })
-})
-
-describe('isStudentTermsGateExemptPath', () => {
-  it('includes auth self-service and idle-probe public paths', () => {
-    expect(isStudentTermsGateExemptPath('/')).toBe(true)
-    expect(isStudentTermsGateExemptPath('/terms')).toBe(true)
-    expect(isStudentTermsGateExemptPath('/register')).toBe(true)
-    expect(isStudentTermsGateExemptPath('/account/profile')).toBe(true)
-    expect(isStudentTermsGateExemptPath('/settings')).toBe(true)
-    expect(isStudentTermsGateExemptPath('/verify-email')).toBe(true)
-    expect(isStudentTermsGateExemptPath('/forgot-password')).toBe(true)
-    expect(isStudentTermsGateExemptPath('/courses')).toBe(true)
-    expect(isStudentTermsGateExemptPath('/courses/')).toBe(true)
-    expect(isStudentTermsGateExemptPath('/about')).toBe(true)
-    expect(isStudentTermsGateExemptPath('/checkout')).toBe(false)
-  })
-
-  it('returns false for student dashboard (RS-9 slice 2)', () => {
-    expect(isStudentTermsGateExemptPath('/dashboard')).toBe(false)
-  })
-
-  it('exempts public certificate verification paths', () => {
-    expect(isStudentTermsGateExemptPath('/verify')).toBe(true)
-    expect(isStudentTermsGateExemptPath('/verify/RS-A1B7F3-2026-9C2E10B4D8')).toBe(true)
-  })
-
-  it('does not exempt /certificates', () => {
-    expect(isStudentTermsGateExemptPath('/certificates')).toBe(false)
   })
 })

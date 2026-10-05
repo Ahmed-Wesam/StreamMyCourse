@@ -465,7 +465,7 @@ let signInError = null
 let studentTermsReady = false
 
 /**
- * StudentTermsGate sends signed-in users without terms acceptance to /account/profile.
+ * Research Team apply redirects to /account/profile when country/profession are missing on the profile.
  * Accept terms once so dashboard (and other gated routes) can load during compare.
  */
 async function ensureStudentTermsAccepted(browserPage) {

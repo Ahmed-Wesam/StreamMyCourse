@@ -38,7 +38,7 @@ function renderAt(email = 'ada@example.com') {
       <MemoryRouter initialEntries={[`/verify-email?email=${encodeURIComponent(email)}`]}>
         <Routes>
           <Route path="/verify-email" element={<VerifyEmailPage />} />
-          <Route path="/account/profile" element={<div>Account profile</div>} />
+          <Route path="/dashboard" element={<div>Student dashboard</div>} />
         </Routes>
       </MemoryRouter>
     </AuthenticatorProvider>,
@@ -98,6 +98,6 @@ describe('VerifyEmailPage', () => {
     for (const key of keys) {
       expect(sessionStorage.getItem(key)?.toLowerCase()).not.toMatch(/password/)
     }
-    await waitFor(() => expect(screen.getByText('Account profile')).toBeTruthy())
+    await waitFor(() => expect(screen.getByText('Student dashboard')).toBeTruthy())
   })
 })

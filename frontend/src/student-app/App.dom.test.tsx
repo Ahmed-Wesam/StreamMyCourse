@@ -72,9 +72,6 @@ vi.mock('../pages/ForgotPasswordPage', () => ({
 vi.mock('../pages/ResetPasswordPage', () => ({
   default: () => <div data-testid="student-page-reset-password" />,
 }))
-vi.mock('../components/auth/StudentTermsGate', () => ({
-  StudentTermsGate: ({ children }: { children?: ReactNode }) => <>{children}</>,
-}))
 vi.mock('../components/auth/StudentLessonAuth', () => ({
   StudentLessonAuth: () => <div data-testid="student-page-lesson" />,
 }))

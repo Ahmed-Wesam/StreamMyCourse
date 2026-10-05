@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, Navigate } from 'react-router-dom'
 
 import { ArrowIcon } from '../components/auth/prototypeAuthParts'
 import { usePageReveal } from '../components/auth/usePageReveal'
@@ -16,6 +16,7 @@ import { fetchMe } from '../lib/api/session'
 import { catalogApiUserMessage } from '../lib/apiUserMessages'
 import { usePageTitle } from '../lib/page-title'
 import { COUNTRIES } from '../lib/profile-options'
+import { hasResearchTeamProfileFields } from '../lib/student-profile-research-team'
 import './ApplyResearchTeamPage.css'
 
 function submitErrorMessage(err: unknown): string {
@@ -81,6 +82,7 @@ export default function ApplyResearchTeamPage() {
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState(false)
   const [profileLoading, setProfileLoading] = useState(true)
+  const [needsProfileForApply, setNeedsProfileForApply] = useState(false)
 
   useEffect(() => {
     let cancelled = false
@@ -88,6 +90,10 @@ export default function ApplyResearchTeamPage() {
       try {
         const profile = await fetchMe()
         if (cancelled) return
+        if (!hasResearchTeamProfileFields(profile)) {
+          setNeedsProfileForApply(true)
+          return
+        }
         const given = (profile.givenName ?? '').trim()
         const family = (profile.familyName ?? '').trim()
         const name = [given, family].filter(Boolean).join(' ')
@@ -170,6 +176,10 @@ export default function ApplyResearchTeamPage() {
     } finally {
       setSubmitting(false)
     }
+  }
+
+  if (needsProfileForApply) {
+    return <Navigate to="/account/profile?complete=research-team" replace />
   }
 
   return (

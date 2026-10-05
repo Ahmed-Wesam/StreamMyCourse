@@ -6,6 +6,18 @@
 
 ---
 
+## 2026-10-05 — Student auth UX: sign-in without terms gate; RT apply profile prompt
+
+### What landed
+
+- [x] **Sign-in** — Removed terms/privacy checkboxes from login; Google from login no longer writes `rs_google_oauth_terms_ack`. Register still requires legal checkboxes and uses `beginStudentGoogleSignInFromRegister`.
+- [x] **No global profile gate** — Removed `StudentTermsGate` wrapper from the student app; dashboard, checkout, and lessons are not blocked on missing profile timestamps or country/profession.
+- [x] **Research Team apply** — [`ApplyResearchTeamPage`](frontend/src/pages/ApplyResearchTeamPage.tsx) redirects to [`/account/profile?complete=research-team`](frontend/src/pages/account/AccountProfilePage.tsx) when saved profile lacks country or profession; profile shows a completion banner with link back to apply.
+- [x] **Verify email** — Success navigates to `/dashboard` after register draft PATCH.
+- [x] **Docs** — [`design.md`](design.md) RS-6 student sign-in bullet updated.
+
+---
+
 ## 2026-10-04 — RS-16 prototype shell, public pages, and prod course seed
 
 Partial port. Course detail, auth pages, signed-in pages, migration 023, and the RS-7 editor removal are not in this change.

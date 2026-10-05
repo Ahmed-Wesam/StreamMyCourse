@@ -2,7 +2,7 @@
  * @vitest-environment jsdom
  */
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
-import { MemoryRouter } from 'react-router-dom'
+import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const getMyResearchTeam = vi.fn()
@@ -96,6 +96,32 @@ describe('ApplyResearchTeamPage', () => {
 
   afterEach(() => {
     cleanup()
+  })
+
+  it('redirects to profile when country and profession are missing on the saved profile', async () => {
+    fetchMe.mockResolvedValue({
+      userId: 'u1',
+      email: 'ada@example.com',
+      role: 'student',
+      cognitoSub: 'sub',
+      createdAt: '',
+      updatedAt: '',
+      givenName: 'Ada',
+      familyName: 'Lovelace',
+      country: '',
+      profession: '',
+    })
+
+    render(
+      <MemoryRouter initialEntries={['/research-team/apply']}>
+        <Routes>
+          <Route path="/research-team/apply" element={<ApplyResearchTeamPage />} />
+          <Route path="/account/profile" element={<div>Account profile</div>} />
+        </Routes>
+      </MemoryRouter>,
+    )
+
+    expect(await screen.findByText('Account profile')).toBeTruthy()
   })
 
   it('renders the pg-apply-research-team prototype shell', async () => {
