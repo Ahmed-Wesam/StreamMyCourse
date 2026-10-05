@@ -4,7 +4,7 @@ import { Link, useLocation, useNavigate } from 'react-router-dom'
 import logoMark from '../assets/prototype/Logo.jpg'
 import { isStudentIdleProbePath, needsAuthBootstrap } from '../lib/auth-bootstrap'
 import {
-  getProfileDisplayNameOnce,
+  getProfileHeaderIdentityOnce,
   lazySignOut,
   probeSignedIn,
   warmUserProfileOnce,
@@ -64,6 +64,9 @@ const FALLBACK_PROFILE_NAME = 'Student'
 export function StudentHeader() {
   const [signedIn, setSignedIn] = useState(false)
   const [profileName, setProfileName] = useState(FALLBACK_PROFILE_NAME)
+  const [profileEmail, setProfileEmail] = useState<string | undefined>(undefined)
+  const [profileGivenName, setProfileGivenName] = useState<string | undefined>(undefined)
+  const [profileFamilyName, setProfileFamilyName] = useState<string | undefined>(undefined)
   const [mobileOpen, setMobileOpen] = useState(false)
   const [scrolled, setScrolled] = useState(false)
   const burgerRef = useRef<HTMLButtonElement>(null)
@@ -88,6 +91,9 @@ export function StudentHeader() {
         profileRequestRef.current += 1
         setSignedIn(false)
         setProfileName(FALLBACK_PROFILE_NAME)
+        setProfileEmail(undefined)
+        setProfileGivenName(undefined)
+        setProfileFamilyName(undefined)
       }
       return
     }
@@ -98,13 +104,26 @@ export function StudentHeader() {
       if (ok) {
         void warmUserProfileOnce(true)
         const requestId = ++profileRequestRef.current
-        void getProfileDisplayNameOnce().then((name) => {
+        void getProfileHeaderIdentityOnce().then((identity) => {
           if (cancelled() || requestId !== profileRequestRef.current) return
-          setProfileName(name?.trim() || FALLBACK_PROFILE_NAME)
+          if (!identity) {
+            setProfileName(FALLBACK_PROFILE_NAME)
+            setProfileEmail(undefined)
+            setProfileGivenName(undefined)
+            setProfileFamilyName(undefined)
+            return
+          }
+          setProfileName(identity.name.trim() || FALLBACK_PROFILE_NAME)
+          setProfileEmail(identity.email || undefined)
+          setProfileGivenName(identity.givenName || undefined)
+          setProfileFamilyName(identity.familyName || undefined)
         })
       } else {
         profileRequestRef.current += 1
         setProfileName(FALLBACK_PROFILE_NAME)
+        setProfileEmail(undefined)
+        setProfileGivenName(undefined)
+        setProfileFamilyName(undefined)
       }
     }
   }, [])
@@ -242,6 +261,9 @@ export function StudentHeader() {
           <ProfileMenu
             chrome="prototype"
             name={profileName}
+            email={profileEmail}
+            givenName={profileGivenName}
+            familyName={profileFamilyName}
             subtitle="Student"
             items={[
               { href: '/account/profile', label: 'Account' },

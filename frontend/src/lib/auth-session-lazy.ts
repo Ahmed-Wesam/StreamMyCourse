@@ -10,6 +10,15 @@ let profileWarmDone = false
 let amplifyConfigured = false
 /** Successful label only. Failures stay uncached so the next probe can retry. */
 let cachedProfileDisplayName: string | undefined
+
+export type ProfileHeaderIdentity = {
+  name: string
+  email: string
+  givenName: string
+  familyName: string
+}
+
+let cachedProfileIdentity: ProfileHeaderIdentity | undefined
 /** Bumped on sign-out so an in-flight lookup cannot repopulate the cache. */
 let profileNameEpoch = 0
 
@@ -18,6 +27,7 @@ export function resetProfileWarmState(): void {
   profileWarmDone = false
   amplifyConfigured = false
   cachedProfileDisplayName = undefined
+  cachedProfileIdentity = undefined
   profileNameEpoch += 1
 }
 
@@ -72,12 +82,11 @@ export async function warmUserProfileOnce(alreadySignedIn = false): Promise<void
 }
 
 /**
- * Resolve a short profile label for chrome (ProfileMenu). Uses /users/me email plus
- * ID-token claims via cognito-display-name (dynamic import only). Cached until reset.
+ * Header chrome: display label plus fields for avatar initials. Cached until reset.
  */
-export async function getProfileDisplayNameOnce(): Promise<string | null> {
+export async function getProfileHeaderIdentityOnce(): Promise<ProfileHeaderIdentity | null> {
   if (isStudentSessionSuperseded()) return null
-  if (cachedProfileDisplayName !== undefined) return cachedProfileDisplayName
+  if (cachedProfileIdentity !== undefined) return cachedProfileIdentity
   const epoch = profileNameEpoch
   if (!(await ensureAmplifyConfigured())) return null
   if (epoch !== profileNameEpoch || isStudentSessionSuperseded()) return null
@@ -87,9 +96,13 @@ export async function getProfileDisplayNameOnce(): Promise<string | null> {
       await Promise.all([import('./api/session'), import('./cognito-display-name')])
 
     let email = ''
+    let givenName = ''
+    let familyName = ''
     try {
       const me = await fetchMe()
       email = typeof me.email === 'string' ? me.email.trim() : ''
+      givenName = typeof me.givenName === 'string' ? me.givenName.trim() : ''
+      familyName = typeof me.familyName === 'string' ? me.familyName.trim() : ''
     } catch {
       // Token claims alone may still yield a label.
     }
@@ -102,11 +115,20 @@ export async function getProfileDisplayNameOnce(): Promise<string | null> {
 
     const label = displayNameFromAttributes(attrs, email).trim()
     if (!label || epoch !== profileNameEpoch) return null
+
+    const identity: ProfileHeaderIdentity = { name: label, email, givenName, familyName }
+    cachedProfileIdentity = identity
     cachedProfileDisplayName = label
-    return label
+    return identity
   } catch {
     return null
   }
+}
+
+/** @deprecated Prefer getProfileHeaderIdentityOnce for avatar initials. */
+export async function getProfileDisplayNameOnce(): Promise<string | null> {
+  const identity = await getProfileHeaderIdentityOnce()
+  return identity?.name ?? null
 }
 
 export async function lazySignOut(): Promise<void> {

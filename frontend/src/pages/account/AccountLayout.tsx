@@ -6,6 +6,7 @@ import { listMyCertificates } from '../../lib/api/certificates'
 import { getMyResearchTeam } from '../../lib/api/research-team'
 import { fetchMe } from '../../lib/api/session'
 import type { UserProfile } from '../../lib/api/types'
+import { profileInitials } from '../../lib/profileInitials'
 import { ownedCoursesFromPurchases } from '../../lib/ownedFromPurchases'
 import { usePageReveal } from '../../components/auth/usePageReveal'
 import {
@@ -24,18 +25,6 @@ type LayoutSummary = {
   certificatesCount: number
   learningHours: number
   teamProgressPercent: number
-}
-
-function avatarMark(givenName: string | null | undefined, familyName: string | null | undefined): string {
-  const parts = [givenName, familyName]
-    .map((part) => part?.trim())
-    .filter((part): part is string => Boolean(part))
-  if (parts.length === 0) return '?'
-  return parts
-    .map((part) => part.charAt(0))
-    .slice(0, 2)
-    .join('')
-    .toUpperCase()
 }
 
 function displayName(profile: UserProfile | null): string {
@@ -140,7 +129,12 @@ export function AccountLayout() {
             </div>
             <div className="acct-hero-card reveal" data-d="2">
               <div className="avatar-xl acct-avatar-text" aria-hidden>
-                {avatarMark(profile?.givenName, profile?.familyName)}
+                {profileInitials({
+                  givenName: profile?.givenName,
+                  familyName: profile?.familyName,
+                  email: profile?.email,
+                  displayName: displayName(profile),
+                })}
               </div>
               <b className="acct-fullname">{displayName(profile)}</b>
               <span className="acct-role">Research Spectrum</span>

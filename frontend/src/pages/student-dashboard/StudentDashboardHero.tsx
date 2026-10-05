@@ -1,5 +1,6 @@
 import { Link } from 'react-router-dom'
 
+import { profileInitials } from '../../lib/profileInitials'
 import { IconArrow } from './dashboardIcons'
 
 const OWNED_SUBTITLE =
@@ -10,6 +11,7 @@ const EMPTY_SUBTITLE =
 type StudentDashboardHeroProps = {
   givenName: string | null
   familyName: string | null
+  email?: string | null
   showBrowse: boolean
 }
 
@@ -19,24 +21,15 @@ function welcomeLabel(givenName: string | null): string {
   return `Welcome back, ${first.charAt(0).toUpperCase()}${first.slice(1)}`
 }
 
-function avatarMark(givenName: string | null, familyName: string | null): string {
-  const parts = [givenName, familyName]
-    .map((part) => part?.trim())
-    .filter((part): part is string => Boolean(part))
-  if (parts.length === 0) return '?'
-  return parts
-    .map((part) => part.charAt(0))
-    .slice(0, 2)
-    .join('')
-    .toUpperCase()
-}
-
-export function StudentDashboardHero({ givenName, familyName, showBrowse }: StudentDashboardHeroProps) {
+export function StudentDashboardHero({ givenName, familyName, email, showBrowse }: StudentDashboardHeroProps) {
   return (
     <section className="dash-hero">
       <div className="wrap">
         <span className="dash-hi reveal">
-          <span className="avatar">{avatarMark(givenName, familyName)}</span> {welcomeLabel(givenName)}
+          <span className="avatar">
+            {profileInitials({ givenName, familyName, email })}
+          </span>{' '}
+          {welcomeLabel(givenName)}
         </span>
         <h1 className="reveal" data-d="1">
           Student Dashboard

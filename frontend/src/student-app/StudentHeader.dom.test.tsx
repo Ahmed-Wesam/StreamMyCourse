@@ -23,7 +23,7 @@ const amplifyAuth = vi.hoisted(() => ({
 const sessionLazy = vi.hoisted(() => ({
   probeSignedIn: vi.fn(),
   warmUserProfileOnce: vi.fn(),
-  getProfileDisplayNameOnce: vi.fn(),
+  getProfileHeaderIdentityOnce: vi.fn(),
   lazySignOut: vi.fn(),
 }))
 
@@ -51,7 +51,7 @@ vi.mock('../lib/auth-session-lazy', async (importOriginal) => {
     ...mod,
     probeSignedIn: (...args: unknown[]) => sessionLazy.probeSignedIn(...args),
     warmUserProfileOnce: (...args: unknown[]) => sessionLazy.warmUserProfileOnce(...args),
-    getProfileDisplayNameOnce: (...args: unknown[]) => sessionLazy.getProfileDisplayNameOnce(...args),
+    getProfileHeaderIdentityOnce: (...args: unknown[]) => sessionLazy.getProfileHeaderIdentityOnce(...args),
     lazySignOut: (...args: unknown[]) => sessionLazy.lazySignOut(...args),
   }
 })
@@ -102,8 +102,8 @@ describe('StudentHeader', () => {
     sessionLazy.probeSignedIn.mockReset()
     sessionLazy.warmUserProfileOnce.mockReset()
     sessionLazy.warmUserProfileOnce.mockResolvedValue(undefined)
-    sessionLazy.getProfileDisplayNameOnce.mockReset()
-    sessionLazy.getProfileDisplayNameOnce.mockResolvedValue(null)
+    sessionLazy.getProfileHeaderIdentityOnce.mockReset()
+    sessionLazy.getProfileHeaderIdentityOnce.mockResolvedValue(null)
     sessionLazy.lazySignOut.mockReset()
     sessionLazy.lazySignOut.mockResolvedValue(undefined)
     amplifyAuth.signOut.mockReset()
@@ -178,19 +178,25 @@ describe('StudentHeader', () => {
     auth.isAuthConfigured.mockReturnValue(true)
     sessionLazy.probeSignedIn.mockResolvedValue(true)
 
-    let resolveFirst: (value: string | null) => void = () => {}
+    let resolveFirst: (value: { name: string; email: string; givenName: string; familyName: string } | null) => void =
+      () => {}
     let markStarted: () => void = () => {}
     const firstStarted = new Promise<void>((resolve) => {
       markStarted = resolve
     })
-    sessionLazy.getProfileDisplayNameOnce.mockImplementationOnce(
+    sessionLazy.getProfileHeaderIdentityOnce.mockImplementationOnce(
       () =>
         new Promise((resolve) => {
           resolveFirst = resolve
           markStarted()
         }),
     )
-    sessionLazy.getProfileDisplayNameOnce.mockResolvedValue('Bob')
+    sessionLazy.getProfileHeaderIdentityOnce.mockResolvedValue({
+      name: 'Bob',
+      email: '',
+      givenName: 'Bob',
+      familyName: '',
+    })
 
     function GoAccount() {
       const navigate = useNavigate()
@@ -220,7 +226,7 @@ describe('StudentHeader', () => {
   it('shows ProfileMenu Account and Logout when signed in; Logout calls lazySignOut and navigates home', async () => {
     auth.isAuthConfigured.mockReturnValue(true)
     sessionLazy.probeSignedIn.mockResolvedValue(true)
-    sessionLazy.getProfileDisplayNameOnce.mockResolvedValue(null)
+    sessionLazy.getProfileHeaderIdentityOnce.mockResolvedValue(null)
 
     localStorage.setItem('t', '1')
     document.cookie = 'a=b'
@@ -402,7 +408,7 @@ describe('StudentHeader', () => {
       expect(within(menu).getByRole('menuitem', { name: 'Logout' })).toBeTruthy()
       expect(api.hasSignedInIdToken).not.toHaveBeenCalled()
       await waitFor(() => expect(sessionLazy.warmUserProfileOnce).toHaveBeenCalledWith(true))
-      await waitFor(() => expect(sessionLazy.getProfileDisplayNameOnce).toHaveBeenCalled())
+      await waitFor(() => expect(sessionLazy.getProfileHeaderIdentityOnce).toHaveBeenCalled())
     })
 
     it('updates to ProfileMenu when Hub fires signedIn', async () => {

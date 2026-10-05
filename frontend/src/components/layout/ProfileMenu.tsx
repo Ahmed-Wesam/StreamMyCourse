@@ -2,27 +2,23 @@ import { ChevronDown } from 'lucide-react'
 import { useEffect, useId, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 
+import { profileInitials } from '../../lib/profileInitials'
+
 type ProfileMenuItem =
   | { href: string; label: string }
   | { label: string; onSelect: () => void }
 
 type ProfileMenuProps = {
   name: string
+  /** Used for avatar letters when pool/RDS names are missing (e.g. email → AH). */
+  email?: string
+  givenName?: string | null
+  familyName?: string | null
   /** e.g. "Student" or "Instructor" */
   subtitle?: string
   items: ProfileMenuItem[]
   /** Student header uses the prototype dropdown. Omit for the teacher shell. */
   chrome?: 'prototype'
-}
-
-function initialsFromName(name: string): string {
-  const parts = name.trim().split(/\s+/).filter(Boolean)
-  if (parts.length === 0) return '?'
-  return parts
-    .slice(0, 2)
-    .map((p) => p.charAt(0))
-    .join('')
-    .toUpperCase()
 }
 
 function prototypeFirstName(name: string): string {
@@ -38,12 +34,12 @@ function cx(...parts: Array<string | undefined | false>) {
   return parts.filter(Boolean).join(' ')
 }
 
-export function ProfileMenu({ name, subtitle, items, chrome }: ProfileMenuProps) {
+export function ProfileMenu({ name, email, givenName, familyName, subtitle, items, chrome }: ProfileMenuProps) {
   const [open, setOpen] = useState(false)
   const rootRef = useRef<HTMLDivElement>(null)
   const triggerRef = useRef<HTMLButtonElement>(null)
   const menuId = useId()
-  const initials = initialsFromName(name)
+  const initials = profileInitials({ givenName, familyName, email, displayName: name })
 
   useEffect(() => {
     if (!open) return
@@ -112,11 +108,7 @@ export function ProfileMenu({ name, subtitle, items, chrome }: ProfileMenuProps)
         {open ? (
           <div id={menuId} role="menu" className="nav-drop">
             <div className="nav-drop-h">
-              <span
-                className="nav-avatar"
-                aria-hidden="true"
-                style={{ width: 36, height: 36, fontSize: 13 }}
-              >
+              <span className="nav-avatar nav-avatar--menu" aria-hidden="true">
                 {initials}
               </span>
               <div>

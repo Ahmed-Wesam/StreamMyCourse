@@ -99,8 +99,9 @@ footer{background:#fff;border-top:1px solid var(--line);padding:64px 0 32px}
 .nav-bell .dot{position:absolute;top:9px;right:10px;width:8px;height:8px;border-radius:50%;background:#ef4444;border:2px solid #fff}
 .nav-profile{position:relative;display:inline-flex;align-items:center;gap:8px;padding:5px 12px 5px 5px;border-radius:100px;border:1px solid var(--line);background:#fff;cursor:pointer;outline:none;transition:.2s var(--ease)}
 .nav-profile:hover{background:var(--sky-2);border-color:#d8e3fb}
-.nav-avatar{width:30px;height:30px;border-radius:50%;background:var(--grad-cta);color:#fff;font-size:12px;font-weight:800;display:flex;align-items:center;justify-content:center;flex:none;letter-spacing:.02em}
+.nav-avatar{width:30px;height:30px;border-radius:50%;background:var(--grad-cta);color:#fff;font-size:12px;font-weight:800;display:inline-flex;align-items:center;justify-content:center;flex:none;letter-spacing:.02em;line-height:1}
 .nav-avatar.lg{width:42px;height:42px;font-size:14px}
+.nav-avatar.nav-avatar--menu{width:36px;height:36px;font-size:13px;flex-shrink:0}
 .nav-chev{width:14px;height:14px;color:var(--muted);transition:transform .2s var(--ease)}
 .nav-profile.is-open .nav-chev{transform:rotate(180deg);color:var(--navy)}
 .nav-drop{position:absolute;top:calc(100% + 10px);right:0;min-width:248px;background:#fff;border:1px solid var(--line);border-radius:16px;box-shadow:var(--shadow-lg);padding:8px;opacity:0;visibility:hidden;transform:translateY(-4px);transition:.18s var(--ease);z-index:60}

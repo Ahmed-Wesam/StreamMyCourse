@@ -41,6 +41,7 @@ type DashboardLoadState =
       status: 'ready'
       givenName: string | null
       familyName: string | null
+      email: string | null
       ownedCourses: Course[]
       loadResults: CourseDashboardLoadResult[]
       certificates: DashboardCertificateCard[] | null
@@ -112,8 +113,9 @@ async function loadDashboard(): Promise<Exclude<DashboardLoadState, { status: 'l
       (profile) => ({
         givenName: profile.givenName ?? null,
         familyName: profile.familyName ?? null,
+        email: profile.email ?? null,
       }),
-      () => ({ givenName: null, familyName: null }),
+      () => ({ givenName: null, familyName: null, email: null }),
     ),
     listMyCertificates().then(
       (payload) => visibleCertificates(payload.certificates),
@@ -152,6 +154,7 @@ async function loadDashboard(): Promise<Exclude<DashboardLoadState, { status: 'l
     status: 'ready',
     givenName: meResult.givenName,
     familyName: meResult.familyName,
+    email: meResult.email,
     ownedCourses,
     loadResults,
     certificates: certificatesResult,
@@ -241,6 +244,7 @@ function DashboardView({
       <StudentDashboardHero
         givenName={ready?.givenName ?? null}
         familyName={ready?.familyName ?? null}
+        email={ready?.email ?? null}
         showBrowse={ready ? ready.ownedCourses.length === 0 : false}
       />
 
