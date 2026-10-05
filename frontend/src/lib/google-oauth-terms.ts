@@ -2,7 +2,7 @@
 
 export const GOOGLE_OAUTH_TERMS_ACK_KEY = 'rs_google_oauth_terms_ack'
 
-export type GoogleOAuthTermsAck = {
+type GoogleOAuthTermsAck = {
   termsAcceptedAt: string
   privacyAcceptedAt: string
 }
