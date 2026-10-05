@@ -8,9 +8,6 @@ import { isStudentSessionSuperseded } from './student-session-superseded-state'
 
 let profileWarmDone = false
 let amplifyConfigured = false
-/** Successful label only. Failures stay uncached so the next probe can retry. */
-let cachedProfileDisplayName: string | undefined
-
 export type ProfileHeaderIdentity = {
   name: string
   email: string
@@ -26,7 +23,6 @@ let profileNameEpoch = 0
 export function resetProfileWarmState(): void {
   profileWarmDone = false
   amplifyConfigured = false
-  cachedProfileDisplayName = undefined
   cachedProfileIdentity = undefined
   profileNameEpoch += 1
 }
@@ -118,7 +114,6 @@ export async function getProfileHeaderIdentityOnce(): Promise<ProfileHeaderIdent
 
     const identity: ProfileHeaderIdentity = { name: label, email, givenName, familyName }
     cachedProfileIdentity = identity
-    cachedProfileDisplayName = label
     return identity
   } catch {
     return null
