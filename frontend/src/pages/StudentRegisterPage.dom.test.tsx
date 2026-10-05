@@ -9,6 +9,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const signUpMock = vi.hoisted(() => vi.fn())
 const useAuthenticatorMock = vi.hoisted(() => vi.fn())
+const beginStudentGoogleSignInMock = vi.hoisted(() => vi.fn())
 
 vi.mock('aws-amplify/auth', () => ({
   signUp: (...args: unknown[]) => signUpMock(...args),
@@ -16,6 +17,10 @@ vi.mock('aws-amplify/auth', () => ({
 
 vi.mock('../lib/auth-ui', () => ({
   useAuthenticator: (...args: unknown[]) => useAuthenticatorMock(...args),
+}))
+
+vi.mock('../lib/student-google-sign-in', () => ({
+  beginStudentGoogleSignIn: (...args: unknown[]) => beginStudentGoogleSignInMock(...args),
 }))
 
 const navigateMock = vi.hoisted(() => vi.fn())
@@ -51,6 +56,7 @@ describe('StudentRegisterPage', () => {
   beforeEach(() => {
     sessionStorage.clear()
     signUpMock.mockReset()
+    beginStudentGoogleSignInMock.mockReset()
     navigateMock.mockReset()
     useAuthenticatorMock.mockReturnValue({ authStatus: 'unauthenticated' })
     vi.stubEnv('VITE_COGNITO_USER_POOL_ID', 'pool')
@@ -109,6 +115,19 @@ describe('StudentRegisterPage', () => {
     expect(google.disabled).toBe(true)
     fireEvent.click(screen.getByRole('checkbox', { name: /privacy policy/i }))
     expect(google.disabled).toBe(false)
+  })
+
+  it('stores register draft before Google redirect', () => {
+    renderPage()
+    fillRequiredFields()
+    fireEvent.click(screen.getByRole('checkbox', { name: /terms & conditions/i }))
+    fireEvent.click(screen.getByRole('checkbox', { name: /privacy policy/i }))
+    fireEvent.click(screen.getByTestId('register-google'))
+    expect(beginStudentGoogleSignInMock).toHaveBeenCalledWith(true, true)
+    const draft = JSON.parse(sessionStorage.getItem(REGISTER_PROFILE_DRAFT_KEY) ?? '{}')
+    expect(draft.country).toBe('Jordan')
+    expect(draft.profession).toBe('Researcher')
+    expect(draft.email).toBe('ada@example.com')
   })
 
   it('stores draft without password and calls signUp on submit', async () => {

@@ -18,6 +18,10 @@ vi.mock('../../lib/auth-session-lazy', () => ({
   markUserProfileWarmed: () => markUserProfileWarmed(),
 }))
 
+vi.mock('../../lib/apply-google-oauth-terms', () => ({
+  applyGoogleOAuthTermsAckIfNeeded: vi.fn().mockResolvedValue(undefined),
+}))
+
 describe('StudentProfileBootstrap', () => {
   beforeEach(() => {
     vi.clearAllMocks()

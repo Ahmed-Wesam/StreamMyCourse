@@ -22,9 +22,13 @@ export function StudentProfileBootstrap() {
       const { fetchMe } = await import('../../lib/api/session')
       const { markUserProfileWarmed } = await import('../../lib/auth-session-lazy')
       const { applyGoogleOAuthTermsAckIfNeeded } = await import('../../lib/apply-google-oauth-terms')
-      await fetchMe()
-      await applyGoogleOAuthTermsAckIfNeeded()
+      const me = await fetchMe()
       markUserProfileWarmed()
+      try {
+        await applyGoogleOAuthTermsAckIfNeeded(me)
+      } catch {
+        // Non-fatal: user can complete profile on /account/profile.
+      }
     })().catch(() => {
       // Non-fatal: Cognito trigger or a later /users/me may still provision the row.
     })

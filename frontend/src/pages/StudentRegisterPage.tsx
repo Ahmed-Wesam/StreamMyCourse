@@ -407,7 +407,20 @@ export default function StudentRegisterPage() {
                         ? undefined
                         : 'Accept the Terms and Privacy Policy to continue with Google'
                     }
-                    onClick={() => beginStudentGoogleSignIn(termsAccepted, privacyAccepted)}
+                    onClick={() => {
+                      saveRegisterProfileDraft({
+                        email: email.trim(),
+                        givenName: givenName.trim(),
+                        familyName: familyName.trim(),
+                        country,
+                        profession,
+                        institution: institution.trim(),
+                        researchInterests: researchInterests.trim(),
+                        termsAccepted,
+                        privacyAccepted,
+                      })
+                      beginStudentGoogleSignIn(termsAccepted, privacyAccepted)
+                    }}
                     style={{ width: '100%', justifyContent: 'center', marginTop: 8, opacity: legalAccepted ? 1 : 0.55 }}
                   >
                     {GOOGLE_SIGN_IN_LABEL}

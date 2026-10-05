@@ -69,7 +69,24 @@ export default function AccountProfilePage() {
         setProfession(profile.profession ?? '')
         setInstitution(profile.institution ?? '')
         setResearchInterests(profile.researchInterests ?? '')
-        const googleTermsAck = (await import('../../lib/google-oauth-terms')).readGoogleOAuthTermsAck()
+        const { readGoogleOAuthTermsAck } = await import('../../lib/google-oauth-terms')
+        const { readRegisterProfileDraft } = await import('../../lib/register-profile-draft')
+        const googleTermsAck = readGoogleOAuthTermsAck()
+        const draft = readRegisterProfileDraft()
+        const draftOk =
+          draft &&
+          (!draft.email?.trim() ||
+            draft.email.trim().toLowerCase() === (profile.email ?? '').trim().toLowerCase())
+        if (draftOk) {
+          if (!profile.givenName?.trim() && draft.givenName?.trim()) setGivenName(draft.givenName.trim())
+          if (!profile.familyName?.trim() && draft.familyName?.trim()) setFamilyName(draft.familyName.trim())
+          if (!profile.country?.trim() && draft.country?.trim()) setCountry(draft.country.trim())
+          if (!profile.profession?.trim() && draft.profession?.trim()) setProfession(draft.profession.trim())
+          if (!profile.institution?.trim() && draft.institution?.trim()) setInstitution(draft.institution.trim())
+          if (!profile.researchInterests?.trim() && draft.researchInterests?.trim()) {
+            setResearchInterests(draft.researchInterests.trim())
+          }
+        }
         setTermsAccepted(Boolean(profile.termsAcceptedAt?.trim()) || Boolean(googleTermsAck))
         setPrivacyAccepted(Boolean(profile.privacyAcceptedAt?.trim()) || Boolean(googleTermsAck))
         setState({ status: 'ready', profile })
@@ -113,6 +130,14 @@ export default function AccountProfilePage() {
     setSaveMessage(null)
     setSaving(true)
     const now = new Date().toISOString()
+    const { readGoogleOAuthTermsAck, clearGoogleOAuthTermsAck } = await import('../../lib/google-oauth-terms')
+    const googleAck = readGoogleOAuthTermsAck()
+    const termsAt =
+      state.profile.termsAcceptedAt?.trim() ||
+      (termsAccepted ? googleAck?.termsAcceptedAt ?? now : state.profile.termsAcceptedAt?.trim() || now)
+    const privacyAt =
+      state.profile.privacyAcceptedAt?.trim() ||
+      (privacyAccepted ? googleAck?.privacyAcceptedAt ?? now : state.profile.privacyAcceptedAt?.trim() || now)
     try {
       await updateUserAttributes({
         userAttributes: {
@@ -127,12 +152,11 @@ export default function AccountProfilePage() {
         profession,
         institution: institution.trim() || undefined,
         researchInterests: researchInterests.trim() || undefined,
-        termsAcceptedAt: termsAccepted ? state.profile.termsAcceptedAt?.trim() || now : now,
-        privacyAcceptedAt: privacyAccepted ? state.profile.privacyAcceptedAt?.trim() || now : now,
+        termsAcceptedAt: termsAt,
+        privacyAcceptedAt: privacyAt,
       })
       await fetchAuthSession({ forceRefresh: true })
       setState({ status: 'ready', profile: updated })
-      const { clearGoogleOAuthTermsAck } = await import('../../lib/google-oauth-terms')
       clearGoogleOAuthTermsAck()
       setSaveMessage('Profile saved.')
     } catch (err) {
