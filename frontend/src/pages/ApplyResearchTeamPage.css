@@ -75,7 +75,7 @@ section{position:relative}
 .af-field textarea.af-motivation{min-height:160px}
 .af-field select{cursor:pointer;-webkit-appearance:none;appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20' fill='none'%3E%3Cpath d='M6 8l4 4 4-4' stroke='%237180a0' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 12px center;background-size:18px;padding-right:38px}
 .af-checkbox{display:flex;align-items:flex-start;gap:12px;background:var(--sky-2);border:1px solid var(--line-2);border-radius:14px;padding:16px 18px;margin-top:6px}
-.af-checkbox input{margin-top:3px;width:18px;height:18px;flex:none;accent-color:var(--blue);cursor:pointer}
+.af-checkbox input{margin-top:3px}
 .af-checkbox label{font-size:13.5px;color:var(--body);font-weight:600;line-height:1.55;cursor:pointer}
 .af-checkgrid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:14px}
 .af-check-option{display:flex;align-items:center;gap:10px;background:var(--sky-2);border:1px solid var(--line-2);border-radius:12px;padding:12px 14px;font-size:14px;font-weight:600;color:var(--body);cursor:pointer;transition:.2s var(--ease);min-height:44px}

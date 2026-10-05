@@ -18,6 +18,8 @@ import { isAuthConfigured } from '../lib/auth'
 import { isPasswordPolicyMet } from '../lib/password-policy'
 import { COUNTRIES, PROFESSIONS } from '../lib/profile-options'
 import { saveRegisterProfileDraft } from '../lib/register-profile-draft'
+import { beginStudentGoogleSignIn } from '../lib/student-google-sign-in'
+import { GOOGLE_SIGN_IN_LABEL } from '../components/auth/SignIn'
 import { usePageTitle } from '../lib/page-title'
 import './StudentRegisterPage.css'
 
@@ -100,6 +102,8 @@ export default function StudentRegisterPage() {
   const passwordsMatch = password.length > 0 && password === confirmPassword
   const confirmMismatch = confirmPassword.length > 0 && password !== confirmPassword
 
+  const legalAccepted = termsAccepted && privacyAccepted
+
   const canSubmit =
     givenName.trim() &&
     familyName.trim() &&
@@ -108,8 +112,7 @@ export default function StudentRegisterPage() {
     passwordsMatch &&
     country &&
     profession &&
-    termsAccepted &&
-    privacyAccepted &&
+    legalAccepted &&
     !submitting
 
   if (!authConfigured) {
@@ -393,6 +396,24 @@ export default function StudentRegisterPage() {
                   <span className="cb-err" role="alert">
                     You must agree to the Privacy Policy to continue.
                   </span>
+
+                  <button
+                    type="button"
+                    className="btn btn-ghost"
+                    data-testid="register-google"
+                    disabled={!legalAccepted}
+                    title={
+                      legalAccepted
+                        ? undefined
+                        : 'Accept the Terms and Privacy Policy to continue with Google'
+                    }
+                    onClick={() => beginStudentGoogleSignIn(termsAccepted, privacyAccepted)}
+                    style={{ width: '100%', justifyContent: 'center', marginTop: 8, opacity: legalAccepted ? 1 : 0.55 }}
+                  >
+                    {GOOGLE_SIGN_IN_LABEL}
+                  </button>
+
+                  <div className="auth-divider" />
 
                   <div className={error ? 'form-err visible' : 'form-err'} role="alert" aria-live="assertive">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">

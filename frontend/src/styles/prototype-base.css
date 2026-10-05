@@ -133,3 +133,27 @@ footer{background:#fff;border-top:1px solid var(--line);padding:64px 0 32px}
   #header .burger{display:flex!important}
   .mobile-menu{display:block!important}
 }
+
+/* Custom checkboxes (appearance:none); use background-color + checkmark so :checked paints reliably */
+.cb-row input[type="checkbox"],
+.check-label input[type="checkbox"],
+.terms-row input[type="checkbox"],
+.af-checkbox input[type="checkbox"]{
+  -webkit-appearance:none;appearance:none;width:18px;height:18px;min-width:18px;flex:none;
+  border:1.5px solid var(--line);border-radius:5px;background-color:#fff;background-image:none;
+  cursor:pointer;transition:.2s var(--ease);margin-top:1px
+}
+.cb-row input[type="checkbox"]:checked,
+.check-label input[type="checkbox"]:checked,
+.terms-row input[type="checkbox"]:checked,
+.af-checkbox input[type="checkbox"]:checked{
+  border-color:transparent;background-color:var(--blue);
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M3 8.5l3.5 3.5 6.5-7.5' stroke='white' stroke-width='2' stroke-linecap='round' stroke-linejoin='round' fill='none'/%3E%3C/svg%3E");
+  background-size:12px 12px;background-position:center;background-repeat:no-repeat
+}
+.check-label input[type="checkbox"]:focus-visible,
+.cb-row input[type="checkbox"]:focus-visible,
+.terms-row input[type="checkbox"]:focus-visible,
+.af-checkbox input[type="checkbox"]:focus-visible{
+  box-shadow:0 0 0 3px rgba(30,94,255,.18)
+}

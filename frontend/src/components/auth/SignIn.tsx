@@ -7,6 +7,7 @@ import { applyRememberMeStorage, isRememberMeSelected, keepDefaultAuthStorage } 
 import { useAuthenticator } from '../../lib/auth-ui'
 import { loginAuthCard } from '../../lib/marketing/loginCopy'
 import { persistReturnPathBeforeHostedUi } from '../../lib/post-login-return'
+import { beginStudentGoogleSignIn } from '../../lib/student-google-sign-in'
 import { usePageTitle } from '../../lib/page-title'
 import { Button } from '../ui/Button'
 import { Field } from '../ui/Field'
@@ -24,7 +25,7 @@ type SignInProps = {
   embedded?: boolean
 }
 
-function startGoogleSignIn(): void {
+function startTeacherGoogleSignIn(): void {
   keepDefaultAuthStorage()
   persistReturnPathBeforeHostedUi()
   void signInWithRedirect({ provider: 'Google' })
@@ -114,7 +115,7 @@ function TeacherSignInForm({ embedded }: { embedded?: boolean }) {
             type="button"
             variant="ghost"
             className="w-full"
-            onClick={startGoogleSignIn}
+            onClick={startTeacherGoogleSignIn}
           >
             <GoogleIcon />
             {GOOGLE_SIGN_IN_LABEL}
@@ -172,8 +173,11 @@ function StudentLoginCard() {
   const [password, setPassword] = useState('')
   const [remember, setRemember] = useState(isRememberMeSelected)
   const [passwordVisible, setPasswordVisible] = useState(false)
+  const [termsAccepted, setTermsAccepted] = useState(false)
+  const [privacyAccepted, setPrivacyAccepted] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
+  const googleReady = termsAccepted && privacyAccepted
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault()
@@ -298,7 +302,42 @@ function StudentLoginCard() {
         <p className="auth-alt">
           Don&apos;t have an account? <Link to="/register">Create one here</Link>
         </p>
-        <button type="button" className="btn btn-ghost" onClick={startGoogleSignIn} style={{ width: '100%', marginTop: 10 }}>
+        <div className="cb-row" style={{ marginTop: 12 }}>
+          <input
+            type="checkbox"
+            id="loginGoogleTerms"
+            checked={termsAccepted}
+            onChange={(e) => setTermsAccepted(e.target.checked)}
+          />
+          <label htmlFor="loginGoogleTerms">
+            I agree to the{' '}
+            <Link to="/terms" target="_blank" rel="noopener noreferrer">
+              Terms &amp; Conditions
+            </Link>
+          </label>
+        </div>
+        <div className="cb-row">
+          <input
+            type="checkbox"
+            id="loginGooglePrivacy"
+            checked={privacyAccepted}
+            onChange={(e) => setPrivacyAccepted(e.target.checked)}
+          />
+          <label htmlFor="loginGooglePrivacy">
+            I agree to the{' '}
+            <Link to="/privacy" target="_blank" rel="noopener noreferrer">
+              Privacy Policy
+            </Link>
+          </label>
+        </div>
+        <button
+          type="button"
+          className="btn btn-ghost"
+          disabled={!googleReady}
+          title={googleReady ? undefined : 'Accept the Terms and Privacy Policy to continue with Google'}
+          onClick={() => beginStudentGoogleSignIn(termsAccepted, privacyAccepted)}
+          style={{ width: '100%', marginTop: 10, opacity: googleReady ? 1 : 0.55 }}
+        >
           <GoogleIcon plain />
           {GOOGLE_SIGN_IN_LABEL}
         </button>
@@ -311,8 +350,11 @@ function StudentSignInForm({ embedded }: { embedded?: boolean }) {
   usePageTitle('Sign in')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
+  const [termsAccepted, setTermsAccepted] = useState(false)
+  const [privacyAccepted, setPrivacyAccepted] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
+  const googleReady = termsAccepted && privacyAccepted
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault()
@@ -373,11 +415,43 @@ function StudentSignInForm({ embedded }: { embedded?: boolean }) {
           <div className="h-px flex-1 bg-rs-line" />
         </div>
 
+        <div className="mt-4 space-y-2 text-sm font-semibold text-rs-body">
+          <label className="flex items-start gap-2">
+            <input
+              type="checkbox"
+              className="mt-0.5"
+              checked={termsAccepted}
+              onChange={(e) => setTermsAccepted(e.target.checked)}
+            />
+            <span>
+              I agree to the{' '}
+              <Link to="/terms" className="font-bold text-rs-blue hover:underline">
+                Terms of Service
+              </Link>
+            </span>
+          </label>
+          <label className="flex items-start gap-2">
+            <input
+              type="checkbox"
+              className="mt-0.5"
+              checked={privacyAccepted}
+              onChange={(e) => setPrivacyAccepted(e.target.checked)}
+            />
+            <span>
+              I agree to the{' '}
+              <Link to="/privacy" className="font-bold text-rs-blue hover:underline">
+                Privacy Policy
+              </Link>
+            </span>
+          </label>
+        </div>
+
         <Button
           type="button"
           variant="ghost"
-          className="w-full"
-          onClick={startGoogleSignIn}
+          className="mt-3 w-full"
+          disabled={!googleReady}
+          onClick={() => beginStudentGoogleSignIn(termsAccepted, privacyAccepted)}
         >
           <GoogleIcon />
           {GOOGLE_SIGN_IN_LABEL}

@@ -90,10 +90,14 @@ describe('SignIn', () => {
     expect(screen.queryByRole('link', { name: /forgot password/i })).toBeNull()
   })
 
-  it('calls signInWithRedirect with Google provider when Continue with Google is clicked', async () => {
+  it('calls signInWithRedirect with Google provider when terms are accepted', async () => {
     render(<SignIn variant="student" />, { wrapper: TestRoot })
 
     const button = await waitFor(() => screen.getByRole('button', { name: GOOGLE_SIGN_IN_LABEL }))
+    expect((button as HTMLButtonElement).disabled).toBe(true)
+
+    fireEvent.click(screen.getByRole('checkbox', { name: /terms of service/i }))
+    fireEvent.click(screen.getByRole('checkbox', { name: /privacy policy/i }))
     fireEvent.click(button)
 
     expect(authMocks.signInWithRedirect).toHaveBeenCalledTimes(1)
@@ -106,6 +110,8 @@ describe('SignIn', () => {
     render(<SignIn variant="student" />, { wrapper: TestRoot })
 
     const button = await waitFor(() => screen.getByRole('button', { name: GOOGLE_SIGN_IN_LABEL }))
+    fireEvent.click(screen.getByRole('checkbox', { name: /terms of service/i }))
+    fireEvent.click(screen.getByRole('checkbox', { name: /privacy policy/i }))
     fireEvent.click(button)
 
     expect(sessionStorage.getItem(POST_LOGIN_RETURN_TO_KEY)).toBe('/courses/abc?tab=lessons#l1')
@@ -118,6 +124,8 @@ describe('SignIn', () => {
     render(<SignIn variant="student" />, { wrapper: TestRoot })
 
     const button = await waitFor(() => screen.getByRole('button', { name: GOOGLE_SIGN_IN_LABEL }))
+    fireEvent.click(screen.getByRole('checkbox', { name: /terms of service/i }))
+    fireEvent.click(screen.getByRole('checkbox', { name: /privacy policy/i }))
     fireEvent.click(button)
 
     expect(sessionStorage.getItem(POST_LOGIN_RETURN_TO_KEY)).toBeNull()

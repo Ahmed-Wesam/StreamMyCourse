@@ -101,6 +101,16 @@ describe('StudentRegisterPage', () => {
     expect(list.querySelectorAll('svg').length).toBeGreaterThan(0)
   })
 
+  it('keeps Google sign-up disabled until both legal checkboxes are checked', () => {
+    renderPage()
+    const google = screen.getByTestId('register-google') as HTMLButtonElement
+    expect(google.disabled).toBe(true)
+    fireEvent.click(screen.getByRole('checkbox', { name: /terms & conditions/i }))
+    expect(google.disabled).toBe(true)
+    fireEvent.click(screen.getByRole('checkbox', { name: /privacy policy/i }))
+    expect(google.disabled).toBe(false)
+  })
+
   it('stores draft without password and calls signUp on submit', async () => {
     renderPage()
     fillRequiredFields()

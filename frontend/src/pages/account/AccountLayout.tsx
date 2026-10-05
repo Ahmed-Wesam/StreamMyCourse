@@ -28,9 +28,10 @@ type LayoutSummary = {
 }
 
 function displayName(profile: UserProfile | null): string {
-  if (!profile) return 'Research Spectrum Student'
+  if (!profile) return ''
   const parts = [profile.givenName, profile.familyName].map((p) => p?.trim()).filter(Boolean)
-  return parts.length > 0 ? parts.join(' ') : profile.email
+  if (parts.length > 0) return parts.join(' ')
+  return profile.email?.trim() ?? ''
 }
 
 function formatMemberSince(iso: string | undefined): string {

@@ -9,9 +9,10 @@ type GateState = 'idle' | 'checking' | 'ready' | 'redirect'
 export function StudentTermsGate({ children }: { children: ReactNode }) {
   const { pathname } = useLocation()
   const [state, setState] = useState<GateState>('idle')
+  const exempt = isStudentTermsGateExemptPath(pathname)
 
   useEffect(() => {
-    if (isStudentTermsGateExemptPath(pathname)) {
+    if (exempt) {
       setState('ready')
       return
     }
@@ -46,7 +47,11 @@ export function StudentTermsGate({ children }: { children: ReactNode }) {
     return () => {
       cancelled = true
     }
-  }, [pathname])
+  }, [exempt, pathname])
+
+  if (exempt) {
+    return <>{children}</>
+  }
 
   if (state === 'checking') {
     return null

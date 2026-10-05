@@ -1,8 +1,8 @@
 /**
  * @vitest-environment jsdom
  */
-import { cleanup, render, screen, waitFor } from '@testing-library/react'
-import { MemoryRouter, Route, Routes } from 'react-router-dom'
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { MemoryRouter, Route, Routes, useNavigate } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const hasSignedInMock = vi.hoisted(() => vi.fn())
@@ -24,6 +24,8 @@ function renderAt(path: string) {
     <MemoryRouter initialEntries={[path]}>
       <StudentTermsGate>
         <Routes>
+          <Route path="/" element={<div>Home</div>} />
+          <Route path="/about" element={<div>About</div>} />
           <Route path="/courses" element={<div>Courses</div>} />
           <Route path="/dashboard" element={<div>Dashboard</div>} />
           <Route path="/account/profile" element={<div>Account</div>} />
@@ -84,6 +86,68 @@ describe('StudentTermsGate', () => {
     fetchMeMock.mockRejectedValue(new Error('network'))
 
     renderAt('/courses')
+
+    await waitFor(() => {
+      expect(screen.getByText('Courses')).toBeTruthy()
+    })
+    expect(screen.queryByText('Account')).toBeNull()
+  })
+
+  it('allows home and about when terms are missing', async () => {
+    hasSignedInMock.mockResolvedValue(true)
+    fetchMeMock.mockResolvedValue({
+      userId: 'u1',
+      email: 's@example.com',
+      role: 'student',
+      termsAcceptedAt: '',
+      privacyAcceptedAt: '',
+    })
+
+    renderAt('/about')
+
+    await waitFor(() => {
+      expect(screen.getByText('About')).toBeTruthy()
+    })
+    expect(screen.queryByText('Account')).toBeNull()
+  })
+
+  it('does not trap public routes after a protected redirect was triggered', async () => {
+    hasSignedInMock.mockResolvedValue(true)
+    fetchMeMock.mockResolvedValue({
+      userId: 'u1',
+      email: 's@example.com',
+      role: 'student',
+      termsAcceptedAt: '',
+      privacyAcceptedAt: '',
+    })
+
+    function NavToCourses() {
+      const navigate = useNavigate()
+      return (
+        <button type="button" onClick={() => navigate('/courses')}>
+          Go courses
+        </button>
+      )
+    }
+
+    render(
+      <MemoryRouter initialEntries={['/dashboard']}>
+        <StudentTermsGate>
+          <NavToCourses />
+          <Routes>
+            <Route path="/courses" element={<div>Courses</div>} />
+            <Route path="/dashboard" element={<div>Dashboard</div>} />
+            <Route path="/account/profile" element={<div>Account</div>} />
+          </Routes>
+        </StudentTermsGate>
+      </MemoryRouter>,
+    )
+
+    await waitFor(() => {
+      expect(screen.getByText('Account')).toBeTruthy()
+    })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Go courses' }))
 
     await waitFor(() => {
       expect(screen.getByText('Courses')).toBeTruthy()

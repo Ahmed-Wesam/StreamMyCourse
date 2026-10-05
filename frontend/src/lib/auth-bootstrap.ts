@@ -11,32 +11,41 @@ const AUTH_SELF_SERVICE =
  */
 const CERTIFICATE_VERIFY = /^\/verify(\/|$)/
 
+function normalizeStudentPath(pathname: string): string {
+  if (pathname.length > 1 && pathname.endsWith('/')) {
+    return pathname.slice(0, -1)
+  }
+  return pathname
+}
+
 export function isStudentIdleProbePath(pathname: string): boolean {
+  const path = normalizeStudentPath(pathname)
   return (
-    pathname === '/' ||
-    pathname === '/details' ||
-    pathname === '/learn' ||
-    pathname === '/courses' ||
-    pathname === '/about' ||
-    pathname === '/faq' ||
-    pathname === '/contact' ||
-    pathname === '/research-team' ||
-    pathname === '/terms' ||
-    pathname === '/privacy' ||
-    pathname === '/refund' ||
-    pathname === '/delivery' ||
-    pathname === '/educational-disclaimer' ||
-    CERTIFICATE_VERIFY.test(pathname) ||
-    COURSE_DETAIL.test(pathname)
+    path === '/' ||
+    path === '/details' ||
+    path === '/learn' ||
+    path === '/courses' ||
+    path === '/about' ||
+    path === '/faq' ||
+    path === '/contact' ||
+    path === '/research-team' ||
+    path === '/terms' ||
+    path === '/privacy' ||
+    path === '/refund' ||
+    path === '/delivery' ||
+    path === '/educational-disclaimer' ||
+    CERTIFICATE_VERIFY.test(path) ||
+    COURSE_DETAIL.test(path)
   )
 }
 
 /** Routes where missing terms acceptance must not force redirect to account. */
 export function isStudentTermsGateExemptPath(pathname: string): boolean {
+  const path = normalizeStudentPath(pathname)
   // Public marketing/catalog/legal surfaces (same as idle-probe paths).
-  if (isStudentIdleProbePath(pathname)) return true
-  if (pathname.startsWith('/account') || pathname === '/settings') return true
-  if (AUTH_SELF_SERVICE.test(pathname)) return true
+  if (isStudentIdleProbePath(path)) return true
+  if (path.startsWith('/account') || path === '/settings') return true
+  if (AUTH_SELF_SERVICE.test(path)) return true
   return false
 }
 
@@ -44,6 +53,7 @@ export function isStudentTermsGateExemptPath(pathname: string): boolean {
  * Whether the current route should run auth bootstrap (session restore / OAuth callback).
  */
 export function needsAuthBootstrap(pathname: string, search: string): boolean {
+  const path = normalizeStudentPath(pathname)
   const params = new URLSearchParams(search)
   const code = (params.get('code') ?? '').trim()
   const state = (params.get('state') ?? '').trim()
@@ -52,21 +62,21 @@ export function needsAuthBootstrap(pathname: string, search: string): boolean {
   }
 
   // Same set as isStudentIdleProbePath — public marketing/catalog/legal stay off AuthShell.
-  if (isStudentIdleProbePath(pathname)) {
+  if (isStudentIdleProbePath(path)) {
     return false
   }
 
   if (
-    AUTH_SELF_SERVICE.test(pathname) ||
-    pathname === '/dashboard' ||
-    pathname === '/certificates' ||
-    pathname === '/research-team/apply' ||
-    pathname.startsWith('/account') ||
-    pathname === '/settings' ||
-    pathname.startsWith('/billing') ||
-    pathname.startsWith('/checkout') ||
-    LESSON_PLAYER.test(pathname) ||
-    MODULE_QUIZ.test(pathname)
+    AUTH_SELF_SERVICE.test(path) ||
+    path === '/dashboard' ||
+    path === '/certificates' ||
+    path === '/research-team/apply' ||
+    path.startsWith('/account') ||
+    path === '/settings' ||
+    path.startsWith('/billing') ||
+    path.startsWith('/checkout') ||
+    LESSON_PLAYER.test(path) ||
+    MODULE_QUIZ.test(path)
   ) {
     return true
   }

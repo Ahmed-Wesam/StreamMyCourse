@@ -69,8 +69,9 @@ export default function AccountProfilePage() {
         setProfession(profile.profession ?? '')
         setInstitution(profile.institution ?? '')
         setResearchInterests(profile.researchInterests ?? '')
-        setTermsAccepted(Boolean(profile.termsAcceptedAt?.trim()))
-        setPrivacyAccepted(Boolean(profile.privacyAcceptedAt?.trim()))
+        const googleTermsAck = (await import('../../lib/google-oauth-terms')).readGoogleOAuthTermsAck()
+        setTermsAccepted(Boolean(profile.termsAcceptedAt?.trim()) || Boolean(googleTermsAck))
+        setPrivacyAccepted(Boolean(profile.privacyAcceptedAt?.trim()) || Boolean(googleTermsAck))
         setState({ status: 'ready', profile })
         const session = await fetchAuthSession()
         const payload = session.tokens?.idToken?.payload as Record<string, unknown> | undefined
@@ -131,6 +132,8 @@ export default function AccountProfilePage() {
       })
       await fetchAuthSession({ forceRefresh: true })
       setState({ status: 'ready', profile: updated })
+      const { clearGoogleOAuthTermsAck } = await import('../../lib/google-oauth-terms')
+      clearGoogleOAuthTermsAck()
       setSaveMessage('Profile saved.')
     } catch (err) {
       setSaveError(err instanceof Error ? err.message : catalogApiUserMessage(err))
