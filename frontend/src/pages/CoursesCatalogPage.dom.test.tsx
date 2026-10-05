@@ -141,11 +141,11 @@ describe('CoursesCatalogPage', () => {
 
     await waitFor(() => {
       expect(screen.getAllByText('Research Methodology').length).toBeGreaterThan(0)
+      expect(screen.queryByText(/integration-test-published-course/i)).toBeNull()
+      expect(screen.getAllByText('one-time')).toHaveLength(4)
+      expect(screen.getAllByText('one-time payment').length).toBeGreaterThan(0)
+      expect(screen.getAllByText(/Save \$50/).length).toBeGreaterThan(0)
     })
-    expect(screen.queryByText(/integration-test-published-course/i)).toBeNull()
-    expect(screen.getAllByText('one-time')).toHaveLength(4)
-    expect(screen.getAllByText('one-time payment').length).toBeGreaterThan(0)
-    expect(screen.getAllByText(/Save \$50/).length).toBeGreaterThan(0)
 
     const cardTitles = screen.getAllByRole('heading', { level: 3 }).map((heading) => heading.textContent)
     expect(cardTitles).toEqual([
