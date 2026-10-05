@@ -271,15 +271,13 @@ def handle(
                 role=_actor_role(claims),
             )
             body = parse_json_body(event)
+            if "page" in body:
+                raise BadRequest("Course page content cannot be updated")
             title = optional_str(body, "title", "")
             description = optional_str(body, "description", "")
-            if "page" in body:
-                page_raw = body.get("page")
-                updated: dto.UpdateCourseResponse = svc.update_course(  # type: ignore[assignment]
-                    params["courseId"], title, description, page=page_raw
-                )
-            else:
-                updated = svc.update_course(params["courseId"], title, description)  # type: ignore[assignment]
+            updated: dto.UpdateCourseResponse = svc.update_course(  # type: ignore[assignment]
+                params["courseId"], title, description
+            )
             return json_response(200, updated, origin)
         if action == "publish_course":
             svc.ensure_can_modify_course(
@@ -326,7 +324,15 @@ def handle(
             )
             body = parse_json_body(event)
             title = optional_str(body, "title", "")
-            updated_lesson: dto.UpdateLessonResponse = svc.update_lesson(params["courseId"], params["lessonId"], title)  # type: ignore[assignment]
+            transcript_kw: Dict[str, str] = {}
+            if "transcript" in body:
+                raw_transcript = body.get("transcript")
+                if not isinstance(raw_transcript, str):
+                    raise BadRequest("transcript must be a string")
+                transcript_kw["transcript"] = raw_transcript
+            updated_lesson: dto.UpdateLessonResponse = svc.update_lesson(  # type: ignore[assignment]
+                params["courseId"], params["lessonId"], title, **transcript_kw
+            )
             return json_response(200, updated_lesson, origin)
         if action == "delete_lesson":
             svc.ensure_can_modify_course(

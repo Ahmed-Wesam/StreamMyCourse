@@ -1,5 +1,8 @@
 import { Amplify } from 'aws-amplify'
+import { cognitoUserPoolsTokenProvider } from 'aws-amplify/auth/cognito'
+import { CookieStorage, defaultStorage } from 'aws-amplify/utils'
 
+import { AUTH_REMEMBER_ME_FLAG } from './clear-amplify-auth-caches'
 import { isAuthConfigured } from './is-auth-configured'
 
 export { isAuthConfigured }
@@ -54,6 +57,64 @@ function oauthRedirectUrls(): string[] {
   return [...urls]
 }
 
+/**
+ * Amplify's CookieStorage defaults `expires` to 365 days unless the key is present.
+ * Pass `expires: undefined` so the cookie is a session cookie (no Max-Age / Expires).
+ */
+function sessionCookieStorage(): CookieStorage {
+  return new CookieStorage({
+    secure: true,
+    sameSite: 'lax',
+    expires: undefined,
+  })
+}
+
+function writeRememberMeFlag(value: 'session' | 'remember' | null): void {
+  try {
+    if (value === null) localStorage.removeItem(AUTH_REMEMBER_ME_FLAG)
+    else localStorage.setItem(AUTH_REMEMBER_ME_FLAG, value)
+  } catch {
+    /* ignore */
+  }
+}
+
+/** True when the last email/password sign-in checked Remember me. */
+export function isRememberMeSelected(): boolean {
+  try {
+    return localStorage.getItem(AUTH_REMEMBER_ME_FLAG) === 'remember'
+  } catch {
+    return false
+  }
+}
+
+/**
+ * Email/password sign-in. Unchecked stores tokens in session cookies.
+ * Checked keeps Amplify's default storage (localStorage when available).
+ */
+export function applyRememberMeStorage(remember: boolean): void {
+  writeRememberMeFlag(remember ? 'remember' : 'session')
+  cognitoUserPoolsTokenProvider.setKeyValueStorage(remember ? defaultStorage : sessionCookieStorage())
+}
+
+/** Google has no Remember me checkbox. Always use default storage and drop a session-only flag. */
+export function keepDefaultAuthStorage(): void {
+  writeRememberMeFlag(null)
+  cognitoUserPoolsTokenProvider.setKeyValueStorage(defaultStorage)
+}
+
+/** Select storage from the persisted flag before Amplify reads tokens. */
+function applyPersistedAuthStorage(): void {
+  let flag: string | null = null
+  try {
+    flag = localStorage.getItem(AUTH_REMEMBER_ME_FLAG)
+  } catch {
+    flag = null
+  }
+  if (flag === 'session') {
+    cognitoUserPoolsTokenProvider.setKeyValueStorage(sessionCookieStorage())
+  }
+}
+
 /** Call once at app startup (each entry: student-main / teacher-main). */
 export function configureAmplify(): void {
   if (!isAuthConfigured()) {
@@ -79,6 +140,8 @@ export function configureAmplify(): void {
       }
     }
   }
+
+  applyPersistedAuthStorage()
 
   const userPoolId = String(import.meta.env.VITE_COGNITO_USER_POOL_ID).trim()
   const userPoolClientId = String(import.meta.env.VITE_COGNITO_USER_POOL_CLIENT_ID).trim()

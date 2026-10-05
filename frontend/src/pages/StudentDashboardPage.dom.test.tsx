@@ -1,7 +1,7 @@
 /**
  * @vitest-environment jsdom
  */
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -13,6 +13,7 @@ const listLessons = vi.fn()
 const listCourseModules = vi.fn()
 const listMyCertificates = vi.fn()
 const getMyResearchTeam = vi.fn()
+const getMyActivity = vi.fn()
 
 vi.mock('../lib/api/billing', async (importOriginal) => {
   const mod = await importOriginal<typeof import('../lib/api/billing')>()
@@ -64,6 +65,14 @@ vi.mock('../lib/api/research-team', async (importOriginal) => {
   }
 })
 
+vi.mock('../lib/api/activity', async (importOriginal) => {
+  const mod = await importOriginal<typeof import('../lib/api/activity')>()
+  return {
+    ...mod,
+    getMyActivity: (...args: unknown[]) => getMyActivity(...args),
+  }
+})
+
 import StudentDashboardPage from './StudentDashboardPage'
 
 function renderDashboard() {
@@ -84,6 +93,7 @@ describe('StudentDashboardPage', () => {
     listCourseModules.mockReset()
     listMyCertificates.mockReset()
     getMyResearchTeam.mockReset()
+    getMyActivity.mockReset()
 
     listPublishedCourses.mockResolvedValue([
       { id: 'c1', title: 'Alpha Course', description: 'Desc' },
@@ -142,6 +152,7 @@ describe('StudentDashboardPage', () => {
       canSubmit: false,
       application: null,
     })
+    getMyActivity.mockResolvedValue({ streakDays: 0, items: [] })
   })
 
   afterEach(() => {
@@ -161,14 +172,17 @@ describe('StudentDashboardPage', () => {
   it('shows generic welcome when profile fetch fails', async () => {
     fetchMe.mockRejectedValue(new Error('network'))
     renderDashboard()
-    expect(await screen.findByText(/^Welcome back$/i)).toBeTruthy()
+    expect(await screen.findByText(/Welcome back/i)).toBeTruthy()
+    expect(screen.queryByText(/Welcome back,/)).toBeNull()
   })
 
   it('shows empty continue state with link to catalog when no owned courses', async () => {
     getPurchases.mockResolvedValue([])
     renderDashboard()
-    expect(await screen.findByTestId('student-dashboard-empty')).toBeTruthy()
-    expect(screen.getByRole('link', { name: /Browse courses/i }).getAttribute('href')).toBe('/courses')
+    const empty = await screen.findByTestId('student-dashboard-empty')
+    expect(within(empty).getByRole('link', { name: /Explore Courses/i }).getAttribute('href')).toBe(
+      '/courses#courses-catalog',
+    )
   })
 
   it('shows continue card for owned course with lesson link', async () => {
@@ -176,7 +190,7 @@ describe('StudentDashboardPage', () => {
     await waitFor(() => {
       expect(screen.getByTestId('student-dashboard-course-c1')).toBeTruthy()
     })
-    expect(screen.getByText('Alpha Course')).toBeTruthy()
+    expect(screen.getAllByText('Alpha Course').length).toBeGreaterThan(0)
     const continueLink = screen.getByRole('link', { name: /Continue/i })
     expect(continueLink.getAttribute('href')).toBe('/courses/c1/lessons/l1')
   })
@@ -213,11 +227,9 @@ describe('StudentDashboardPage', () => {
       },
     ])
     renderDashboard()
-    await waitFor(() => {
-      expect(screen.getByTestId('student-dashboard-stats')).toBeTruthy()
-    })
-    expect(screen.getByText('50%')).toBeTruthy()
-    expect(screen.getByText('1')).toBeTruthy()
+    const stats = await screen.findByTestId('student-dashboard-stats')
+    expect(within(stats).getByText('50%')).toBeTruthy()
+    expect(within(stats).getByText('1')).toBeTruthy()
   })
 
   it('shows retry UI when catalog fetch fails and no course cards', async () => {
@@ -294,7 +306,8 @@ describe('StudentDashboardPage', () => {
     await waitFor(() => {
       expect(screen.getByTestId('student-dashboard-stats')).toBeTruthy()
     })
-    const certLink = screen.getByRole('link', { name: /Certificates/i })
+    const stats = screen.getByTestId('student-dashboard-stats')
+    const certLink = within(stats).getByRole('link', { name: /Certificates/i })
     expect(certLink.getAttribute('href')).toBe('/certificates')
     expect(certLink.textContent).toMatch(/2/)
     expect(certLink.textContent).not.toMatch(/3/)
@@ -303,10 +316,54 @@ describe('StudentDashboardPage', () => {
   it('shows Research Team certificate progress with a link to /research-team', async () => {
     renderDashboard()
     expect(await screen.findByTestId('student-dashboard-research-team')).toBeTruthy()
-    expect(screen.getByText(/1 of 2 certificates/i)).toBeTruthy()
-    expect(screen.getByRole('link', { name: /View Research Team/i }).getAttribute('href')).toBe(
-      '/research-team',
-    )
+    expect(screen.getByText(/1 of 2 completed/i)).toBeTruthy()
+    expect(screen.getByRole('link', { name: /Learn More/i }).getAttribute('href')).toBe('/research-team')
+  })
+
+  it('renders the prototype Student Dashboard heading', async () => {
+    renderDashboard()
+    expect(await screen.findByRole('heading', { level: 1, name: 'Student Dashboard' })).toBeTruthy()
+  })
+
+  it('renders the streak count and one activity row from /me/activity', async () => {
+    getMyActivity.mockResolvedValue({
+      streakDays: 7,
+      items: [
+        {
+          kind: 'lesson_completion',
+          at: '2026-10-02T12:00:00.000Z',
+          title: 'Chi-Square Test',
+          courseId: 'c1',
+          resourceId: 'l1',
+        },
+      ],
+    })
+    renderDashboard()
+    expect(await screen.findByText(/Chi-Square Test/, { selector: '.h' })).toBeTruthy()
+    expect(getMyActivity).toHaveBeenCalled()
+    const streak = document.querySelector('.streak .big')
+    expect(streak?.textContent).toContain('7')
+    expect(streak?.textContent).toMatch(/days/i)
+  })
+
+  it('shows the activity empty state when /me/activity fails and does not invent rows', async () => {
+    getMyActivity.mockRejectedValue(new Error('not found'))
+    renderDashboard()
+    expect(
+      await screen.findByText(/No activity yet\. Start a course to see your progress here\./i, {
+        selector: 'li',
+      }),
+    ).toBeTruthy()
+    expect(getMyActivity).toHaveBeenCalled()
+    expect(screen.queryByText(/Completed Quiz · Module 3/i)).toBeNull()
+    expect(screen.queryByText(/PICO Framework/i)).toBeNull()
+    expect(screen.queryByText(/Chi-Square Test/)).toBeNull()
+    expect(screen.queryByText('42')).toBeNull()
+    expect(screen.queryByText('28h')).toBeNull()
+    expect(screen.queryByText(/Personal Best · 12/i)).toBeNull()
+    const streak = document.querySelector('.streak .big')
+    expect(streak?.textContent).toContain('0')
+    expect(streak?.textContent).not.toContain('7')
   })
 
   it('shows applications-not-open on the Research Team block when there are zero required courses', async () => {

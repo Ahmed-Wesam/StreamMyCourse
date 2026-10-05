@@ -1,11 +1,9 @@
 /**
  * @vitest-environment jsdom
  */
-import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { cleanup, render, screen, waitFor } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-
-import type { PublicCatalogCourse } from '../lib/api/public-catalog'
 
 const listPublishedCourses = vi.fn()
 
@@ -13,25 +11,7 @@ vi.mock('../lib/api/public-catalog', () => ({
   listPublishedCourses: (...args: unknown[]) => listPublishedCourses(...args),
 }))
 
-vi.mock('../lib/api/billing', () => ({
-  getBundle: vi.fn().mockResolvedValue({ amountMinor: 15000, currency: 'USD' }),
-  getPurchases: vi.fn().mockResolvedValue([]),
-}))
-
-vi.mock('../lib/api/session', () => ({
-  hasSignedInIdToken: vi.fn().mockResolvedValue(false),
-}))
-
 import HomePage from './HomePage'
-
-const COURSES_HEADING = 'Four Courses. One Complete Research Skill Set.'
-
-function course(partial: Partial<PublicCatalogCourse> & Pick<PublicCatalogCourse, 'id' | 'title'>): PublicCatalogCourse {
-  return {
-    description: partial.description ?? `${partial.title} description`,
-    ...partial,
-  }
-}
 
 function renderHome() {
   return render(
@@ -44,181 +24,110 @@ function renderHome() {
 describe('HomePage', () => {
   beforeEach(() => {
     listPublishedCourses.mockReset()
-    listPublishedCourses.mockResolvedValue([])
+    listPublishedCourses.mockResolvedValue([
+      { id: 'method-1', title: 'Research Methodology', description: 'Live description' },
+      { id: 'stats-1', title: 'Statistics & SPSS', description: 'Live stats' },
+      { id: 'write-1', title: 'Scientific Writing', description: 'Live writing' },
+      { id: 'srma-1', title: 'Systematic Reviews & Meta-Analysis', description: 'Live reviews' },
+    ])
   })
 
   afterEach(() => {
     cleanup()
   })
 
-  it('renders hero copy with Publish With Confidence', async () => {
+  it('renders the prototype research-team timeline and eligibility copy', async () => {
     renderHome()
+
+    expect(
+      await screen.findByRole('heading', { name: 'Interview & Selection Process' }),
+    ).toBeTruthy()
+    expect(
+      screen.getByText('Selected applicants move through interviews and a structured review.'),
+    ).toBeTruthy()
+    expect(
+      screen.getByText(
+        'Students who complete all four courses become eligible to apply for the Research Spectrum Research Team.',
+      ),
+    ).toBeTruthy()
+    expect(
+      screen.getByText(
+        'Selection is based on interviews, course performance, assignments, English proficiency, and research skills.',
+      ),
+    ).toBeTruthy()
+    expect(screen.queryByRole('heading', { name: 'Selection & Review' })).toBeNull()
+    expect(screen.queryByRole('link', { name: /^Learn more$/ })).toBeNull()
+  })
+
+  it('renders static prototype course cards, prices, and bundle enrollment', async () => {
+    renderHome()
+
+    expect(await screen.findByText('Formulate research questions')).toBeTruthy()
+    expect(screen.getByText('Design robust studies')).toBeTruthy()
+    expect(screen.getByText('Run ANOVA, Chi-Square, Regression & Logistic Regression')).toBeTruthy()
+    expect(screen.getByText('Perform Survival Analysis in SPSS')).toBeTruthy()
+    expect(screen.getByText('Structure scientific manuscripts')).toBeTruthy()
+    expect(screen.getByText('Conduct systematic searches')).toBeTruthy()
+    expect(screen.getByText('Save $50 vs. buying separately')).toBeTruthy()
+    expect(screen.getAllByText('one-time payment').length).toBe(5)
+    expect(screen.queryByText('Courses will appear here')).toBeNull()
+    expect(screen.queryByText('Live description')).toBeNull()
+    expect(screen.queryByText('$49.00')).toBeNull()
+    expect(screen.queryByText('$150.00')).toBeNull()
+
+    const prices = document.querySelectorAll('.pg-home .course-card .price')
+    expect(prices).toHaveLength(4)
+    for (const price of prices) {
+      expect(price.textContent?.replace(/\s+/g, ' ').trim()).toBe('$50 one-time payment')
+    }
+    expect(document.querySelector('.pg-home .bundle .bprice span')?.textContent).toBe('$150')
+    expect(document.querySelector('.pg-home .bundle .bprice small')?.textContent).toBe('one-time payment')
 
     await waitFor(() => {
-      expect(screen.getByText(/Publish With Confidence/i)).toBeTruthy()
-    })
-  })
-
-  it.each([1, 2] as const)(
-    'keeps literal courses heading when catalog returns %i course(s)',
-    async (count) => {
-      const courses = Array.from({ length: count }, (_, i) =>
-        course({ id: `c${i + 1}`, title: `Course ${i + 1}` }),
-      )
-      listPublishedCourses.mockResolvedValue(courses)
-
-      renderHome()
-
-      await waitFor(() => {
-        expect(
-          screen.getByRole('heading', { name: COURSES_HEADING }),
-        ).toBeTruthy()
-      })
-      await waitFor(() => {
-        expect(screen.getAllByText(courses[0]!.title).length).toBeGreaterThan(0)
-      })
-    },
-  )
-
-  it('hero primary CTA links to /courses and has no View Course & Pricing CTA', async () => {
-    renderHome()
-
-    await waitFor(() => {
-      expect(screen.getByText(/Publish With Confidence/i)).toBeTruthy()
+      expect(
+        screen.getAllByRole('link', { name: /^View Course$/i }).map((link) => link.getAttribute('href')),
+      ).toEqual(['/courses/method-1', '/courses/stats-1', '/courses/write-1', '/courses/srma-1'])
     })
 
-    const exploreLinks = screen.getAllByRole('link', { name: /Explore courses/i })
-    expect(exploreLinks.some((link) => link.getAttribute('href') === '/courses')).toBe(true)
+    expect(screen.getByRole('link', { name: /Enroll in Bundle/i }).getAttribute('href')).toBe(
+      '/checkout?productType=bundle',
+    )
 
-    expect(screen.queryByRole('link', { name: /View Course & Pricing/i })).toBeNull()
-  })
-
-  it('shows bundle USD price from getBundle', async () => {
-    listPublishedCourses.mockResolvedValue([
-      course({ id: 'methodology', title: 'Research Methodology', amountMinor: 4900 }),
-    ])
-
-    renderHome()
-
-    await waitFor(() => {
-      expect(screen.getAllByText('Research Methodology').length).toBeGreaterThan(0)
-    })
-
-    expect(screen.getAllByText('$49.00').length).toBeGreaterThan(0)
-    expect(screen.getAllByText('$150.00').length).toBeGreaterThan(0)
-  })
-
-  it('shows empty catalog message when there are no published courses', async () => {
-    listPublishedCourses.mockResolvedValue([])
-
-    renderHome()
-
-    expect(await screen.findByText('Courses will appear here')).toBeTruthy()
-  })
-
-  it('shows duration and level on home course cards without key skills', async () => {
-    listPublishedCourses.mockResolvedValue([
-      course({
-        id: 'methodology',
-        title: 'Research Methodology',
-        level: 'Beginner',
-        estimatedHours: 10,
-        catalogSkills: ['Study design'],
-      }),
-    ])
-
-    renderHome()
-
-    await waitFor(() => {
-      expect(screen.getAllByText('Research Methodology').length).toBeGreaterThan(0)
-    })
-    expect(screen.getByText('Beginner')).toBeTruthy()
-    expect(screen.getByText('~10 Hours')).toBeTruthy()
-    expect(screen.queryByText('Key skills')).toBeNull()
-    expect(screen.queryByText('Study design')).toBeNull()
-  })
-
-  it('renders one course title and a View Course link to /courses/:id', async () => {
-    listPublishedCourses.mockResolvedValue([
-      course({
-        id: 'stats-spss',
-        title: 'Statistics & SPSS',
-        description: 'Hands-on SPSS training.',
-      }),
-    ])
-
-    renderHome()
-
-    expect((await screen.findAllByText('Statistics & SPSS')).length).toBeGreaterThan(0)
-    expect(await screen.findByText('Hands-on SPSS training.')).toBeTruthy()
-
-    const viewLink = screen.getByRole('link', { name: /View Course/i })
-    expect(viewLink.getAttribute('href')).toBe('/courses/stats-spss')
-  })
-
-  it('renders several course titles as cards and bundle chips', async () => {
-    listPublishedCourses.mockResolvedValue([
-      course({ id: 'a', title: 'Alpha Methods' }),
-      course({ id: 'b', title: 'Beta Statistics' }),
-      course({ id: 'c', title: 'Gamma Writing' }),
-    ])
-
-    renderHome()
-
-    await waitFor(() => {
-      expect(screen.getAllByText('Alpha Methods').length).toBeGreaterThanOrEqual(2)
-    })
-
-    for (const title of ['Alpha Methods', 'Beta Statistics', 'Gamma Writing']) {
-      expect(screen.getAllByText(title).length).toBeGreaterThanOrEqual(2)
+    const explore = screen.getAllByRole('link', { name: /^Explore Courses$/i })
+    expect(explore.length).toBeGreaterThan(0)
+    for (const link of explore) {
+      expect(link.getAttribute('href')).toBe('/courses#courses-catalog')
     }
 
-    const coursesSection = document.getElementById('courses')
-    expect(coursesSection).toBeTruthy()
-    const exploreInCourses = within(coursesSection!).getAllByRole('link', {
-      name: /^Explore courses$/i,
-    })
-    expect(exploreInCourses.length).toBeGreaterThan(0)
-    const hrefs = exploreInCourses.map((link) => link.getAttribute('href'))
-    expect(hrefs).toContain('/checkout?productType=bundle')
-    expect(hrefs).toContain('/courses')
+    const learnMore = screen.getAllByRole('link', { name: /^Learn More$/i })
+    expect(learnMore.length).toBeGreaterThan(0)
+    for (const link of learnMore) {
+      expect(link.getAttribute('href')).toBe('#courses')
+    }
+
+    expect(screen.getByRole('link', { name: /View All FAQs/i }).getAttribute('href')).toBe('/faq')
   })
 
-  it('shows a retryable error and refetches when retry is clicked', async () => {
-    listPublishedCourses
-      .mockRejectedValueOnce(new Error('Failed to load courses (500)'))
-      .mockResolvedValueOnce([course({ id: 'retry-1', title: 'Recovered Course' })])
-
+  it('uses prototype section classes and omits the demo widget', async () => {
     renderHome()
 
-    expect(await screen.findByText(/Failed to load courses \(500\)/i)).toBeTruthy()
-    expect(listPublishedCourses).toHaveBeenCalledTimes(1)
-
-    fireEvent.click(screen.getByRole('button', { name: /retry|try again/i }))
-
-    await waitFor(() => {
-      expect(listPublishedCourses).toHaveBeenCalledTimes(2)
-    })
-    expect((await screen.findAllByText('Recovered Course')).length).toBeGreaterThan(0)
-  })
-
-  it('keeps four-courses catalog heading and drops interview eligibility claims', async () => {
-    renderHome()
-
-    await waitFor(() => {
-      expect(screen.getByRole('heading', { name: COURSES_HEADING })).toBeTruthy()
-    })
-
-    const pageText = document.body.textContent ?? ''
-    expect(pageText).not.toMatch(/Interview & Selection Process/i)
-    expect(pageText).not.toMatch(/Selection is based on interviews/i)
-    expect(pageText).not.toMatch(/move through interviews/i)
-    expect(pageText).toMatch(/How Eligibility Works/i)
-    expect(pageText).toMatch(/required course|\/research-team|Research Team/i)
-
-    const learnMoreToTeam = screen
-      .getAllByRole('link', { name: /Learn more/i })
-      .find((link) => (link.getAttribute('href') ?? '') === '/research-team')
-    expect(learnMoreToTeam).toBeTruthy()
+    expect(await screen.findByText('Formulate research questions')).toBeTruthy()
+    const root = document.querySelector('.pg-home')
+    expect(root).toBeTruthy()
+    expect(root?.getAttribute('data-testid')).toBe('student-page-home')
+    expect(root?.querySelector('.hero')).toBeTruthy()
+    expect(root?.querySelector('.hero-visual .books')).toBeTruthy()
+    expect(root?.querySelector('.trust-card')).toBeTruthy()
+    expect(root?.querySelectorAll('.out-card').length).toBe(5)
+    expect(root?.querySelector('.journey .road')).toBeTruthy()
+    expect(root?.querySelectorAll('.course-card').length).toBe(4)
+    expect(root?.querySelector('.bundle')).toBeTruthy()
+    expect(root?.querySelector('.beyond .timeline')).toBeTruthy()
+    expect(root?.querySelectorAll('.who-grid .feat').length).toBe(5)
+    expect(root?.querySelectorAll('.faq-item').length).toBe(4)
+    expect(root?.querySelector('.cta-inner')).toBeTruthy()
+    expect(root?.querySelector('#rs-dev-widget')).toBeNull()
+    expect(screen.queryByText(/Demo State/i)).toBeNull()
+    expect(document.getElementById('courses')).toBeTruthy()
   })
 })

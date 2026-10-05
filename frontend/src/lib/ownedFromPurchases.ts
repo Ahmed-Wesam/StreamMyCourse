@@ -1,6 +1,6 @@
 import type { PurchaseRecord } from './api/types'
 
-export type OwnedCoursesScope = {
+type OwnedCoursesScope = {
   ownsAllPublished: boolean
   courseIds: Set<string>
 }
@@ -20,10 +20,4 @@ export function ownedCoursesFromPurchases(purchases: PurchaseRecord[]): OwnedCou
     }
   }
   return { ownsAllPublished, courseIds }
-}
-
-export function viewerOwnsCourse(scope: OwnedCoursesScope, courseId: string, hasAccess?: boolean): boolean {
-  if (hasAccess === true) return true
-  if (scope.ownsAllPublished) return true
-  return scope.courseIds.has(courseId)
 }

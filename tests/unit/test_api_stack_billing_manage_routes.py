@@ -53,4 +53,4 @@ def test_api_stack_billing_manage_deployment_v37() -> None:
         "BillingBundleGetMethod:",
     ):
         assert required in text
-    assert "DeploymentId: !Ref CatalogApiDeploymentV44" in text
+    assert "DeploymentId: !Ref CatalogApiDeploymentV45" in text

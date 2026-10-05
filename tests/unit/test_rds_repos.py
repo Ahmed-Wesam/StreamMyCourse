@@ -323,8 +323,8 @@ class TestCourseCatalogRdsRepository:
         l2_id = uuid.UUID("aaaaaaaa-0000-0000-0000-000000000002")
         mid = uuid.UUID("dddddddd-dddd-dddd-dddd-dddddddddddd")
         fake_conn.cursor_obj.bulk_rows_to_return = [
-            (l1_id, "First", 1, "keys/1.mp4", "ready", "", 30, mid, 0),
-            (l2_id, "Second", 2, "", "pending", "thumbs/x.png", 0, mid, 0),
+            (l1_id, "First", 1, "keys/1.mp4", "ready", "", 30, mid, 0, "Notes"),
+            (l2_id, "Second", 2, "", "pending", "thumbs/x.png", 0, mid, 0, ""),
         ]
         lessons = repo.list_lessons("course-id")
         assert len(lessons) == 2

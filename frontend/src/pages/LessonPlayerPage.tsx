@@ -6,7 +6,7 @@ import {
   useState,
   type RefObject,
 } from 'react'
-import { Link, useParams, useSearchParams, type To } from 'react-router-dom'
+import { Link, useNavigate, useParams, useSearchParams, type To } from 'react-router-dom'
 import {
   getCourse,
   getCourseProgress,
@@ -20,7 +20,13 @@ import {
   isPlaybackAuthRequiredError,
   isSessionSupersededError,
 } from '../lib/api/client'
-import type { Course, CourseModule, CourseProgress, Lesson, Playback } from '../lib/api/types'
+import type {
+  Course,
+  CourseModule,
+  CourseProgress,
+  Lesson,
+  Playback,
+} from '../lib/api/types'
 import {
   catalogApiUserMessage,
   courseNotFoundMessage,
@@ -30,6 +36,7 @@ import { resolveNextAccessibleLesson, resolvePrevAccessibleLesson } from '../lib
 import { usePageTitle } from '../lib/page-title'
 import { useRevokeLessonPlaybackOnSessionSuperseded } from '../lib/use-revoke-lesson-playback-on-session-superseded'
 import { readMdUpMatch, useIsMdUp } from '../lib/useMediaQuery'
+import { LessonCompletionCelebration } from './lesson-player/LessonCompletionCelebration'
 import { LessonPlayerMobileView } from './lesson-player/LessonPlayerMobileView'
 import {
   CourseLessonsSidebar,
@@ -40,10 +47,30 @@ import {
   LessonUpNextCard,
   sortLessonsByOrdering,
   sortModulesByOrder,
-  VideoSkeleton,
 } from './lesson-player/lessonPlayerUi'
 import { LessonPlayerTabs } from './lesson-player/LessonPlayerTabs'
-import { VideoPlayer } from './lesson-player/VideoPlayer'
+import {
+  LessonPlayerVideoArea,
+  lessonVideoMetaLabel,
+} from './lesson-player/LessonPlayerVideoArea'
+import { useLessonPlayerPrefs } from './lesson-player/useLessonPlayerPrefs'
+import './LessonPlayerPage.css'
+
+function hrefToPath(href: To): string {
+  if (typeof href === 'string') return href
+  return `${href.pathname ?? ''}${href.search ?? ''}${href.hash ?? ''}`
+}
+
+function isModuleFullyComplete(
+  moduleId: string,
+  lessons: Lesson[],
+  progress: CourseProgress | null,
+): boolean {
+  if (!moduleId || !progress) return false
+  const inModule = lessons.filter((lesson) => lesson.moduleId === moduleId)
+  if (inModule.length === 0) return false
+  return inModule.every((lesson) => progress.lessons.find((row) => row.lessonId === lesson.id)?.completed)
+}
 
 // Progress tracking constants
 const PROGRESS_INTERVAL_MS = 15000 // 15 seconds between heartbeat attempts
@@ -75,6 +102,10 @@ function LessonPrimaryColumn({
   nextLesson,
   nextQuizHref,
   playbackNavLocked,
+  lessonTranscript,
+  autoCompletePill,
+  activeLessonDurationSec,
+  transcriptFetchReady,
 }: {
   loading: boolean
   playback: Playback | null
@@ -100,94 +131,115 @@ function LessonPrimaryColumn({
   nextLesson: Lesson | null
   nextQuizHref?: To | null
   playbackNavLocked: boolean
+  lessonTranscript?: string
+  autoCompletePill: boolean
+  activeLessonDurationSec: number
+  transcriptFetchReady: boolean
 }) {
   const upNextTitle = nextQuizHref ? 'Module quiz' : nextLesson?.title
-  const upNextDescription = nextQuizHref ? 'Continue to the module quiz' : 'Continue to the next lesson'
+  const upNextHref = nextQuizHref ?? (nextLesson ? `/courses/${courseId}/lessons/${nextLesson.id}` : null)
+  const videoMeta = lessonVideoMetaLabel(activeModuleLabel, activeLessonTitle, activeLessonDurationSec)
 
   return (
-    <div className="lg:col-span-2 space-y-4">
-      {loading ? (
-        <VideoSkeleton />
-      ) : (
-        <div className="overflow-hidden rounded-xl bg-black shadow-md shadow-slate-900/10">
-          <VideoPlayer
-            playback={playback}
-            resumeTimeSec={resumeTimeSec}
-            videoRef={videoRef}
-            onS3LoadedMetadata={onS3LoadedMetadata}
-            onPlaybackProgress={onPlaybackProgress}
-            onPlaybackEnded={onPlaybackEnded}
-            onPlaybackPause={onPlaybackPause}
-            className="aspect-video w-full"
-          />
+    <>
+      <LessonPlayerVideoArea
+        loading={loading}
+        playback={playback}
+        resumeTimeSec={resumeTimeSec}
+        videoRef={videoRef}
+        onS3LoadedMetadata={onS3LoadedMetadata}
+        onPlaybackProgress={onPlaybackProgress}
+        onPlaybackEnded={onPlaybackEnded}
+        onPlaybackPause={onPlaybackPause}
+        metaLabel={videoMeta}
+      />
+
+      <div className="lec-meta">
+        {activeModuleLabel ? (
+          <span className="lec-tag">
+            <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+              <polygon points="8,5 19,12 8,19" />
+            </svg>
+            {activeModuleLabel}
+          </span>
+        ) : null}
+        <h1>{activeLessonTitle}</h1>
+        <div className="lec-pills">
+          {activeLessonDurationSec > 0 ? (
+            <span className="lec-pill">{Math.max(1, Math.round(activeLessonDurationSec / 60))} min</span>
+          ) : null}
+          <span className="lec-pill">Video lesson</span>
+          {autoCompletePill ? (
+            <span className="lec-pill auto">Auto-completes when finished</span>
+          ) : null}
         </div>
-      )}
-
-      <div className="rounded-rs border border-rs-line bg-white p-6 shadow-rs-sm">
-        <div className="flex items-start justify-between gap-4">
-          <div className="min-w-0">
-            {activeModuleLabel ? (
-              <div className="inline-flex max-w-full items-center rounded-full border border-rs-line bg-rs-sky-2 px-3 py-1 text-xs font-semibold text-rs-navy">
-                <span className="truncate">{activeModuleLabel}</span>
-              </div>
-            ) : null}
-            <h1 className="mt-1 text-2xl font-extrabold tracking-tight text-rs-navy">
-              {activeLessonTitle}
-            </h1>
-          </div>
-
+        <div className="lec-actions">
           <button
             type="button"
             disabled={loading || playbackNavLocked}
             onClick={isLessonCompleted ? onMarkIncomplete : onMarkComplete}
-            className={`inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold transition-all disabled:cursor-not-allowed disabled:opacity-60 ${
-              isLessonCompleted
-                ? 'border border-rs-line bg-rs-sky-2 text-rs-navy shadow-rs-sm hover:bg-white'
-                : 'bg-rs-grad-cta text-white shadow-rs-sm hover:opacity-95'
-            }`}
+            className={`btn-complete${isLessonCompleted ? ' is-done' : ''}`}
           >
-            <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-              <path d="M20 6 9 17l-5-5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-            </svg>
             {isLessonCompleted ? 'Mark as Incomplete' : 'Mark as Complete'}
           </button>
         </div>
-
-        <LessonPlayerTabs
-          courseId={courseId}
-          lessonId={lessonId}
-          moduleId={moduleId}
-          courseDescription={courseDescription}
-          activeModuleLabel={activeModuleLabel}
-          activeLessonTitle={activeLessonTitle}
-          playbackPositionSec={playbackPositionSec}
-          contentEnabled={contentTabsEnabled}
-        />
-
-        {upNextTitle ? (
-          <LessonUpNextCard
-            upNextTitle={upNextTitle}
-            upNextDescription={upNextDescription}
-            playbackNavLocked={playbackNavLocked}
-          />
-        ) : null}
-
-        <LessonPlaybackNavigation
-          courseId={courseId}
-          playbackNavLocked={playbackNavLocked}
-          prevLesson={prevLesson}
-          prevQuizHref={prevQuizHref}
-          nextLesson={nextLesson}
-          nextQuizHref={nextQuizHref}
-        />
       </div>
-    </div>
+
+      {upNextTitle && upNextHref ? (
+        <div className="up-next">
+          <div className="un-info">
+            <span className="un-label">Up Next</span>
+            <h3>{upNextTitle}</h3>
+          </div>
+          {playbackNavLocked ? (
+            <span className="btn-white is-disabled" aria-disabled="true">
+              Start Next Lecture
+            </span>
+          ) : (
+            <Link to={upNextHref} className="btn-white">
+              Start Next Lecture
+            </Link>
+          )}
+        </div>
+      ) : upNextTitle ? (
+        <LessonUpNextCard
+          upNextTitle={upNextTitle}
+          upNextDescription="Continue to the next lesson"
+          playbackNavLocked={playbackNavLocked}
+        />
+      ) : null}
+
+      <LessonPlayerTabs
+        courseId={courseId}
+        lessonId={lessonId}
+        moduleId={moduleId}
+        courseDescription={courseDescription}
+        activeModuleLabel={activeModuleLabel}
+        activeLessonTitle={activeLessonTitle}
+        playbackPositionSec={playbackPositionSec}
+        contentEnabled={contentTabsEnabled}
+        lessonTranscriptFromList={lessonTranscript}
+        transcriptFetchReady={transcriptFetchReady}
+        prototypeShell
+      />
+
+      <LessonPlaybackNavigation
+        courseId={courseId}
+        playbackNavLocked={playbackNavLocked}
+        prevLesson={prevLesson}
+        prevQuizHref={prevQuizHref}
+        nextLesson={nextLesson}
+        nextQuizHref={nextQuizHref}
+      />
+    </>
   )
 }
 
 
 export default function LessonPlayerPage() {
   usePageTitle('Lesson')
+  const navigate = useNavigate()
+  const playerPrefs = useLessonPlayerPrefs()
   const params = useParams()
   const [searchParams] = useSearchParams()
   const courseId = useMemo(() => params.courseId ?? '', [params.courseId])
@@ -225,6 +277,7 @@ export default function LessonPlayerPage() {
   const lastPlaybackPositionRef = useRef(0)
   const lastPlaybackDurationRef = useRef(0)
   const [playbackPositionSec, setPlaybackPositionSec] = useState(0)
+  const [celebration, setCelebration] = useState<{ title: string; subtitle: string } | null>(null)
 
   const playbackNavLocked = needsSubscription || needsSignIn
   const guardedPlayback = playbackNavLocked ? null : playback
@@ -352,6 +405,26 @@ export default function LessonPlayerPage() {
     return activeLesson?.moduleId ?? ''
   }, [lessons, lessonId])
 
+  const activeLesson = useMemo(() => lessons.find((x) => x.id === lessonId), [lessons, lessonId])
+
+  const activeLessonTranscript = useMemo(() => {
+    if (!activeLesson) return undefined
+    return activeLesson.transcript?.trim() ?? ''
+  }, [activeLesson])
+
+  const maybeCelebrateModule = useCallback(
+    (progress: CourseProgress | null) => {
+      if (!playerPrefs.progressCelebrations || !progress) return
+      if (!isModuleFullyComplete(activeModuleId, lessons, progress)) return
+      const mod = modules.find((m) => m.id === activeModuleId)
+      setCelebration({
+        title: `${mod?.title ?? 'Module'} complete`,
+        subtitle: 'Nice work — continue to the next lectures when you are ready.',
+      })
+    },
+    [activeModuleId, lessons, modules, playerPrefs.progressCelebrations],
+  )
+
   const activeLessonIndex = useMemo(() => {
     return lessons.findIndex((x) => x.id === lessonId)
   }, [lessons, lessonId])
@@ -389,6 +462,12 @@ export default function LessonPlayerPage() {
       }),
     [courseId, lessonId, lessons, modules, playbackNavLocked],
   )
+
+  const maybeAutoplayNext = useCallback(() => {
+    if (!playerPrefs.autoplayNext || playbackNavLocked) return
+    const href = nextQuizHref ?? (nextLesson ? `/courses/${courseId}/lessons/${nextLesson.id}` : null)
+    if (href) navigate(hrefToPath(href))
+  }, [courseId, navigate, nextLesson, nextQuizHref, playbackNavLocked, playerPrefs.autoplayNext])
 
   const isLessonCompleted = useMemo(() => {
     const lessonProgress = courseProgress?.lessons.find((l) => l.lessonId === lessonId)
@@ -561,34 +640,39 @@ export default function LessonPlayerPage() {
   )
 
   const handleVideoEnded = async () => {
-    const activeLesson = lessons.find((l) => l.id === lessonId)
-    if (!activeLesson) return
+    const lessonRow = lessons.find((l) => l.id === lessonId)
+    if (!lessonRow) return
 
     const durationSec = effectiveLessonDurationSec()
     const positionSec = durationSec > 0 ? durationSec : currentPlaybackPositionSec()
 
-    // Circuit breaker check
     if (circuitOpenRef.current) return
 
-    // Wait for any in-flight progress update
     if (inFlightProgressRef.current) {
-      await inFlightProgressRef.current.catch(() => {}) // Ignore errors
+      await inFlightProgressRef.current.catch(() => {})
     }
 
     try {
-      await updateLessonProgress(courseId, lessonId, {
-        lastPositionSec: positionSec,
-        durationSec,
-        markComplete: true,
-      })
-      // Reset failure count on success
+      if (playerPrefs.autoMarkComplete) {
+        await updateLessonProgress(courseId, lessonId, {
+          lastPositionSec: positionSec,
+          durationSec,
+          markComplete: true,
+        })
+      } else {
+        await updateLessonProgress(courseId, lessonId, {
+          lastPositionSec: positionSec,
+          durationSec,
+        })
+      }
       consecutiveFailuresRef.current = 0
       const prog = await getCourseProgress(courseId)
       if (!isUnmountedRef.current) {
         setCourseProgress(prog)
+        maybeCelebrateModule(prog)
       }
+      maybeAutoplayNext()
     } catch {
-      // Count failures and trip circuit breaker if needed
       consecutiveFailuresRef.current++
       if (consecutiveFailuresRef.current >= MAX_CONSECUTIVE_FAILURES) {
         circuitOpenRef.current = true
@@ -661,12 +745,14 @@ export default function LessonPlayerPage() {
         )
         const total = prog.totalReadyLessons > 0 ? prog.totalReadyLessons : ensuredLessons.length
         const ensuredPercent = total > 0 ? Math.round((ensuredCompletedCount / total) * 100) : prog.percentComplete
-        setCourseProgress({
+        const merged = {
           ...prog,
           lessons: ensuredLessons,
           completedCount: ensuredCompletedCount,
           percentComplete: ensuredPercent,
-        })
+        }
+        setCourseProgress(merged)
+        maybeCelebrateModule(merged)
       }
     } catch {
       consecutiveFailuresRef.current++
@@ -786,7 +872,11 @@ export default function LessonPlayerPage() {
 
   if (!isMdUp) {
     return (
+      <div className="pg-lesson-player" data-testid="student-page-lesson-player">
       <LessonPlayerMobileView
+        prefs={playerPrefs}
+        lessonTranscript={activeLessonTranscript}
+        activeLessonDurationSec={activeLesson?.duration ?? 0}
         courseId={courseId}
         lessons={lessons}
         modules={modules}
@@ -818,158 +908,145 @@ export default function LessonPlayerPage() {
         playbackPositionSec={playbackPositionSec}
         contentTabsEnabled={!playbackNavLocked}
       />
+      <LessonCompletionCelebration
+        open={celebration != null}
+        title={celebration?.title ?? ''}
+        subtitle={celebration?.subtitle ?? ''}
+        onClose={() => setCelebration(null)}
+      />
+      </div>
     )
   }
 
   return (
-    <div className="flex min-h-[calc(100vh-64px)] bg-rs-sky-2">
-      <CourseLessonsSidebar
-        error={error}
-        lessons={lessons}
-        modules={modules}
-        courseId={courseId}
-        activeLessonId={lessonId}
-        playbackNavLocked={playbackNavLocked}
-        courseProgress={courseProgress}
-        sidebarOpen={sidebarOpen}
-        onClose={closeDesktopSidebar}
-      />
-
-      <div className="flex min-w-0 flex-1 flex-col">
-        <div className="flex shrink-0 flex-col">
-          <div className="h-1 w-full shrink-0 bg-rs-grad-cta" aria-hidden />
-          <div className="flex shrink-0 flex-wrap items-center gap-3 border-b border-rs-line bg-white px-4 py-3 shadow-rs-sm">
+    <div className="pg-lesson-player" data-testid="student-page-lesson-player">
+      <header className="player-top">
+        <div className="pt-wrap">
           {!sidebarOpen ? (
             <button
               type="button"
               onClick={openDesktopSidebar}
-              className="rounded-lg p-2 text-rs-body transition-colors hover:bg-rs-sky-2 hover:text-rs-navy"
+              className="pt-back"
               aria-label="Show sidebar"
               title="Show sidebar"
             >
-              <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
                 <path d="M4 6h16M4 12h16M4 18h16" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
               </svg>
             </button>
-          ) : null}
+          ) : (
+            <Link to={`/courses/${courseId}`} className="pt-back" aria-label="Back to course">
+              <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                <path
+                  d="M15 18l-6-6 6-6"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              </svg>
+            </Link>
+          )}
 
-          <Link
-            to={`/courses/${courseId}`}
-            className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-rs-line bg-white px-3 py-2 text-sm font-semibold text-rs-navy shadow-rs-sm transition-colors hover:border-rs-blue/30 hover:bg-rs-sky-2"
-          >
-            <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-              <path
-                d="M15 18l-6-6 6-6"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              />
-            </svg>
-            Back to course
-          </Link>
-
-          <div className="min-w-0 flex-1">
-            <p className="truncate text-sm font-semibold tracking-tight text-rs-navy">{activeLessonTitle}</p>
+          <div className="pt-course">
+            <p className="pt-name">{course?.title ?? activeLessonTitle}</p>
             {courseProgress != null ? (
-              <div className="mt-1.5 flex max-w-md items-center gap-2">
-                <div className="h-1.5 min-w-[80px] flex-1 overflow-hidden rounded-full bg-rs-line">
-                  <div
-                    className="h-full rounded-full bg-rs-grad-cta transition-all"
-                    style={{ width: `${courseProgress.percentComplete}%` }}
-                  />
+              <div className="pt-meta">
+                <div className="pt-bar">
+                  <i style={{ width: `${courseProgress.percentComplete}%` }} />
                 </div>
-                <span className="shrink-0 text-xs font-semibold tabular-nums text-rs-blue">
-                  {courseProgress.percentComplete}%
-                </span>
+                <span className="pt-pct">{courseProgress.percentComplete}%</span>
               </div>
             ) : null}
           </div>
 
-          <div className="flex items-center gap-2 shrink-0">
+          <div className="pt-nav">
             {prevHeaderHref ? (
               playbackNavLocked ? (
-                <span className="inline-flex cursor-not-allowed items-center rounded-lg border border-slate-200 bg-slate-100 px-3 py-1.5 text-sm text-slate-400 opacity-90">
-                  <svg className="mr-1.5 h-4 w-4" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-                    <path d="M15 19l-7-7 7-7" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-                  </svg>
-                  Prev
-                </span>
+                <span className="btn-nav is-disabled">Prev</span>
               ) : (
-                <Link
-                  to={prevHeaderHref}
-                  className="inline-flex items-center rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 shadow-sm transition-colors hover:border-blue-200 hover:bg-slate-50"
-                >
-                  <svg className="mr-1.5 h-4 w-4" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-                    <path d="M15 19l-7-7 7-7" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-                  </svg>
+                <Link to={prevHeaderHref} className="btn-nav">
                   Prev
                 </Link>
               )
             ) : null}
-
             {nextHeaderHref ? (
               playbackNavLocked ? (
-                <span className="inline-flex cursor-not-allowed items-center rounded-lg border border-slate-200 bg-slate-100 px-3 py-1.5 text-sm font-medium text-slate-400 opacity-90">
-                  Next
-                  <svg className="ml-1.5 h-4 w-4" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-                    <path d="M9 5l7 7-7 7" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-                  </svg>
-                </span>
+                <span className="btn-nav primary is-disabled">Next</span>
               ) : (
-                <Link
-                  to={nextHeaderHref}
-                  className="inline-flex items-center rounded-md bg-gradient-to-r from-blue-600 to-blue-700 px-3 py-1.5 text-sm font-semibold text-white shadow-md shadow-blue-900/10 transition-all hover:from-blue-700 hover:to-blue-800"
-                >
+                <Link to={nextHeaderHref} className="btn-nav primary">
                   Next
-                  <svg className="ml-1.5 h-4 w-4" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-                    <path d="M9 5l7 7-7 7" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-                  </svg>
                 </Link>
               )
             ) : null}
           </div>
         </div>
-        </div>
+      </header>
 
-        <div className="bg-rs-sky-2/50">
-          <main className="mx-auto max-w-4xl px-6 py-8">
-            <LessonPlayerAlerts
-              needsSignIn={needsSignIn}
-              needsSubscription={needsSubscription}
-              error={error}
-              courseId={courseId}
-            />
+      <div
+        className={`player${sidebarOpen ? ' sidebar-open' : ''}`}
+        style={{ gridTemplateColumns: sidebarOpen ? '340px 1fr' : '1fr' }}
+      >
+        <CourseLessonsSidebar
+          error={error}
+          lessons={lessons}
+          modules={modules}
+          courseId={courseId}
+          activeLessonId={lessonId}
+          playbackNavLocked={playbackNavLocked}
+          courseProgress={courseProgress}
+          sidebarOpen={sidebarOpen}
+          onClose={closeDesktopSidebar}
+          outerClassName="ps"
+        />
 
-            <LessonPrimaryColumn
-              loading={loading}
-              playback={guardedPlayback}
-              resumeTimeSec={playbackResumeTimeSec}
-              videoRef={videoRef}
-              onS3LoadedMetadata={handleS3LoadedMetadata}
-              onPlaybackProgress={reportPlaybackProgress}
-              onPlaybackEnded={handleVideoEnded}
-              onPlaybackPause={handlePlaybackPause}
-              activeLessonTitle={activeLessonTitle}
-              activeModuleLabel={activeModuleLabel}
-              isLessonCompleted={isLessonCompleted}
-              courseDescription={course?.description}
-              onMarkComplete={() => void handleMarkComplete()}
-              onMarkIncomplete={() => void handleMarkIncomplete()}
-              courseId={courseId}
-              lessonId={lessonId}
-              moduleId={activeModuleId}
-              playbackPositionSec={playbackPositionSec}
-              contentTabsEnabled={!playbackNavLocked}
-              prevLesson={prevLesson}
-              prevQuizHref={prevQuizHref}
-              nextLesson={nextLesson}
-              nextQuizHref={nextQuizHref}
-              playbackNavLocked={playbackNavLocked}
-            />
-          </main>
-        </div>
+        <section className="pm">
+        <LessonPlayerAlerts
+          needsSignIn={needsSignIn}
+          needsSubscription={needsSubscription}
+          error={error}
+          courseId={courseId}
+          compact
+        />
+
+        <LessonPrimaryColumn
+          loading={loading}
+          playback={guardedPlayback}
+          resumeTimeSec={playbackResumeTimeSec}
+          videoRef={videoRef}
+          onS3LoadedMetadata={handleS3LoadedMetadata}
+          onPlaybackProgress={reportPlaybackProgress}
+          onPlaybackEnded={() => void handleVideoEnded()}
+          onPlaybackPause={handlePlaybackPause}
+          activeLessonTitle={activeLessonTitle}
+          activeModuleLabel={activeModuleLabel}
+          isLessonCompleted={isLessonCompleted}
+          courseDescription={course?.description}
+          onMarkComplete={() => void handleMarkComplete()}
+          onMarkIncomplete={() => void handleMarkIncomplete()}
+          courseId={courseId}
+          lessonId={lessonId}
+          moduleId={activeModuleId}
+          playbackPositionSec={playbackPositionSec}
+          contentTabsEnabled={!playbackNavLocked}
+          prevLesson={prevLesson}
+          prevQuizHref={prevQuizHref}
+          nextLesson={nextLesson}
+          nextQuizHref={nextQuizHref}
+          playbackNavLocked={playbackNavLocked}
+          lessonTranscript={activeLessonTranscript}
+          autoCompletePill={playerPrefs.autoMarkComplete}
+          activeLessonDurationSec={activeLesson?.duration ?? 0}
+          transcriptFetchReady={!loading && Boolean(activeLesson)}
+        />
+        </section>
       </div>
+    <LessonCompletionCelebration
+      open={celebration != null}
+      title={celebration?.title ?? ''}
+      subtitle={celebration?.subtitle ?? ''}
+      onClose={() => setCelebration(null)}
+    />
     </div>
   )
 }

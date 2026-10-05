@@ -42,7 +42,7 @@ const TERMS_GATE_LEGAL_PATHS = new Set([
 /** Routes where missing terms acceptance must not force redirect to account. */
 export function isStudentTermsGateExemptPath(pathname: string): boolean {
   if (pathname === '/') return true
-  if (pathname.startsWith('/account')) return true
+  if (pathname.startsWith('/account') || pathname === '/settings') return true
   if (AUTH_SELF_SERVICE.test(pathname)) return true
   if (TERMS_GATE_LEGAL_PATHS.has(pathname)) return true
   if (CERTIFICATE_VERIFY.test(pathname)) return true
@@ -71,6 +71,7 @@ export function needsAuthBootstrap(pathname: string, search: string): boolean {
     pathname === '/certificates' ||
     pathname === '/research-team/apply' ||
     pathname.startsWith('/account') ||
+    pathname === '/settings' ||
     pathname.startsWith('/billing') ||
     pathname.startsWith('/checkout') ||
     LESSON_PLAYER.test(pathname) ||

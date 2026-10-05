@@ -345,15 +345,15 @@ describe('CourseDetailPage', () => {
     })
   })
 
-  it('shows Sign in prompt for anonymous users', async () => {
+  it('shows Enroll Now for anonymous users', async () => {
     api.hasSignedInIdToken.mockResolvedValue(false)
 
     renderCourseDetail()
 
     await waitFor(() => {
-      expect(screen.getByText(courseDetailSignInPrompt)).toBeTruthy()
+      expect(screen.getAllByRole('link', { name: /enroll now/i }).length).toBeGreaterThan(0)
     })
-    expect(screen.getByRole('link', { name: /^Sign in$/i })).toBeTruthy()
+    expect(screen.queryByText(courseDetailSignInPrompt)).toBeNull()
   })
 
   it('links to first lesson when Start Learning clicked', async () => {
@@ -619,21 +619,88 @@ describe('CourseDetailPage', () => {
     expect(within(hero).queryByText('Fallback description')).toBeNull()
   })
 
-  it('renders pathway from published catalog with Research Team finale', async () => {
-    listPublishedCourses.mockResolvedValue([
-      { id: 'c-alpha', title: 'Alpha Course', description: 'a' },
-      { id: 'c1', title: 'Test Course', description: 'Test Description' },
-      { id: 'c-beta', title: 'Beta Course', description: 'b' },
-    ])
+  it('renders the manuscript note under the Scientific Writing curriculum', async () => {
+    api.getCourse.mockResolvedValue({
+      id: 'c1',
+      title: 'Scientific Writing',
+      description: 'Test Description',
+      status: 'PUBLISHED',
+      enrolled: true,
+    })
 
     renderCourseDetail()
 
     await waitFor(() => {
-      expect(screen.getByRole('link', { name: /Alpha Course/i })).toBeTruthy()
+      expect(screen.getByRole('heading', { level: 3, name: 'A Manuscript Is More Than Writing' })).toBeTruthy()
     })
-    expect(screen.getByRole('link', { name: /Beta Course/i }).getAttribute('href')).toBe('/courses/c-beta')
-    expect(screen.getByRole('link', { name: /Research Team/i }).getAttribute('href')).toBe('/research-team')
-    expect(screen.getByText('This course')).toBeTruthy()
+    expect(
+      screen.getByText(
+        'Successful publication requires more than writing individual sections. Researchers must understand reporting standards, journal expectations, reviewer feedback, submission requirements, and scientific communication principles — this course addresses the complete publication process.',
+      ),
+    ).toBeTruthy()
+  })
+
+  it('renders the Systematic Reviews callout paragraph when the stored problem has no callout body', async () => {
+    api.getCourse.mockResolvedValue({
+      id: 'c1',
+      title: 'Systematic Reviews & Meta-Analysis',
+      description: 'Test Description',
+      status: 'PUBLISHED',
+      enrolled: true,
+      problem: {
+        heading: 'Why Most Systematic Reviews Fail',
+        calloutTitle: 'Stop Following Random YouTube Tutorials',
+        items: ['Poor search strategies'],
+      },
+    })
+
+    renderCourseDetail()
+
+    await waitFor(() => {
+      expect(screen.getByRole('heading', { level: 3, name: 'Stop Following Random YouTube Tutorials' })).toBeTruthy()
+    })
+    expect(
+      screen.getByText(
+        'Learn a structured framework used in publishable systematic reviews and meta-analyses — built on PRISMA, registered protocols, and the standards journals actually expect.',
+      ),
+    ).toBeTruthy()
+  })
+
+  it('renders the prototype research-journey heading for Research Methodology', async () => {
+    api.getCourse.mockResolvedValue({
+      id: 'c1',
+      title: 'Research Methodology',
+      description: 'Test Description',
+      status: 'PUBLISHED',
+      enrolled: true,
+    })
+
+    renderCourseDetail()
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole('heading', { level: 2, name: 'Part of a Bigger Research Journey' }),
+      ).toBeTruthy()
+    })
+  })
+
+  it('renders the static research journey steps for a prototype course', async () => {
+    api.getCourse.mockResolvedValue({
+      id: 'c1',
+      title: 'Statistics & SPSS',
+      description: 'Test Description',
+      status: 'PUBLISHED',
+      enrolled: true,
+    })
+
+    renderCourseDetail()
+
+    await waitFor(() => {
+      expect(screen.getByText('YOU ARE HERE')).toBeTruthy()
+    })
+    expect(screen.getByRole('heading', { level: 4, name: 'Statistics & SPSS' })).toBeTruthy()
+    expect(screen.getByRole('heading', { level: 4, name: 'Research Team Eligibility' })).toBeTruthy()
+    expect(screen.getByText(/Complete all four courses to become eligible/i)).toBeTruthy()
   })
 
   it('shows enroll CTA band with checkout link when viewer lacks access', async () => {
@@ -656,8 +723,10 @@ describe('CourseDetailPage', () => {
       expect(screen.getByRole('heading', { level: 2, name: 'Ready to enroll?' })).toBeTruthy()
     })
     expect(screen.getByText('Get lifetime access to every lesson.')).toBeTruthy()
-    const enrollLink = screen.getByRole('link', { name: /enroll/i })
-    expect(enrollLink.getAttribute('href')).toBe('/checkout?productType=course&courseId=c1')
+    const enrollLinks = screen.getAllByRole('link', { name: /enroll/i })
+    expect(
+      enrollLinks.some((link) => link.getAttribute('href') === '/checkout?productType=course&courseId=c1'),
+    ).toBe(true)
   })
 
   it('omits enroll CTA band when the viewer owns the course', async () => {
@@ -691,6 +760,23 @@ describe('CourseDetailPage', () => {
     expect(container.textContent ?? '').not.toMatch(/\$/)
   })
 
+  it('renders the live dollar amount from priceAmountMinor', async () => {
+    api.getCourse.mockResolvedValue({
+      id: 'c1',
+      title: 'Test Course',
+      description: 'Test Description',
+      status: 'PUBLISHED',
+      enrolled: true,
+      priceAmountMinor: 5000,
+    })
+
+    renderCourseDetail()
+
+    await waitFor(() => {
+      expect(screen.getByText('$50')).toBeTruthy()
+    })
+  })
+
   it('does not render mock instructor name or pricing band', async () => {
     renderCourseDetail()
 
@@ -710,7 +796,7 @@ describe('CourseDetailPage', () => {
 
     const curriculum = document.getElementById('curriculum')
     expect(curriculum).toBeTruthy()
-    expect(screen.getByRole('heading', { level: 2, name: 'Curriculum' })).toBeTruthy()
+    expect(screen.getByRole('heading', { level: 2, name: 'Complete Curriculum' })).toBeTruthy()
     expect(screen.queryByRole('region', { name: /course stats/i })).toBeNull()
   })
 

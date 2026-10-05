@@ -536,6 +536,20 @@ def test_deploy_backend_bundles_migration_021() -> None:
     assert chunk.index("020_assignments.sql") < chunk.index(needle)
 
 
+def test_deploy_backend_bundles_migration_023() -> None:
+    """deploy-backend.yml must cat 023 after 022 in the prod schema bundle."""
+    path = _ROOT / ".github" / "workflows" / "deploy-backend.yml"
+    text = path.read_text(encoding="utf-8")
+    needle = "023_rs16_learning_features.sql"
+    marker = "rds-schema-apply-prod-"
+    start = text.index(marker)
+    end = text.index('> "$PKG/schema.sql"', start)
+    chunk = text[start:end]
+    assert needle in chunk
+    assert "022_research_team.sql" in chunk
+    assert chunk.index("022_research_team.sql") < chunk.index(needle)
+
+
 def test_deploy_backend_bundles_migration_022() -> None:
     """deploy-backend.yml must cat 022 after 021 in the prod schema bundle."""
     path = _ROOT / ".github" / "workflows" / "deploy-backend.yml"
@@ -641,6 +655,19 @@ def test_deploy_rds_stack_sh_bundles_migration_021() -> None:
     assert chunk.index("020_assignments.sql") < chunk.index(needle)
 
 
+def test_deploy_rds_stack_sh_bundles_migration_023() -> None:
+    """scripts/deploy-rds-stack.sh must cat 023 after 022."""
+    path = _ROOT / "scripts" / "deploy-rds-stack.sh"
+    text = path.read_text(encoding="utf-8")
+    needle = "023_rs16_learning_features.sql"
+    start = text.index("cat \\")
+    end = text.index('> "$PKG/schema.sql"', start)
+    chunk = text[start:end]
+    assert needle in chunk
+    assert "022_research_team.sql" in chunk
+    assert chunk.index("022_research_team.sql") < chunk.index(needle)
+
+
 def test_deploy_rds_stack_sh_bundles_migration_022() -> None:
     """scripts/deploy-rds-stack.sh must cat 022 after 021."""
     path = _ROOT / "scripts" / "deploy-rds-stack.sh"
@@ -743,6 +770,19 @@ def test_deploy_ps1_lists_migration_021() -> None:
     assert needle in chunk
     assert "020_assignments.sql" in chunk
     assert chunk.index("020_assignments.sql") < chunk.index(needle)
+
+
+def test_deploy_ps1_lists_migration_023() -> None:
+    """infrastructure/deploy.ps1 schema bundle must include 023 after 022."""
+    path = _ROOT / "infrastructure" / "deploy.ps1"
+    text = path.read_text(encoding="utf-8")
+    needle = "023_rs16_learning_features.sql"
+    start = text.index("$schemaSqlFiles = @(")
+    end = text.index(")", start)
+    chunk = text[start:end]
+    assert needle in chunk
+    assert "022_research_team.sql" in chunk
+    assert chunk.index("022_research_team.sql") < chunk.index(needle)
 
 
 def test_deploy_ps1_lists_migration_022() -> None:
@@ -954,12 +994,15 @@ def test_concatenated_deploy_schema_bundle_through_022_is_splittable(schema_appl
         "020_assignments.sql",
         "021_certificates.sql",
         "022_research_team.sql",
+        "023_rs16_learning_features.sql",
     )
     bundle = "".join((migrations_dir / n).read_text(encoding="utf-8") for n in names)
     parts = schema_apply._split_sql_statements(bundle)
     joined = "\n".join(parts)
     assert "CREATE TABLE IF NOT EXISTS research_team_applications" in joined
     assert "research_team_applications_one_open" in joined
+    assert "CREATE TABLE IF NOT EXISTS learning_activity_days" in joined
+    assert "pref_autoplay_next" in joined
     assert len(parts) >= 55
 
 

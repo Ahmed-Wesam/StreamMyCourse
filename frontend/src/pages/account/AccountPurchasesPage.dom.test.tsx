@@ -26,6 +26,18 @@ describe('AccountPurchasesPage', () => {
     cleanup()
   })
 
+  it('shows prototype Billing & Purchase History heading', async () => {
+    getPurchases.mockResolvedValue([])
+
+    render(
+      <MemoryRouter>
+        <AccountPurchasesPage />
+      </MemoryRouter>,
+    )
+
+    expect(await screen.findByRole('heading', { name: /billing & purchase history/i })).toBeTruthy()
+  })
+
   it('shows empty state when there are no purchases', async () => {
     getPurchases.mockResolvedValue([])
 

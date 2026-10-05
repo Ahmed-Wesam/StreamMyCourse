@@ -320,6 +320,34 @@ class TestProgressRouting:
             call_kwargs = mock_handle.call_args[1]
             assert call_kwargs["progress_svc"] is mock_progress
 
+    def test_get_me_activity_routes_to_progress_controller(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        cfg_wildcard: AppConfig,
+        make_lambda_event,
+    ) -> None:
+        mock_service = MagicMock(spec=CourseManagementService)
+        mock_auth = MagicMock()
+        mock_progress = MagicMock()
+
+        with patch.object(index_mod, "handle_progress_request") as mock_handle:
+            mock_handle.return_value = {
+                "statusCode": 200,
+                "body": '{"streakDays": 0, "items": []}',
+                "headers": {"Content-Type": "application/json"},
+            }
+            monkeypatch.setattr(
+                index_mod,
+                "lambda_bootstrap",
+                _bootstrap_returning(cfg_wildcard, mock_service, mock_auth, None, mock_progress, None, None, None, None),
+            )
+            evt = make_lambda_event(method="GET", path="/me/activity")
+            resp = index_mod.lambda_handler(evt, None)
+
+            assert resp["statusCode"] == 200
+            mock_handle.assert_called_once()
+            assert mock_handle.call_args[1]["progress_svc"] is mock_progress
+
     def test_progress_options_preflight_returns_204(
         self,
         monkeypatch: pytest.MonkeyPatch,

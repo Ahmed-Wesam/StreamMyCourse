@@ -48,6 +48,18 @@ class UserProfileRepositoryPort(Protocol):
         privacy_accepted_at: datetime,
     ) -> Dict[str, Any]: ...
 
+    def update_learning_preferences(
+        self,
+        *,
+        user_sub: str,
+        autoplay_next: bool,
+        auto_mark_complete: bool,
+        progress_celebrations: bool,
+        research_interest_tags: list[str],
+    ) -> Dict[str, Any]: ...
+
+    def reset_built_preferences(self, *, user_sub: str) -> Dict[str, Any]: ...
+
 
 class CertificateIssuerPort(Protocol):
     """Optional RS-12 hook; duck-typed to CertificatesService.try_issue_for_user."""

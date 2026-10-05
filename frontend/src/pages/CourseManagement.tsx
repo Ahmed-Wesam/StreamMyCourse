@@ -4,6 +4,7 @@ import {
   getCourse,
   updateCourse,
   listLessons,
+  updateLesson,
   deleteLesson,
   listCourseModules,
   createCourseModule,
@@ -26,10 +27,7 @@ import { deleteLessonFile, listLessonFiles } from '../lib/api/lessonFiles'
 import type { LessonFileListItem } from '../lib/api/types'
 import { catalogApiUserMessage } from '../lib/apiUserMessages'
 import { CourseManagementModuleQuizPanel } from '../components/course/CourseManagementModuleQuizPanel'
-import { CoursePageContentEditor } from '../components/course/CoursePageContentEditor'
 import { CourseThumbnailEditor } from '../components/course/CourseThumbnailEditor'
-import type { CoursePageDocument } from '../lib/course-page'
-import { coursePageFromCourse } from './course-detail/coursePageFromCourse'
 import { CourseManagementAddLessonModal } from '../components/course/CourseManagementAddLessonModal'
 import { CourseManagementLessonsPanel } from '../components/course/CourseManagementLessonsPanel'
 import { CourseManagementModulesPanel } from '../components/course/CourseManagementModulesPanel'
@@ -66,8 +64,6 @@ export default function CourseManagement() {
   const [questionBankSummaries, setQuestionBankSummaries] = useState<QuestionBankSummary[]>([])
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
-  const [savingPageContent, setSavingPageContent] = useState(false)
-  const [editPage, setEditPage] = useState<CoursePageDocument>({})
   const [error, setError] = useState<string | null>(null)
   const [notFound, setNotFound] = useState(false)
   const [info, setInfo] = useState<string | null>(null)
@@ -130,7 +126,6 @@ export default function CourseManagement() {
         setLessonFilesByLessonId({})
         setEditTitle('')
         setEditDescription('')
-        setEditPage({})
         setEditPriceUsd('')
         setSelectedModuleId('')
         setNotFound(true)
@@ -144,7 +139,6 @@ export default function CourseManagement() {
         setQuestionBankSummaries(questionBanksData)
         setEditTitle(courseData.title)
         setEditDescription(courseData.description)
-        setEditPage(coursePageFromCourse(courseData))
         setEditPriceUsd(
           typeof courseData.amountMinor === 'number' && courseData.amountMinor > 0
             ? usdMinorToInputValue(courseData.amountMinor)
@@ -167,7 +161,6 @@ export default function CourseManagement() {
       setLessonFilesByLessonId({})
       setEditTitle('')
       setEditDescription('')
-      setEditPage({})
       setEditPriceUsd('')
       setSelectedModuleId('')
       const is404 = err instanceof ApiError && err.status === 404
@@ -256,23 +249,18 @@ export default function CourseManagement() {
     }
   }
 
-  const handleSavePageContent = async () => {
+  const handleSaveTranscript = async (lessonId: string, transcript: string) => {
     if (!courseId) return
-
-    setSavingPageContent(true)
+    const lesson = lessons.find((item) => item.id === lessonId)
     setError(null)
-
     try {
-      await updateCourse(courseId, {
-        title: editTitle,
-        description: editDescription,
-        page: editPage,
+      await updateLesson(courseId, lessonId, {
+        title: lesson?.title ?? '',
+        transcript,
       })
       await loadCourseData()
     } catch (err) {
-      setError(catalogApiUserMessage(err, 'updateCourse'))
-    } finally {
-      setSavingPageContent(false)
+      setError(catalogApiUserMessage(err))
     }
   }
 
@@ -653,13 +641,6 @@ export default function CourseManagement() {
         </div>
       </Card>
 
-      <CoursePageContentEditor
-        page={editPage}
-        onPageChange={setEditPage}
-        onSave={() => void handleSavePageContent()}
-        saving={savingPageContent}
-      />
-
       <CourseThumbnailEditor
         course={course}
         thumbFile={thumbFile}
@@ -701,6 +682,7 @@ export default function CourseManagement() {
         onDeleteLesson={handleDeleteLesson}
         onAttachLessonFile={handleAttachLessonFile}
         onDeleteLessonFile={handleDeleteLessonFile}
+        onSaveTranscript={handleSaveTranscript}
       />
 
       {courseId ? <TeacherCourseCertificates courseId={courseId} /> : null}

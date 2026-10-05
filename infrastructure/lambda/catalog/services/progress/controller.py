@@ -111,6 +111,10 @@ def _route(method: str, path: str) -> Tuple[str, Dict[str, str]]:
     if method == "PUT" and len(parts) == 5 and parts[0] == "courses" and parts[2] == "lessons" and parts[4] == "progress":
         return "update_lesson_progress", {"courseId": parts[1], "lessonId": parts[3]}
 
+    # GET /me/activity
+    if method == "GET" and parts == ["me", "activity"]:
+        return "get_my_activity", {}
+
     return "not_found", {}
 
 
@@ -167,6 +171,10 @@ def handle_progress_request(
                 role=role,
             )
             return json_response(200, result, origin)
+
+        if action == "get_my_activity":
+            activity = progress_svc.get_my_activity(user_sub=user_sub)
+            return json_response(200, activity, origin)
 
         # Unknown route
         raise NotFound("Not found")

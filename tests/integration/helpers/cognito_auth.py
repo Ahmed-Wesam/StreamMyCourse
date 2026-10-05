@@ -278,12 +278,19 @@ def try_refresh_student_tokens_with_metadata(
     """Attempt GetTokensFromRefreshToken with ClientMetadata; None when refresh is denied."""
     cognito = boto3.client("cognito-idp", region_name=cfg.region)
     try:
-        resp = cognito.get_tokens_from_refresh_token(
-            RefreshToken=refresh_token,
-            ClientId=cfg.client_id,
-            ClientMetadata={"student_session_id": student_session_id},
-        )
-    except (BotoCoreError, ClientError):
+        if hasattr(cognito, "get_tokens_from_refresh_token"):
+            resp = cognito.get_tokens_from_refresh_token(
+                RefreshToken=refresh_token,
+                ClientId=cfg.client_id,
+                ClientMetadata={"student_session_id": student_session_id},
+            )
+        else:
+            resp = cognito.initiate_auth(
+                ClientId=cfg.client_id,
+                AuthFlow="REFRESH_TOKEN_AUTH",
+                AuthParameters={"REFRESH_TOKEN": refresh_token},
+            )
+    except (BotoCoreError, ClientError, AttributeError):
         return None
 
     id_token = str(resp.get("IdToken") or "").strip()

@@ -43,6 +43,7 @@ const ForgotPasswordPage = lazy(() => import('../pages/ForgotPasswordPage'))
 const ResetPasswordPage = lazy(() => import('../pages/ResetPasswordPage'))
 const AccountProfilePage = lazy(() => import('../pages/account/AccountProfilePage'))
 const AccountPurchasesPage = lazy(() => import('../pages/account/AccountPurchasesPage'))
+const SettingsPage = lazy(() => import('../pages/SettingsPage'))
 const CheckoutPage = lazy(() => import('../pages/CheckoutPage'))
 const BillingSuccessPage = lazy(() => import('../pages/BillingSuccessPage'))
 const BillingCancelPage = lazy(() => import('../pages/BillingCancelPage'))
@@ -63,7 +64,7 @@ function StudentApp() {
       <Suspense fallback={null}>
         <StudentSessionGuard>
         <StudentTermsGate>
-        <Layout chromeHeader={<StudentHeader />}>
+        <Layout chromeHeader={<StudentHeader />} footerVariant="prototype">
         <ScrollToTop />
         <Routes>
         <Route
@@ -249,6 +250,16 @@ function StudentApp() {
             />
             <Route path="subscription" element={<Navigate to="../purchases" replace />} />
           </Route>
+        </Route>
+        <Route path="/settings" element={<StudentAccountAuth />}>
+          <Route
+            index
+            element={
+              <LazyRoute>
+                <SettingsPage />
+              </LazyRoute>
+            }
+          />
         </Route>
         <Route
           path="/checkout"

@@ -114,6 +114,20 @@ def test_factory_missing_user_or_password_raises() -> None:
         factory()
 
 
+def test_set_student_active_session_id_records_last_login_at() -> None:
+    """A new student session claim stamps last_login_at."""
+    cur = MagicMock()
+    conn = MagicMock()
+    conn.cursor.return_value = cur
+
+    cognito_repo.set_student_active_session_id(lambda: conn, user_sub="user-1", session_id="sess-1")
+
+    sql = cur.execute.call_args.args[0]
+    assert "last_login_at" in sql.lower()
+    assert "now()" in sql.lower()
+    conn.commit.assert_called_once()
+
+
 def test_upsert_commits_closes_and_warns_when_no_returning_row(caplog: pytest.LogCaptureFixture) -> None:
     caplog.set_level("WARNING")
     cur = MagicMock()

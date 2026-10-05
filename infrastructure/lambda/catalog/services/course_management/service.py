@@ -23,7 +23,7 @@ from services.common.playback_watermark import (
     playback_watermark_from_claims,
 )
 from services.common.sqs_client import send_media_cleanup_job
-from services.course_management.course_page_validation import validate_and_normalize_course_page
+from services.course_management.course_page_validation import reject_tag_like
 from services.course_management.models import Course, CourseModule, Lesson, LessonFile
 from services.course_management.ports import (
     AssignmentMediaKeysPort,
@@ -56,6 +56,7 @@ from services.purchases.ports import CourseAccessPort
 logger = logging.getLogger(__name__)
 
 MAX_LESSON_FILES_PER_LESSON = 20
+TRANSCRIPT_MAX_CHARS = 20_000
 
 
 def _is_valid_uuid(value: str) -> bool:
@@ -269,9 +270,11 @@ class CourseManagementService:
         if not thumbnail_key.startswith(prefix):
             raise BadRequest("Invalid lesson thumbnail key")
 
-    def _public_lesson_dict(self, lesson: Lesson) -> Dict[str, Any]:
+    def _public_lesson_dict(self, lesson: Lesson, *, include_transcript: bool = False) -> Dict[str, Any]:
         data = asdict(lesson)
         data.pop("videoKey", None)
+        if not include_transcript:
+            data.pop("transcript", None)
         thumb_key = (data.pop("thumbnailKey", None) or "").strip()
         if thumb_key and self._image_storage is not None:
             url = self._safe_presign_get(thumb_key, media="lesson_thumbnail")
@@ -518,16 +521,9 @@ class CourseManagementService:
     ) -> Dict[str, Any]:
         if not _is_valid_uuid(course_id):
             raise NotFound("Course not found")
-        if page is None:
-            self._repo.update_course(course_id=course_id, title=title, description=description)
-        else:
-            normalized = validate_and_normalize_course_page(page)
-            self._repo.update_course(
-                course_id=course_id,
-                title=title,
-                description=description,
-                page_content=normalized,
-            )
+        if page is not None:
+            raise BadRequest("Course page content cannot be updated")
+        self._repo.update_course(course_id=course_id, title=title, description=description)
         return {"id": course_id, "updated": True}
 
     def delete_course(self, course_id: str) -> Dict[str, Any]:
@@ -587,8 +583,15 @@ class CourseManagementService:
             if not self._can_manage_course_unenrolled(course, cognito_sub=cognito_sub, role=role):
                 raise NotFound("Course not found")
         lessons = self._repo.list_lessons(course_id)
+        include_transcript = bool((cognito_sub or "").strip()) and self.viewer_has_lesson_access(
+            course,
+            course_id=course_id,
+            cognito_sub=cognito_sub,
+            role=role,
+        )
         return [
-            self._public_lesson_dict(l) for l in sorted(lessons, key=lambda x: (x.moduleOrder, x.order))
+            self._public_lesson_dict(l, include_transcript=include_transcript)
+            for l in sorted(lessons, key=lambda x: (x.moduleOrder, x.order))
         ]
 
     def _resolve_module_for_new_lesson(self, course_id: str, module_id: str | None) -> str:
@@ -738,7 +741,24 @@ class CourseManagementService:
         )
         return {"lessonId": lesson.id, "moduleId": lesson.moduleId, "order": lesson.order}
 
-    def update_lesson(self, course_id: str, lesson_id: str, title: str) -> Dict[str, Any]:
+    @staticmethod
+    def _validate_transcript(transcript: str) -> str:
+        if not isinstance(transcript, str):
+            raise BadRequest("transcript must be a string")
+        reject_tag_like(transcript, field="transcript")
+        trimmed = transcript.strip()
+        if len(trimmed) > TRANSCRIPT_MAX_CHARS:
+            raise BadRequest(f"transcript must be at most {TRANSCRIPT_MAX_CHARS} characters")
+        return trimmed
+
+    def update_lesson(
+        self,
+        course_id: str,
+        lesson_id: str,
+        title: str,
+        *,
+        transcript: str | None = None,
+    ) -> Dict[str, Any]:
         if not _is_valid_uuid(course_id):
             raise NotFound("Course not found")
         if not _is_valid_uuid(lesson_id):
@@ -746,8 +766,38 @@ class CourseManagementService:
         lesson = self._repo.get_lesson_by_id(course_id, lesson_id)
         if not lesson:
             raise NotFound("Lesson not found")
+        cleaned_transcript: str | None = None
+        if transcript is not None:
+            cleaned_transcript = self._validate_transcript(transcript)
         self._repo.update_lesson_title(course_id=course_id, lesson_id=lesson_id, title=title or lesson.title)
+        if transcript is not None:
+            self._repo.update_lesson_transcript(
+                course_id=course_id,
+                lesson_id=lesson_id,
+                transcript=cleaned_transcript or "",
+            )
         return {"lessonId": lesson_id, "updated": True}
+
+    def get_lesson_transcript(
+        self,
+        course_id: str,
+        lesson_id: str,
+        *,
+        cognito_sub: str,
+        role: str,
+    ) -> Dict[str, Any]:
+        """Return the lecture transcript for a viewer who can open the lesson."""
+        self.ensure_can_view_lessons_and_playback(
+            course_id,
+            cognito_sub=cognito_sub,
+            role=role,
+        )
+        if not _is_valid_uuid(lesson_id):
+            raise NotFound("Lesson not found")
+        lesson = self._repo.get_lesson_by_id(course_id, lesson_id)
+        if not lesson:
+            raise NotFound("Lesson not found")
+        return {"lessonId": lesson_id, "transcript": lesson.transcript or ""}
 
     def delete_lesson(self, course_id: str, lesson_id: str) -> Dict[str, Any]:
         if not _is_valid_uuid(course_id):

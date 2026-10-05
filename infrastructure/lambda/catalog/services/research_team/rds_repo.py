@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from dataclasses import replace
 from typing import Any, Callable, List, Optional
 
 from services.common.errors import Conflict
@@ -116,6 +117,29 @@ class ResearchTeamRdsRepository(ResearchTeamRepositoryPort):
             return Conflict("Student already accepted", code="already_accepted")
         return None
 
+    def _tags_by_user(self, user_subs: List[str]) -> dict[str, tuple[str, ...]]:
+        unique = list(dict.fromkeys(user_subs))
+        if not unique:
+            return {}
+        cur = self._execute(
+            "SELECT user_sub, research_interest_tags FROM users WHERE user_sub = ANY(%s)",
+            (unique,),
+        )
+        found: dict[str, tuple[str, ...]] = {}
+        for user_sub, tags in cur.fetchall():
+            found[str(user_sub)] = _areas_from_db(tags)
+        return found
+
+    def _with_tags(self, row: ApplicationRow) -> ApplicationRow:
+        tags = self._tags_by_user([row.user_sub]).get(row.user_sub, ())
+        return replace(row, research_interest_tags=tags)
+
+    def _with_tags_many(self, rows: List[ApplicationRow]) -> List[ApplicationRow]:
+        if not rows:
+            return rows
+        found = self._tags_by_user([row.user_sub for row in rows])
+        return [replace(row, research_interest_tags=found.get(row.user_sub, ())) for row in rows]
+
     def list_required_published_courses(self) -> List[RequiredCourseRow]:
         cur = self._execute(
             """
@@ -166,7 +190,7 @@ class ResearchTeamRdsRepository(ResearchTeamRepositoryPort):
             (application_id,),
         )
         row = cur.fetchone()
-        return _row_from_db(row) if row else None
+        return self._with_tags(_row_from_db(row)) if row else None
 
     def list_applications(self) -> List[ApplicationRow]:
         cur = self._execute(
@@ -176,7 +200,7 @@ class ResearchTeamRdsRepository(ResearchTeamRepositoryPort):
              ORDER BY submitted_at DESC, id DESC
             """
         )
-        return [_row_from_db(r) for r in cur.fetchall()]
+        return self._with_tags_many([_row_from_db(r) for r in cur.fetchall()])
 
     def get_latest_for_user(self, user_sub: str) -> Optional[ApplicationRow]:
         cur = self._execute(
@@ -190,7 +214,7 @@ class ResearchTeamRdsRepository(ResearchTeamRepositoryPort):
             (user_sub,),
         )
         row = cur.fetchone()
-        return _row_from_db(row) if row else None
+        return self._with_tags(_row_from_db(row)) if row else None
 
     def has_accepted(self, user_sub: str) -> bool:
         cur = self._execute(
@@ -258,7 +282,7 @@ class ResearchTeamRdsRepository(ResearchTeamRepositoryPort):
             fetched = cur.fetchone()
             if fetched is None:
                 raise RuntimeError("INSERT research_team_applications returned no row")
-            return _row_from_db(fetched)
+            return self._with_tags(_row_from_db(fetched))
         except Exception as exc:
             conflict = self._unique_user_status_conflict(exc)
             if conflict is not None:
@@ -280,7 +304,7 @@ class ResearchTeamRdsRepository(ResearchTeamRepositoryPort):
             row = cur.fetchone()
             if row is None:
                 raise RuntimeError(f"update_status target missing: {application_id}")
-            return _row_from_db(row)
+            return self._with_tags(_row_from_db(row))
         except Exception as exc:
             conflict = self._unique_user_status_conflict(exc)
             if conflict is not None:
@@ -301,4 +325,4 @@ class ResearchTeamRdsRepository(ResearchTeamRepositoryPort):
         row = cur.fetchone()
         if row is None:
             raise RuntimeError(f"set_reapply_allowed target missing: {application_id}")
-        return _row_from_db(row)
+        return self._with_tags(_row_from_db(row))

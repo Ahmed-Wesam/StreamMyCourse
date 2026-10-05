@@ -11,7 +11,8 @@ This module implements the LessonProgressService which handles:
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING, Dict, List, Optional
+from datetime import date, datetime, timedelta, timezone
+from typing import TYPE_CHECKING, Callable, Dict, List, Optional
 from uuid import UUID
 
 from services.common.errors import BadRequest, Forbidden, NotFound
@@ -20,7 +21,7 @@ from services.progress.contracts import (
     LessonProgressItem,
     UpdateProgressResponse,
 )
-from services.progress.ports import LessonProgressRepositoryPort, LessonProgressRow
+from services.progress.ports import ActivityEvent, LessonProgressRepositoryPort, LessonProgressRow
 
 if TYPE_CHECKING:
     from services.course_management.ports import (
@@ -31,6 +32,23 @@ if TYPE_CHECKING:
 
 
 logger = logging.getLogger(__name__)
+
+_ACTIVITY_LIMIT = 20
+
+
+def _streak_days(days: set[date], today: date) -> int:
+    """Consecutive UTC days ending today, or ending yesterday when today is still empty."""
+    if today in days:
+        cursor = today
+    elif (today - timedelta(days=1)) in days:
+        cursor = today - timedelta(days=1)
+    else:
+        return 0
+    count = 0
+    while cursor in days:
+        count += 1
+        cursor -= timedelta(days=1)
+    return count
 
 
 def _is_valid_uuid(value: str) -> bool:
@@ -60,6 +78,8 @@ class LessonProgressService:
         progress_complete_ratio: float = 0.92,
         position_slack_sec: int = 30,
         module_lock: "StudentModuleLockPort | None" = None,
+        *,
+        clock: Callable[[], datetime] | None = None,
     ):
         self._progress_repo = progress_repo
         self._course_access = course_access
@@ -67,6 +87,13 @@ class LessonProgressService:
         self._progress_complete_ratio = progress_complete_ratio
         self._position_slack_sec = position_slack_sec
         self._module_lock = module_lock
+        self._clock = clock
+
+    def _utc_today(self) -> date:
+        moment = self._clock() if self._clock is not None else datetime.now(timezone.utc)
+        if moment.tzinfo is None:
+            moment = moment.replace(tzinfo=timezone.utc)
+        return moment.astimezone(timezone.utc).date()
 
     def _check_authorization(self, user_sub: str, course_id: str, role: str) -> bool:
         """True when the viewer has subscription-based course access (or owner/admin bypass)."""
@@ -283,6 +310,7 @@ class LessonProgressService:
             completed=completed,
             last_position_sec=position,
         )
+        self._progress_repo.record_activity_day(user_sub=user_sub, day=self._utc_today())
 
         # If we have a valid duration, try to populate lesson duration (best effort)
         # Any enrolled user or owner can trigger this if the lesson has no duration yet
@@ -306,3 +334,31 @@ class LessonProgressService:
             "ok": True,
             "lessonProgress": lesson_progress,
         }
+
+    def get_my_activity(self, *, user_sub: str) -> Dict[str, object]:
+        """Lesson completions, quiz attempts, assignment submissions, and certificates for the JWT subject."""
+        sub = (user_sub or "").strip()
+        days = {day for day in self._progress_repo.list_activity_days(user_sub=sub)}
+        events: List[ActivityEvent] = []
+        batches = (
+            self._progress_repo.list_lesson_completions(user_sub=sub),
+            self._progress_repo.list_quiz_attempts(user_sub=sub),
+            self._progress_repo.list_assignment_submissions(user_sub=sub),
+            self._progress_repo.list_certificates(user_sub=sub),
+        )
+        for batch in batches:
+            for event in batch:
+                if event.user_sub == sub:
+                    events.append(event)
+        events.sort(key=lambda event: (event.occurred_at, event.resource_id), reverse=True)
+        items = [
+            {
+                "kind": event.kind,
+                "at": event.occurred_at.isoformat(),
+                "title": event.title,
+                "courseId": event.course_id,
+                "resourceId": event.resource_id,
+            }
+            for event in events[:_ACTIVITY_LIMIT]
+        ]
+        return {"streakDays": _streak_days(days, self._utc_today()), "items": items}

@@ -1,5 +1,6 @@
 import { useEffect, useState, type RefObject } from 'react'
 import { Link, type To } from 'react-router-dom'
+import type { LessonPlayerPrefs } from '../../lib/lessonPlayerPrefs'
 import type { CourseModule, CourseProgress, Lesson, Playback } from '../../lib/api/types'
 import { DraggableBottomSheet } from '../../components/layout/DraggableBottomSheet'
 import {
@@ -7,10 +8,9 @@ import {
   LessonPlayerAlerts,
   LessonUpNextCard,
   PRO_BLUE_STRIP,
-  VideoSkeleton,
 } from './lessonPlayerUi'
 import { LessonPlayerTabs } from './LessonPlayerTabs'
-import { VideoPlayer } from './VideoPlayer'
+import { LessonPlayerVideoArea, lessonVideoMetaLabel } from './LessonPlayerVideoArea'
 
 type LessonPlayerMobileViewProps = {
   courseId: string
@@ -43,6 +43,9 @@ type LessonPlayerMobileViewProps = {
   nextQuizHref?: To | null
   playbackPositionSec: number
   contentTabsEnabled: boolean
+  prefs: LessonPlayerPrefs
+  lessonTranscript?: string
+  activeLessonDurationSec: number
 }
 
 export function LessonPlayerMobileView({
@@ -76,6 +79,9 @@ export function LessonPlayerMobileView({
   nextQuizHref,
   playbackPositionSec,
   contentTabsEnabled,
+  prefs,
+  lessonTranscript,
+  activeLessonDurationSec,
 }: LessonPlayerMobileViewProps) {
   const [curriculumOpen, setCurriculumOpen] = useState(false)
 
@@ -135,21 +141,18 @@ export function LessonPlayerMobileView({
       </header>
       </div>
 
-      <div className="relative w-full shrink-0 bg-black">
-        {loading ? (
-          <VideoSkeleton edgeToEdge />
-        ) : (
-          <VideoPlayer
-            playback={playback}
-            resumeTimeSec={resumeTimeSec}
-            videoRef={videoRef}
-            onS3LoadedMetadata={onS3LoadedMetadata}
-            onPlaybackProgress={onPlaybackProgress}
-            onPlaybackEnded={onPlaybackEnded}
-            onPlaybackPause={onPlaybackPause}
-            className="aspect-video w-full"
-          />
-        )}
+      <div className="relative w-full shrink-0 px-0">
+        <LessonPlayerVideoArea
+          loading={loading}
+          playback={playback}
+          resumeTimeSec={resumeTimeSec}
+          videoRef={videoRef}
+          onS3LoadedMetadata={onS3LoadedMetadata}
+          onPlaybackProgress={onPlaybackProgress}
+          onPlaybackEnded={onPlaybackEnded}
+          onPlaybackPause={onPlaybackPause}
+          metaLabel={lessonVideoMetaLabel(activeModuleLabel, activeLessonTitle, activeLessonDurationSec)}
+        />
       </div>
 
       <div className="border-t border-slate-200 bg-gradient-to-b from-white via-white/95 to-blue-50/40">
@@ -208,6 +211,10 @@ export function LessonPlayerMobileView({
               {isLessonCompleted ? 'Mark as Incomplete' : 'Mark as Complete'}
             </button>
 
+            {prefs.autoMarkComplete ? (
+              <p className="mt-2 text-xs font-semibold text-blue-700">Auto-completes when finished</p>
+            ) : null}
+
             <LessonPlayerTabs
               courseId={courseId}
               lessonId={lessonId}
@@ -217,6 +224,9 @@ export function LessonPlayerMobileView({
               activeLessonTitle={activeLessonTitle}
               playbackPositionSec={playbackPositionSec}
               contentEnabled={contentTabsEnabled}
+              lessonTranscriptFromList={lessonTranscript}
+              transcriptFetchReady={!loading}
+              prototypeShell
             />
 
             {upNextTitle ? (

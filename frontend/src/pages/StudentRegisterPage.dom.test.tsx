@@ -40,7 +40,7 @@ function renderPage() {
 function fillRequiredFields() {
   fireEvent.change(screen.getByLabelText(/first name/i), { target: { value: 'Ada' } })
   fireEvent.change(screen.getByLabelText(/last name/i), { target: { value: 'Lovelace' } })
-  fireEvent.change(screen.getByLabelText(/^email$/i), { target: { value: 'ada@example.com' } })
+  fireEvent.change(screen.getByLabelText(/^email address$/i), { target: { value: 'ada@example.com' } })
   fireEvent.change(screen.getByLabelText(/^password$/i), { target: { value: 'Str0ngPass' } })
   fireEvent.change(screen.getByLabelText(/confirm password/i), { target: { value: 'Str0ngPass' } })
   fireEvent.change(screen.getByLabelText(/^country$/i), { target: { value: 'Jordan' } })
@@ -73,6 +73,11 @@ describe('StudentRegisterPage', () => {
     vi.unstubAllEnvs()
   })
 
+  it('renders the Register.html journey heading', () => {
+    renderPage()
+    expect(screen.getByRole('heading', { name: 'What Happens After You Register' })).toBeTruthy()
+  })
+
   it('keeps submit disabled until required fields, matching passwords, and both checkboxes', async () => {
     renderPage()
     const submit = screen.getByTestId('register-submit') as HTMLButtonElement
@@ -81,7 +86,7 @@ describe('StudentRegisterPage', () => {
     fillRequiredFields()
     expect(submit.disabled).toBe(true)
 
-    fireEvent.click(screen.getByRole('checkbox', { name: /terms of service/i }))
+    fireEvent.click(screen.getByRole('checkbox', { name: /terms & conditions/i }))
     expect(submit.disabled).toBe(true)
 
     fireEvent.click(screen.getByRole('checkbox', { name: /privacy policy/i }))
@@ -99,7 +104,7 @@ describe('StudentRegisterPage', () => {
   it('stores draft without password and calls signUp on submit', async () => {
     renderPage()
     fillRequiredFields()
-    fireEvent.click(screen.getByRole('checkbox', { name: /terms of service/i }))
+    fireEvent.click(screen.getByRole('checkbox', { name: /terms & conditions/i }))
     fireEvent.click(screen.getByRole('checkbox', { name: /privacy policy/i }))
     fireEvent.click(screen.getByTestId('register-submit'))
 

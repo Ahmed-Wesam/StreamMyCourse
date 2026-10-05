@@ -1,3 +1,11 @@
+/**
+ * Non-secret preference for email/password sign-in.
+ * `session` — CookieStorage with no expires (ends when the browser closes).
+ * `remember` — Amplify default storage.
+ * Absent — default storage (first visit, or Google, which has no checkbox).
+ */
+export const AUTH_REMEMBER_ME_FLAG = 'rs-auth-remember-me'
+
 const AMPLIFY_STORAGE_KEY_MARKERS = ['CognitoIdentityServiceProvider', 'amplify', 'aws-amplify'] as const
 
 function storageKeyLooksLikeAmplifyAuth(key: string): boolean {
@@ -43,8 +51,17 @@ async function clearAmplifyIndexedDbCaches(): Promise<void> {
   }
 }
 
+function clearAuthRememberMeFlag(): void {
+  try {
+    localStorage.removeItem(AUTH_REMEMBER_ME_FLAG)
+  } catch {
+    /* ignore */
+  }
+}
+
 /** Drop Amplify/Cognito token caches without touching sessionStorage banner state. */
 export function clearAmplifyAuthCaches(): void {
+  clearAuthRememberMeFlag()
   clearAmplifyLocalStorageKeys()
   void clearAmplifyIndexedDbCaches()
 }

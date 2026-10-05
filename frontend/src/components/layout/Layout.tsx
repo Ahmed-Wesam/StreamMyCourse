@@ -11,9 +11,18 @@ type LayoutProps = {
   chromeAlert?: ReactNode
   /** Student site origin for absolute legal footer links (teacher shell). */
   legalBaseUrl?: string
+  /** Student shell uses the prototype footer. Teacher keeps the default footer. */
+  footerVariant?: 'prototype'
 }
 
-export function Layout({ children, showChrome = true, chromeHeader, chromeAlert, legalBaseUrl }: LayoutProps) {
+export function Layout({
+  children,
+  showChrome = true,
+  chromeHeader,
+  chromeAlert,
+  legalBaseUrl,
+  footerVariant,
+}: LayoutProps) {
   if (!showChrome) {
     return <>{children}</>
   }
@@ -28,7 +37,7 @@ export function Layout({ children, showChrome = true, chromeHeader, chromeAlert,
       <main className="min-w-0 flex-1">
         <div className={mainInnerClass}>{children}</div>
       </main>
-      <Footer legalBaseUrl={legalBaseUrl} />
+      <Footer legalBaseUrl={legalBaseUrl} variant={footerVariant} />
     </div>
   )
 }

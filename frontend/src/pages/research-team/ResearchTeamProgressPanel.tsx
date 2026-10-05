@@ -1,8 +1,5 @@
 import { Link } from 'react-router-dom'
 
-import { Button } from '../../components/ui/Button'
-import { Card } from '../../components/ui/Card'
-
 export type ResearchTeamProgressView = {
   courses: Array<{ courseId: string; title: string; certified: boolean }>
   eligible: boolean
@@ -46,47 +43,38 @@ export function ResearchTeamProgressPanel({ progress }: ResearchTeamProgressPane
     (!application || application.status === 'rejected')
 
   return (
-    <Card
-      className="mx-auto mb-8 max-w-[900px] rounded-rs px-6 py-5 shadow-rs-sm"
-      data-testid="research-team-progress"
-    >
+    <div className="rt-app-body" data-testid="research-team-progress">
       {applicationsClosed ? (
-        <p className="text-sm leading-relaxed text-rs-body">
+        <p>
           Applications are not open yet. Required courses have not been published for the Research
           Team pathway.
         </p>
       ) : (
-        <p className="text-sm font-semibold text-rs-ink">
+        <p>
           {certified} of {total} certificates
         </p>
       )}
 
       {application && !applicationsClosed ? (
-        <p className="mt-2 text-sm leading-relaxed text-rs-body" data-testid="research-team-status">
-          {statusLabel(application.status)}
-        </p>
+        <p data-testid="research-team-status">{statusLabel(application.status)}</p>
       ) : null}
 
-      {showReapplyHint ? (
-        <p className="mt-2 text-sm font-semibold text-rs-blue">You may apply again.</p>
-      ) : null}
+      {showReapplyHint ? <p>You may apply again.</p> : null}
 
       {progress.canSubmit ? (
-        <div className="mt-4">
-          <Button to="/research-team/apply" size="sm">
-            Apply
-          </Button>
+        <div className="rt-app-actions">
+          <Link to="/research-team/apply" className="btn btn-primary btn-sm">
+            Apply To Research Team
+          </Link>
         </div>
       ) : null}
 
       {showUnlockGuidance ? (
-        <p className="mt-2 text-sm text-rs-muted">
+        <p>
           Complete the required certificates to unlock the application.{' '}
-          <Link to="/courses" className="font-semibold text-rs-blue underline-offset-2 hover:underline">
-            Explore courses
-          </Link>
+          <Link to="/courses">Explore courses</Link>
         </p>
       ) : null}
-    </Card>
+    </div>
   )
 }

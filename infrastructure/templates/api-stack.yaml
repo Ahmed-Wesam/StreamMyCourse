@@ -930,6 +930,13 @@ Resources:
       ParentId: !Ref MeResource
       PathPart: certificates
 
+  MeActivityResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref CatalogApi
+      ParentId: !Ref MeResource
+      PathPart: activity
+
   # API Gateway Resource: /me/research-team
   MeResearchTeamResource:
     Type: AWS::ApiGateway::Resource
@@ -2885,6 +2892,31 @@ Resources:
         Type: AWS_PROXY
         Uri: !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${CatalogLambda.Arn}/invocations'
 
+  MeActivityGetMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref CatalogApi
+      ResourceId: !Ref MeActivityResource
+      HttpMethod: GET
+      AuthorizationType: COGNITO_USER_POOLS
+      AuthorizerId: !Ref CatalogApiTokenAuthorizer
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Uri: !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${CatalogLambda.Arn}/invocations'
+
+  MeActivityOptionsMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref CatalogApi
+      ResourceId: !Ref MeActivityResource
+      HttpMethod: OPTIONS
+      AuthorizationType: NONE
+      Integration:
+        IntegrationHttpMethod: POST
+        Type: AWS_PROXY
+        Uri: !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${CatalogLambda.Arn}/invocations'
+
   CertificatesCredentialIdGetMethod:
     Type: AWS::ApiGateway::Method
     Properties:
@@ -3435,12 +3467,160 @@ Resources:
       RestApiId: !Ref CatalogApi
       Description: !Sub 'catalog-${LambdaCodeS3Key}'
 
+  CatalogApiDeploymentV45:
+    Type: AWS::ApiGateway::Deployment
+    DependsOn:
+      - CatalogLambdaApiPermission
+      - CatalogApiTokenAuthorizer
+      - CatalogApiPublicReadAuthorizer
+      - CoursesGetMethod
+      - CoursesPostMethod
+      - CoursesOptionsMethod
+      - CoursesMineGetMethod
+      - CoursesMineOptionsMethod
+      - CourseIdGetMethod
+      - CourseEnrollPostMethod
+      - CourseEnrollOptionsMethod
+      - CourseIdPutMethod
+      - CourseIdDeleteMethod
+      - CourseIdOptionsMethod
+      - CoursePublishPutMethod
+      - CoursePublishOptionsMethod
+      - CourseThumbnailReadyPutMethod
+      - CourseThumbnailReadyOptionsMethod
+      - LessonsGetMethod
+      - LessonsPostMethod
+      - LessonsOptionsMethod
+      - LessonIdPutMethod
+      - LessonIdDeleteMethod
+      - LessonIdOptionsMethod
+      - LessonVideoReadyPutMethod
+      - LessonVideoReadyOptionsMethod
+      - PlaybackGetMethod
+      - PlaybackOptionsMethod
+      - UploadUrlPostMethod
+      - UploadUrlOptionsMethod
+      - ContactPostMethod
+      - ContactOptionsMethod
+      - UsersMeGetMethod
+      - UsersMePatchMethod
+      - UsersMeOptionsMethod
+      - CourseProgressGetMethod
+      - CourseProgressOptionsMethod
+      - LessonProgressPutMethod
+      - LessonProgressOptionsMethod
+      - LessonFilesGetMethod
+      - LessonFilesPostMethod
+      - LessonFilesOptionsMethod
+      - LessonFileIdDeleteMethod
+      - LessonFileIdOptionsMethod
+      - LessonFileCompletePutMethod
+      - LessonFileCompleteOptionsMethod
+      - LessonFileUrlGetMethod
+      - LessonFileUrlOptionsMethod
+      - LessonNotesGetMethod
+      - LessonNotesPostMethod
+      - LessonNotesOptionsMethod
+      - LessonNoteIdPatchMethod
+      - LessonNoteIdDeleteMethod
+      - LessonNoteIdOptionsMethod
+      - CourseModulesGetMethod
+      - CourseModulesPostMethod
+      - CourseModulesOptionsMethod
+      - CourseModuleIdDeleteMethod
+      - CourseModuleIdOptionsMethod
+      - CourseQuestionBanksPostMethod
+      - CourseQuestionBanksGetMethod
+      - CourseQuestionBanksOptionsMethod
+      - CourseQuestionBankIdPatchMethod
+      - CourseQuestionBankIdOptionsMethod
+      - CourseModuleQuizzesGetMethod
+      - CourseModuleQuizzesOptionsMethod
+      - CourseQuestionBankPublishPostMethod
+      - CourseQuestionBankPublishOptionsMethod
+      - CourseQuestionBankQuestionsPostMethod
+      - CourseQuestionBankQuestionsGetMethod
+      - CourseQuestionBankQuestionsOptionsMethod
+      - CourseQuestionBankQuestionIdPatchMethod
+      - CourseQuestionBankQuestionIdDeleteMethod
+      - CourseQuestionBankQuestionIdOptionsMethod
+      - CourseModuleQuizPatchMethod
+      - CourseModuleQuizPostMethod
+      - CourseModuleQuizOptionsMethod
+      - CourseModuleQuizSubmitPostMethod
+      - CourseModuleQuizSubmitOptionsMethod
+      - CourseModuleQuizAttemptsGetMethod
+      - CourseModuleQuizAttemptsOptionsMethod
+      - CourseModuleQuizStartPostMethod
+      - CourseModuleQuizStartOptionsMethod
+      - WebhooksKinescopePostMethod
+      - WebhooksKinescopeOptionsMethod
+      - WebhooksKinescopeDrmAuthPostMethod
+      - WebhooksKinescopeDrmAuthOptionsMethod
+      - CourseAssignmentsGetMethod
+      - CourseAssignmentsPostMethod
+      - CourseAssignmentsOptionsMethod
+      - CourseAssignmentIdGetMethod
+      - CourseAssignmentIdPatchMethod
+      - CourseAssignmentIdDeleteMethod
+      - CourseAssignmentIdOptionsMethod
+      - CourseAssignmentImagesPostMethod
+      - CourseAssignmentImagesOptionsMethod
+      - CourseAssignmentImageCompletePostMethod
+      - CourseAssignmentImageCompleteOptionsMethod
+      - CourseAssignmentImageUrlGetMethod
+      - CourseAssignmentImageUrlOptionsMethod
+      - CourseAssignmentSubmissionsGetMethod
+      - CourseAssignmentSubmissionsPostMethod
+      - CourseAssignmentSubmissionsOptionsMethod
+      - CourseAssignmentSubmissionIdGetMethod
+      - CourseAssignmentSubmissionIdOptionsMethod
+      - CourseAssignmentSubmissionFilesPostMethod
+      - CourseAssignmentSubmissionFilesOptionsMethod
+      - CourseAssignmentSubmissionFileCompletePostMethod
+      - CourseAssignmentSubmissionFileCompleteOptionsMethod
+      - CourseAssignmentSubmissionFileUrlGetMethod
+      - CourseAssignmentSubmissionFileUrlOptionsMethod
+      - CourseAssignmentSubmitPostMethod
+      - CourseAssignmentSubmitOptionsMethod
+      - CourseAssignmentGradePostMethod
+      - CourseAssignmentGradeOptionsMethod
+      - MeCertificatesGetMethod
+      - MeCertificatesOptionsMethod
+      - CertificatesCredentialIdGetMethod
+      - CertificatesCredentialIdOptionsMethod
+      - CourseCertificatesGetMethod
+      - CourseCertificatesOptionsMethod
+      - CourseCertificateRevokePostMethod
+      - CourseCertificateRevokeOptionsMethod
+      - ResearchTeamRequirementsGetMethod
+      - ResearchTeamRequirementsOptionsMethod
+      - ResearchTeamApplicationsGetMethod
+      - ResearchTeamApplicationsOptionsMethod
+      - ResearchTeamApplicationIdGetMethod
+      - ResearchTeamApplicationIdPatchMethod
+      - ResearchTeamApplicationIdOptionsMethod
+      - ResearchTeamAllowReapplyPostMethod
+      - ResearchTeamAllowReapplyOptionsMethod
+      - MeResearchTeamGetMethod
+      - MeResearchTeamOptionsMethod
+      - MeResearchTeamApplicationsPostMethod
+      - MeResearchTeamApplicationsOptionsMethod
+      - CourseResearchTeamRequirementPutMethod
+      - CourseResearchTeamRequirementGetMethod
+      - CourseResearchTeamRequirementOptionsMethod
+      - MeActivityGetMethod
+      - MeActivityOptionsMethod
+    Properties:
+      RestApiId: !Ref CatalogApi
+      Description: !Sub 'catalog-${LambdaCodeS3Key}'
+
   # API Gateway Stage
   CatalogApiStage:
     Type: AWS::ApiGateway::Stage
     Properties:
       RestApiId: !Ref CatalogApi
-      DeploymentId: !Ref CatalogApiDeploymentV44
+      DeploymentId: !Ref CatalogApiDeploymentV45
       StageName: !Ref Environment
       Description: !Sub '${Environment} stage for Catalog API'
       MethodSettings:

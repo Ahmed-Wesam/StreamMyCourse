@@ -34,6 +34,7 @@ class ApplicationRow:
     motivation: str
     weekly_hours: str
     acknowledged_at: datetime
+    research_interest_tags: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)

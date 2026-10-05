@@ -35,6 +35,29 @@ function statusOptionLabel(status: ResearchTeamApplicationStatus): string {
   }
 }
 
+const RESEARCH_INTEREST_LABELS: Record<string, string> = {
+  surgical_research: 'Surgical Research',
+  systematic_reviews: 'Systematic Reviews',
+  meta_analysis: 'Meta-Analysis',
+  clinical_research: 'Clinical Research',
+  database_research: 'Database Research',
+}
+
+function ResearchPreferences({ tags }: { tags: string[] | undefined }) {
+  const labels = (tags ?? []).map((tag) => RESEARCH_INTEREST_LABELS[tag] ?? tag)
+  if (labels.length === 0) return null
+  return (
+    <div className="mt-4">
+      <p className="mb-1 text-sm font-bold text-rs-navy">Research preferences</p>
+      <ul className="list-disc pl-5 text-sm text-rs-body">
+        {labels.map((label) => (
+          <li key={label}>{label}</li>
+        ))}
+      </ul>
+    </div>
+  )
+}
+
 export default function TeacherResearchTeamApplicationDetailPage() {
   usePageTitle('Research Team application')
   const { applicationId: applicationIdParam } = useParams<{ applicationId: string }>()
@@ -214,6 +237,8 @@ export default function TeacherResearchTeamApplicationDetailPage() {
             <dd className="text-rs-body">{application.sysReviewExperience}</dd>
           </div>
         </dl>
+
+        <ResearchPreferences tags={application.researchInterestTags} />
 
         {application.researchAreas.length > 0 ? (
           <div className="mt-4">

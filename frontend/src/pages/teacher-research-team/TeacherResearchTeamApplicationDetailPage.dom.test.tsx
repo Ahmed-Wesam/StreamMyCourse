@@ -159,6 +159,16 @@ describe('TeacherResearchTeamApplicationDetailPage', () => {
     expect(screen.getByText('Plain interests')).toBeTruthy()
   })
 
+  it('shows the applicant research preference labels', async () => {
+    researchTeamTeacherApi.getResearchTeamApplication.mockResolvedValue(
+      baseApplication({ researchInterestTags: ['surgical_research', 'meta_analysis'] }),
+    )
+    renderDetail()
+
+    expect(await screen.findByText('Surgical Research')).toBeTruthy()
+    expect(screen.getByText('Meta-Analysis')).toBeTruthy()
+  })
+
   it('shows an error instead of loading forever when fetchMe fails', async () => {
     sessionApi.fetchMe.mockRejectedValue(new Error('network down'))
 

@@ -1122,33 +1122,13 @@ describe('CourseManagement', () => {
   })
 
   describe('course page content editor', () => {
-    it('Save page content calls updateCourse with title, description, and page', async () => {
-      api.getCourse.mockResolvedValue({
-        id: 'c1',
-        title: 'Test Course',
-        description: 'Test Description',
-        status: 'DRAFT',
-        subtitle: 'Learn stats fast',
-        catalogSkills: ['Regression'],
-      })
-
+    it('does not render the course page editor', async () => {
       renderCourseManagement()
 
-      const editor = await screen.findByTestId('course-page-content-editor')
-      expect(within(editor).getByLabelText(/^Subtitle$/i)).toHaveProperty('value', 'Learn stats fast')
-
-      fireEvent.click(screen.getByRole('button', { name: /save page content/i }))
-
       await waitFor(() => {
-        expect(api.updateCourse).toHaveBeenCalledWith('c1', {
-          title: 'Test Course',
-          description: 'Test Description',
-          page: expect.objectContaining({
-            subtitle: 'Learn stats fast',
-            catalogSkills: ['Regression'],
-          }),
-        })
+        expect(screen.getByText('Manage Course')).toBeTruthy()
       })
+      expect(screen.queryByTestId('course-page-content-editor')).toBeNull()
     })
 
     it('price save does not include page on updateCourse', async () => {
@@ -1172,63 +1152,6 @@ describe('CourseManagement', () => {
         expect(pricingApi.setCoursePrice).toHaveBeenCalledWith('c1', 5999)
       })
       expect(api.updateCourse).not.toHaveBeenCalled()
-    })
-
-    it('add and remove catalog skill row changes submitted page', async () => {
-      let catalogSkills = ['First skill']
-      api.getCourse.mockImplementation(async () => ({
-        id: 'c1',
-        title: 'Test Course',
-        description: 'Test Description',
-        status: 'DRAFT',
-        catalogSkills,
-      }))
-      api.updateCourse.mockImplementation(async (_id, input) => {
-        if (input.page?.catalogSkills) {
-          catalogSkills = input.page.catalogSkills
-        }
-        return { ok: true }
-      })
-
-      renderCourseManagement()
-
-      const editor = await screen.findByTestId('course-page-content-editor')
-      fireEvent.click(within(editor).getByRole('button', { name: /add catalog skill/i }))
-
-      const skillInputs = within(editor).getAllByLabelText(/^Catalog skill$/i)
-      expect(skillInputs).toHaveLength(2)
-      fireEvent.change(skillInputs[1]!, { target: { value: 'Second skill' } })
-
-      fireEvent.click(screen.getByRole('button', { name: /save page content/i }))
-
-      await waitFor(() => {
-        expect(api.updateCourse).toHaveBeenCalledWith(
-          'c1',
-          expect.objectContaining({
-            page: expect.objectContaining({
-              catalogSkills: ['First skill', 'Second skill'],
-            }),
-          }),
-        )
-      })
-
-      api.updateCourse.mockClear()
-
-      const removeButtons = within(editor).getAllByRole('button', { name: /remove catalog skill/i })
-      fireEvent.click(removeButtons[0]!)
-
-      fireEvent.click(screen.getByRole('button', { name: /save page content/i }))
-
-      await waitFor(() => {
-        expect(api.updateCourse).toHaveBeenCalledWith(
-          'c1',
-          expect.objectContaining({
-            page: expect.objectContaining({
-              catalogSkills: ['Second skill'],
-            }),
-          }),
-        )
-      })
     })
   })
 

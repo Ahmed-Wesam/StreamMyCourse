@@ -41,4 +41,4 @@ def test_api_stack_billing_merchant_status_route_on_catalog() -> None:
     # Conditional billing methods must not be in DependsOn (cfn-lint E3005).
     assert "BillingMerchantStatusGetMethod" not in deployment_block
     assert "BillingMerchantStatusOptionsMethod" not in deployment_block
-    assert "DeploymentId: !Ref CatalogApiDeploymentV44" in text
+    assert "DeploymentId: !Ref CatalogApiDeploymentV45" in text

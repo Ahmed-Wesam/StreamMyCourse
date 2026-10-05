@@ -160,4 +160,9 @@ def test_create_profile_returns_fallback_when_second_read_is_none() -> None:
         "researchInterests": "",
         "termsAcceptedAt": "",
         "privacyAcceptedAt": "",
+        "autoplayNext": True,
+        "autoMarkComplete": True,
+        "progressCelebrations": True,
+        "researchInterestTags": [],
+        "lastLoginAt": "",
     }

@@ -1,12 +1,16 @@
 /**
  * @vitest-environment jsdom
  */
-import { cleanup, render, screen, waitFor } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { SafeRichText } from '../components/assignments/SafeRichText'
 import AssignmentPage from './AssignmentPage'
+
+vi.mock('../lib/api/catalog', () => ({
+  getCourse: vi.fn().mockResolvedValue({ id: 'c1', title: 'Research Methodology', status: 'PUBLISHED' }),
+}))
 
 const api = vi.hoisted(() => ({
   getAssignment: vi.fn(),
@@ -79,6 +83,63 @@ describe('SafeRichText', () => {
 })
 
 describe('AssignmentPage', () => {
+  it('renders the pg-assignment prototype shell', async () => {
+    renderAssignmentPage()
+
+    await waitFor(() => {
+      expect(screen.getByTestId('assignment-page')).toBeTruthy()
+    })
+    expect(document.querySelector('.pg-assignment')).toBeTruthy()
+  })
+
+  it('shows key prototype section headings', async () => {
+    renderAssignmentPage()
+
+    await waitFor(() => {
+      expect(screen.getByText('Assignment Overview')).toBeTruthy()
+    })
+    expect(screen.getByText(/Certificate Readiness/i)).toBeTruthy()
+    expect(screen.getByText(/Before You Submit/i)).toBeTruthy()
+    expect(screen.getByRole('heading', { name: /Assignment Submission/i })).toBeTruthy()
+    expect(screen.getByText('Submission Portal')).toBeTruthy()
+    expect(screen.getByRole('heading', { level: 1, name: /Final Assignment/i })).toBeTruthy()
+  })
+
+  it('submits a file through the mocked assignment API', async () => {
+    api.createAssignmentSubmission.mockResolvedValue({ id: 'sub-1' })
+    api.createAssignmentSubmissionFile.mockResolvedValue({
+      fileId: 'f1',
+      uploadUrl: 'https://upload.example/put',
+    })
+    api.putAssignmentUpload.mockResolvedValue(undefined)
+    api.completeAssignmentSubmissionFile.mockResolvedValue(undefined)
+    api.submitAssignmentSubmission.mockResolvedValue(undefined)
+    api.getAssignment
+      .mockResolvedValueOnce(unlockedAssignment)
+      .mockResolvedValueOnce({
+        ...unlockedAssignment,
+        myLatest: { id: 'sub-1', status: 'submitted' },
+      })
+
+    renderAssignmentPage()
+
+    await waitFor(() => {
+      expect(screen.getByRole('heading', { name: 'Final write-up' })).toBeTruthy()
+    })
+
+    const file = new File(['hello'], 'proposal.pdf', { type: 'application/pdf' })
+    const input = screen.getByLabelText(/upload primary file/i)
+    fireEvent.change(input, { target: { files: [file] } })
+
+    fireEvent.click(screen.getByRole('button', { name: /submit assignment/i }))
+    fireEvent.click(screen.getByRole('button', { name: /confirm submission/i }))
+
+    await waitFor(() => {
+      expect(api.createAssignmentSubmission).toHaveBeenCalledWith('c1', 'a1')
+    })
+    expect(api.submitAssignmentSubmission).toHaveBeenCalledWith('c1', 'a1', 'sub-1', {})
+  })
+
   it('hides the upload form when the assignment is locked', async () => {
     api.getAssignment.mockResolvedValue({
       ...unlockedAssignment,
@@ -88,11 +149,11 @@ describe('AssignmentPage', () => {
     renderAssignmentPage()
 
     await waitFor(() => {
-      expect(screen.getByText(/Final write-up/)).toBeTruthy()
+      expect(screen.getByRole('heading', { name: 'Final write-up' })).toBeTruthy()
     })
 
-    expect(screen.queryByLabelText(/upload file/i)).toBeNull()
-    expect(screen.queryByRole('button', { name: /submit/i })).toBeNull()
+    expect(screen.queryByLabelText(/upload primary file/i)).toBeNull()
+    expect(screen.queryByRole('button', { name: /^Submit Assignment$/i })).toBeNull()
     expect(screen.getByText(/earlier module quizzes must be passed/i)).toBeTruthy()
   })
 

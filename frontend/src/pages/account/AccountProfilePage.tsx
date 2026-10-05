@@ -1,19 +1,17 @@
 import { fetchAuthSession, updatePassword, updateUserAttributes } from 'aws-amplify/auth'
-import { Lock, User, Bell } from 'lucide-react'
-import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from 'react'
+import { useEffect, useMemo, useState, type FormEvent } from 'react'
 import { Link } from 'react-router-dom'
 
 import { fetchMe, patchUsersMe } from '../../lib/api/session'
 import type { UserProfile } from '../../lib/api/types'
 import { catalogApiUserMessage } from '../../lib/apiUserMessages'
 import { isNativeCognitoPasswordUser } from '../../lib/cognito-native-user'
-import { isPasswordPolicyMet } from '../../lib/password-policy'
+import { isPasswordPolicyMet, passwordChecks, type PasswordCheckId } from '../../lib/password-policy'
 import { COUNTRIES, PROFESSIONS } from '../../lib/profile-options'
 import { usePageTitle } from '../../lib/page-title'
 import { shouldSuppressInlineSessionSupersededMessage } from '../../lib/session-superseded-inline'
-import { Button } from '../../components/ui/Button'
-import { Field } from '../../components/ui/Field'
-import { PasswordChecklist } from '../../components/auth/PasswordChecklist'
+import { IconBell, IconCheck, IconLock, IconUser } from './accountIcons'
+import './AccountPage.css'
 
 type ProfileState =
   | { status: 'loading' }
@@ -21,22 +19,21 @@ type ProfileState =
   | { status: 'error'; message: string }
   | { status: 'ready'; profile: UserProfile }
 
-function AcctCardTitle({ icon: Icon, children }: { icon: typeof User; children: string }) {
-  return (
-    <h3 className="mb-5 flex items-center gap-2.5 text-[17px] font-extrabold tracking-tight text-rs-ink">
-      <span className="flex size-[34px] shrink-0 items-center justify-center rounded-[10px] border border-[#e2ebff] bg-rs-sky-2 text-rs-blue">
-        <Icon aria-hidden className="size-4" strokeWidth={2} />
-      </span>
-      {children}
-    </h3>
-  )
+const PW_ORDER: PasswordCheckId[] = ['length', 'upper', 'lower', 'number']
+const PW_LABELS: Record<PasswordCheckId, string> = {
+  length: '8+ characters',
+  upper: 'Uppercase',
+  lower: 'Lowercase',
+  number: 'Number',
 }
 
-function AcctCard({ children }: { children: ReactNode }) {
-  return (
-    <div className="rounded-[22px] border border-rs-line bg-white p-7 shadow-rs-sm sm:px-[30px]">{children}</div>
-  )
-}
+const NOTIFICATION_ROWS = [
+  { key: 'courseAnnouncements', title: 'Course Announcements', detail: 'Updates and announcements from your enrolled courses.' },
+  { key: 'quizResults', title: 'Quiz Results', detail: 'Notifications when your quiz submissions are graded.' },
+  { key: 'certificateAwards', title: 'Certificate Awards', detail: 'Celebrate when you earn a new certificate.' },
+  { key: 'teamUpdates', title: 'Research Team Updates', detail: 'News about the Research Spectrum Research Team pathway.' },
+  { key: 'productUpdates', title: 'Product Updates', detail: 'Feature releases and platform improvements.' },
+] as const
 
 export default function AccountProfilePage() {
   usePageTitle('Account')
@@ -97,6 +94,8 @@ export default function AccountProfilePage() {
     if (state.status !== 'ready') return false
     return !state.profile.termsAcceptedAt?.trim() || !state.profile.privacyAcceptedAt?.trim()
   }, [state])
+
+  const pwChecks = passwordChecks(newPassword)
 
   async function onSaveProfile(e: FormEvent) {
     e.preventDefault()
@@ -163,197 +162,304 @@ export default function AccountProfilePage() {
     }
   }
 
+  if (state.status === 'loading') {
+    return (
+      <section className="db" style={{ paddingTop: 0 }}>
+        <div className="wrap">
+          <p className="field-hint" role="status">
+            Loading profile…
+          </p>
+        </div>
+      </section>
+    )
+  }
+
+  if (state.status === 'superseded') {
+    return (
+      <section className="db" style={{ paddingTop: 0 }}>
+        <div className="wrap">
+          <p className="field-hint" role="status">
+            Sign in again using the message above to view your profile.
+          </p>
+        </div>
+      </section>
+    )
+  }
+
+  if (state.status === 'error') {
+    return (
+      <section className="db" style={{ paddingTop: 0 }}>
+        <div className="wrap">
+          <p className="save-error" role="alert">
+            {state.message}
+          </p>
+        </div>
+      </section>
+    )
+  }
+
   return (
-    <section aria-labelledby="account-profile-heading" className="space-y-6">
-      <div>
-        <h2 id="account-profile-heading" className="text-xl font-extrabold text-rs-ink">
-          Profile
-        </h2>
-        <p className="mt-1 text-sm font-semibold text-rs-body">Manage your account details.</p>
+    <>
+      <div className="section-sep">
+        <div className="wrap">
+          <div className="section-group-header">
+            <span className="sg-label">
+              <IconUser />
+              Account
+            </span>
+          </div>
+        </div>
       </div>
 
-      {state.status === 'loading' ? (
-        <p className="text-sm font-semibold text-rs-muted" role="status">
-          Loading profile…
-        </p>
-      ) : null}
-
-      {state.status === 'superseded' ? (
-        <p className="text-sm font-semibold text-rs-muted" role="status">
-          Sign in again using the message above to view your profile.
-        </p>
-      ) : null}
-
-      {state.status === 'error' ? (
-        <p
-          className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-800"
-          role="alert"
-        >
-          {state.message}
-        </p>
-      ) : null}
-
-      {state.status === 'ready' ? (
-        <>
-          <AcctCard>
-            <AcctCardTitle icon={User}>Profile Information</AcctCardTitle>
+      <section className="db" style={{ paddingTop: 0 }}>
+        <div className="wrap">
+          <div className="acct-card reveal">
+            <h3 className="acct-card-title">
+              <span className="act-ic">
+                <IconUser />
+              </span>
+              Profile Information
+            </h3>
             <form onSubmit={(ev) => void onSaveProfile(ev)}>
-              <div className="grid gap-0 sm:grid-cols-2 sm:gap-x-4">
-                <Field label="First name" value={givenName} onChange={(e) => setGivenName(e.target.value)} />
-                <Field label="Last name" value={familyName} onChange={(e) => setFamilyName(e.target.value)} />
+              <div className="field-grid">
+                <div className="field">
+                  <label htmlFor="acct-first-name">First Name</label>
+                  <input
+                    type="text"
+                    id="acct-first-name"
+                    placeholder="First name"
+                    value={givenName}
+                    onChange={(e) => setGivenName(e.target.value)}
+                  />
+                </div>
+                <div className="field">
+                  <label htmlFor="acct-last-name">Last Name</label>
+                  <input
+                    type="text"
+                    id="acct-last-name"
+                    placeholder="Last name"
+                    value={familyName}
+                    onChange={(e) => setFamilyName(e.target.value)}
+                  />
+                </div>
+                <div className="field">
+                  <label htmlFor="acct-email">Email Address</label>
+                  <input type="email" id="acct-email" readOnly aria-readonly value={state.profile.email} />
+                  <p className="field-hint">Used for login and certificate delivery.</p>
+                </div>
+                <div className="field">
+                  <label htmlFor="acct-country">Country</label>
+                  <select id="acct-country" value={country} onChange={(e) => setCountry(e.target.value)} required>
+                    <option value="">Select country</option>
+                    {COUNTRIES.map((c) => (
+                      <option key={c} value={c}>
+                        {c}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="field">
+                  <label htmlFor="acct-profession">Profession</label>
+                  <select
+                    id="acct-profession"
+                    value={profession}
+                    onChange={(e) => setProfession(e.target.value)}
+                    required
+                  >
+                    <option value="">Select profession</option>
+                    {PROFESSIONS.map((p) => (
+                      <option key={p} value={p}>
+                        {p}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="field">
+                  <label htmlFor="acct-institution">Institution</label>
+                  <input
+                    type="text"
+                    id="acct-institution"
+                    placeholder="Hospital or university"
+                    value={institution}
+                    onChange={(e) => setInstitution(e.target.value)}
+                  />
+                  {!institution.trim() ? <p className="field-hint">Not provided</p> : null}
+                </div>
               </div>
-              <Field label="Email" value={state.profile.email} readOnly aria-readonly />
-              <Field label="Country">
-                <select
-                  className="w-full rounded-xl border-[1.5px] border-rs-line px-[14px] py-[11px] text-[15px] font-semibold text-rs-ink"
-                  value={country}
-                  onChange={(e) => setCountry(e.target.value)}
-                  required
-                >
-                  <option value="">Select country</option>
-                  {COUNTRIES.map((c) => (
-                    <option key={c} value={c}>
-                      {c}
-                    </option>
-                  ))}
-                </select>
-              </Field>
-              <Field label="Profession">
-                <select
-                  className="w-full rounded-xl border-[1.5px] border-rs-line px-[14px] py-[11px] text-[15px] font-semibold text-rs-ink"
-                  value={profession}
-                  onChange={(e) => setProfession(e.target.value)}
-                  required
-                >
-                  <option value="">Select profession</option>
-                  {PROFESSIONS.map((p) => (
-                    <option key={p} value={p}>
-                      {p}
-                    </option>
-                  ))}
-                </select>
-              </Field>
-              <Field
-                label="Institution (optional)"
-                value={institution}
-                onChange={(e) => setInstitution(e.target.value)}
-              />
-              <Field label="Research interests (optional)">
-                <textarea
-                  className="min-h-[88px] w-full rounded-xl border-[1.5px] border-rs-line px-[14px] py-[11px] text-[15px] font-semibold text-rs-ink"
+              <div className="field" style={{ marginBottom: 20 }}>
+                <label htmlFor="acct-interests">Research Interests</label>
+                <input
+                  type="text"
+                  id="acct-interests"
+                  placeholder="e.g. Cardiology, Breast Cancer, Surgical Oncology, AI"
                   value={researchInterests}
                   onChange={(e) => setResearchInterests(e.target.value)}
                 />
-              </Field>
+                <p className="field-hint">
+                  Specific research topics that define your expertise. These appear on your profile and Research Team
+                  application. To set research project type preferences, visit{' '}
+                  <Link to="/settings" style={{ color: 'var(--blue)' }}>
+                    Settings → Research Preferences
+                  </Link>
+                  .
+                </p>
+              </div>
 
               {needsTermsUi ? (
                 <>
-                  <label className="mb-3 flex items-start gap-2 text-sm font-semibold text-rs-body">
+                  <label className="terms-row">
                     <input
                       type="checkbox"
                       checked={termsAccepted}
                       onChange={(e) => setTermsAccepted(e.target.checked)}
-                      className="mt-1"
                     />
                     <span>
                       I agree to the{' '}
-                      <Link to="/terms" className="font-bold text-rs-blue hover:underline">
-                        Terms of Service
-                      </Link>
+                      <Link to="/terms">Terms of Service</Link>
                     </span>
                   </label>
-                  <label className="mb-4 flex items-start gap-2 text-sm font-semibold text-rs-body">
+                  <label className="terms-row">
                     <input
                       type="checkbox"
                       checked={privacyAccepted}
                       onChange={(e) => setPrivacyAccepted(e.target.checked)}
-                      className="mt-1"
                     />
                     <span>
                       I agree to the{' '}
-                      <Link to="/privacy" className="font-bold text-rs-blue hover:underline">
-                        Privacy Policy
-                      </Link>
+                      <Link to="/privacy">Privacy Policy</Link>
                     </span>
                   </label>
                 </>
               ) : null}
 
               {saveError ? (
-                <p className="mb-3 text-sm font-semibold text-red-700" role="alert">
+                <p className="save-error" role="alert">
                   {saveError}
                 </p>
               ) : null}
+              <div className="save-row">
+                <button type="submit" className="btn btn-primary btn-sm" disabled={saving}>
+                  <IconCheck />
+                  Save Changes
+                </button>
+                <div className={`save-success${saveMessage ? ' visible' : ''}`} role="status">
+                  <IconCheck />
+                  Profile Updated Successfully
+                </div>
+              </div>
               {saveMessage ? (
-                <p className="mb-3 text-sm font-semibold text-emerald-700" role="status">
+                <span className="sr-only" role="status">
                   {saveMessage}
-                </p>
+                </span>
               ) : null}
-              <Button type="submit" disabled={saving}>
-                Save profile
-              </Button>
             </form>
-          </AcctCard>
+          </div>
+        </div>
+      </section>
 
-          {nativePasswordUser ? (
-            <AcctCard>
-              <AcctCardTitle icon={Lock}>Change password</AcctCardTitle>
+      <section className="db" style={{ paddingTop: 0 }}>
+        <div className="wrap">
+          <div className="acct-card reveal">
+            <h3 className="acct-card-title">
+              <span className="act-ic">
+                <IconLock />
+              </span>
+              Security
+            </h3>
+            {nativePasswordUser ? (
               <form onSubmit={(ev) => void onChangePassword(ev)}>
-                <Field
-                  label="Current password"
-                  type="password"
-                  autoComplete="current-password"
-                  value={currentPassword}
-                  onChange={(e) => setCurrentPassword(e.target.value)}
-                />
-                <Field
-                  label="New password"
-                  type="password"
-                  autoComplete="new-password"
-                  value={newPassword}
-                  onChange={(e) => setNewPassword(e.target.value)}
-                />
-                <PasswordChecklist password={newPassword} />
-                <Field
-                  label="Confirm new password"
-                  type="password"
-                  autoComplete="new-password"
-                  value={confirmNewPassword}
-                  onChange={(e) => setConfirmNewPassword(e.target.value)}
-                />
+                <h4 className="pw-section-title">Change Password</h4>
+                <div className="field-grid">
+                  <div className="field">
+                    <label htmlFor="pw-current">Current Password</label>
+                    <input
+                      type="password"
+                      id="pw-current"
+                      autoComplete="current-password"
+                      placeholder="Enter current password"
+                      value={currentPassword}
+                      onChange={(e) => setCurrentPassword(e.target.value)}
+                    />
+                  </div>
+                  <div aria-hidden />
+                  <div className="field">
+                    <label htmlFor="pw-new">New Password</label>
+                    <input
+                      type="password"
+                      id="pw-new"
+                      autoComplete="new-password"
+                      placeholder="Enter new password"
+                      value={newPassword}
+                      onChange={(e) => setNewPassword(e.target.value)}
+                    />
+                  </div>
+                  <div className="field">
+                    <label htmlFor="pw-confirm">Confirm New Password</label>
+                    <input
+                      type="password"
+                      id="pw-confirm"
+                      autoComplete="new-password"
+                      placeholder="Confirm new password"
+                      value={confirmNewPassword}
+                      onChange={(e) => setConfirmNewPassword(e.target.value)}
+                    />
+                  </div>
+                </div>
+                <div className="pw-reqs">
+                  {PW_ORDER.map((id) => (
+                    <span key={id} className={`pw-req${pwChecks[id] ? ' met' : ''}`}>
+                      <IconCheck />
+                      {PW_LABELS[id]}
+                    </span>
+                  ))}
+                </div>
                 {passwordError ? (
-                  <p className="mb-3 text-sm font-semibold text-red-700" role="alert">
+                  <p className="save-error" role="alert">
                     {passwordError}
                   </p>
                 ) : null}
-                {passwordMessage ? (
-                  <p className="mb-3 text-sm font-semibold text-emerald-700" role="status">
-                    {passwordMessage}
-                  </p>
-                ) : null}
-                <Button type="submit" disabled={changingPassword}>
-                  Update password
-                </Button>
+                <div className="save-row" style={{ marginTop: 18 }}>
+                  <button type="submit" className="btn btn-ghost btn-sm" disabled={changingPassword}>
+                    Change Password
+                  </button>
+                  <div className={`save-success${passwordMessage ? ' visible' : ''}`} role="status">
+                    <IconCheck />
+                    Password Updated
+                  </div>
+                </div>
               </form>
-            </AcctCard>
-          ) : (
-            <AcctCard>
-              <AcctCardTitle icon={Lock}>Security</AcctCardTitle>
-              <p className="text-sm font-semibold leading-relaxed text-rs-body">
-                You signed in with Google. Password changes are not available for this account.
-              </p>
-            </AcctCard>
-          )}
+            ) : (
+              <p className="field-hint">You signed in with Google. Password changes are not available for this account.</p>
+            )}
+          </div>
+        </div>
+      </section>
 
-          <AcctCard>
-            <AcctCardTitle icon={Bell}>Notification Preferences</AcctCardTitle>
-            <p className="text-[12.5px] font-semibold leading-relaxed text-rs-muted">
+      <section className="db" style={{ paddingTop: 0, paddingBottom: 80 }}>
+        <div className="wrap">
+          <div className="acct-card reveal">
+            <h3 className="acct-card-title">
+              <span className="act-ic">
+                <IconBell />
+              </span>
+              Notification Preferences
+            </h3>
+            <p className="field-hint" style={{ marginBottom: 14, lineHeight: 1.55 }}>
               Course announcements, quiz results, certificates, Research Team updates, and product updates will be
               configurable here. Preferences are not editable in this release.
             </p>
-          </AcctCard>
-        </>
-      ) : null}
-    </section>
+            {NOTIFICATION_ROWS.map((row) => (
+              <div className="toggle-row" key={row.key}>
+                <div className="toggle-info">
+                  <b>{row.title}</b>
+                  <span>{row.detail}</span>
+                </div>
+                <button type="button" className="toggle-btn on" disabled aria-label={`Toggle ${row.title}`} />
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+    </>
   )
 }

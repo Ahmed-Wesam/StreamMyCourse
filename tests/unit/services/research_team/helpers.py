@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 from datetime import datetime, timezone
 from typing import Dict, List, Optional
 from uuid import uuid4
@@ -82,27 +83,7 @@ class FakeRepo:
     def update_status(self, application_id: str, status: str) -> ApplicationRow:
         for i, row in enumerate(self.rows):
             if row.id == application_id:
-                updated = ApplicationRow(
-                    id=row.id,
-                    user_sub=row.user_sub,
-                    status=status,
-                    reapply_allowed=row.reapply_allowed,
-                    submitted_at=row.submitted_at,
-                    full_name=row.full_name,
-                    email=row.email,
-                    country=row.country,
-                    institution=row.institution,
-                    position=row.position,
-                    publication_count=row.publication_count,
-                    project_count=row.project_count,
-                    stats_experience=row.stats_experience,
-                    sys_review_experience=row.sys_review_experience,
-                    research_areas=row.research_areas,
-                    interests=row.interests,
-                    motivation=row.motivation,
-                    weekly_hours=row.weekly_hours,
-                    acknowledged_at=row.acknowledged_at,
-                )
+                updated = replace(row, status=status)
                 self.rows[i] = updated
                 return updated
         raise Conflict("missing")
@@ -110,27 +91,7 @@ class FakeRepo:
     def set_reapply_allowed(self, application_id: str, *, allowed: bool) -> ApplicationRow:
         for i, row in enumerate(self.rows):
             if row.id == application_id:
-                updated = ApplicationRow(
-                    id=row.id,
-                    user_sub=row.user_sub,
-                    status=row.status,
-                    reapply_allowed=allowed,
-                    submitted_at=row.submitted_at,
-                    full_name=row.full_name,
-                    email=row.email,
-                    country=row.country,
-                    institution=row.institution,
-                    position=row.position,
-                    publication_count=row.publication_count,
-                    project_count=row.project_count,
-                    stats_experience=row.stats_experience,
-                    sys_review_experience=row.sys_review_experience,
-                    research_areas=row.research_areas,
-                    interests=row.interests,
-                    motivation=row.motivation,
-                    weekly_hours=row.weekly_hours,
-                    acknowledged_at=row.acknowledged_at,
-                )
+                updated = replace(row, reapply_allowed=allowed)
                 self.rows[i] = updated
                 return updated
         raise Conflict("missing")

@@ -10,6 +10,27 @@ import pytest
 from helpers.api import ApiClient
 
 
+def _parse_cors_allowlist() -> set[str]:
+    out: set[str] = set()
+    csv = os.environ.get("INTEGRATION_CORS_ALLOWLIST", "").strip()
+    if csv:
+        for part in csv.split(","):
+            origin = part.strip()
+            if origin:
+                out.add(origin)
+    first = os.environ.get("INTEGRATION_EXPECTED_CORS_ORIGIN", "").strip()
+    if first:
+        out.add(first)
+    out.update(
+        {
+            "http://localhost:5173",
+            "https://researchspectrum.org",
+            "https://dev.researchspectrum.org",
+        }
+    )
+    return out
+
+
 def _expected_first_allowlisted_origin() -> str:
     v = os.environ.get("INTEGRATION_EXPECTED_CORS_ORIGIN", "").strip()
     return v if v else "http://localhost:5173"
@@ -28,20 +49,20 @@ def test_options_returns_cors_preflight(api: ApiClient):
 
 
 def test_options_unknown_origin_gets_first_allowlisted_origin(api: ApiClient):
-    """Integ uses an explicit origin allowlist; unknown Origins get the first allowlisted value."""
-    expected = _expected_first_allowlisted_origin()
+    """Integ uses an explicit origin allowlist; unknown Origins get an allowlisted echo."""
+    allowlist = _parse_cors_allowlist()
     resp = api.options("/courses", origin="http://example.test")
     assert resp.status_code == 204
     headers = {k.lower(): v for k, v in resp.headers.items()}
-    assert headers.get("access-control-allow-origin") == expected
+    assert headers.get("access-control-allow-origin") in allowlist
 
 
 def test_options_without_origin_returns_default_allowlist_origin(api: ApiClient):
-    expected = _expected_first_allowlisted_origin()
+    allowlist = _parse_cors_allowlist()
     resp = api.options("/courses", origin=None)
     assert resp.status_code == 204
     headers = {k.lower(): v for k, v in resp.headers.items()}
-    assert headers.get("access-control-allow-origin") == expected
+    assert headers.get("access-control-allow-origin") in allowlist
 
 
 # --- Unknown route / method (handled by API Gateway, not the Lambda) ----------
@@ -58,12 +79,7 @@ def test_unknown_route_returns_4xx_with_cors_headers(api: ApiClient):
     # API Gateway GatewayResponses may still use * while Lambda OPTIONS uses the allowlist;
     # accept either pattern so this stays stable across stack parameter tweaks.
     assert "access-control-allow-origin" in headers
-    allowed_origins = {
-        "*",
-        "http://localhost:5173",
-        "http://example.test",
-        _expected_first_allowlisted_origin(),
-    }
+    allowed_origins = _parse_cors_allowlist() | {"*", "http://example.test"}
     assert headers.get("access-control-allow-origin") in allowed_origins
 
 

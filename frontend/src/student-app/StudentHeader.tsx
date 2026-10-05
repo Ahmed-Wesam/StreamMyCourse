@@ -1,8 +1,7 @@
 import { lazy, Suspense, useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 
-import { SiteHeader, type SiteNavLink } from '../components/layout/SiteHeader'
-import { Button } from '../components/ui/Button'
+import logoMark from '../assets/prototype/Logo.jpg'
 import { isStudentIdleProbePath, needsAuthBootstrap } from '../lib/auth-bootstrap'
 import {
   getProfileDisplayNameOnce,
@@ -18,15 +17,40 @@ const ProfileMenu = lazy(() =>
   import('../components/layout/ProfileMenu').then((m) => ({ default: m.ProfileMenu })),
 )
 
-const STUDENT_NAV: SiteNavLink[] = [
-  { href: '/dashboard', label: 'Dashboard' },
-  { href: '/courses', label: 'Courses' },
-  { href: '/certificates', label: 'Certificates' },
-  { href: '/research-team', label: 'Research Team' },
-  { href: '/about', label: 'About Instructor' },
-  { href: '/faq', label: 'FAQ' },
-  { href: '/contact', label: 'Contact' },
-]
+const STUDENT_NAV = [
+  { href: '/dashboard', label: 'Dashboard', route: 'dashboard' },
+  { href: '/courses', label: 'Courses', route: 'courses' },
+  { href: '/certificates', label: 'Certificates', route: 'certificates' },
+  { href: '/research-team', label: 'Research Team', route: 'research-team' },
+  { href: '/about', label: 'About Instructor', route: 'about' },
+  { href: '/faq', label: 'FAQ', route: 'faq' },
+  { href: '/contact', label: 'Contact', route: 'contact' },
+] as const
+
+function activeNavRoute(pathname: string): string {
+  if (pathname === '/verify' || pathname.startsWith('/verify/')) return 'certificates'
+  for (const link of STUDENT_NAV) {
+    if (pathname === link.href || pathname.startsWith(`${link.href}/`)) return link.route
+  }
+  return ''
+}
+
+function ArrowIcon() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      style={{ width: 17, height: 17, display: 'inline-block', verticalAlign: 'middle' }}
+      aria-hidden="true"
+    >
+      <path d="M5 12h14M13 6l6 6-6 6" />
+    </svg>
+  )
+}
 
 function isOAuthCallback(search: string): boolean {
   const params = new URLSearchParams(search)
@@ -37,11 +61,13 @@ function isOAuthCallback(search: string): boolean {
 
 const FALLBACK_PROFILE_NAME = 'Student'
 
-const signInLinkClass = 'rs-site-signin'
-
 export function StudentHeader() {
   const [signedIn, setSignedIn] = useState(false)
   const [profileName, setProfileName] = useState(FALLBACK_PROFILE_NAME)
+  const [mobileOpen, setMobileOpen] = useState(false)
+  const [scrolled, setScrolled] = useState(false)
+  const burgerRef = useRef<HTMLButtonElement>(null)
+  const mobileMenuRef = useRef<HTMLDivElement>(null)
   const location = useLocation()
   const navigate = useNavigate()
   const hadOAuthCallbackRef = useRef(false)
@@ -175,20 +201,51 @@ export function StudentHeader() {
     }
   }
 
-  const authOn = isAuthConfigured()
+  const closeMobileMenu = useCallback(() => {
+    setMobileOpen(false)
+    const menu = mobileMenuRef.current
+    if (menu && document.activeElement instanceof Node && menu.contains(document.activeElement)) {
+      burgerRef.current?.focus()
+    }
+  }, [])
 
-  let rightSlot: ReactNode = null
+  useEffect(() => {
+    closeMobileMenu()
+  }, [closeMobileMenu, location.pathname])
+
+  useEffect(() => {
+    const onScroll = () => setScrolled(window.scrollY > 20)
+    onScroll()
+    window.addEventListener('scroll', onScroll, { passive: true })
+    return () => window.removeEventListener('scroll', onScroll)
+  }, [])
+
+  useEffect(() => {
+    if (!mobileOpen) return
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') closeMobileMenu()
+    }
+    document.addEventListener('keydown', onKeyDown)
+    return () => document.removeEventListener('keydown', onKeyDown)
+  }, [closeMobileMenu, mobileOpen])
+
+  const authOn = isAuthConfigured()
+  const activeRoute = activeNavRoute(location.pathname)
+
+  let desktopCta: ReactNode = null
   let mobileCta: ReactNode = null
 
   if (authOn) {
     if (signedIn) {
-      rightSlot = (
+      desktopCta = (
         <Suspense fallback={null}>
           <ProfileMenu
+            chrome="prototype"
             name={profileName}
             subtitle="Student"
             items={[
               { href: '/account/profile', label: 'Account' },
+              { href: '/settings', label: 'Settings' },
               { label: 'Logout', onSelect: () => void handleSignOut() },
             ]}
           />
@@ -196,45 +253,113 @@ export function StudentHeader() {
       )
       mobileCta = (
         <>
-          <Button to="/dashboard" variant="primary">
+          <Link className="btn btn-primary" to="/dashboard" onClick={closeMobileMenu}>
             My Dashboard
-          </Button>
-          <Button to="/courses" variant="ghost">
+            <ArrowIcon />
+          </Link>
+          <Link className="btn btn-ghost" to="/courses" onClick={closeMobileMenu}>
             Explore Courses
-          </Button>
+          </Link>
         </>
       )
     } else {
-      rightSlot = (
+      desktopCta = (
         <>
-          <Link className={signInLinkClass} to="/login">
+          <Link className="login" to="/login">
             Sign In
           </Link>
-          <Button to="/register" size="sm" arrow>
+          <Link className="btn btn-primary btn-sm" to="/register">
             Create Account
-          </Button>
+            <ArrowIcon />
+          </Link>
         </>
       )
       mobileCta = (
         <>
-          <Button to="/login" variant="ghost">
+          <Link className="btn btn-ghost" to="/login" onClick={closeMobileMenu}>
             Sign In
-          </Button>
-          <Button to="/register" variant="primary">
+          </Link>
+          <Link className="btn btn-primary" to="/register" onClick={closeMobileMenu}>
             Create Account
-          </Button>
+          </Link>
         </>
       )
     }
   }
 
   return (
-    <SiteHeader
-      links={STUDENT_NAV}
-      activePath={location.pathname}
-      homeHref="/"
-      rightSlot={rightSlot}
-      mobileCta={mobileCta}
-    />
+    <>
+      <header id="header" className={scrolled ? 'scrolled' : undefined}>
+        <div className="wrap">
+          <nav aria-label="Primary">
+            <Link to="/" className="logo" aria-label="Research Spectrum home">
+              <img className="mark" src={logoMark} alt="Research Spectrum" />
+              <span className="word">
+                <b>Research</b>
+                <span>Spectrum</span>
+              </span>
+            </Link>
+            <ul className="nav-links">
+              {STUDENT_NAV.map((link) => {
+                const active = link.route === activeRoute
+                return (
+                  <li key={link.href}>
+                    <Link
+                      to={link.href}
+                      data-route={link.route}
+                      className={active ? 'active' : undefined}
+                      aria-current={active ? 'page' : undefined}
+                      style={{ whiteSpace: 'nowrap' }}
+                    >
+                      {link.label}
+                    </Link>
+                  </li>
+                )
+              })}
+            </ul>
+            <div className="nav-cta">
+              {desktopCta}
+              <button
+                ref={burgerRef}
+                type="button"
+                className={mobileOpen ? 'burger open' : 'burger'}
+                id="burger"
+                aria-label="Open menu"
+                aria-expanded={mobileOpen}
+                aria-controls="mobileMenu"
+                onClick={() => setMobileOpen((open) => !open)}
+              >
+                <span />
+              </button>
+            </div>
+          </nav>
+        </div>
+      </header>
+      <div
+        ref={mobileMenuRef}
+        className={mobileOpen ? 'mobile-menu open' : 'mobile-menu'}
+        id="mobileMenu"
+        aria-hidden={mobileOpen ? 'false' : 'true'}
+      >
+        <div className="links">
+          {STUDENT_NAV.map((link) => {
+            const active = link.route === activeRoute
+            return (
+              <Link
+                key={link.href}
+                to={link.href}
+                data-route={link.route}
+                className={active ? 'active' : undefined}
+                aria-current={active ? 'page' : undefined}
+                onClick={closeMobileMenu}
+              >
+                {link.label}
+              </Link>
+            )
+          })}
+        </div>
+        {mobileCta ? <div className="mm-cta">{mobileCta}</div> : null}
+      </div>
+    </>
   )
 }

@@ -16,6 +16,19 @@ pytestmark = pytest.mark.skipif(
 )
 
 
+@pytest.fixture(scope="module", autouse=True)
+def _require_kinescope_webhook_route(api: ApiClient) -> None:
+    if not expects_kinescope():
+        return
+    probe = post_kinescope_media_status(
+        api,
+        video_id=str(uuid.uuid4()),
+        status="done",
+    )
+    if probe.status_code == 404:
+        pytest.skip("Kinescope webhook route not deployed on this API stage (404)")
+
+
 def test_kinescope_webhook_unknown_video_id_is_ignored(api: ApiClient) -> None:
     resp = post_kinescope_media_status(
         api,

@@ -6,6 +6,24 @@
 
 ---
 
+## 2026-10-04 — RS-16 prototype shell, public pages, and prod course seed
+
+Partial port. Course detail, auth pages, signed-in pages, migration 023, and the RS-7 editor removal are not in this change.
+
+### What landed
+
+- [x] **Student shell** — prototype header, footer, and shared CSS (`frontend/src/styles/prototype-base.css`), Plus Jakarta Sans italic, Settings next to Account in the signed-in menu. No notification bell. Teacher chrome is unchanged.
+- [x] **Public pages** — Home, About, Research Team, Contact, and the courses catalog follow the prototype markup. Contact keeps the Instagram card, shows WhatsApp as Coming Soon, and has no file attachment. Catalog cards use live `priceAmountMinor`, level, hours, and skills.
+- [x] **Comparison** — `scripts/compare-prototype.mjs` (`npm run compare:prototype` from `frontend/`). Screenshots are gitignored.
+- [x] **Prod seed** — four published courses at $50, IGCSE Computer Science set back to DRAFT, paid bundle plus a few completed lessons and certificate `RS-16A001-2026-F00DCAFE01` on `ci-student@noreply.local`. Scripts: `scripts/rs16-seed/`. `ALLOW_MUTATING_SQL` was turned back off after the run.
+
+### Not in this change
+
+- Course detail, FAQ, verify, legal, auth, dashboard, account, settings, checkout, lesson, quiz, and assignment page ports.
+- Migration 023 (transcript, streak, preferences).
+
+---
+
 ## 2026-10-04 — Sign-in card width + npm audit prod-only
 
 ### What landed

@@ -221,6 +221,9 @@ def test_unenrolled_no_quiz(
     course_factory,
     lesson_factory,
 ) -> None:
+    from helpers.integration_student import skip_if_integration_student_has_paid_bundle
+
+    skip_if_integration_student_has_paid_bundle(student_api)
     served_n = 1
     course_id, module_id = _owner_draft_course_with_module(
         api, course_factory, label="qb-vis-unenrolled"

@@ -130,10 +130,11 @@ def set_student_active_session_id(
         cur = conn.cursor()
         cur.execute(
             """
-            INSERT INTO users (user_sub, email, role, cognito_sub, student_active_session_id)
-            VALUES (%s, '', 'student', %s, %s)
+            INSERT INTO users (user_sub, email, role, cognito_sub, student_active_session_id, last_login_at)
+            VALUES (%s, '', 'student', %s, %s, NOW())
             ON CONFLICT (user_sub) DO UPDATE
               SET student_active_session_id = EXCLUDED.student_active_session_id,
+                  last_login_at = NOW(),
                   updated_at = NOW()
             """,
             (user_sub, user_sub, session_id),

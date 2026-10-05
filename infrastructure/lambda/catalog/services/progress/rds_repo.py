@@ -10,10 +10,10 @@ Implements lesson progress persistence using PostgreSQL with:
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from typing import Any, Callable, List, Optional
 
-from services.progress.ports import LessonProgressRepositoryPort, LessonProgressRow
+from services.progress.ports import ActivityEvent, LessonProgressRepositoryPort, LessonProgressRow
 
 try:  # pragma: no cover - optional dependency path
     import psycopg2
@@ -219,3 +219,137 @@ class LessonProgressRdsRepository(LessonProgressRepositoryPort):
             last_position_sec=row[5],
             updated_at=row[6],
         )
+
+    def record_activity_day(self, *, user_sub: str, day: date) -> None:
+        self._execute(
+            """
+            INSERT INTO learning_activity_days (user_sub, day)
+            VALUES (%s, %s)
+            ON CONFLICT DO NOTHING
+            """,
+            (user_sub, day),
+            commit=True,
+        )
+
+    def list_activity_days(self, *, user_sub: str) -> list[date]:
+        cur = self._execute(
+            "SELECT day FROM learning_activity_days WHERE user_sub = %s",
+            (user_sub,),
+        )
+        return [_as_date(row[0]) for row in cur.fetchall()]
+
+    def list_lesson_completions(self, *, user_sub: str) -> list[ActivityEvent]:
+        cur = self._execute(
+            """
+            SELECT lp.user_sub, lp.completed_at, l.title, lp.course_id, lp.lesson_id
+            FROM lesson_progress lp
+            JOIN lessons l ON l.id = lp.lesson_id
+            WHERE lp.user_sub = %s
+              AND lp.completed = TRUE
+              AND lp.completed_at IS NOT NULL
+            """,
+            (user_sub,),
+        )
+        return [_lesson_completion(row) for row in cur.fetchall()]
+
+    def list_quiz_attempts(self, *, user_sub: str) -> list[ActivityEvent]:
+        cur = self._execute(
+            """
+            SELECT b.user_sub, a.submitted_at, b.course_id, a.id
+            FROM module_quiz_attempts a
+            JOIN student_module_quiz_bindings b ON b.id = a.binding_id
+            WHERE b.user_sub = %s
+              AND a.status = 'submitted'
+              AND a.submitted_at IS NOT NULL
+            """,
+            (user_sub,),
+        )
+        return [
+            ActivityEvent(
+                kind="quiz_attempt",
+                occurred_at=_as_datetime(row[1]),
+                title="Quiz",
+                course_id=str(row[2]),
+                resource_id=str(row[3]),
+                user_sub=str(row[0]),
+            )
+            for row in cur.fetchall()
+        ]
+
+    def list_assignment_submissions(self, *, user_sub: str) -> list[ActivityEvent]:
+        cur = self._execute(
+            """
+            SELECT s.user_sub, s.submitted_at, a.title, a.course_id, s.id
+            FROM assignment_submissions s
+            JOIN assignments a ON a.id = s.assignment_id
+            WHERE s.user_sub = %s
+              AND s.submitted_at IS NOT NULL
+              AND s.status IN ('submitted', 'graded')
+            """,
+            (user_sub,),
+        )
+        return [
+            ActivityEvent(
+                kind="assignment_submission",
+                occurred_at=_as_datetime(row[1]),
+                title=str(row[2] or "Assignment"),
+                course_id=str(row[3]),
+                resource_id=str(row[4]),
+                user_sub=str(row[0]),
+            )
+            for row in cur.fetchall()
+        ]
+
+    def list_certificates(self, *, user_sub: str) -> list[ActivityEvent]:
+        cur = self._execute(
+            """
+            SELECT user_sub, created_at, course_title, course_id, credential_id
+            FROM certificates
+            WHERE user_sub = %s
+              AND status = 'valid'
+            """,
+            (user_sub,),
+        )
+        return [
+            ActivityEvent(
+                kind="certificate",
+                occurred_at=_as_datetime(row[1]),
+                title=str(row[2] or "Certificate"),
+                course_id=str(row[3]),
+                resource_id=str(row[4]),
+                user_sub=str(row[0]),
+            )
+            for row in cur.fetchall()
+        ]
+
+
+def _lesson_completion(row: tuple) -> ActivityEvent:
+    return ActivityEvent(
+        kind="lesson_completion",
+        occurred_at=_as_datetime(row[1]),
+        title=str(row[2] or "Lesson"),
+        course_id=str(row[3]),
+        resource_id=str(row[4]),
+        user_sub=str(row[0]),
+    )
+
+
+def _as_date(value: object) -> date:
+    if isinstance(value, datetime):
+        if value.tzinfo is None:
+            return value.date()
+        return value.astimezone(timezone.utc).date()
+    if isinstance(value, date):
+        return value
+    return date.fromisoformat(str(value)[:10])
+
+
+def _as_datetime(value: object) -> datetime:
+    if isinstance(value, datetime):
+        if value.tzinfo is None:
+            return value.replace(tzinfo=timezone.utc)
+        return value
+    parsed = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+    if parsed.tzinfo is None:
+        return parsed.replace(tzinfo=timezone.utc)
+    return parsed

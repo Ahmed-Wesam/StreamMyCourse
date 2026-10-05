@@ -23,11 +23,12 @@ describe('StudentDashboardStatsRow certificates', () => {
             quizzesPassed: { passed: 1, visible: 2 },
           }}
           certificatesCount={3}
+          eligibility="1/4"
         />
       </MemoryRouter>,
     )
 
-    expect(screen.getByText('Certificates')).toBeTruthy()
+    expect(screen.getByText('Certificates Earned')).toBeTruthy()
     expect(screen.getByText('3')).toBeTruthy()
     const link = screen.getByRole('link', { name: /Certificates/i })
     expect(link.getAttribute('href')).toBe('/certificates')
@@ -44,6 +45,7 @@ describe('StudentDashboardStatsRow certificates', () => {
             quizzesPassed: { passed: 0, visible: 1 },
           }}
           certificatesCount={0}
+          eligibility="0/4"
         />
       </MemoryRouter>,
     )
@@ -63,6 +65,7 @@ describe('StudentDashboardStatsRow certificates', () => {
             quizzesPassed: null,
           }}
           certificatesCount={null}
+          eligibility="—"
         />
       </MemoryRouter>,
     )

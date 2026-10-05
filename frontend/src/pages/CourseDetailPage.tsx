@@ -11,10 +11,9 @@ import { hasSignedInIdToken } from '../lib/api/session'
 import type { Course, CourseModule, CourseProgress, Lesson } from '../lib/api/types'
 import { catalogApiUserMessage, courseNotFoundMessage } from '../lib/apiUserMessages'
 import { usePageTitle } from '../lib/page-title'
-import { CourseDetailAccessPanel } from './course-detail/CourseDetailAccessPanel'
-import { CourseDetailCurriculumSection } from './course-detail/CourseDetailCurriculumSection'
-import { CourseDetailHeroSection } from './course-detail/CourseDetailHeroSection'
-import { CourseDetailShellSections } from './course-detail/CourseDetailShellSections'
+import { courseDetailHeroTitle } from './course-detail/courseDetailHeroTitle'
+import { CourseDetailView } from './course-detail/CourseDetailView'
+import './CourseDetailPage.css'
 
 export default function CourseDetailPage() {
   const params = useParams()
@@ -120,50 +119,32 @@ export default function CourseDetailPage() {
     if (courseId) void loadCourseData()
   }, [courseId, loadCourseData])
 
-  const showShellSections = !loading && !error && course != null
+  if (loading || error || !course) {
+    const title = courseDetailHeroTitle(loading, course, error)
+    return (
+      <div className="pg-course">
+        <section className="chero" aria-label="Course hero">
+          <div className="wrap">
+            <h1>{title}</h1>
+            {loading ? <div className="animate-pulse" /> : null}
+            {error ? <p className="sub">{error}</p> : null}
+          </div>
+        </section>
+      </div>
+    )
+  }
 
   return (
-    <div className="min-h-screen bg-white">
-      <CourseDetailHeroSection
-        loading={loading}
-        course={course}
-        lessonsCount={lessons.length}
-        moduleCount={modules.length}
-        error={error}
-      />
-      {showShellSections ? (
-        <CourseDetailShellSections
-          course={course}
-          courseId={courseId}
-          previewOnly={previewOnly}
-          needsAccess={needsAccess}
-        />
-      ) : null}
-      <CourseDetailCurriculumSection
-        courseId={courseId}
-        error={error}
-        loading={loading}
-        lessons={lessons}
-        modules={modules}
-        courseProgress={courseProgress}
-        previewOnly={previewOnly}
-        needsAccess={needsAccess}
-        curriculumLead={course?.curriculumLead}
-        estimatedHours={course?.estimatedHours}
-        onToggleLessonComplete={onToggleLessonComplete}
-        markingLessonId={markingLessonId}
-        sidebar={
-          <CourseDetailAccessPanel
-            courseId={courseId}
-            course={course}
-            lessons={lessons}
-            modules={modules}
-            courseProgress={courseProgress}
-            previewOnly={previewOnly}
-            needsAccess={needsAccess}
-          />
-        }
-      />
-    </div>
+    <CourseDetailView
+      course={course}
+      courseId={courseId}
+      lessons={lessons}
+      modules={modules}
+      courseProgress={courseProgress}
+      previewOnly={previewOnly}
+      needsAccess={needsAccess}
+      onToggleLessonComplete={onToggleLessonComplete}
+      markingLessonId={markingLessonId}
+    />
   )
 }

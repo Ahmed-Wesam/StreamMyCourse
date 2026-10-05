@@ -192,8 +192,11 @@ def _row_to_lesson(row: Tuple[Any, ...]) -> Lesson:
     """Map a lesson row from ``lessons`` + ``course_modules`` join.
 
         id, title, lesson_order, video_key, video_status, thumbnail_key, duration,
-        module_id, module_order
+        module_id, module_order, transcript
     """
+    values = list(row)
+    if len(values) == 9:
+        values.append("")
     (
         lid,
         title,
@@ -204,7 +207,8 @@ def _row_to_lesson(row: Tuple[Any, ...]) -> Lesson:
         duration,
         module_id,
         module_order,
-    ) = row
+        transcript,
+    ) = values
     return Lesson(
         id=str(lid),
         title=str(title or ""),
@@ -215,6 +219,7 @@ def _row_to_lesson(row: Tuple[Any, ...]) -> Lesson:
         videoStatus=str(video_status or "pending"),
         duration=int(duration or 0),
         thumbnailKey=str(thumbnail_key or ""),
+        transcript=str(transcript or ""),
     )
 
 
@@ -226,7 +231,7 @@ _CREATE_COURSE_CERT_CODE_ATTEMPTS = 20
 _MODULE_COLUMNS = "id, course_id, title, description, module_order, created_at, updated_at"
 _LESSON_SELECT = (
     "l.id, l.title, l.lesson_order, l.video_key, l.video_status, l.thumbnail_key, "
-    "l.duration, l.module_id, m.module_order"
+    "l.duration, l.module_id, m.module_order, l.transcript"
 )
 _LESSON_JOIN = """
   FROM lessons l
@@ -551,6 +556,15 @@ class CourseCatalogRdsRepository:
         self._execute(
             "UPDATE lessons SET title = %s WHERE course_id = %s AND id = %s",
             (title, course_id, lesson_id),
+            commit=True,
+        )
+
+    def update_lesson_transcript(
+        self, course_id: str, lesson_id: str, transcript: str
+    ) -> None:
+        self._execute(
+            "UPDATE lessons SET transcript = %s WHERE course_id = %s AND id = %s",
+            (transcript, course_id, lesson_id),
             commit=True,
         )
 

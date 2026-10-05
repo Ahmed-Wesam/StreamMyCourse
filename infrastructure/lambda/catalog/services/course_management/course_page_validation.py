@@ -45,9 +45,14 @@ _ASSESSMENT_KEYS = frozenset({"heading", "lead", "steps"})
 _ENROLL_CTA_KEYS = frozenset({"heading", "body", "extraLine"})
 
 
-def _reject_tag_like(value: str, *, field: str) -> None:
+def reject_tag_like(value: str, *, field: str) -> None:
+    """Reject strings that look like HTML or XML tags. Plain text such as ``p < 0.05`` is allowed."""
     if _TAG_LIKE.search(value):
         raise BadRequest(f"Invalid markup in {field}")
+
+
+def _reject_tag_like(value: str, *, field: str) -> None:
+    reject_tag_like(value, field=field)
 
 
 def _trim_cap(value: str, cap: int, *, field: str) -> str:

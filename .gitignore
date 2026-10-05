@@ -5,6 +5,8 @@
 
 # Build outputs
 **/dist/
+# Headless prototype comparison (scripts/compare-prototype.mjs)
+frontend/.prototype-compare/
 **/build/
 **/dist-ssr/
 *.tsbuildinfo

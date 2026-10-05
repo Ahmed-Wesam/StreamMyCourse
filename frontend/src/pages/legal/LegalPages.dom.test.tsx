@@ -55,6 +55,16 @@ describe('Legal pages', () => {
     expect(screen.getByRole('heading', { level: 1, name: /Privacy Policy/i })).toBeTruthy()
   })
 
+  it('Privacy contents sidebar links to Information We Collect', () => {
+    render(
+      <MemoryRouter>
+        <PrivacyPage />
+      </MemoryRouter>,
+    )
+
+    expect(screen.getByRole('button', { name: /Information We Collect/i })).toBeTruthy()
+  })
+
   it('renders Refund page with English title', () => {
     render(
       <MemoryRouter>

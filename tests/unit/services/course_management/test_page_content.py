@@ -95,23 +95,20 @@ class TestUpdateCoursePagePersistence:
             course_id=_VID, title="T2", description="D2"
         )
 
-    def test_update_with_page_replaces_document(
+    def test_update_with_page_rejected(
         self, service: CourseManagementService, repo: MagicMock
     ) -> None:
         page = {"subtitle": "Sub", "level": "Intermediate", "estimatedHours": 12}
-        service.update_course(_VID, "T2", "D2", page=page)
-        repo.update_course.assert_called_once()
-        kwargs = repo.update_course.call_args.kwargs
-        assert kwargs["course_id"] == _VID
-        assert kwargs["title"] == "T2"
-        assert kwargs["description"] == "D2"
-        assert kwargs["page_content"] == page
+        with pytest.raises(BadRequest):
+            service.update_course(_VID, "T2", "D2", page=page)
+        repo.update_course.assert_not_called()
 
-    def test_update_with_empty_page_clears(
+    def test_update_with_empty_page_rejected(
         self, service: CourseManagementService, repo: MagicMock
     ) -> None:
-        service.update_course(_VID, "T", "D", page={})
-        assert repo.update_course.call_args.kwargs["page_content"] == {}
+        with pytest.raises(BadRequest):
+            service.update_course(_VID, "T", "D", page={})
+        repo.update_course.assert_not_called()
 
     def test_invalid_page_does_not_call_repo(
         self, service: CourseManagementService, repo: MagicMock

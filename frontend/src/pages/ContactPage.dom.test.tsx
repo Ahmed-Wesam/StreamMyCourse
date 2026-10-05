@@ -100,6 +100,22 @@ describe('ContactPage', () => {
     expect(document.querySelector('input[type="file"]')).toBeNull()
   })
 
+  it('links the Instagram card to the Research Spectrum profile', () => {
+    renderContact()
+
+    const link = screen.getByRole('link', { name: /visit instagram/i })
+    expect(link.getAttribute('href')).toBe('https://www.instagram.com/researchspectrum/')
+  })
+
+  it('shows a WhatsApp Coming Soon control that is not a wa.me link', () => {
+    renderContact()
+
+    const control = screen.getByText('Coming Soon')
+    expect(control.closest('a')).toBeNull()
+    expect(control.getAttribute('href')).toBeNull()
+    expect(document.querySelector('a[href*="wa.me"]')).toBeNull()
+  })
+
   it('valid submit POSTs JSON to /contact once without Authorization', async () => {
     fetchMock.mockResolvedValue(
       new Response(JSON.stringify({ accepted: true }), {

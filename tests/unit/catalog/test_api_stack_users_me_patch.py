@@ -25,4 +25,4 @@ def test_users_me_patch_method_is_in_catalog_api_deployment() -> None:
         "CatalogApiStage:", 1
     )[0]
     assert "UsersMePatchMethod" in deployment_block
-    assert "DeploymentId: !Ref CatalogApiDeploymentV44" in text
+    assert "DeploymentId: !Ref CatalogApiDeploymentV45" in text

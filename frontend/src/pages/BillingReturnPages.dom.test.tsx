@@ -30,18 +30,20 @@ describe('Billing return pages', () => {
 
   it('shows success copy without granting access client-side', () => {
     const { container } = renderBillingRoute('/billing/success')
-    expect(container.firstElementChild?.className).toMatch(/text-rs-ink/)
+    expect(container.querySelector('.pg-billing-return')).toBeTruthy()
     expect(screen.getByRole('heading', { name: /Payment received/i })).toBeTruthy()
     expect(screen.getByText(billingSuccessMessage)).toBeTruthy()
     expect(screen.queryByText(/access granted/i)).toBeNull()
+    expect(screen.getByRole('link', { name: /Browse courses/i }).className).toMatch(/btn-primary/)
     expect(screen.getByRole('link', { name: /Browse courses/i }).getAttribute('href')).toBe('/courses')
   })
 
   it('shows cancel copy and link back to courses', () => {
     const { container } = renderBillingRoute('/billing/cancel')
-    expect(container.firstElementChild?.className).toMatch(/text-rs-ink/)
+    expect(container.querySelector('.pg-billing-return')).toBeTruthy()
     expect(screen.getByRole('heading', { name: /Checkout canceled/i })).toBeTruthy()
     expect(screen.getByText(billingCancelMessage)).toBeTruthy()
+    expect(screen.getByRole('link', { name: /Browse courses/i }).className).toMatch(/btn-primary/)
     expect(screen.getByRole('link', { name: /Browse courses/i }).getAttribute('href')).toBe('/courses')
   })
 })

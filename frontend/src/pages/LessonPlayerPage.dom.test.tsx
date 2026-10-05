@@ -36,6 +36,14 @@ const assignmentsApi = vi.hoisted(() => ({
   listCourseAssignments: vi.fn(),
 }))
 
+const sessionApi = vi.hoisted(() => ({
+  fetchMe: vi.fn(),
+}))
+
+const transcriptApi = vi.hoisted(() => ({
+  getLessonTranscript: vi.fn(),
+}))
+
 vi.mock('../lib/api/lessonFiles', () => ({
   listLessonFiles: (...args: unknown[]) => lessonFilesApi.listLessonFiles(...args),
   getLessonFileDownloadUrl: (...args: unknown[]) => lessonFilesApi.getLessonFileDownloadUrl(...args),
@@ -63,6 +71,16 @@ vi.mock('../lib/api/catalog', async (importOriginal) => {
       api.getCourseProgress(...args) as ReturnType<typeof mod.getCourseProgress>,
     updateLessonProgress: (...args: unknown[]) =>
       api.updateLessonProgress(...args) as ReturnType<typeof mod.updateLessonProgress>,
+    getLessonTranscript: (...args: unknown[]) =>
+      transcriptApi.getLessonTranscript(...args) as ReturnType<typeof mod.getLessonTranscript>,
+  }
+})
+
+vi.mock('../lib/api/session', async (importOriginal) => {
+  const mod = (await importOriginal()) as typeof import('../lib/api/session')
+  return {
+    ...mod,
+    fetchMe: (...args: unknown[]) => sessionApi.fetchMe(...args) as ReturnType<typeof mod.fetchMe>,
   }
 })
 
@@ -165,6 +183,13 @@ describe('LessonPlayerPage', () => {
     lessonFilesApi.listLessonFiles.mockResolvedValue([])
     lessonNotesApi.listLessonNotes.mockResolvedValue([])
     assignmentsApi.listCourseAssignments.mockResolvedValue([])
+    sessionApi.fetchMe.mockResolvedValue({
+      email: 'student@example.com',
+      autoplayNext: false,
+      autoMarkComplete: true,
+      progressCelebrations: false,
+    })
+    transcriptApi.getLessonTranscript.mockResolvedValue(null)
 
     api.getCourse.mockResolvedValue({
       id: 'c1',
@@ -1238,7 +1263,7 @@ describe('LessonPlayerPage', () => {
     await waitFor(() => {
       expect(screen.getByRole('heading', { level: 1, name: 'Alpha' })).toBeTruthy()
     })
-    const panel = screen.getByRole('tabpanel')
+    const panel = screen.getByTestId('lesson-player-tab-panel')
     expect(panel.textContent).toMatch(/Section 1 · Alpha/)
     expect(panel.textContent?.trim()).not.toBe('')
   })
@@ -1353,17 +1378,96 @@ describe('LessonPlayerPage', () => {
     expect(screen.queryByRole('button', { name: 'Close curriculum' })).toBeNull()
   })
 
-  it('shows five accessible lesson content tabs on desktop', async () => {
+  it('shows six accessible lesson content tabs on desktop', async () => {
     renderLessonPlayer()
 
     await waitFor(() => {
       expect(document.querySelector('video')).toBeTruthy()
     })
 
-    for (const label of ['Overview', 'Resources', 'Downloads', 'Notes', 'Assignments']) {
+    for (const label of ['Overview', 'Transcript', 'Resources', 'Downloads', 'Notes', 'Assignments']) {
       expect(screen.getByRole('tab', { name: label })).toBeTruthy()
     }
-    expect(screen.getByRole('tabpanel').textContent).toMatch(/Desc/)
+    expect(screen.getByTestId('lesson-player-tab-panel').textContent).toMatch(/Desc/)
+  })
+
+  it('renders the prototype lesson player shell', async () => {
+    renderLessonPlayer()
+    await waitFor(() => {
+      expect(screen.getByTestId('student-page-lesson-player')).toBeTruthy()
+    })
+    expect(document.querySelector('.pg-lesson-player')).toBeTruthy()
+    expect(document.querySelector('.player-top')).toBeTruthy()
+  })
+
+  it('shows transcript text from listLessons when present', async () => {
+    api.listLessons.mockResolvedValue([
+      {
+        id: 'l1',
+        title: 'Alpha',
+        order: 1,
+        moduleId: 'm1',
+        moduleOrder: 0,
+        videoStatus: 'ready',
+        duration: 400,
+        transcript: 'Plain lecture transcript body.',
+      },
+    ])
+
+    renderLessonPlayer()
+
+    fireEvent.click(await screen.findByRole('tab', { name: 'Transcript' }))
+    await waitFor(() => {
+      expect(screen.getByTestId('lesson-player-transcript-panel').textContent).toMatch(
+        /Plain lecture transcript body/,
+      )
+    })
+    expect(transcriptApi.getLessonTranscript).not.toHaveBeenCalled()
+  })
+
+  it('shows transcript empty state when lesson has no transcript', async () => {
+    renderLessonPlayer()
+    fireEvent.click(await screen.findByRole('tab', { name: 'Transcript' }))
+    await waitFor(() => {
+      expect(screen.getByTestId('lesson-player-transcript-empty')).toBeTruthy()
+    })
+  })
+
+  it('does not auto-mark complete on video ended when autoMarkComplete pref is false', async () => {
+    sessionApi.fetchMe.mockResolvedValue({
+      email: 'student@example.com',
+      autoplayNext: false,
+      autoMarkComplete: false,
+      progressCelebrations: false,
+    })
+
+    renderLessonPlayer('/courses/c1/lessons/l2')
+
+    const video = await waitFor(() => {
+      const el = document.querySelector('video')
+      expect(el).not.toBeNull()
+      return el as HTMLVideoElement
+    })
+
+    fireEvent.ended(video)
+
+    await waitFor(() => {
+      expect(api.updateLessonProgress).toHaveBeenCalled()
+    })
+    const lastCall = api.updateLessonProgress.mock.calls.at(-1)
+    expect(lastCall?.[2]?.markComplete).not.toBe(true)
+  })
+
+  it('shows auto-complete pill when autoMarkComplete pref is true', async () => {
+    sessionApi.fetchMe.mockResolvedValue({
+      email: 'student@example.com',
+      autoplayNext: false,
+      autoMarkComplete: true,
+      progressCelebrations: false,
+    })
+
+    renderLessonPlayer()
+    expect(await screen.findByText(/Auto-completes when finished/i)).toBeTruthy()
   })
 
   it('Resources tab lists lesson files and Assignments lists module assignment', async () => {

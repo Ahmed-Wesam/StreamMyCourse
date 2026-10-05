@@ -333,6 +333,17 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                             origin=origin,
                             progress_svc=progress_service,
                         )
+                    elif (
+                        len(parts) == 2
+                        and parts[0] == "me"
+                        and parts[1] == "activity"
+                        and method in ("GET", "OPTIONS")
+                    ):
+                        route_response = handle_progress_request(
+                            event,
+                            origin=origin,
+                            progress_svc=progress_service,
+                        )
                     elif method == "GET" and parts == ["users", "me"]:
                         route_response = handle_users_me(
                             event,

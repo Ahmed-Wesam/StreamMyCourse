@@ -103,4 +103,31 @@ describe('CourseManagementLessonsPanel attachments', () => {
     expect(list.textContent).toMatch(/pending/i)
     expect(list.textContent).toMatch(/Ready sheet/)
   })
+
+  it('saves the lecture transcript', async () => {
+    const onSaveTranscript = vi.fn().mockResolvedValue(undefined)
+    render(
+      <CourseManagementLessonsPanel
+        course={course}
+        sortedLessons={[{ ...lesson, transcript: '' }]}
+        moduleTitleById={new Map()}
+        lessonFilesByLessonId={{}}
+        attachingLessonId={null}
+        onAddLessonClick={() => undefined}
+        onDeleteLesson={() => undefined}
+        onAttachLessonFile={vi.fn()}
+        onDeleteLessonFile={vi.fn()}
+        onSaveTranscript={onSaveTranscript}
+      />,
+    )
+
+    fireEvent.change(screen.getByLabelText('Lecture transcript'), {
+      target: { value: 'Interpret p < 0.05.' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Save transcript' }))
+
+    await waitFor(() => {
+      expect(onSaveTranscript).toHaveBeenCalledWith('l1', 'Interpret p < 0.05.')
+    })
+  })
 })

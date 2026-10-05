@@ -3,6 +3,7 @@ import type { FormEvent, ReactNode } from 'react'
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
 
+import { applyRememberMeStorage, isRememberMeSelected, keepDefaultAuthStorage } from '../../lib/auth'
 import { useAuthenticator } from '../../lib/auth-ui'
 import { loginAuthCard } from '../../lib/marketing/loginCopy'
 import { persistReturnPathBeforeHostedUi } from '../../lib/post-login-return'
@@ -23,9 +24,15 @@ type SignInProps = {
   embedded?: boolean
 }
 
-function GoogleIcon() {
+function startGoogleSignIn(): void {
+  keepDefaultAuthStorage()
+  persistReturnPathBeforeHostedUi()
+  void signInWithRedirect({ provider: 'Google' })
+}
+
+function GoogleIcon({ plain = false }: { plain?: boolean }) {
   return (
-    <svg className="size-5 shrink-0" viewBox="0 0 24 24" aria-hidden>
+    <svg className={plain ? undefined : 'size-5 shrink-0'} viewBox="0 0 24 24" aria-hidden>
       <path
         fill="#4285F4"
         d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
@@ -107,10 +114,7 @@ function TeacherSignInForm({ embedded }: { embedded?: boolean }) {
             type="button"
             variant="ghost"
             className="w-full"
-            onClick={() => {
-              persistReturnPathBeforeHostedUi()
-              void signInWithRedirect({ provider: 'Google' })
-            }}
+            onClick={startGoogleSignIn}
           >
             <GoogleIcon />
             {GOOGLE_SIGN_IN_LABEL}
@@ -122,6 +126,184 @@ function TeacherSignInForm({ embedded }: { embedded?: boolean }) {
         </p>
       </AuthCardShell>
     </SignInFormChrome>
+  )
+}
+
+function EyeIcon({ hidden }: { hidden: boolean }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+      style={hidden ? { display: 'none' } : undefined}
+    >
+      <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+      <circle cx="12" cy="12" r="3" />
+    </svg>
+  )
+}
+
+function EyeOffIcon({ hidden }: { hidden: boolean }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+      style={hidden ? { display: 'none' } : undefined}
+    >
+      <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24" />
+      <line x1="1" y1="1" x2="23" y2="23" />
+    </svg>
+  )
+}
+
+/** Login.html auth card. Continue with Google is an allowed extra; the prototype has no Google button. */
+function StudentLoginCard() {
+  usePageTitle('Sign in')
+  const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
+  const [remember, setRemember] = useState(isRememberMeSelected)
+  const [passwordVisible, setPasswordVisible] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [submitting, setSubmitting] = useState(false)
+
+  async function onSubmit(e: FormEvent) {
+    e.preventDefault()
+    setError(null)
+    if (!email.trim() || !password) {
+      setError('Enter your email and password.')
+      return
+    }
+    applyRememberMeStorage(remember)
+    setSubmitting(true)
+    try {
+      await signIn({ username: email.trim(), password })
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Sign-in failed. Try again.')
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  return (
+    <div className="auth-card" id="authCard" data-testid="login-auth-card">
+      <div className="auth-success" id="authSuccess" aria-live="polite" aria-atomic="true" role="status">
+        <div className="succ-ic">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <path d="M20 6 9 17l-5-5" />
+          </svg>
+        </div>
+        <h3 id="succWelcome">Welcome back!</h3>
+        <p>Redirecting to your dashboard…</p>
+        <div className="succ-bar-wrap"><div className="succ-bar" id="succBar" /></div>
+      </div>
+
+      <h2 className="auth-title">Sign in to your account</h2>
+      <p className="auth-sub">Enter your credentials to access your courses.</p>
+
+      <form id="authForm" noValidate autoComplete="on" onSubmit={(e) => void onSubmit(e)}>
+        <div className="field" id="fieldEmail">
+          <label htmlFor="loginEmail">Email Address</label>
+          <input
+            type="email"
+            id="loginEmail"
+            name="email"
+            placeholder="your@email.com"
+            autoComplete="email"
+            aria-describedby="errEmail"
+            aria-required="true"
+            inputMode="email"
+            value={email}
+            onChange={(ev) => setEmail(ev.target.value)}
+          />
+          <span className="err-msg" id="errEmail" />
+        </div>
+
+        <div className="field" id="fieldPassword">
+          <label htmlFor="loginPassword">Password</label>
+          <div className="pw-wrap">
+            <input
+              type={passwordVisible ? 'text' : 'password'}
+              id="loginPassword"
+              name="password"
+              placeholder="Your password"
+              autoComplete="current-password"
+              aria-describedby="errPassword"
+              aria-required="true"
+              value={password}
+              onChange={(ev) => setPassword(ev.target.value)}
+            />
+            <button
+              type="button"
+              className="pw-toggle"
+              id="pwToggle"
+              aria-label={passwordVisible ? 'Hide password' : 'Show password'}
+              aria-pressed={passwordVisible}
+              onClick={() => setPasswordVisible((visible) => !visible)}
+            >
+              <EyeIcon hidden={passwordVisible} />
+              <EyeOffIcon hidden={!passwordVisible} />
+            </button>
+          </div>
+          <span className="err-msg" id="errPassword" />
+        </div>
+
+        <div className="check-row">
+          <label className="check-label">
+            <input
+              type="checkbox"
+              id="rememberMe"
+              name="rememberMe"
+              checked={remember}
+              onChange={(ev) => setRemember(ev.target.checked)}
+            />
+            <span className="check-text">Remember me</span>
+          </label>
+          <Link to="/forgot-password" className="forgot-link" id="forgotBtn">
+            Forgot password?
+          </Link>
+        </div>
+
+        <div className={error ? 'form-err visible' : 'form-err'} id="formErr" role="alert" aria-live="assertive">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <circle cx="12" cy="12" r="10" />
+            <line x1="12" y1="8" x2="12" y2="12" />
+            <line x1="12" y1="16" x2="12.01" y2="16" />
+          </svg>
+          <span id="formErrText">{error}</span>
+        </div>
+
+        <div className="auth-actions">
+          <button type="submit" className="btn btn-primary" id="submitBtn" disabled={submitting}>
+            <span id="submitBtnText">Sign In</span>
+            <div className={submitting ? 'btn-spinner visible' : 'btn-spinner'} id="submitSpinner" aria-hidden="true" />
+            <svg id="submitArrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" style={submitting ? { display: 'none' } : undefined}>
+              <path d="M5 12h14M13 6l6 6-6 6" />
+            </svg>
+          </button>
+          <Link to="/register" className="btn btn-ghost">
+            Create Account
+          </Link>
+        </div>
+
+        <div className="auth-divider" />
+        <p className="auth-alt">
+          Don&apos;t have an account? <Link to="/register">Create one here</Link>
+        </p>
+        <button type="button" className="btn btn-ghost" onClick={startGoogleSignIn} style={{ width: '100%', marginTop: 10 }}>
+          <GoogleIcon plain />
+          {GOOGLE_SIGN_IN_LABEL}
+        </button>
+      </form>
+    </div>
   )
 }
 
@@ -195,10 +377,7 @@ function StudentSignInForm({ embedded }: { embedded?: boolean }) {
           type="button"
           variant="ghost"
           className="w-full"
-          onClick={() => {
-            persistReturnPathBeforeHostedUi()
-            void signInWithRedirect({ provider: 'Google' })
-          }}
+          onClick={startGoogleSignIn}
         >
           <GoogleIcon />
           {GOOGLE_SIGN_IN_LABEL}
@@ -229,6 +408,8 @@ export function SignIn({ children, variant = 'student', embedded = false }: Sign
   if (variant === 'teacher') {
     return <TeacherSignInForm embedded={embedded} />
   }
+
+  if (embedded) return <StudentLoginCard />
 
   return <StudentSignInForm embedded={embedded} />
 }

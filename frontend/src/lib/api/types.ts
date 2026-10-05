@@ -185,6 +185,8 @@ export type Lesson = {
   duration?: number
   /** Presigned GET when a lesson thumbnail exists. */
   thumbnailUrl?: string
+  /** Lecture notes. Present for viewers who can open the lesson. */
+  transcript?: string
 }
 
 export type Playback =
@@ -206,17 +208,27 @@ export type UserProfile = {
   researchInterests?: string
   termsAcceptedAt?: string
   privacyAcceptedAt?: string
+  autoplayNext?: boolean
+  autoMarkComplete?: boolean
+  progressCelebrations?: boolean
+  researchInterestTags?: string[]
+  lastLoginAt?: string
 }
 
 export type PatchUserProfileBody = {
   givenName?: string
   familyName?: string
-  country: string
-  profession: string
+  country?: string
+  profession?: string
   institution?: string
   researchInterests?: string
-  termsAcceptedAt: string
-  privacyAcceptedAt: string
+  termsAcceptedAt?: string
+  privacyAcceptedAt?: string
+  autoplayNext?: boolean
+  autoMarkComplete?: boolean
+  progressCelebrations?: boolean
+  researchInterestTags?: string[]
+  resetPreferences?: boolean
 }
 
 export type LessonProgressItem = {

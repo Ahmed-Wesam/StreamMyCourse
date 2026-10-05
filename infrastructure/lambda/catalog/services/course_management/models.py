@@ -42,6 +42,7 @@ class Lesson:
     videoStatus: str = "pending"
     duration: int = 0
     thumbnailKey: str = ""
+    transcript: str = ""
 
 
 @dataclass(frozen=True)

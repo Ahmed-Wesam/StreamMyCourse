@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 
 import type { Course, Lesson, LessonFileKind, LessonFileListItem } from '../../lib/api/types'
 import { LESSON_ATTACHMENT_ACCEPT } from '../../lib/lessonFileType'
@@ -22,6 +22,7 @@ type Props = {
     file: File
   }) => Promise<void>
   onDeleteLessonFile: (lessonId: string, fileId: string) => Promise<void>
+  onSaveTranscript?: (lessonId: string, transcript: string) => Promise<void>
 }
 
 export function CourseManagementLessonsPanel({
@@ -34,10 +35,27 @@ export function CourseManagementLessonsPanel({
   onDeleteLesson,
   onAttachLessonFile,
   onDeleteLessonFile,
+  onSaveTranscript,
 }: Props) {
   const [draftTitleByLesson, setDraftTitleByLesson] = useState<Record<string, string>>({})
   const [draftKindByLesson, setDraftKindByLesson] = useState<Record<string, 'resource' | 'download'>>({})
   const [draftFileByLesson, setDraftFileByLesson] = useState<Record<string, File | null>>({})
+  const [transcriptByLesson, setTranscriptByLesson] = useState<Record<string, string>>({})
+  const [savingTranscriptId, setSavingTranscriptId] = useState<string | null>(null)
+
+  useEffect(() => {
+    setTranscriptByLesson((prev) => {
+      const next = { ...prev }
+      let changed = false
+      for (const lesson of sortedLessons) {
+        if (next[lesson.id] === undefined) {
+          next[lesson.id] = lesson.transcript ?? ''
+          changed = true
+        }
+      }
+      return changed ? next : prev
+    })
+  }, [sortedLessons])
 
   const canManageAttachments = course.status === 'DRAFT'
 
@@ -102,6 +120,35 @@ export function CourseManagementLessonsPanel({
                     </Button>
                   )}
                 </div>
+
+                <form
+                  className="mt-4"
+                  onSubmit={(event) => {
+                    event.preventDefault()
+                    if (!onSaveTranscript) return
+                    const transcript = transcriptByLesson[lesson.id] ?? lesson.transcript ?? ''
+                    setSavingTranscriptId(lesson.id)
+                    void onSaveTranscript(lesson.id, transcript).finally(() => {
+                      setSavingTranscriptId((current) => (current === lesson.id ? null : current))
+                    })
+                  }}
+                >
+                  <Field label="Lecture transcript">
+                    <textarea
+                      rows={5}
+                      value={transcriptByLesson[lesson.id] ?? lesson.transcript ?? ''}
+                      onChange={(event) =>
+                        setTranscriptByLesson((prev) => ({
+                          ...prev,
+                          [lesson.id]: event.target.value,
+                        }))
+                      }
+                    />
+                  </Field>
+                  <Button type="submit" size="sm" disabled={savingTranscriptId === lesson.id}>
+                    {savingTranscriptId === lesson.id ? 'Saving…' : 'Save transcript'}
+                  </Button>
+                </form>
 
                 <div className="mt-4 border-t border-rs-line pt-4">
                   <p className="text-xs font-semibold uppercase tracking-wide text-rs-muted">Lesson files</p>

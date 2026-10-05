@@ -9,6 +9,7 @@
   "ignoreDependencies": [
     "@emnapi/core",
     "@emnapi/runtime",
-    "@fontsource-variable/plus-jakarta-sans"
+    "@fontsource-variable/plus-jakarta-sans",
+    "puppeteer-core"
   ]
 }

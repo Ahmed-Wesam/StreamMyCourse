@@ -2,7 +2,7 @@
  * @vitest-environment jsdom
  */
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
-import { MemoryRouter } from 'react-router-dom'
+import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const fetchMeMock = vi.hoisted(() => vi.fn())
@@ -26,6 +26,26 @@ vi.mock('aws-amplify/auth', () => ({
   updatePassword: (...args: unknown[]) => updatePasswordMock(...args),
 }))
 
+const getPurchasesMock = vi.hoisted(() => vi.fn())
+const listMyCertificatesMock = vi.hoisted(() => vi.fn())
+const getMyResearchTeamMock = vi.hoisted(() => vi.fn())
+
+vi.mock('../../lib/api/billing', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../lib/api/billing')>()
+  return { ...actual, getPurchases: (...args: unknown[]) => getPurchasesMock(...args) }
+})
+
+vi.mock('../../lib/api/certificates', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../lib/api/certificates')>()
+  return { ...actual, listMyCertificates: (...args: unknown[]) => listMyCertificatesMock(...args) }
+})
+
+vi.mock('../../lib/api/research-team', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../lib/api/research-team')>()
+  return { ...actual, getMyResearchTeam: (...args: unknown[]) => getMyResearchTeamMock(...args) }
+})
+
+import { AccountLayout } from './AccountLayout'
 import AccountProfilePage from './AccountProfilePage'
 
 const baseProfile = {
@@ -55,9 +75,35 @@ describe('AccountProfilePage', () => {
     fetchAuthSessionMock.mockReset()
     updateUserAttributesMock.mockReset()
     updatePasswordMock.mockReset()
+    getPurchasesMock.mockReset()
+    listMyCertificatesMock.mockReset()
+    getMyResearchTeamMock.mockReset()
     fetchAuthSessionMock.mockResolvedValue({ tokens: { idToken: { payload: {} } } })
     patchUsersMeMock.mockImplementation(async (body) => ({ ...baseProfile, ...body }))
     updateUserAttributesMock.mockResolvedValue({})
+    getPurchasesMock.mockResolvedValue([])
+    listMyCertificatesMock.mockResolvedValue({ certificates: [] })
+    getMyResearchTeamMock.mockResolvedValue({ courses: [], eligible: false, canSubmit: false, application: null })
+  })
+
+  function renderProfileRoute() {
+    return render(
+      <MemoryRouter initialEntries={['/account/profile']}>
+        <Routes>
+          <Route path="/account" element={<AccountLayout />}>
+            <Route path="profile" element={<AccountProfilePage />} />
+          </Route>
+        </Routes>
+      </MemoryRouter>,
+    )
+  }
+
+  it('shows prototype account hero heading Welcome back', async () => {
+    fetchMeMock.mockResolvedValue(baseProfile)
+
+    renderProfileRoute()
+
+    expect(await screen.findByRole('heading', { level: 1, name: /welcome back/i })).toBeTruthy()
   })
 
   it('shows read-only email and saves via updateUserAttributes, forceRefresh, and PATCH', async () => {
@@ -69,11 +115,11 @@ describe('AccountProfilePage', () => {
       </MemoryRouter>,
     )
 
-    const emailInput = await screen.findByLabelText(/^email$/i)
+    const emailInput = await screen.findByLabelText(/email address/i)
     expect((emailInput as HTMLInputElement).readOnly).toBe(true)
 
     fireEvent.change(screen.getByLabelText(/first name/i), { target: { value: 'Grace' } })
-    fireEvent.click(screen.getByRole('button', { name: /save profile/i }))
+    fireEvent.click(screen.getByRole('button', { name: /save changes/i }))
 
     await waitFor(() => {
       expect(updateUserAttributesMock).toHaveBeenCalledWith({

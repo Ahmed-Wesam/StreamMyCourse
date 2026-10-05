@@ -1,17 +1,94 @@
-import { useAuthenticator } from '../lib/auth-ui'
-import { Navigate } from 'react-router-dom'
+import { useEffect, useRef, useState, type ReactNode, type RefObject } from 'react'
+import { Link, Navigate } from 'react-router-dom'
 
 import { SignIn } from '../components/auth/SignIn'
+import { useAuthenticator } from '../lib/auth-ui'
 import { isAuthConfigured } from '../lib/auth'
-import { loginHero } from '../lib/marketing/loginCopy'
 import { usePageTitle } from '../lib/page-title'
-import { Check } from 'lucide-react'
-import { Eyebrow } from '../components/ui/Eyebrow'
+import './StudentLoginPage.css'
+
+const TRUST = [
+  'Access your purchased courses',
+  'Continue exactly where you left off',
+  'Track your certificate progress',
+  'Complete quizzes and assignments',
+  'Monitor Research Team eligibility',
+] as const
+
+function useReveal(rootRef: RefObject<HTMLElement | null>) {
+  useEffect(() => {
+    const root = rootRef.current
+    if (!root) return
+    const nodes = Array.from(root.querySelectorAll('.reveal'))
+    if (typeof IntersectionObserver === 'undefined') {
+      for (const el of nodes) el.classList.add('in')
+      return
+    }
+    const observer = new IntersectionObserver(
+      (entries) => {
+        for (const entry of entries) {
+          if (!entry.isIntersecting) continue
+          entry.target.classList.add('in')
+          observer.unobserve(entry.target)
+        }
+      },
+      { threshold: 0.1, rootMargin: '0px 0px -40px 0px' },
+    )
+    for (const el of nodes) observer.observe(el)
+    return () => observer.disconnect()
+  }, [rootRef])
+}
+
+function CheckIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M20 6 9 17l-5-5" />
+    </svg>
+  )
+}
+
+function PlusIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <line x1="12" y1="5" x2="12" y2="19" />
+      <line x1="5" y1="12" x2="19" y2="12" />
+    </svg>
+  )
+}
+
+function FaqItem({
+  question,
+  open,
+  onToggle,
+  children,
+}: {
+  question: string
+  open: boolean
+  onToggle: () => void
+  children: ReactNode
+}) {
+  return (
+    <div className={open ? 'rt-faq-item open' : 'rt-faq-item'}>
+      <button className="rt-faq-q" type="button" aria-expanded={open} onClick={onToggle}>
+        <h3>{question}</h3>
+        <div className="rt-faq-ic" aria-hidden="true">
+          <PlusIcon />
+        </div>
+      </button>
+      <div className="rt-faq-a" role="region">
+        <p>{children}</p>
+      </div>
+    </div>
+  )
+}
 
 export default function StudentLoginPage() {
   usePageTitle('Sign in')
   const authConfigured = isAuthConfigured()
   const { authStatus } = useAuthenticator((ctx) => [ctx.authStatus])
+  const rootRef = useRef<HTMLDivElement>(null)
+  const [openFaq, setOpenFaq] = useState<number | null>(null)
+  useReveal(rootRef)
 
   if (!authConfigured) {
     return (
@@ -26,46 +103,97 @@ export default function StudentLoginPage() {
     return <Navigate to="/" replace />
   }
 
+  function toggleFaq(index: number) {
+    setOpenFaq((current) => (current === index ? null : index))
+  }
+
   return (
-    <div
-      className="min-h-[calc(100vh-4rem)] bg-white text-rs-ink"
-      data-testid="student-page-login"
-    >
-      <section className="relative overflow-hidden bg-gradient-to-b from-rs-sky-2 to-white px-5 pb-[84px] pt-[68px] sm:px-7">
-        <div
-          aria-hidden
-          className="pointer-events-none absolute inset-0 bg-[radial-gradient(720px_480px_at_85%_10%,rgba(58,134,255,.12),transparent_62%),radial-gradient(500px_360px_at_0%_40%,rgba(30,94,255,.06),transparent_60%)]"
-        />
-        <div className="relative mx-auto grid max-w-wrap items-start gap-10 nav:grid-cols-[1.1fr_.9fr] nav:gap-16">
-          <div data-testid="login-hero-column" className="pt-3">
-            <Eyebrow>{loginHero.eyebrow}</Eyebrow>
-            <h1 className="mt-5 text-[clamp(40px,5.5vw,62px)] font-extrabold leading-[1.03] tracking-tight text-rs-ink">
-              {loginHero.titleLine1}
-              <br />
-              <span className="bg-rs-grad-cta bg-clip-text text-transparent">{loginHero.titleHighlight}</span>
-            </h1>
-            <p className="mt-[18px] max-w-[480px] text-[17px] leading-relaxed text-rs-body">{loginHero.sub}</p>
-            <ul className="mb-[30px] mt-[26px] flex list-none flex-col gap-[11px] p-0">
-              {loginHero.trustItems.map((item) => (
-                <li
-                  key={item}
-                  className="flex items-center gap-[11px] text-[15px] font-bold text-rs-navy"
-                >
-                  <span className="flex size-6 shrink-0 items-center justify-center rounded-[7px] bg-rs-grad-cta text-white shadow-[0_6px_14px_-6px_rgba(30,94,255,.55)]">
-                    <Check aria-hidden className="size-[13px]" strokeWidth={2.8} />
-                  </span>
-                  {item}
-                </li>
-              ))}
-            </ul>
-            <p className="text-[14.5px] font-semibold text-rs-body">
-              {loginHero.noAccountPrompt}{' '}
-              <a href="/register" className="font-bold text-rs-blue hover:underline">
-                {loginHero.createAccountCta}
-              </a>
-            </p>
+    <div ref={rootRef} className="pg-login" data-testid="student-page-login">
+      <section className="login-hero">
+        <div className="wrap">
+          <div className="login-hero-grid">
+            <div className="hero-copy" data-testid="login-hero-column">
+              <div className="eyebrow reveal">
+                <span className="dot" />
+                Research Spectrum
+              </div>
+              <h1 className="reveal" data-d="1">
+                Welcome
+                <br />
+                <span className="g">Back</span>
+              </h1>
+              <p className="sub reveal" data-d="2">
+                Sign in to access your courses, certificates, progress, and Research Team pathway.
+              </p>
+              <ul className="trust-list reveal" data-d="3">
+                {TRUST.map((item) => (
+                  <li key={item}>
+                    <span className="ck">
+                      <CheckIcon />
+                    </span>
+                    {item}
+                  </li>
+                ))}
+              </ul>
+              <p className="hero-alt reveal" data-d="4">
+                Don&apos;t have an account? <Link to="/register">Create one here</Link>
+              </p>
+            </div>
+
+            <div className="reveal" data-d="2">
+              <SignIn embedded />
+            </div>
           </div>
-          <SignIn embedded />
+        </div>
+      </section>
+
+      <section
+        className="sec"
+        id="faq"
+        style={{
+          background: 'var(--sky-2)',
+          borderTop: '1px solid var(--line-2)',
+          borderBottom: '1px solid var(--line-2)',
+        }}
+      >
+        <div className="wrap">
+          <div className="sec-head reveal">
+            <p className="kicker">Account Help</p>
+            <h2 className="title">Common Sign-In Questions</h2>
+          </div>
+          <div className="rt-faq-list reveal">
+            <FaqItem
+              question="I forgot my password — how do I reset it?"
+              open={openFaq === 0}
+              onToggle={() => toggleFaq(0)}
+            >
+              Click the <strong>Forgot password?</strong> link on the sign-in form. Enter your registered email address
+              and we will send password reset instructions to that address. If you do not receive the email within a few
+              minutes, check your spam or junk folder. Reset links expire after 24 hours for security.
+            </FaqItem>
+            <FaqItem
+              question="Can I access my courses on multiple devices?"
+              open={openFaq === 1}
+              onToggle={() => toggleFaq(1)}
+            >
+              Yes. Your Research Spectrum account can be accessed from any device with a web browser — desktop, tablet,
+              or mobile. Your progress is saved to your account, so you can begin a lesson on one device and continue on
+              another without losing your place.
+            </FaqItem>
+            <FaqItem
+              question="What should I do if I cannot access my registered email?"
+              open={openFaq === 2}
+              onToggle={() => toggleFaq(2)}
+            >
+              If you no longer have access to the email address registered to your account, please contact us through
+              the{' '}
+              <Link to="/contact" style={{ color: 'var(--blue)', fontWeight: 700 }}>
+                Contact page
+              </Link>
+              . Include any details that can help verify your identity, such as your full name or previous purchase
+              information, and our team will assist you.
+            </FaqItem>
+          </div>
         </div>
       </section>
     </div>

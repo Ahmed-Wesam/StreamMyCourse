@@ -473,10 +473,9 @@ class TestHandleDispatchPerAction:
         assert resp["statusCode"] == 200
         svc.update_course.assert_called_once_with("c1", "T2", "D2")
 
-    def test_update_course_with_page_passes_keyword(
+    def test_update_course_with_page_rejected(
         self, svc: MagicMock, make_lambda_event
     ) -> None:
-        svc.update_course.return_value = {"id": "c1", "updated": True}
         page = {"subtitle": "Sub"}
         evt = make_lambda_event(
             method="PUT",
@@ -485,8 +484,8 @@ class TestHandleDispatchPerAction:
             authorizer={"claims": {"sub": "t1", "custom:role": "teacher"}},
         )
         resp = handle(evt, origin="*", svc=svc, video_bucket="b", auth_svc=MagicMock())
-        assert resp["statusCode"] == 200
-        svc.update_course.assert_called_once_with("c1", "T2", "D2", page=page)
+        assert resp["statusCode"] == 400
+        svc.update_course.assert_not_called()
 
     def test_publish_course_200(self, svc: MagicMock, make_lambda_event) -> None:
         svc.publish_course.return_value = {"id": "c1", "status": "PUBLISHED"}

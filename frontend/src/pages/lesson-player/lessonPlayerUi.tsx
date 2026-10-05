@@ -747,12 +747,19 @@ export function CourseLessonsSidebar({
   courseProgress,
   sidebarOpen,
   onClose,
+  outerClassName,
 }: CourseLessonsCurriculumProps & {
   sidebarOpen: boolean
+  outerClassName?: string
 }) {
+  const prototypeAside = outerClassName === 'ps'
   return (
     <aside
-      className={`${sidebarOpen ? 'w-80' : 'w-0'} hidden shrink-0 flex flex-col overflow-hidden border-r border-slate-200 bg-gradient-to-b from-white via-slate-50/80 to-blue-50/30 transition-all duration-300 shadow-sm shadow-slate-200/40 md:flex`}
+      className={
+        prototypeAside
+          ? `${outerClassName}${sidebarOpen ? '' : ' hidden'}`
+          : `${sidebarOpen ? 'w-80' : 'w-0'} hidden shrink-0 flex flex-col overflow-hidden border-r border-slate-200 bg-gradient-to-b from-white via-slate-50/80 to-blue-50/30 transition-all duration-300 shadow-sm shadow-slate-200/40 md:flex`
+      }
       aria-label="Course sidebar"
       aria-hidden={!sidebarOpen}
     >

@@ -38,28 +38,33 @@ function renderApply() {
 }
 
 async function fillRequiredFields() {
+  await screen.findByLabelText(/^Full name$/i)
   fireEvent.change(screen.getByLabelText(/^Full name$/i), { target: { value: 'Ada Lovelace' } })
   fireEvent.change(screen.getByLabelText(/^Country$/i), { target: { value: 'United Kingdom' } })
-  fireEvent.change(screen.getByLabelText(/^Institution$/i), {
+  fireEvent.change(screen.getByLabelText(/Current Institution/i), {
     target: { value: 'Analytical Engines' },
   })
-  fireEvent.change(screen.getByLabelText(/^Position$/i), { target: { value: 'Researcher' } })
-  fireEvent.change(screen.getByLabelText(/^Publication count$/i), { target: { value: '2' } })
-  fireEvent.change(screen.getByLabelText(/^Project count$/i), { target: { value: '1' } })
-  fireEvent.change(screen.getByLabelText(/Statistics experience/i), {
+  fireEvent.change(screen.getByLabelText(/Current Position/i), { target: { value: 'Researcher' } })
+  fireEvent.change(screen.getByLabelText(/Number of Publications/i), { target: { value: '2' } })
+  fireEvent.change(screen.getByLabelText(/Number of Research Projects/i), { target: { value: '1' } })
+  fireEvent.change(screen.getByLabelText(/Statistical Analysis Experience/i), {
     target: { value: 'Intermediate' },
   })
-  fireEvent.change(screen.getByLabelText(/Systematic review experience/i), {
+  fireEvent.change(screen.getByLabelText(/Systematic Review Experience/i), {
     target: { value: 'Beginner' },
   })
-  fireEvent.change(screen.getByLabelText(/^Interests$/i), { target: { value: 'Meta-analysis' } })
-  fireEvent.change(screen.getByLabelText(/^Motivation$/i), {
-    target: { value: 'I want to publish evidence.' },
+  fireEvent.change(screen.getByLabelText(/Tell Us More About Your Research Interests/i), {
+    target: { value: 'Meta-analysis' },
   })
-  fireEvent.change(screen.getByLabelText(/Weekly hours/i), {
-    target: { value: '5–10 hours/week' },
-  })
-  fireEvent.click(screen.getByLabelText(/I acknowledge/i))
+  fireEvent.change(
+    screen.getByLabelText(/Why do you want to join the Research Spectrum Research Team/i),
+    { target: { value: 'I want to publish evidence.' } },
+  )
+  fireEvent.change(
+    screen.getByLabelText(/How many hours per week can you dedicate/i),
+    { target: { value: '5–10 hours/week' } },
+  )
+  fireEvent.click(screen.getByLabelText(/eligibility does not guarantee selection/i))
 }
 
 describe('ApplyResearchTeamPage', () => {
@@ -91,6 +96,54 @@ describe('ApplyResearchTeamPage', () => {
 
   afterEach(() => {
     cleanup()
+  })
+
+  it('renders the pg-apply-research-team prototype shell', async () => {
+    renderApply()
+    await screen.findByRole('heading', { name: /Research Team Application/i })
+    expect(document.querySelector('.pg-apply-research-team')).toBeTruthy()
+  })
+
+  it('shows key section titles from ApplyResearchTeam.html', async () => {
+    renderApply()
+    await screen.findByRole('heading', { name: /Research Team Application/i })
+    expect(screen.getByRole('heading', { name: 'Personal Information' })).toBeTruthy()
+    expect(screen.getByRole('heading', { name: 'Research Experience' })).toBeTruthy()
+    expect(screen.getByRole('heading', { name: /Research Areas Of Interest/i })).toBeTruthy()
+    expect(screen.getByRole('heading', { name: 'Research Interests' })).toBeTruthy()
+    expect(screen.getByRole('heading', { name: 'Motivation' })).toBeTruthy()
+    expect(screen.getByRole('heading', { name: 'Availability' })).toBeTruthy()
+  })
+
+  it('submits via submitResearchTeamApplication when the form is complete', async () => {
+    submitResearchTeamApplication.mockResolvedValue({
+      id: 'app-1',
+      status: 'submitted',
+      reapplyAllowed: false,
+      submittedAt: '2026-09-01T12:00:00Z',
+      fullName: 'Ada Lovelace',
+      email: 'ada@example.com',
+      country: 'United Kingdom',
+      institution: 'Analytical Engines',
+      position: 'Researcher',
+      publicationCount: 2,
+      projectCount: 1,
+      statsExperience: 'Intermediate',
+      sysReviewExperience: 'Beginner',
+      researchAreas: [],
+      interests: 'Meta-analysis',
+      motivation: 'I want to publish evidence.',
+      weeklyHours: '5–10 hours/week',
+      acknowledgedAt: '2026-09-01T12:00:00Z',
+    })
+
+    renderApply()
+    await fillRequiredFields()
+    fireEvent.click(screen.getByRole('button', { name: /Submit application/i }))
+
+    await waitFor(() => {
+      expect(submitResearchTeamApplication).toHaveBeenCalledTimes(1)
+    })
   })
 
   it('prefills full name, country, institution, interests, and position from the profile', async () => {
@@ -204,7 +257,7 @@ describe('ApplyResearchTeamPage', () => {
 
   it('offers weekly hours options that use an en dash', async () => {
     renderApply()
-    await screen.findByLabelText(/Weekly hours/i)
+    await screen.findByLabelText(/How many hours per week can you dedicate/i)
     expect(screen.getByRole('option', { name: '5–10 hours/week' })).toBeTruthy()
     expect(screen.queryByRole('option', { name: '5-10 hours/week' })).toBeNull()
   })

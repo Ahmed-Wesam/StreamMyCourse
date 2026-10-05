@@ -115,6 +115,7 @@ if [[ -z "${INTEGRATION_EXPECTED_CORS_ORIGIN:-}" ]]; then
         FIRST_CORS_ORIGIN="http://localhost:5173"
     fi
     export INTEGRATION_EXPECTED_CORS_ORIGIN="$FIRST_CORS_ORIGIN"
+    export INTEGRATION_CORS_ALLOWLIST="$CORS_CSV"
 fi
 
 log_info "API endpoint: $API_BASE_URL"
@@ -231,7 +232,18 @@ export INTEGRATION_AWS_REGION="$REGION"
 export INTEGRATION_BILLING_ENV="${INTEGRATION_BILLING_ENV:-prod}"
 export INTEGRATION_ALLOW_PROD_CLEANUP="${INTEGRATION_ALLOW_PROD_CLEANUP:-1}"
 export INTEGRATION_AUTH_STACK="${INTEGRATION_AUTH_STACK:-StreamMyCourse-Auth-prod}"
-export INTEGRATION_VIDEO_PROVIDER="${INTEGRATION_VIDEO_PROVIDER:-kinescope}"
+VIDEO_PROVIDER_PARAM="$(aws cloudformation describe-stacks \
+    --stack-name "$API_STACK" \
+    --region "$REGION" \
+    --query "Stacks[0].Parameters[?ParameterKey=='VideoProvider'].ParameterValue | [0]" \
+    --output text 2>/dev/null || true)"
+VIDEO_PROVIDER_PARAM="${VIDEO_PROVIDER_PARAM//[[:space:]]/}"
+if [[ -n "$VIDEO_PROVIDER_PARAM" && "$VIDEO_PROVIDER_PARAM" != "None" ]]; then
+    export INTEGRATION_VIDEO_PROVIDER="$VIDEO_PROVIDER_PARAM"
+elif [[ -z "${INTEGRATION_VIDEO_PROVIDER:-}" ]]; then
+    export INTEGRATION_VIDEO_PROVIDER="kinescope"
+fi
+log_info "Video provider for integration tests: $INTEGRATION_VIDEO_PROVIDER"
 if [[ -z "${INTEGRATION_KINESCOPE_WEBHOOK_SECRET:-}" && -n "${KINESCOPE_WEBHOOK_SECRET:-}" ]]; then
     export INTEGRATION_KINESCOPE_WEBHOOK_SECRET="$KINESCOPE_WEBHOOK_SECRET"
 fi

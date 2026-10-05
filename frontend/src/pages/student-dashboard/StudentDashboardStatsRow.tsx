@@ -1,69 +1,73 @@
 import { Link } from 'react-router-dom'
 
-import { Card } from '../../components/ui/Card'
 import type { StudentDashboardStats } from '../../lib/studentDashboard'
+import { IconBook, IconMedal, IconPeople, IconTrend } from './dashboardIcons'
 
 type StudentDashboardStatsRowProps = {
   stats: StudentDashboardStats
   /** Non-revoked certificate count; null when the certificates fetch failed. */
   certificatesCount: number | null
+  /** Certified/required label from the Research Team API, or an em dash when unknown. */
+  eligibility: string
 }
 
-function StatCard({ label, value }: { label: string; value: string }) {
-  return (
-    <Card className="rounded-rs-lg border border-rs-line px-5 py-4 shadow-rs-sm">
-      <p className="text-xs font-semibold uppercase tracking-wide text-rs-muted">{label}</p>
-      <p className="mt-1 text-2xl font-extrabold text-rs-ink">{value}</p>
-    </Card>
-  )
+function displayCount(stats: StudentDashboardStats): string {
+  if (stats.availability === 'ready') return String(stats.activeCourses)
+  if (stats.availability === 'empty') return '0'
+  return '—'
 }
 
-function CertificatesStatCard({ value }: { value: string }) {
-  return (
-    <Link
-      to="/certificates"
-      className="block rounded-rs-lg border border-rs-line bg-white px-5 py-4 shadow-rs-sm transition-colors hover:border-rs-ink/30 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-rs-ink"
-      aria-label={`Certificates ${value}`}
-    >
-      <p className="text-xs font-semibold uppercase tracking-wide text-rs-muted">Certificates</p>
-      <p className="mt-1 text-2xl font-extrabold text-rs-ink">{value}</p>
-    </Link>
-  )
+function displayProgress(stats: StudentDashboardStats): string {
+  if (stats.availability === 'ready') return `${Math.round(stats.overallProgressPercent)}%`
+  if (stats.availability === 'empty') return '0%'
+  return '—'
 }
 
 export function StudentDashboardStatsRow({
   stats,
   certificatesCount,
+  eligibility,
 }: StudentDashboardStatsRowProps) {
-  const active =
-    stats.availability === 'ready' ? String(stats.activeCourses) : stats.availability === 'empty' ? '0' : '—'
-
-  const overall =
-    stats.availability === 'ready'
-      ? `${Math.round(stats.overallProgressPercent)}%`
-      : stats.availability === 'empty'
-        ? '0%'
-        : '—'
-
-  const quizzes =
-    stats.availability === 'ready'
-      ? `${stats.quizzesPassed.passed} of ${stats.quizzesPassed.visible}`
-      : stats.availability === 'empty'
-        ? '0 of 0'
-        : '—'
-
-  const certificates =
-    certificatesCount === null ? '—' : String(certificatesCount)
+  const certificates = certificatesCount === null ? '—' : String(certificatesCount)
 
   return (
-    <div
-      className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4"
-      data-testid="student-dashboard-stats"
-    >
-      <StatCard label="Active courses" value={active} />
-      <StatCard label="Overall progress" value={overall} />
-      <StatCard label="Quizzes passed" value={quizzes} />
-      <CertificatesStatCard value={certificates} />
-    </div>
+    <section className="db">
+      <div className="wrap">
+        <div className="stat-grid" data-testid="student-dashboard-stats">
+          <div className="stat reveal" data-d="1">
+            <div className="si">
+              <IconBook />
+            </div>
+            <div className="lbl">Active Courses</div>
+            <div className="val">{displayCount(stats)}</div>
+            <div className="vsub">across the pathway</div>
+          </div>
+          <div className="stat reveal" data-d="2">
+            <div className="si">
+              <IconTrend />
+            </div>
+            <div className="lbl">Overall Progress</div>
+            <div className="val">{displayProgress(stats)}</div>
+            <div className="vsub">across enrolled courses</div>
+          </div>
+          <Link to="/certificates" className="stat reveal" data-d="3">
+            <div className="si">
+              <IconMedal />
+            </div>
+            <div className="lbl">Certificates Earned</div>
+            <div className="val">{certificates}</div>
+            <div className="vsub">verifiable certificate</div>
+          </Link>
+          <div className="stat featured reveal" data-d="4">
+            <div className="si">
+              <IconPeople />
+            </div>
+            <div className="lbl">Research Team Eligibility</div>
+            <div className="val">{eligibility}</div>
+            <div className="vsub">courses completed</div>
+          </div>
+        </div>
+      </div>
+    </section>
   )
 }

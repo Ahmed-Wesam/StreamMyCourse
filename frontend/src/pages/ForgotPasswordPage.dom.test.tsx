@@ -26,6 +26,15 @@ describe('ForgotPasswordPage', () => {
     vi.unstubAllEnvs()
   })
 
+  it('renders the ForgotPassword.html hero heading', () => {
+    render(
+      <MemoryRouter>
+        <ForgotPasswordPage />
+      </MemoryRouter>,
+    )
+    expect(screen.getByRole('heading', { name: 'Forgot Your Password?' })).toBeTruthy()
+  })
+
   it('shows the same success UI when resetPassword rejects (user not found style)', async () => {
     resetPasswordMock.mockRejectedValue(new Error('User does not exist.'))
     render(
@@ -33,8 +42,8 @@ describe('ForgotPasswordPage', () => {
         <ForgotPasswordPage />
       </MemoryRouter>,
     )
-    fireEvent.change(screen.getByLabelText(/^email$/i), { target: { value: 'missing@example.com' } })
-    fireEvent.click(screen.getByRole('button', { name: /send reset link/i }))
+    fireEvent.change(screen.getByLabelText(/^email address$/i), { target: { value: 'missing@example.com' } })
+    fireEvent.click(screen.getByRole('button', { name: /send reset instructions/i }))
 
     await waitFor(() => {
       expect(screen.getByRole('status').textContent).toMatch(/if an account exists/i)
@@ -48,8 +57,8 @@ describe('ForgotPasswordPage', () => {
         <ForgotPasswordPage />
       </MemoryRouter>,
     )
-    fireEvent.change(screen.getByLabelText(/^email$/i), { target: { value: 'found@example.com' } })
-    fireEvent.click(screen.getByRole('button', { name: /send reset link/i }))
+    fireEvent.change(screen.getByLabelText(/^email address$/i), { target: { value: 'found@example.com' } })
+    fireEvent.click(screen.getByRole('button', { name: /send reset instructions/i }))
 
     await waitFor(() => {
       expect(screen.getByRole('status').textContent).toMatch(/if an account exists/i)

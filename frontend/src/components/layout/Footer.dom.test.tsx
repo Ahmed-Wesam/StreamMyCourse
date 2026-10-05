@@ -55,6 +55,26 @@ describe('Footer', () => {
     )
   })
 
+  it('prototype variant uses prototype footer markup', () => {
+    const { container } = render(
+      <MemoryRouter>
+        <Footer variant="prototype" />
+      </MemoryRouter>,
+    )
+
+    const footer = container.querySelector('footer')
+    expect(footer?.querySelector('.wrap .foot-grid')).toBeTruthy()
+    expect(footer?.querySelector('a.logo img.mark')).toBeTruthy()
+    expect(footer?.querySelector('.foot-bottom .foot-social')).toBeTruthy()
+    expect(footer?.querySelector('.rs-foot-social')).toBeNull()
+    expect(footer?.className ?? '').not.toMatch(/\bborder-t\b/)
+    expect(screen.getByRole('link', { name: 'Privacy Policy' }).getAttribute('href')).toBe('/privacy')
+    const year = new Date().getFullYear()
+    expect(
+      screen.getByText(`© ${year} ${BRAND_NAME}. ${BRAND_TAGLINE}.`),
+    ).toBeTruthy()
+  })
+
   it('exposes Instagram with noopener and an accessible name', () => {
     render(
       <MemoryRouter>

@@ -4,14 +4,34 @@
 import { readFileSync, readdirSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const listMyCertificatesMock = vi.hoisted(() => vi.fn())
+const getPurchasesMock = vi.hoisted(() => vi.fn())
+const listPublishedCoursesMock = vi.hoisted(() => vi.fn())
+const getCourseProgressMock = vi.hoisted(() => vi.fn())
+const getMyResearchTeamMock = vi.hoisted(() => vi.fn())
 
 vi.mock('../../lib/api/certificates', () => ({
   listMyCertificates: listMyCertificatesMock,
+}))
+
+vi.mock('../../lib/api/billing', () => ({
+  getPurchases: getPurchasesMock,
+}))
+
+vi.mock('../../lib/api/public-catalog', () => ({
+  listPublishedCourses: listPublishedCoursesMock,
+}))
+
+vi.mock('../../lib/api/catalog', () => ({
+  getCourseProgress: getCourseProgressMock,
+}))
+
+vi.mock('../../lib/api/research-team', () => ({
+  getMyResearchTeam: getMyResearchTeamMock,
 }))
 
 import CertificatesPage from '../CertificatesPage'
@@ -49,6 +69,12 @@ describe('CertificatesPage', () => {
       configurable: true,
       value: { ...window.location, origin: 'http://localhost:3000' },
     })
+    getPurchasesMock.mockResolvedValue([])
+    listPublishedCoursesMock.mockResolvedValue([
+      { id: 'course-1', title: validCertificate.courseTitle, description: '' },
+    ])
+    getCourseProgressMock.mockResolvedValue({ percentComplete: 0 })
+    getMyResearchTeamMock.mockResolvedValue({ courses: [] })
     listMyCertificatesMock.mockResolvedValue({
       certificates: [
         {
@@ -72,16 +98,22 @@ describe('CertificatesPage', () => {
     cleanup()
   })
 
-  it('renders a certificates heading with earned certificates', async () => {
+  it('renders prototype hero and earned certificates', async () => {
     render(
       <MemoryRouter>
         <CertificatesPage />
       </MemoryRouter>,
     )
 
-    expect(await screen.findByRole('heading', { name: /certificates/i })).toBeTruthy()
-    expect(await screen.findByText(validCertificate.courseTitle)).toBeTruthy()
-    expect(screen.getByText(validCertificate.studentName)).toBeTruthy()
+    expect(await screen.findByRole('heading', { name: /^your certificates$/i })).toBeTruthy()
+    expect(
+      screen.getByText(/verifiable proof of your research education and achievements within research spectrum/i),
+    ).toBeTruthy()
+    const earnedSection = await screen.findByRole('heading', { name: /earned certificates/i })
+    const earnedGrid = earnedSection.closest('section')
+    expect(earnedGrid).toBeTruthy()
+    expect(within(earnedGrid as HTMLElement).getByText(validCertificate.courseTitle)).toBeTruthy()
+    expect(within(earnedGrid as HTMLElement).getByText(validCertificate.studentName)).toBeTruthy()
   })
 
   it('shows empty state when there are no certificates or in-progress items', async () => {
@@ -97,7 +129,7 @@ describe('CertificatesPage', () => {
       </MemoryRouter>,
     )
 
-    expect(await screen.findByText(/no certificates yet/i)).toBeTruthy()
+    expect(await screen.findByRole('heading', { name: /earn your first certificate/i })).toBeTruthy()
   })
 
   it('copies share link using window.location.origin + verifyPath', async () => {

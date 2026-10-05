@@ -45,4 +45,4 @@ def test_rs11_lesson_file_and_note_methods_in_deployment_v41() -> None:
     )[0]
     for logical_id in _DEPLOYMENT_METHODS:
         assert logical_id in deployment_block, logical_id
-    assert "DeploymentId: !Ref CatalogApiDeploymentV44" in text
+    assert "DeploymentId: !Ref CatalogApiDeploymentV45" in text

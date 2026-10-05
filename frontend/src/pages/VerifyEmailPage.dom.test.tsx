@@ -73,6 +73,11 @@ describe('VerifyEmailPage', () => {
     vi.unstubAllEnvs()
   })
 
+  it('renders the verify-email hero heading from the ForgotPassword layout', () => {
+    renderAt()
+    expect(screen.getByRole('heading', { name: 'Verify Your Email' })).toBeTruthy()
+  })
+
   it('confirmSignUp, signIn, PATCH /users/me, clears draft without password in sessionStorage', async () => {
     renderAt()
     fireEvent.change(screen.getByLabelText(/verification code/i), { target: { value: '123456' } })

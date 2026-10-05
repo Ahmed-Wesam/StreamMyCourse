@@ -65,13 +65,13 @@ vi.mock('aws-amplify/utils', () => ({
 }))
 
 const EXPECTED_NAV = [
-  { href: '/dashboard', label: 'Dashboard' },
-  { href: '/courses', label: 'Courses' },
-  { href: '/certificates', label: 'Certificates' },
-  { href: '/research-team', label: 'Research Team' },
-  { href: '/about', label: 'About Instructor' },
-  { href: '/faq', label: 'FAQ' },
-  { href: '/contact', label: 'Contact' },
+  { href: '/dashboard', label: 'Dashboard', route: 'dashboard' },
+  { href: '/courses', label: 'Courses', route: 'courses' },
+  { href: '/certificates', label: 'Certificates', route: 'certificates' },
+  { href: '/research-team', label: 'Research Team', route: 'research-team' },
+  { href: '/about', label: 'About Instructor', route: 'about' },
+  { href: '/faq', label: 'FAQ', route: 'faq' },
+  { href: '/contact', label: 'Contact', route: 'contact' },
 ] as const
 
 function flushRequestIdleCallbacks() {
@@ -120,21 +120,37 @@ describe('StudentHeader', () => {
 
   it('renders primary navigation links in prototype order', () => {
     auth.isAuthConfigured.mockReturnValue(false)
-    render(
-      <MemoryRouter initialEntries={['/']}>
+    const { container } = render(
+      <MemoryRouter initialEntries={['/faq']}>
         <StudentHeader />
       </MemoryRouter>,
     )
 
-    const desktop = screen.getByRole('navigation', { name: 'Primary' })
-    const desktopLinks = within(desktop).getAllByRole('link')
+    const header = container.querySelector('header')
+    expect(header?.id).toBe('header')
+    expect(header?.querySelector('a.logo .mark')).toBeTruthy()
+    expect(header?.querySelector('.nav-cta')).toBeTruthy()
+    expect(header?.querySelector('button.burger')).toBeTruthy()
+    expect(container.querySelector('#mobileMenu.mobile-menu')).toBeTruthy()
+
+    const linkList = header?.querySelector('ul.nav-links')
+    expect(linkList).toBeTruthy()
+    const desktopLinks = within(linkList as HTMLElement).getAllByRole('link')
     expect(desktopLinks.map((el) => el.textContent)).toEqual(EXPECTED_NAV.map((l) => l.label))
     expect(desktopLinks.map((el) => el.getAttribute('href'))).toEqual(EXPECTED_NAV.map((l) => l.href))
+    expect(desktopLinks.map((el) => el.getAttribute('data-route'))).toEqual(
+      EXPECTED_NAV.map((l) => l.route),
+    )
+    expect(desktopLinks.find((el) => el.getAttribute('data-route') === 'faq')?.classList.contains('active')).toBe(
+      true,
+    )
 
-    expect(screen.queryByRole('link', { name: 'Home' })).toBeNull()
+    expect(screen.queryByRole('link', { name: /^Home$/ })).toBeNull()
+    expect(screen.queryByRole('link', { name: 'Verify' })).toBeNull()
     expect(screen.queryByRole('link', { name: 'Details' })).toBeNull()
     expect(screen.queryByRole('link', { name: 'Pricing' })).toBeNull()
     expect(screen.queryByRole('link', { name: 'Enroll Now' })).toBeNull()
+    expect(container.querySelector('.nav-bell')).toBeNull()
   })
 
   it('shows Sign In and Create Account when signed out and auth is configured', async () => {
@@ -148,8 +164,13 @@ describe('StudentHeader', () => {
       </MemoryRouter>,
     )
 
-    expect(await screen.findByRole('link', { name: 'Sign In' })).toBeTruthy()
-    expect(screen.getByRole('link', { name: 'Create Account' })).toBeTruthy()
+    const signIn = await screen.findByRole('link', { name: 'Sign In' })
+    expect(signIn.classList.contains('login')).toBe(true)
+    expect(signIn.className).not.toContain('rs-site-signin')
+    const create = screen.getByRole('link', { name: 'Create Account' })
+    expect(create.classList.contains('btn')).toBe(true)
+    expect(create.classList.contains('btn-primary')).toBe(true)
+    expect(create.classList.contains('btn-sm')).toBe(true)
     expect(screen.queryByRole('link', { name: 'Enroll Now' })).toBeNull()
   })
 
@@ -220,9 +241,23 @@ describe('StudentHeader', () => {
       flushRequestIdleCallbacks()
     })
 
+    await screen.findByRole('button', { name: /Account menu/i })
+    expect(document.querySelector('.nav-profile')).toBeTruthy()
+    expect(document.querySelector('.nav-bell')).toBeNull()
+    expect(screen.queryByRole('button', { name: /notification/i })).toBeNull()
+
     const menu = await openProfileMenu()
-    expect(within(menu).getByRole('menuitem', { name: 'Account' })).toBeTruthy()
+    expect(menu.classList.contains('nav-drop')).toBe(true)
+    const items = within(menu).getAllByRole('menuitem')
+    expect(items.map((el) => el.textContent)).toEqual(['Account', 'Settings', 'Logout'])
+    expect(within(menu).getByRole('menuitem', { name: 'Account' }).getAttribute('href')).toBe(
+      '/account/profile',
+    )
+    expect(within(menu).getByRole('menuitem', { name: 'Settings' }).getAttribute('href')).toBe(
+      '/settings',
+    )
     const logout = within(menu).getByRole('menuitem', { name: 'Logout' })
+    expect(logout.classList.contains('logout')).toBe(true)
     fireEvent.click(logout)
 
     await waitFor(() => expect(sessionLazy.lazySignOut).toHaveBeenCalledTimes(1))
@@ -247,19 +282,20 @@ describe('StudentHeader', () => {
       )
     }
 
-    render(
+    const view = render(
       <MemoryRouter initialEntries={['/']}>
         <Shell />
       </MemoryRouter>,
     )
 
     fireEvent.click(screen.getByRole('button', { name: 'Open menu' }))
-    const mobileNav = screen.getByRole('navigation', { name: /mobile/i })
-    expect(mobileNav).toBeTruthy()
+    const mobileMenu = view.container.querySelector('#mobileMenu')
+    expect(mobileMenu?.classList.contains('mobile-menu')).toBe(true)
+    expect(mobileMenu?.classList.contains('open')).toBe(true)
 
-    fireEvent.click(within(mobileNav).getByRole('link', { name: 'Courses' }))
+    fireEvent.click(within(mobileMenu as HTMLElement).getByRole('link', { name: 'Courses' }))
     await waitFor(() => {
-      expect(screen.queryByRole('navigation', { name: /mobile/i })).toBeNull()
+      expect(view.container.querySelector('#mobileMenu')?.classList.contains('open')).toBe(false)
     })
   })
 
@@ -271,15 +307,15 @@ describe('StudentHeader', () => {
       </MemoryRouter>,
     )
     const header = container.querySelector('header')
-    expect(header).toBeTruthy()
-    expect(header?.className).toContain('rs-site-header')
-    expect(header?.className).not.toContain('rs-site-header-scrolled')
+    expect(header?.id).toBe('header')
+    expect(header?.classList.contains('scrolled')).toBe(false)
+    expect(header?.className ?? '').not.toContain('rs-site-header')
 
     const scrollSpy = vi.spyOn(window, 'scrollY', 'get').mockReturnValue(21)
     fireEvent.scroll(window)
 
     await waitFor(() => {
-      expect(header?.className).toContain('rs-site-header-scrolled')
+      expect(header?.classList.contains('scrolled')).toBe(true)
     })
     scrollSpy.mockRestore()
   })

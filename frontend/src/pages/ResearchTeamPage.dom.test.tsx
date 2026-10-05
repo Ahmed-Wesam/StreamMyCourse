@@ -52,24 +52,34 @@ describe('ResearchTeamPage', () => {
     cleanup()
   })
 
-  it('loads required course titles from the public API and shows no Apply control when logged out', async () => {
+  it('renders the prototype frequently asked questions heading', () => {
     renderResearchTeam()
-
-    const required = await screen.findAllByTestId('research-team-required-course')
-    expect(required.map((el) => el.textContent)).toEqual(
-      expect.arrayContaining(['Research Methodology', 'Statistics & SPSS']),
-    )
-    expect(getResearchTeamRequirements).toHaveBeenCalled()
-    expect(screen.queryByRole('link', { name: /^Apply$/i })).toBeNull()
-    expect(screen.queryByRole('button', { name: /apply|submit application/i })).toBeNull()
+    expect(screen.getByRole('heading', { name: 'Frequently Asked Questions' })).toBeTruthy()
   })
 
-  it('says applications are not open yet when required courses are empty', async () => {
+  it('loads requirements from the public API and shows no Apply control when logged out', async () => {
+    renderResearchTeam()
+
+    expect(
+      await screen.findByRole('heading', { name: 'Research Team Applications Require Eligibility' }),
+    ).toBeTruthy()
+    await waitFor(() => expect(getResearchTeamRequirements).toHaveBeenCalled())
+    expect(screen.queryByTestId('research-team-required-course')).toBeNull()
+    expect(screen.queryAllByRole('link', { name: /^Apply To Research Team$/i })).toEqual([])
+    expect(screen.queryByRole('button', { name: /^apply$|submit application/i })).toBeNull()
+    expect(screen.getAllByRole('link', { name: 'Explore Courses' }).length).toBeGreaterThan(0)
+  })
+
+  it('keeps the prototype guest page when required courses are empty', async () => {
     getResearchTeamRequirements.mockResolvedValue({ courses: [] })
     renderResearchTeam()
 
-    expect(await screen.findByText(/applications are not open yet/i)).toBeTruthy()
+    await waitFor(() => expect(getResearchTeamRequirements).toHaveBeenCalled())
+    expect(screen.queryByText(/applications are not open yet/i)).toBeNull()
     expect(screen.queryByTestId('research-team-required-course')).toBeNull()
+    expect(
+      screen.getByRole('heading', { name: 'Research Team Applications Require Eligibility' }),
+    ).toBeTruthy()
   })
 
   it('does not statically import the authenticated research-team client from the page module', () => {
@@ -102,8 +112,20 @@ describe('ResearchTeamPage', () => {
     renderResearchTeam()
 
     expect(await screen.findByText(/2 of 4 certificates/i)).toBeTruthy()
-    const apply = await screen.findByRole('link', { name: /^Apply$/i })
-    expect(apply.getAttribute('href')).toBe('/research-team/apply')
+    const required = await screen.findAllByTestId('research-team-required-course')
+    expect(required.map((el) => el.textContent)).toEqual(
+      expect.arrayContaining([
+        'Research Methodology',
+        'Statistics & SPSS',
+        'Scientific Writing',
+        'Systematic Reviews & Meta-Analysis',
+      ]),
+    )
+    const applyLinks = await screen.findAllByRole('link', { name: /^Apply To Research Team$/i })
+    expect(applyLinks.length).toBeGreaterThan(0)
+    for (const link of applyLinks) {
+      expect(link.getAttribute('href')).toBe('/research-team/apply')
+    }
   })
 
   it('shows applications-not-open copy when signed in with zero required courses', async () => {
@@ -119,7 +141,7 @@ describe('ResearchTeamPage', () => {
 
     expect(await screen.findByText(/Applications are not open yet/i)).toBeTruthy()
     expect(screen.queryByText(/0 of 0 certificates/i)).toBeNull()
-    expect(screen.queryByRole('link', { name: /^Apply$/i })).toBeNull()
+    expect(screen.queryAllByRole('link', { name: /^Apply To Research Team$/i })).toEqual([])
   })
 
   it('shows unlock guidance when reapply is allowed but canSubmit is false', async () => {
@@ -158,7 +180,7 @@ describe('ResearchTeamPage', () => {
     expect(await screen.findByText(/was rejected/i)).toBeTruthy()
     expect(screen.queryByText(/may apply again/i)).toBeNull()
     expect(screen.getByText(/Complete the required certificates/i)).toBeTruthy()
-    expect(screen.queryByRole('link', { name: /^Apply$/i })).toBeNull()
+    expect(screen.queryAllByRole('link', { name: /^Apply To Research Team$/i })).toEqual([])
   })
 
   it('does not tell eligible rejected students to complete certificates while waiting on reapply', async () => {
@@ -214,7 +236,7 @@ describe('ResearchTeamPage', () => {
     renderResearchTeam()
 
     expect(await screen.findByText(/1 of 2 certificates/i)).toBeTruthy()
-    expect(screen.queryByRole('link', { name: /^Apply$/i })).toBeNull()
+    expect(screen.queryAllByRole('link', { name: /^Apply To Research Team$/i })).toEqual([])
   })
 
   it('shows application status text after a prior submit', async () => {
@@ -248,7 +270,7 @@ describe('ResearchTeamPage', () => {
     renderResearchTeam()
 
     expect(await screen.findByText(/under review/i)).toBeTruthy()
-    expect(screen.queryByRole('link', { name: /^Apply$/i })).toBeNull()
+    expect(screen.queryAllByRole('link', { name: /^Apply To Research Team$/i })).toEqual([])
   })
 
   it('mentions reapply when rejected with reapplyAllowed and shows Apply only if canSubmit', async () => {
@@ -285,9 +307,11 @@ describe('ResearchTeamPage', () => {
     renderResearchTeam()
 
     expect(await screen.findByText(/may apply again/i)).toBeTruthy()
-    expect(screen.getByRole('link', { name: /^Apply$/i }).getAttribute('href')).toBe(
-      '/research-team/apply',
-    )
+    const applyLinks = screen.getAllByRole('link', { name: /^Apply To Research Team$/i })
+    expect(applyLinks.length).toBeGreaterThan(0)
+    for (const link of applyLinks) {
+      expect(link.getAttribute('href')).toBe('/research-team/apply')
+    }
   })
 
   it('keeps courses and eligibility links and does not call the authed client when logged out', async () => {
@@ -298,22 +322,18 @@ describe('ResearchTeamPage', () => {
     })
     expect(getMyResearchTeam).not.toHaveBeenCalled()
 
-    const pageText = document.body.textContent ?? ''
-    expect(pageText).not.toMatch(/Selection considers interviews/i)
-    expect(pageText).not.toMatch(/\binterviews?\b/i)
-    expect(pageText).toMatch(/Eligibility does not guarantee acceptance/i)
-    expect(pageText).toMatch(/admin/i)
-    expect(pageText).toMatch(/required course/i)
-    expect(pageText).toMatch(/certificate for each required course/i)
+    expect(await screen.findByRole('heading', { name: 'Frequently Asked Questions' })).toBeTruthy()
+    expect(screen.getByText(/Eligibility does not guarantee acceptance/i)).toBeTruthy()
+    expect(screen.getByText(/Selection considers interviews/i)).toBeTruthy()
 
     const coursesLinks = screen
       .getAllByRole('link')
       .filter((link) => (link.getAttribute('href') ?? '') === '/courses')
     expect(coursesLinks.length).toBeGreaterThan(0)
 
-    const eligibilityLinks = screen
+    const registerLinks = screen
       .getAllByRole('link')
-      .filter((link) => (link.getAttribute('href') ?? '') === '#eligibility')
-    expect(eligibilityLinks.length).toBeGreaterThan(0)
+      .filter((link) => (link.getAttribute('href') ?? '') === '/register')
+    expect(registerLinks.length).toBeGreaterThan(0)
   })
 })

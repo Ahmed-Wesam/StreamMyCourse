@@ -32,7 +32,13 @@ _PROFILE_EXTENDED_COLUMNS = (
     "given_name, family_name, country, profession, institution, "
     "research_interests, terms_accepted_at, privacy_accepted_at"
 )
-_PROFILE_COLUMNS = f"{_PROFILE_BASE_COLUMNS}, {_PROFILE_EXTENDED_COLUMNS}"
+_PROFILE_PREFERENCE_COLUMNS = (
+    "pref_autoplay_next, pref_auto_mark_complete, pref_progress_celebrations, "
+    "research_interest_tags, last_login_at"
+)
+_PROFILE_COLUMNS = (
+    f"{_PROFILE_BASE_COLUMNS}, {_PROFILE_EXTENDED_COLUMNS}, {_PROFILE_PREFERENCE_COLUMNS}"
+)
 
 
 def _to_iso(value: Any) -> str:
@@ -43,11 +49,23 @@ def _to_iso(value: Any) -> str:
     return str(value)
 
 
+def _bool_column(value: Any) -> bool:
+    if isinstance(value, bool):
+        return value
+    return True
+
+
+def _tags_column(value: Any) -> list[str]:
+    if isinstance(value, (list, tuple)):
+        return [str(item) for item in value]
+    return []
+
+
 def _row_to_profile(row: Tuple[Any, ...]) -> Dict[str, Any]:
     """Translate a ``users`` row tuple to the camelCase dict contract."""
     user_sub, email, role, cognito_sub, created_at, updated_at = row[:6]
     tail = list(row[6:])
-    while len(tail) < 8:
+    while len(tail) < 13:
         tail.append(None)
     (
         given_name,
@@ -59,6 +77,7 @@ def _row_to_profile(row: Tuple[Any, ...]) -> Dict[str, Any]:
         terms_accepted_at,
         privacy_accepted_at,
     ) = tail[:8]
+    pref_autoplay_next, pref_auto_mark_complete, pref_progress_celebrations, tags, last_login_at = tail[8:13]
     return {
         "userSub": str(user_sub or ""),
         "email": str(email or ""),
@@ -74,6 +93,11 @@ def _row_to_profile(row: Tuple[Any, ...]) -> Dict[str, Any]:
         "researchInterests": str(research_interests or ""),
         "termsAcceptedAt": _to_iso(terms_accepted_at),
         "privacyAcceptedAt": _to_iso(privacy_accepted_at),
+        "autoplayNext": _bool_column(pref_autoplay_next),
+        "autoMarkComplete": _bool_column(pref_auto_mark_complete),
+        "progressCelebrations": _bool_column(pref_progress_celebrations),
+        "researchInterestTags": _tags_column(tags),
+        "lastLoginAt": _to_iso(last_login_at),
     }
 
 
@@ -196,4 +220,58 @@ class UserProfileRdsRepository:
         row = cur.fetchone()
         if row is None:
             raise RuntimeError("UPDATE users profile ... RETURNING returned no row")
+        return _row_to_profile(row)
+
+    def update_learning_preferences(
+        self,
+        *,
+        user_sub: str,
+        autoplay_next: bool,
+        auto_mark_complete: bool,
+        progress_celebrations: bool,
+        research_interest_tags: list[str],
+    ) -> Dict[str, Any]:
+        cur = self._execute(
+            f"""
+            UPDATE users
+               SET pref_autoplay_next = %s,
+                   pref_auto_mark_complete = %s,
+                   pref_progress_celebrations = %s,
+                   research_interest_tags = %s,
+                   updated_at = NOW()
+             WHERE user_sub = %s
+            RETURNING {_PROFILE_COLUMNS}
+            """,
+            (
+                autoplay_next,
+                auto_mark_complete,
+                progress_celebrations,
+                research_interest_tags,
+                user_sub,
+            ),
+            commit=True,
+        )
+        row = cur.fetchone()
+        if row is None:
+            raise RuntimeError("UPDATE users learning preferences ... RETURNING returned no row")
+        return _row_to_profile(row)
+
+    def reset_built_preferences(self, *, user_sub: str) -> Dict[str, Any]:
+        cur = self._execute(
+            f"""
+            UPDATE users
+               SET pref_autoplay_next = TRUE,
+                   pref_auto_mark_complete = TRUE,
+                   pref_progress_celebrations = TRUE,
+                   research_interest_tags = ARRAY['systematic_reviews', 'meta_analysis']::text[],
+                   updated_at = NOW()
+             WHERE user_sub = %s
+            RETURNING {_PROFILE_COLUMNS}
+            """,
+            (user_sub,),
+            commit=True,
+        )
+        row = cur.fetchone()
+        if row is None:
+            raise RuntimeError("UPDATE users reset preferences ... RETURNING returned no row")
         return _row_to_profile(row)

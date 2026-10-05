@@ -77,7 +77,11 @@ describe('Reveal', () => {
     )
 
     expect(screen.getByText('Animated')).toBeTruthy()
-    expect(container.firstElementChild?.classList.contains('in')).toBe(true)
+    const shown = container.firstElementChild
+    expect(shown?.classList.contains('reveal')).toBe(true)
+    expect(shown?.classList.contains('in')).toBe(true)
+    expect(shown?.className ?? '').not.toMatch(/\bopacity-0\b/)
+    expect(shown?.className ?? '').not.toMatch(/translate-y/)
     expect(instances).toHaveLength(0)
   })
 
@@ -91,7 +95,10 @@ describe('Reveal', () => {
       </Reveal>,
     )
 
-    expect(container.firstElementChild?.classList.contains('in')).toBe(true)
+    const shown = container.firstElementChild
+    expect(shown?.classList.contains('reveal')).toBe(true)
+    expect(shown?.classList.contains('in')).toBe(true)
+    expect(shown?.className ?? '').not.toMatch(/\bopacity-0\b/)
   })
 
   it('when observer fires: in is added', async () => {
@@ -105,7 +112,10 @@ describe('Reveal', () => {
     )
 
     const wrap = container.firstElementChild
+    expect(wrap?.classList.contains('reveal')).toBe(true)
     expect(wrap?.classList.contains('in')).toBe(false)
+    expect(wrap?.className ?? '').not.toMatch(/\bopacity-0\b/)
+    expect(wrap?.className ?? '').not.toMatch(/translate-y/)
     expect(instances).toHaveLength(1)
     expect(observerCallback).toBeTypeOf('function')
 

@@ -132,8 +132,9 @@ def test_checkout_session_then_ipn_grants_playback(
 
     playback_resp = student_api.get_playback(course_id, lesson_id)
     assert playback_resp.status_code == 200, playback_resp.text
-    body = playback_resp.json()
-    assert isinstance(body.get("url"), str) and body["url"]
+    from helpers.playback_contract import assert_playback_contract
+
+    assert_playback_contract(playback_resp.json())
 
 
 def test_checkout_session_already_owned_returns_409(

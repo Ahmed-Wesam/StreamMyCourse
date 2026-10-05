@@ -1,4 +1,5 @@
 @import '@fontsource-variable/plus-jakarta-sans/wght.css';
+@import '@fontsource-variable/plus-jakarta-sans/wght-italic.css';
 
 @tailwind base;
 @tailwind components;

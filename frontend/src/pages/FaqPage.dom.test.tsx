@@ -132,4 +132,25 @@ describe('FaqPage', () => {
     expect(grading).not.toMatch(/from submitted, through assigned, under review, and feedback ready/i)
     expect(grading).toMatch(/assignment page|submitted|graded/i)
   })
+
+  it('renders the learning journey and Research Beyond The Courses', () => {
+    renderFaq()
+
+    expect(
+      screen.getByRole('heading', { name: /The Research Spectrum Learning Journey/i }),
+    ).toBeTruthy()
+    expect(
+      screen.getByRole('heading', { name: /Research Beyond The Courses/i }),
+    ).toBeTruthy()
+  })
+
+  it('filters questions in the browser and hides a non-matching question', () => {
+    renderFaq()
+
+    const question = screen.getByRole('button', { name: /What is Research Spectrum\?/i })
+    const search = screen.getByRole('searchbox', { name: /Search FAQ/i })
+    fireEvent.change(search, { target: { value: 'zzzz-no-match-token' } })
+
+    expect(question.closest('.rt-faq-item')?.classList.contains('faq-hidden')).toBe(true)
+  })
 })

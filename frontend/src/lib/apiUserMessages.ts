@@ -73,6 +73,8 @@ type ApiUserMessageContext =
   | 'publishQuestionBank'
   | 'attachModuleQuiz'
   | 'saveModuleQuizPassPercent'
+  | 'loadAssignment'
+  | 'submitAssignment'
 
 const CONTEXT_FALLBACKS: Record<ApiUserMessageContext, string> = {
   loadCourses: 'Your courses could not be loaded. Please try again.',
@@ -105,6 +107,8 @@ const CONTEXT_FALLBACKS: Record<ApiUserMessageContext, string> = {
   publishQuestionBank: 'This question bank could not be published. Please try again.',
   attachModuleQuiz: 'The module quiz could not be attached. Please try again.',
   saveModuleQuizPassPercent: 'The pass score could not be saved. Please try again.',
+  loadAssignment: 'This assignment could not be loaded. Refresh the page and try again.',
+  submitAssignment: 'Your assignment could not be submitted. Refresh the page and try again.',
 }
 
 const CAMEL_CASE_TOKEN = /\b[a-z]+[A-Z][a-zA-Z]*\b/

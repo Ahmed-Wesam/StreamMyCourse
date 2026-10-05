@@ -51,6 +51,7 @@ class LessonDto(TypedDict):
     videoStatus: Literal["pending", "ready", "failed"]
     duration: NotRequired[int]
     thumbnailUrl: NotRequired[str]
+    transcript: NotRequired[str]
 
 
 class ModuleQuizDto(TypedDict):
@@ -258,6 +259,8 @@ def as_lesson_dto(obj: Dict[str, Any]) -> LessonDto:
         dto["duration"] = int(obj.get("duration", 0) or 0)
     if obj.get("thumbnailUrl"):
         dto["thumbnailUrl"] = str(obj.get("thumbnailUrl", ""))
+    if "transcript" in obj:
+        dto["transcript"] = str(obj.get("transcript") or "")
     return dto
 
 

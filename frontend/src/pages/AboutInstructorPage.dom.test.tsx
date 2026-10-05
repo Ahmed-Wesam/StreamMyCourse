@@ -69,7 +69,7 @@ describe('AboutInstructorPage', () => {
     expect(container.textContent ?? '').not.toMatch(/\$/)
   })
 
-  it('shows duration and level on about course cards without key skills', async () => {
+  it('keeps the four prototype course cards and ignores catalog duration, level, and key skills', async () => {
     listPublishedCourses.mockResolvedValue([
       course({
         id: 'writing',
@@ -83,22 +83,30 @@ describe('AboutInstructorPage', () => {
 
     renderAbout()
 
-    expect(await screen.findByText('Scientific Writing')).toBeTruthy()
-    expect(screen.getByText('Advanced')).toBeTruthy()
-    expect(screen.getByText('~8 Hours')).toBeTruthy()
+    expect(await screen.findByRole('heading', { name: 'Scientific Writing' })).toBeTruthy()
+    expect(screen.getByRole('heading', { name: 'Research Methodology' })).toBeTruthy()
+    expect(screen.getByRole('heading', { name: 'Statistics & SPSS' })).toBeTruthy()
+    expect(screen.getByRole('heading', { name: 'Systematic Reviews & Meta-Analysis' })).toBeTruthy()
+    expect(screen.getAllByText('Certificate Available')).toHaveLength(4)
+    expect(screen.queryByText('Advanced')).toBeNull()
+    expect(screen.queryByText('~8 Hours')).toBeNull()
     expect(screen.queryByText('Key skills')).toBeNull()
     expect(screen.queryByText('Manuscripts')).toBeNull()
   })
 
-  it('keeps four-course curriculum language but does not hard-code all-four eligibility', async () => {
+  it('renders the prototype teaching philosophy heading', async () => {
+    renderAbout()
+
+    expect(await screen.findByRole('heading', { name: 'My Teaching Philosophy' })).toBeTruthy()
+  })
+
+  it('keeps the prototype four-course and research-team pathway copy', async () => {
     renderAbout()
 
     expect(await screen.findByText(/Four flagship courses/i)).toBeTruthy()
     expect(screen.getByText(/Four Connected Courses/i)).toBeTruthy()
-
-    const pageText = document.body.textContent ?? ''
-    expect(pageText).not.toMatch(/Graduates of all four courses become eligible/i)
-    expect(pageText).toMatch(/Research Team Pathway/i)
-    expect(pageText).toMatch(/required course|Research Team page|\/research-team/i)
+    expect(screen.getByText(/Graduates of all four courses become eligible/i)).toBeTruthy()
+    expect(screen.getByText(/Research Team Pathway/i)).toBeTruthy()
+    expect(screen.getByRole('link', { name: /View Full FAQ/i }).getAttribute('href')).toBe('/faq')
   })
 })

@@ -1,7 +1,7 @@
 /**
  * @vitest-environment jsdom
  */
-import { cleanup, render, screen, waitFor } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { AuthenticatorProvider } from '@aws-amplify/ui-react-core'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -64,10 +64,37 @@ describe('StudentLoginPage', () => {
     render(<TestRoot />)
 
     const root = screen.getByTestId('student-page-login')
-    expect(root.className).toMatch(/text-rs-ink/)
+    expect(root.className).toContain('pg-login')
     expect(screen.getByTestId('login-hero-column')).toBeTruthy()
     expect(screen.getByTestId('login-auth-card')).toBeTruthy()
     expect(screen.getByRole('link', { name: /create account/i }).getAttribute('href')).toBe('/register')
+  })
+
+  it('toggles password visibility from the eye control', async () => {
+    useAuthenticatorMock.mockReturnValue({ authStatus: 'unauthenticated' })
+
+    render(<TestRoot />)
+
+    const input = await screen.findByLabelText(/^password$/i)
+    expect(input.getAttribute('type')).toBe('password')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Show password' }))
+
+    expect(input.getAttribute('type')).toBe('text')
+    expect(screen.getByRole('button', { name: 'Hide password' }).getAttribute('aria-pressed')).toBe('true')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Hide password' }))
+
+    expect(input.getAttribute('type')).toBe('password')
+    expect(screen.getByRole('button', { name: 'Show password' }).getAttribute('aria-pressed')).toBe('false')
+  })
+
+  it('renders the Login.html FAQ heading', async () => {
+    useAuthenticatorMock.mockReturnValue({ authStatus: 'unauthenticated' })
+
+    render(<TestRoot />)
+
+    expect(await screen.findByRole('heading', { name: 'Common Sign-In Questions' })).toBeTruthy()
   })
 
   it('shows unavailable message when Cognito env is incomplete', async () => {

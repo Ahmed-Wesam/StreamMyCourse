@@ -3,15 +3,25 @@
  * Does not import Amplify or the authenticated API client.
  */
 
+type PublicCertificateStatus = 'valid' | 'revoked' | 'expired' | 'pending'
+
 type PublicCertificate = {
   credentialId: string
-  status: 'valid' | 'revoked'
+  status: PublicCertificateStatus
   studentName: string
   courseTitle: string
   /** Already-formatted issue label from the API. */
   issueDate: string
   instructorName?: string
   instructorTitle?: string
+  revokedReason?: string
+}
+
+function readStatus(value: unknown): PublicCertificateStatus {
+  if (value === 'revoked' || value === 'expired' || value === 'pending' || value === 'valid') {
+    return value
+  }
+  return 'valid'
 }
 
 type PublicCertificateNotFound = {
@@ -68,7 +78,7 @@ export async function getPublicCertificate(credentialId: string): Promise<Public
 
   const record = body as Record<string, unknown>
   const credential = typeof record.credentialId === 'string' ? record.credentialId.trim() : id
-  const status = record.status === 'revoked' ? 'revoked' : 'valid'
+  const status = readStatus(record.status)
   const result: PublicCertificate = {
     credentialId: credential,
     status,
@@ -81,6 +91,9 @@ export async function getPublicCertificate(credentialId: string): Promise<Public
   }
   if (typeof record.instructorTitle === 'string' && record.instructorTitle.trim()) {
     result.instructorTitle = record.instructorTitle.trim()
+  }
+  if (status === 'revoked' && typeof record.revokedReason === 'string' && record.revokedReason.trim()) {
+    result.revokedReason = record.revokedReason.trim()
   }
   return result
 }

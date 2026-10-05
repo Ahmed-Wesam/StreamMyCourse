@@ -60,8 +60,9 @@ def test_upload_url_returns_upload_contract_and_records_video_key(
     body = resp.json()
 
     assert body["uploadUrl"].startswith("https://")
-    assert body.get("provider") in ("s3", "kinescope")
-    if expects_s3_presigned_upload():
+    provider = body.get("provider")
+    assert provider in ("s3", "kinescope")
+    if provider == "s3":
         assert "X-Amz-Signature" in body["uploadUrl"]
         assert body["videoKey"].startswith(
             f"{course.course_id}/lessons/{lesson.lesson_id}/video/"

@@ -65,7 +65,7 @@ def test_rs13_assignment_methods_in_deployment_v42() -> None:
     )[0]
     for logical_id in _DEPLOYMENT_METHODS:
         assert logical_id in deployment_block, logical_id
-    assert "DeploymentId: !Ref CatalogApiDeploymentV44" in text
+    assert "DeploymentId: !Ref CatalogApiDeploymentV45" in text
     # Stage must not remain pinned to the previous deployment.
     stage_block = text.split("CatalogApiStage:", 1)[1].split("\n\n", 1)[0]
     assert "CatalogApiDeploymentV42" not in stage_block

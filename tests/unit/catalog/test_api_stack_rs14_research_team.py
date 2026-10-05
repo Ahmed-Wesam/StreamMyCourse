@@ -74,6 +74,6 @@ def test_rs14_research_team_methods_in_deployment_v44() -> None:
     )[0]
     for logical_id in _DEPLOYMENT_METHODS:
         assert logical_id in deployment_block, logical_id
-    assert "DeploymentId: !Ref CatalogApiDeploymentV44" in text
+    assert "DeploymentId: !Ref CatalogApiDeploymentV45" in text
     stage_block = text.split("CatalogApiStage:", 1)[1].split("\n\n", 1)[0]
     assert "CatalogApiDeploymentV43" not in stage_block

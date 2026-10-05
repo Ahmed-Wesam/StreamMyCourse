@@ -1,5 +1,13 @@
-import type { CoursePageDocument } from '../course-page'
-import { failedResponseError, httpDelete, httpGet, httpPost, httpPut, mergeHeaders, requireApiBaseUrl } from './client'
+import {
+  ApiError,
+  failedResponseError,
+  httpDelete,
+  httpGet,
+  httpPost,
+  httpPut,
+  mergeHeaders,
+  requireApiBaseUrl,
+} from './client'
 import type {
   Course,
   CourseModule,
@@ -13,7 +21,6 @@ import type {
 type CreateCourseInput = {
   title: string
   description: string
-  page?: CoursePageDocument
 }
 
 type CreateLessonInput = {
@@ -56,6 +63,23 @@ export async function enrollInCourse(courseId: string): Promise<{ courseId: stri
 
 export async function listLessons(courseId: string): Promise<Lesson[]> {
   return httpGet<Lesson[]>(`/courses/${courseId}/lessons`)
+}
+
+/** Entitled read of plain-text lecture transcript (RS-16). Tolerates missing route (404). */
+export async function getLessonTranscript(
+  courseId: string,
+  lessonId: string,
+): Promise<string | null> {
+  try {
+    const body = await httpGet<{ lessonId?: string; transcript?: string }>(
+      `/courses/${courseId}/lessons/${lessonId}/transcript`,
+    )
+    const text = body.transcript?.trim()
+    return text ? text : null
+  } catch (error) {
+    if (error instanceof ApiError && error.status === 404) return null
+    return null
+  }
 }
 
 export async function listCourseModules(courseId: string): Promise<CourseModule[]> {
@@ -107,6 +131,17 @@ export async function createLesson(
 ): Promise<{ lessonId: string; moduleId: string; order: number }> {
   return httpPost<{ lessonId: string; moduleId: string; order: number }>(
     `/courses/${courseId}/lessons`,
+    input,
+  )
+}
+
+export async function updateLesson(
+  courseId: string,
+  lessonId: string,
+  input: { title: string; transcript?: string },
+): Promise<{ lessonId: string; updated: boolean }> {
+  return httpPut<{ lessonId: string; updated: boolean }>(
+    `/courses/${courseId}/lessons/${lessonId}`,
     input,
   )
 }

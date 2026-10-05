@@ -1,9 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link, useLocation, useParams } from 'react-router-dom'
-import { Button } from '../components/ui/Button'
-import { Card } from '../components/ui/Card'
-import { SectionHeader } from '../components/ui/SectionHeader'
-import { getCourseProgress, listCourseModules, listLessons } from '../lib/api/catalog'
+import { getCourse, getCourseProgress, listCourseModules, listLessons } from '../lib/api/catalog'
 import { isModuleLockedError, isProgressRdsUnavailableError } from '../lib/api/client'
 import {
   listModuleQuizAttempts,
@@ -34,9 +31,10 @@ import {
 import { usePageTitle } from '../lib/page-title'
 import {
   formatModuleQuizPassThreshold,
+  formatModuleQuizQuestionCount,
   moduleQuizPassFailLabel,
-  quizScorePercentPillClass,
 } from '../lib/quizScoreDisplay'
+import './ModuleQuizPage.css'
 
 type ResultsModel = (ModuleQuizLatestSubmission | ModuleQuizSubmitResponse) & Partial<ModuleQuizPassOutcome>
 
@@ -66,6 +64,22 @@ function applyStartResponse(
   }
 }
 
+function ChevronRightIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <path d="m9 18 6-6-6-6" />
+    </svg>
+  )
+}
+
+function CheckCircleIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <path d="M20 6 9 17l-5-5" />
+    </svg>
+  )
+}
+
 export default function ModuleQuizPage() {
   usePageTitle('Quiz')
   const { courseId, moduleId } = useParams<{ courseId: string; moduleId: string }>()
@@ -73,6 +87,8 @@ export default function ModuleQuizPage() {
   const [backTo, setBackTo] = useState<ModuleQuizReturnTo>(() =>
     courseId ? courseDetailPath(courseId) : '/courses',
   )
+  const [courseTitle, setCourseTitle] = useState<string>('Course')
+  const [moduleTitle, setModuleTitle] = useState<string>('Module')
   const [pageLoading, setPageLoading] = useState(true)
   const [retakeBusy, setRetakeBusy] = useState(false)
   const [submitting, setSubmitting] = useState(false)
@@ -83,6 +99,9 @@ export default function ModuleQuizPage() {
   const [passPercentThreshold, setPassPercentThreshold] = useState<number | null>(null)
   const [attemptHistory, setAttemptHistory] = useState<ModuleQuizAttemptSummary[]>([])
   const [attemptHistoryLoading, setAttemptHistoryLoading] = useState(false)
+  const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0)
+  const [reviewMode, setReviewMode] = useState(false)
+  const [submitModalOpen, setSubmitModalOpen] = useState(false)
   const mountedRef = useRef(true)
 
   useEffect(() => {
@@ -94,6 +113,9 @@ export default function ModuleQuizPage() {
 
   const hydrateFromStart = useCallback((data: ModuleQuizStartResponse) => {
     applyStartResponse(data, setTaking, setResults, setSelectedByQuestionId)
+    setCurrentQuestionIndex(0)
+    setReviewMode(false)
+    setSubmitModalOpen(false)
   }, [])
 
   useEffect(() => {
@@ -102,7 +124,10 @@ export default function ModuleQuizPage() {
     let cancelled = false
     ;(async () => {
       try {
-        const lessons = await listLessons(courseId)
+        const [lessons, course] = await Promise.all([
+          listLessons(courseId),
+          getCourse(courseId).catch(() => null),
+        ])
         let progress = null
         try {
           progress = await getCourseProgress(courseId)
@@ -110,6 +135,7 @@ export default function ModuleQuizPage() {
           if (!isProgressRdsUnavailableError(e)) throw e
         }
         if (!cancelled) {
+          if (course?.title) setCourseTitle(course.title)
           setBackTo(resolveModuleQuizBackTo(courseId, moduleId, location.state?.returnTo, lessons, progress))
         }
       } catch {
@@ -137,6 +163,7 @@ export default function ModuleQuizPage() {
       .then((mods) => {
         if (cancelled) return
         const mod = mods.find((m) => m.id === moduleId)
+        if (mod?.title) setModuleTitle(mod.title)
         const threshold = mod?.moduleQuiz?.passPercent
         if (typeof threshold === 'number') setPassPercentThreshold(threshold)
       })
@@ -228,6 +255,7 @@ export default function ModuleQuizPage() {
 
     setSubmitting(true)
     setError(null)
+    setSubmitModalOpen(false)
     submitModuleQuiz(courseId, moduleId, { attemptId, answers })
       .then((res) => {
         if (!mountedRef.current) return
@@ -235,6 +263,7 @@ export default function ModuleQuizPage() {
         setResults(res)
         setSelectedByQuestionId({})
         setPassPercentThreshold(res.passPercent)
+        setReviewMode(false)
       })
       .catch((e: unknown) => {
         if (mountedRef.current) setError(catalogApiUserMessage(e, 'submitModuleQuiz'))
@@ -249,216 +278,479 @@ export default function ModuleQuizPage() {
     taking.questions.length === taking.servedCountN &&
     taking.questions.every((q) => Boolean(selectedByQuestionId[q.id]))
 
-  return (
-    <div className="space-y-8 py-6 text-rs-ink sm:py-8">
-      <Card className="overflow-hidden shadow-rs-sm">
-        <ModuleQuizCardHeader
-          backTo={backTo}
-          taking={taking}
-          results={results}
-          passPercentThreshold={passPercentThreshold}
-        />
+  const showResults = results !== null && taking === null && !pageLoading
+  const showTaking = taking !== null && !pageLoading
 
-        <ModuleQuizCardMain
-          pageLoading={pageLoading}
-          error={error}
-          taking={taking}
-          results={results}
-          passPercentThreshold={passPercentThreshold}
-          attemptHistory={attemptHistory}
-          attemptHistoryLoading={attemptHistoryLoading}
-          selectedByQuestionId={selectedByQuestionId}
-          allAnswered={allAnswered}
-          submitting={submitting}
-          retakeBusy={retakeBusy}
-          onSelect={handleSelect}
-          onSubmit={handleSubmit}
-          onTryAgain={handleTryAgain}
-        />
-      </Card>
+  const quizLabel = `${moduleTitle} Quiz`
+
+  return (
+    <div className="pg-quiz" data-testid="student-page-module-quiz">
+      <div className="qz-page">
+        <div className="qz-page-header">
+          <div className="wrap">
+            <div className="qz-breadcrumb">
+              <Link to={courseId ? courseDetailPath(courseId) : '/courses'}>{courseTitle}</Link>
+              <ChevronRightIcon />
+              <span>{moduleTitle}</span>
+              <ChevronRightIcon />
+              <span style={{ color: 'var(--ink)', fontWeight: 700 }}>{quizLabel}</span>
+            </div>
+          </div>
+        </div>
+
+        {pageLoading && !error && <p className="qz-loading">Loading quiz…</p>}
+
+        {error && !pageLoading && (
+          <p className="qz-error" role="alert">
+            {error}
+          </p>
+        )}
+
+        {showTaking && taking && !reviewMode && (
+          <QuizTakingInterface
+            taking={taking}
+            backTo={backTo}
+            passPercentThreshold={passPercentThreshold}
+            selectedByQuestionId={selectedByQuestionId}
+            currentQuestionIndex={currentQuestionIndex}
+            onSelect={handleSelect}
+            onQuestionIndexChange={setCurrentQuestionIndex}
+            onOpenReview={() => setReviewMode(true)}
+            allAnswered={allAnswered}
+          />
+        )}
+
+        {showTaking && taking && reviewMode && (
+          <QuizReviewScreen
+            taking={taking}
+            selectedByQuestionId={selectedByQuestionId}
+            allAnswered={allAnswered}
+            submitting={submitting}
+            onReturn={() => setReviewMode(false)}
+            onOpenSubmitModal={() => setSubmitModalOpen(true)}
+          />
+        )}
+
+        {showResults && results && (
+          <QuizResultsScreen
+            results={results}
+            passPercentThreshold={passPercentThreshold}
+            backTo={backTo}
+            attemptHistory={attemptHistory}
+            attemptHistoryLoading={attemptHistoryLoading}
+            retakeBusy={retakeBusy}
+            onTryAgain={handleTryAgain}
+          />
+        )}
+
+        {submitModalOpen && (
+          <div
+            className="modal-overlay open"
+            role="presentation"
+            onClick={(e) => {
+              if (e.target === e.currentTarget) setSubmitModalOpen(false)
+            }}
+          >
+            <div className="modal-box" role="dialog" aria-labelledby="module-quiz-submit-modal-title">
+              <h3 id="module-quiz-submit-modal-title">Submit Quiz?</h3>
+              <p>
+                Once submitted, your answers will be graded. You can review your results and try again
+                with a new question set.
+              </p>
+              <div className="modal-actions">
+                <button
+                  type="button"
+                  className="btn btn-primary"
+                  data-testid="module-quiz-submit"
+                  disabled={submitting}
+                  onClick={handleSubmit}
+                >
+                  {submitting ? 'Submitting…' : 'Submit answers'}
+                </button>
+                <button type="button" className="btn btn-ghost btn-sm" onClick={() => setSubmitModalOpen(false)}>
+                  Go Back
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   )
 }
 
-function ModuleQuizCardHeader({
+function QuizTakingInterface({
+  taking,
   backTo,
-  taking,
-  results,
   passPercentThreshold,
+  selectedByQuestionId,
+  currentQuestionIndex,
+  onSelect,
+  onQuestionIndexChange,
+  onOpenReview,
+  allAnswered,
 }: {
+  taking: ModuleQuizStartInProgress
   backTo: ModuleQuizReturnTo
-  taking: ModuleQuizStartInProgress | null
-  results: ResultsModel | null
   passPercentThreshold: number | null
+  selectedByQuestionId: Record<string, string>
+  currentQuestionIndex: number
+  onSelect: (questionId: string, optionKey: string) => void
+  onQuestionIndexChange: (index: number) => void
+  onOpenReview: () => void
+  allAnswered: boolean
 }) {
-  const showTaking = taking !== null
-  const showResults = results !== null && taking === null
-  const threshold =
-    passPercentThreshold ??
-    (showResults && results?.passPercent != null ? results.passPercent : null)
-
-  let lead: string | undefined
-  if (showTaking && taking) {
-    const passHint =
-      threshold != null ? ` · ${formatModuleQuizPassThreshold(threshold)}` : ''
-    lead = `${taking.questions.length} of ${taking.servedCountN} questions${passHint} · If you leave this page before submitting, your selected answers will be lost.`
-  } else if (showResults && results) {
-    const scoreLine =
-      results.scorePercent != null
-        ? `Score ${results.scorePercent}% (${results.correctCount} / ${results.totalCount})`
-        : `Score ${results.correctCount} / ${results.totalCount}`
-    const passLine =
-      threshold != null ? ` · ${formatModuleQuizPassThreshold(threshold)}` : ''
-    lead = `Attempt ${results.attemptNumber} · ${scoreLine}${passLine} · These are your latest submitted results.`
-  }
+  const total = taking.questions.length
+  const safeIndex = Math.min(currentQuestionIndex, Math.max(0, total - 1))
+  const question = taking.questions[safeIndex]!
+  const answeredCount = taking.questions.filter((q) => selectedByQuestionId[q.id]).length
+  const progressPct = total > 0 ? Math.round((answeredCount / total) * 100) : 0
+  const submitHelperId = 'module-quiz-submit-helper'
 
   return (
-    <div className="border-b border-rs-line bg-rs-grad-soft px-6 py-5 sm:px-8 sm:py-6">
-      <Link
-        to={backTo}
-        className="mb-4 inline-flex items-center gap-1 text-sm font-semibold text-rs-muted no-underline transition-colors hover:text-rs-navy"
-      >
-        <svg className="h-4 w-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-        </svg>
-        {moduleQuizBackLabel(backTo)}
-      </Link>
-      <SectionHeader
-        kicker="Knowledge check"
-        title="Module quiz"
-        lead={lead}
-        align="start"
-        level={2}
-      />
+    <div className="qz-interface-wrap">
+      <aside className="qz-sidebar">
+        <div className="qz-sidebar-title">Questions</div>
+        <div className="qnav-grid">
+          {taking.questions.map((q, index) => {
+            const answered = Boolean(selectedByQuestionId[q.id])
+            const isCurrent = index === safeIndex
+            let className = 'qnav-btn'
+            if (isCurrent) className += ' current'
+            else if (answered) className += ' answered'
+            return (
+              <button
+                key={q.id}
+                type="button"
+                className={className}
+                aria-label={`Question ${index + 1}${answered ? ', answered' : ''}${isCurrent ? ', current' : ''}`}
+                aria-current={isCurrent ? 'step' : undefined}
+                onClick={() => onQuestionIndexChange(index)}
+              >
+                {index + 1}
+              </button>
+            )
+          })}
+        </div>
+        <div className="qnav-legend">
+          <h4>Legend</h4>
+          <div className="nleg-item">
+            <div className="nleg-dot nld-unanswered" />
+            Unanswered
+          </div>
+          <div className="nleg-item">
+            <div className="nleg-dot nld-current" />
+            Current
+          </div>
+          <div className="nleg-item">
+            <div className="nleg-dot nld-answered" />
+            Answered
+          </div>
+        </div>
+        <div style={{ marginTop: 18, paddingTop: 16, borderTop: '1px solid var(--line-2)' }}>
+          <button
+            type="button"
+            className="btn btn-primary btn-sm"
+            style={{ width: '100%', justifyContent: 'center' }}
+            onClick={onOpenReview}
+          >
+            Review &amp; Submit
+          </button>
+        </div>
+        <p style={{ marginTop: 14, fontSize: 13, fontWeight: 600, color: 'var(--muted)', lineHeight: 1.5 }}>
+          {formatModuleQuizQuestionCount(taking.servedCountN)}
+          {passPercentThreshold != null ? ` · ${formatModuleQuizPassThreshold(passPercentThreshold)}` : ''}
+          {' · '}
+          If you leave this page before submitting, your selected answers will be lost.
+        </p>
+        <Link to={backTo} className="btn btn-ghost btn-sm" style={{ width: '100%', marginTop: 10, justifyContent: 'center' }}>
+          {moduleQuizBackLabel(backTo)}
+        </Link>
+      </aside>
+
+      <div className="qz-main-area">
+        <div className="qz-progress">
+          <div className="qz-prog-top">
+            <span className="qz-prog-label">
+              Question {safeIndex + 1} of {total}
+            </span>
+            <span className="qz-prog-pct">{progressPct}%</span>
+          </div>
+          <div className="qz-pbar">
+            <div className="qz-pbar-fill" style={{ width: `${progressPct}%` }} />
+          </div>
+          <div className="qz-prog-meta">
+            <span className="qz-prog-stat">
+              <CheckCircleIcon />
+              <span>{answeredCount} answered</span>
+            </span>
+          </div>
+        </div>
+
+        <QuizQuestionCard
+          index={safeIndex}
+          question={question}
+          selectedKey={selectedByQuestionId[question.id]}
+          onSelect={(key) => onSelect(question.id, key)}
+        />
+
+        <div className="qz-qcard-footer" style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+          <button
+            type="button"
+            className="btn btn-ghost btn-sm"
+            disabled={safeIndex === 0}
+            onClick={() => onQuestionIndexChange(safeIndex - 1)}
+          >
+            Previous question
+          </button>
+          <button
+            type="button"
+            className="btn btn-ghost btn-sm"
+            disabled={safeIndex >= total - 1}
+            onClick={() => onQuestionIndexChange(safeIndex + 1)}
+          >
+            Next question
+          </button>
+          <button
+            type="button"
+            className="btn btn-primary btn-sm"
+            disabled={!allAnswered}
+            aria-describedby={!allAnswered ? submitHelperId : undefined}
+            onClick={onOpenReview}
+          >
+            Review &amp; Submit
+          </button>
+          {!allAnswered && (
+            <p id={submitHelperId} style={{ width: '100%', fontSize: 13, fontWeight: 600, color: 'var(--muted)' }}>
+              Answer every question before submitting.
+            </p>
+          )}
+        </div>
+      </div>
     </div>
   )
 }
 
-function ModuleQuizCardMain({
-  pageLoading,
-  error,
+function QuizQuestionCard({
+  index,
+  question,
+  selectedKey,
+  onSelect,
+  reviewMode,
+}: {
+  index: number
+  question: ModuleQuizQuestion | ModuleQuizResultQuestion
+  selectedKey?: string
+  onSelect?: (optionKey: string) => void
+  reviewMode?: boolean
+}) {
+  const options =
+    'optionsJson' in question && Array.isArray(question.optionsJson)
+      ? question.optionsJson
+      : []
+
+  const isResult = 'isCorrect' in question
+  const resultQuestion = isResult ? (question as ModuleQuizResultQuestion) : null
+
+  return (
+    <fieldset className="qz-qcard">
+      <legend className="sr-only">
+        Question {index + 1}: {question.promptText}
+      </legend>
+      <div className="qz-qcard-top">
+        <span className="qz-qnum">Question {index + 1}</span>
+        <span className="qtype-badge qt-mcq">Multiple choice</span>
+      </div>
+      <p className="qz-stem">{question.promptText}</p>
+      {options.length > 0 ? (
+        <div className="qz-options">
+          {options.map((option) => {
+            const checked = selectedKey === option.key
+            let optClass = 'answer-opt'
+            if (reviewMode && resultQuestion) {
+              if (option.key === resultQuestion.correctOptionKey) optClass += ' correct-ans'
+              else if (option.key === resultQuestion.selectedOptionKey && !resultQuestion.isCorrect) {
+                optClass += ' wrong-ans'
+              } else optClass += ' neutral-ans'
+            } else if (checked) {
+              optClass += ' selected'
+            }
+            return (
+              <label key={option.key} className={optClass} htmlFor={`${question.id}-${option.key}`}>
+                <span className="opt-marker">{option.key}</span>
+                <span className="opt-text">{option.text}</span>
+                <input
+                  id={`${question.id}-${option.key}`}
+                  type="radio"
+                  name={question.id}
+                  value={option.key}
+                  checked={checked}
+                  disabled={!onSelect}
+                  onChange={() => onSelect?.(option.key)}
+                  className="sr-only"
+                />
+              </label>
+            )
+          })}
+        </div>
+      ) : (
+        isResult &&
+        resultQuestion && (
+          <p style={{ fontSize: 14, fontWeight: 600, color: 'var(--body)' }}>
+            Your answer: <strong>{resultQuestion.selectedOptionKey}</strong>
+            {' · '}
+            Correct answer: <strong>{resultQuestion.correctOptionKey}</strong>
+            {' · '}
+            {resultQuestion.isCorrect ? (
+              <strong style={{ color: '#0d6f3e' }}>Correct</strong>
+            ) : (
+              <strong style={{ color: '#b91c1c' }}>Incorrect</strong>
+            )}
+          </p>
+        )
+      )}
+    </fieldset>
+  )
+}
+
+function QuizReviewScreen({
   taking,
-  results,
-  passPercentThreshold,
-  attemptHistory,
-  attemptHistoryLoading,
   selectedByQuestionId,
   allAnswered,
   submitting,
-  retakeBusy,
-  onSelect,
-  onSubmit,
-  onTryAgain,
+  onReturn,
+  onOpenSubmitModal,
 }: {
-  pageLoading: boolean
-  error: string | null
-  taking: ModuleQuizStartInProgress | null
-  results: ResultsModel | null
-  passPercentThreshold: number | null
-  attemptHistory: ModuleQuizAttemptSummary[]
-  attemptHistoryLoading: boolean
+  taking: ModuleQuizStartInProgress
   selectedByQuestionId: Record<string, string>
   allAnswered: boolean
   submitting: boolean
-  retakeBusy: boolean
-  onSelect: (questionId: string, optionKey: string) => void
-  onSubmit: () => void
-  onTryAgain: () => void
+  onReturn: () => void
+  onOpenSubmitModal: () => void
 }) {
-  const showResults = results !== null && taking === null
-  const showTaking = taking !== null && !error
-  const submitHelperId = 'module-quiz-submit-helper'
-  const blockQuestions = Boolean(error)
+  const total = taking.questions.length
+  const answered = taking.questions.filter((q) => selectedByQuestionId[q.id]).length
+  const unanswered = total - answered
+  const pct = total > 0 ? Math.round((answered / total) * 100) : 0
+  const submitHelperId = 'module-quiz-review-helper'
 
   return (
-    <>
-      {pageLoading && (
-        <div className="px-6 py-12 text-center text-sm font-semibold text-rs-muted sm:px-8">Loading quiz…</div>
-      )}
-
-      {error && !pageLoading && (
-        <div className="mx-6 my-6 rounded-rs-sm border border-red-200 bg-red-50 p-4 sm:mx-8">
-          <p className="text-sm font-semibold text-red-700">{error}</p>
-        </div>
-      )}
-
-      {!pageLoading && !blockQuestions && showTaking && taking && (
-        <>
-          <div className="divide-y divide-rs-line">
-            {taking.questions.map((question, index) => (
-              <QuizQuestionBlock
-                key={question.id}
-                index={index}
-                question={question}
-                selectedKey={selectedByQuestionId[question.id]}
-                onSelect={(key) => onSelect(question.id, key)}
-              />
-            ))}
+    <div className="qz-review-wrap">
+      <div className="qz-review-header">
+        <h2 style={{ fontSize: 24, fontWeight: 800, color: 'var(--ink)', letterSpacing: '-.02em', marginBottom: 8 }}>
+          Ready to Submit?
+        </h2>
+        <p style={{ fontSize: 15.5, color: 'var(--body)', lineHeight: 1.65, marginBottom: 20 }}>
+          Review your progress before submitting. You can still go back and change any answer.
+        </p>
+        <div className="qz-rev-stats">
+          <div className="qz-rev-stat">
+            <div className="rsv">{answered}</div>
+            <div className="rsl">Answered</div>
           </div>
-          <div className="border-t border-rs-line bg-rs-sky-2/50 px-6 py-5 sm:px-8">
-            <Button
-              type="button"
-              onClick={onSubmit}
-              disabled={!allAnswered || submitting}
-              aria-describedby={!allAnswered ? submitHelperId : undefined}
-              className="disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              {submitting ? 'Submitting…' : 'Submit answers'}
-            </Button>
-            {!allAnswered && (
-              <p id={submitHelperId} className="mt-3 text-sm font-semibold text-rs-muted">
-                Answer every question before submitting.
-              </p>
-            )}
+          <div className="qz-rev-stat">
+            <div className="rsv">{unanswered}</div>
+            <div className="rsl">Unanswered</div>
           </div>
-        </>
-      )}
-
-      {!pageLoading && !blockQuestions && showResults && results && (
-        <div className="space-y-6 px-6 py-6 sm:px-8 sm:py-8">
-          <QuizPassOutcomeBanner results={results} passPercentThreshold={passPercentThreshold} />
-          <QuizResultsBreakdown questions={results.questions} />
-          <ModuleQuizAttemptHistoryList loading={attemptHistoryLoading} attempts={attemptHistory} />
-          <div className="space-y-3 rounded-rs-sm border border-rs-line bg-rs-sky-2/40 p-5">
-            <p className="text-sm font-semibold text-rs-body">
-              Trying again draws a new set of questions from the bank and reshuffles them.
-            </p>
-            <Button type="button" variant="ghost" onClick={onTryAgain} disabled={retakeBusy}>
-              {retakeBusy ? 'Starting…' : 'Try again'}
-            </Button>
+          <div className="qz-rev-stat">
+            <div className="rsv">{pct}%</div>
+            <div className="rsl">Answered %</div>
           </div>
         </div>
-      )}
-    </>
+        <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+          <button
+            type="button"
+            className="btn btn-primary"
+            disabled={!allAnswered || submitting}
+            aria-describedby={!allAnswered ? submitHelperId : undefined}
+            onClick={onOpenSubmitModal}
+          >
+            Submit answers
+          </button>
+          <button type="button" className="btn btn-ghost" onClick={onReturn}>
+            Return to Quiz
+          </button>
+        </div>
+        {!allAnswered && (
+          <p id={submitHelperId} style={{ marginTop: 12, fontSize: 14, fontWeight: 600, color: 'var(--muted)' }}>
+            Answer every question before submitting.
+          </p>
+        )}
+      </div>
+    </div>
   )
 }
 
-function QuizPassOutcomeBanner({
+function QuizResultsScreen({
   results,
   passPercentThreshold,
+  backTo,
+  attemptHistory,
+  attemptHistoryLoading,
+  retakeBusy,
+  onTryAgain,
 }: {
   results: ResultsModel
   passPercentThreshold: number | null
+  backTo: ModuleQuizReturnTo
+  attemptHistory: ModuleQuizAttemptSummary[]
+  attemptHistoryLoading: boolean
+  retakeBusy: boolean
+  onTryAgain: () => void
 }) {
-  if (results.passed == null && results.scorePercent == null) return null
   const threshold = passPercentThreshold ?? results.passPercent ?? null
   const passed = results.passed === true
+  const scorePct = results.scorePercent
+  const scoreSummary =
+    scorePct != null
+      ? `Score ${scorePct}% (${results.correctCount} / ${results.totalCount})`
+      : `Score ${results.correctCount} / ${results.totalCount}`
+
   return (
-    <div
-      className={`rounded-rs-sm border px-5 py-4 ${
-        passed ? 'border-emerald-200/80 bg-emerald-50/70' : 'border-amber-200/80 bg-amber-50/70'
-      }`}
-    >
-      <div className="flex flex-wrap items-center gap-3">
-        {results.scorePercent != null ? (
-          <span className={`${quizScorePercentPillClass(results.scorePercent)} text-sm`}>
-            {results.scorePercent}%
-          </span>
-        ) : null}
-        <p className="text-sm font-extrabold text-rs-ink">
-          {moduleQuizPassFailLabel(passed)}
-          {threshold != null ? ` · ${formatModuleQuizPassThreshold(threshold)}` : ''}
-        </p>
+    <div className="qz-results-wrap">
+      <div className="qz-score-card">
+        <div style={{ position: 'relative' }}>
+          {scorePct != null && <div className="qz-score-big">{scorePct}%</div>}
+          <div className="qz-score-fraction">
+            {results.correctCount} / {results.totalCount} Correct
+          </div>
+          {results.passed != null && (
+            <div className={`qz-pass-badge ${passed ? 'qzb-pass' : 'qzb-review'}`}>
+              <CheckCircleIcon />
+              {moduleQuizPassFailLabel(passed)}
+              {threshold != null ? ` · ${formatModuleQuizPassThreshold(threshold)}` : ''}
+            </div>
+          )}
+          <p className="qz-pass-msg">
+            Attempt {results.attemptNumber} · {scoreSummary} · These are your latest submitted results.
+          </p>
+        </div>
+      </div>
+
+      <div className="qz-ana-card" style={{ marginBottom: 20 }}>
+        <h3 style={{ fontSize: 14, fontWeight: 800, color: 'var(--ink)', marginBottom: 16 }}>Answer review</h3>
+        <ul style={{ listStyle: 'none', display: 'flex', flexDirection: 'column', gap: 16 }}>
+          {results.questions.map((q, index) => (
+            <li key={q.id}>
+              <QuizQuestionCard index={index} question={q} selectedKey={q.selectedOptionKey} reviewMode />
+            </li>
+          ))}
+        </ul>
+      </div>
+
+      <ModuleQuizAttemptHistoryList loading={attemptHistoryLoading} attempts={attemptHistory} />
+
+      <div className="qz-bank-note" style={{ marginBottom: 20 }}>
+        Trying again draws a new set of questions from the bank and reshuffles them.
+      </div>
+
+      <div className="qz-results-actions">
+        <button type="button" className="btn btn-ghost" onClick={onTryAgain} disabled={retakeBusy}>
+          {retakeBusy ? 'Starting…' : 'Try again'}
+        </button>
+        <Link to={backTo} className="btn btn-ghost">
+          {moduleQuizBackLabel(backTo)}
+        </Link>
       </div>
     </div>
   )
@@ -472,125 +764,27 @@ function ModuleQuizAttemptHistoryList({
   attempts: ModuleQuizAttemptSummary[]
 }) {
   if (loading && attempts.length === 0) {
-    return (
-      <p className="text-sm font-semibold text-rs-muted">Loading attempt history…</p>
-    )
+    return <p style={{ fontSize: 14, fontWeight: 600, color: 'var(--muted)' }}>Loading attempt history…</p>
   }
   if (attempts.length === 0) return null
 
   return (
-    <div className="rounded-rs-sm border border-rs-line bg-white p-5">
-      <h3 className="text-sm font-extrabold text-rs-navy">Attempt history</h3>
-      <ul className="mt-3 space-y-2">
+    <div className="qz-ana-card" style={{ marginBottom: 20 }}>
+      <h3 style={{ fontSize: 14, fontWeight: 800, color: 'var(--ink)', marginBottom: 16 }}>Attempt history</h3>
+      <div>
         {[...attempts].reverse().map((row) => (
-          <li
-            key={row.attemptId}
-            className="flex flex-wrap items-center justify-between gap-2 rounded-rs-sm border border-rs-line/80 bg-rs-sky-2/30 px-3 py-2 text-sm"
-          >
-            <span className="font-semibold text-rs-ink">Attempt {row.attemptNumber}</span>
-            <span className={`${quizScorePercentPillClass(row.scorePercent)}`}>{row.scorePercent}%</span>
-            <span
-              className={`font-bold ${row.passed ? 'text-emerald-800' : 'text-amber-900'}`}
-            >
+          <div key={row.attemptId} className="qz-attempt-item">
+            <span className="qz-att-num">Attempt {row.attemptNumber}</span>
+            <span className="qz-att-score">{row.scorePercent}%</span>
+            <span className={`qz-att-badge ${row.passed ? 'qzatb-pass' : 'qzatb-fail'}`}>
               {moduleQuizPassFailLabel(row.passed)}
             </span>
             {row.submittedAt ? (
-              <span className="w-full text-xs font-semibold text-rs-muted sm:w-auto sm:ml-auto">
-                {new Date(row.submittedAt).toLocaleString()}
-              </span>
+              <span className="qz-att-date">{new Date(row.submittedAt).toLocaleString()}</span>
             ) : null}
-          </li>
+          </div>
         ))}
-      </ul>
-    </div>
-  )
-}
-
-function QuizResultsBreakdown({ questions }: { questions: ModuleQuizResultQuestion[] }) {
-  return (
-    <ul className="space-y-4">
-      {questions.map((q, index) => (
-        <li
-          key={q.id}
-          className={`rounded-rs-sm border px-4 py-4 sm:px-5 ${
-            q.isCorrect
-              ? 'border-emerald-200/80 bg-emerald-50/70'
-              : 'border-amber-200/80 bg-amber-50/70'
-          }`}
-        >
-          <p className="text-sm font-extrabold text-rs-ink">
-            <span className="mr-2 text-xs font-bold uppercase tracking-wide text-rs-muted">
-              Question {index + 1}
-            </span>
-            {q.promptText}
-          </p>
-          <p className="mt-2 text-sm font-semibold text-rs-body">
-            Your answer: <span className="font-extrabold text-rs-ink">{q.selectedOptionKey}</span>
-            {' · '}
-            Correct answer: <span className="font-extrabold text-rs-ink">{q.correctOptionKey}</span>
-            {' · '}
-            {q.isCorrect ? (
-              <span className="font-extrabold text-emerald-800">Correct</span>
-            ) : (
-              <span className="font-extrabold text-amber-900">Incorrect</span>
-            )}
-          </p>
-        </li>
-      ))}
-    </ul>
-  )
-}
-
-function QuizQuestionBlock({
-  index,
-  question,
-  selectedKey,
-  onSelect,
-}: {
-  index: number
-  question: ModuleQuizQuestion
-  selectedKey?: string
-  onSelect: (optionKey: string) => void
-}) {
-  const options = Array.isArray(question.optionsJson) ? question.optionsJson : []
-
-  return (
-    <fieldset className="px-6 py-6 sm:px-8 sm:py-7">
-      <legend className="mb-4 text-base font-extrabold leading-snug text-rs-navy">
-        <span className="mb-1 block text-xs font-bold uppercase tracking-wide text-rs-muted">
-          Question {index + 1}
-        </span>
-        {question.promptText}
-      </legend>
-      <div className="space-y-2.5">
-        {options.map((option) => {
-          const inputId = `${question.id}-${option.key}`
-          const checked = selectedKey === option.key
-          return (
-            <label
-              key={option.key}
-              htmlFor={inputId}
-              className={[
-                'flex min-h-[44px] cursor-pointer items-center gap-3 rounded-rs-sm border px-4 py-3 transition duration-300 ease-rs',
-                checked
-                  ? 'border-rs-blue bg-rs-sky shadow-rs-sm'
-                  : 'border-rs-line bg-white hover:border-rs-blue/35 hover:bg-rs-sky-2',
-              ].join(' ')}
-            >
-              <input
-                id={inputId}
-                type="radio"
-                name={question.id}
-                value={option.key}
-                checked={checked}
-                onChange={() => onSelect(option.key)}
-                className="size-4 shrink-0 border-rs-line text-rs-blue focus:ring-rs-blue"
-              />
-              <span className="text-sm font-semibold text-rs-ink">{option.text}</span>
-            </label>
-          )
-        })}
       </div>
-    </fieldset>
+    </div>
   )
 }

@@ -1,55 +1,105 @@
-import { BookOpen } from 'lucide-react'
+import { Link } from 'react-router-dom'
 
-import { Button } from '../../components/ui/Button'
-import { Card } from '../../components/ui/Card'
 import type { StudentDashboardCourseRow } from '../../lib/studentDashboard'
+import { CourseGlyph, IconArrow, IconBook } from './dashboardIcons'
 
 type StudentDashboardContinueSectionProps = {
   rows: StudentDashboardCourseRow[]
 }
 
-export function StudentDashboardContinueSection({ rows }: StudentDashboardContinueSectionProps) {
-  if (rows.length === 0) {
-    return (
-      <div
-        className="mx-auto flex max-w-lg flex-col items-center gap-4 rounded-rs-lg border border-dashed border-rs-line px-6 py-10 text-center"
-        data-testid="student-dashboard-empty"
-      >
-        <BookOpen className="size-10 text-rs-blue" aria-hidden />
-        <p className="text-rs-body">You do not have any courses yet. Browse the catalog to get started.</p>
-        <Button to="/courses" variant="ghost">
-          Browse courses
-        </Button>
-      </div>
-    )
-  }
+function percentLabel(percent: StudentDashboardCourseRow['percentComplete']): string {
+  if (percent === 'unavailable') return '—'
+  return `${Math.round(percent)}%`
+}
 
+export function StudentDashboardContinueSection({ rows }: StudentDashboardContinueSectionProps) {
   return (
-    <div className="grid grid-cols-1 gap-5 lg:grid-cols-2" data-testid="student-dashboard-continue">
-      {rows.map((row) => (
-        <Card
-          key={row.courseId}
-          className="flex h-full flex-col rounded-rs-lg border border-rs-line px-6 py-5 shadow-rs-sm"
-          data-testid={`student-dashboard-course-${row.courseId}`}
-        >
-          <h3 className="text-lg font-extrabold text-rs-ink">{row.title}</h3>
-          <p className="mt-2 text-sm text-rs-body">
-            {row.percentComplete === 'unavailable'
-              ? 'Progress unavailable'
-              : `${Math.round(row.percentComplete)}% complete`}
-          </p>
-          {row.subline ? (
-            <p className="mt-1 text-xs text-rs-muted">
-              Module {row.subline.moduleIndex} of {row.subline.moduleCount} · {row.subline.lessonTitle}
-            </p>
-          ) : null}
-          <div className="mt-4">
-            <Button to={row.continueHref} className="w-full sm:w-auto">
-              Continue
-            </Button>
+    <section className="db">
+      <div className="wrap">
+        <div className="db-head">
+          <div className="ht">
+            <h2>Continue Learning</h2>
+            <span className="htmeta">Pick up where you left off</span>
           </div>
-        </Card>
-      ))}
-    </div>
+          <Link to="/courses" className="htlink">
+            View all courses
+            <IconArrow strokeWidth={2.4} />
+          </Link>
+        </div>
+        {rows.length === 0 ? (
+          <div className="cl-empty" data-testid="student-dashboard-empty">
+            <div className="empty-state reveal">
+              <div className="es-ic">
+                <IconBook strokeWidth={1.9} />
+              </div>
+              <h2>You have not enrolled in any courses yet.</h2>
+              <p>Browse the course catalog and enroll in your first course to get started on your research journey.</p>
+              <div className="btn-w">
+                <Link to="/courses#courses-catalog" className="btn btn-primary" style={{ fontSize: 16, padding: '14px 28px' }}>
+                  Explore Courses
+                  <IconArrow />
+                </Link>
+              </div>
+            </div>
+          </div>
+        ) : (
+          <div className="cont-grid" data-testid="student-dashboard-continue">
+            {rows.map((row, index) => {
+              const width = row.percentComplete === 'unavailable' ? 0 : Math.max(0, Math.min(100, row.percentComplete))
+              return (
+                <div
+                  key={row.courseId}
+                  className="clc reveal"
+                  data-d={String((index % 4) + 1)}
+                  data-testid={`student-dashboard-course-${row.courseId}`}
+                >
+                  <div className="cct">
+                    <div className="cci">
+                      <CourseGlyph title={row.title} />
+                    </div>
+                    <div className="ctxt">
+                      <h3>
+                        <Link to={`/courses/${row.courseId}`}>{row.title}</Link>
+                      </h3>
+                      {row.subline ? (
+                        <span className="tag">
+                          Module {row.subline.moduleIndex} of {row.subline.moduleCount}
+                        </span>
+                      ) : null}
+                    </div>
+                  </div>
+                  <p className="lesson">
+                    {row.percentComplete === 'unavailable' ? (
+                      'Progress unavailable'
+                    ) : row.subline ? (
+                      <>
+                        Current lesson<b>{row.subline.lessonTitle}</b>
+                      </>
+                    ) : (
+                      <>
+                        Current lesson<b>{row.title}</b>
+                      </>
+                    )}
+                  </p>
+                  <div className="pwrap">
+                    <div className="ppct">
+                      <span>Progress</span>
+                      <b>{percentLabel(row.percentComplete)}</b>
+                    </div>
+                    <div className="pbar">
+                      <i style={{ width: `${width}%` }} />
+                    </div>
+                  </div>
+                  <Link to={row.continueHref} className="btn btn-primary">
+                    Continue Course
+                    <IconArrow />
+                  </Link>
+                </div>
+              )
+            })}
+          </div>
+        )}
+      </div>
+    </section>
   )
 }

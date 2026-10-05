@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
+import { Link } from 'react-router-dom'
 
 import { getPurchases } from '../../lib/api/billing'
 import type { PurchaseRecord } from '../../lib/api/types'
@@ -6,6 +7,8 @@ import { catalogApiUserMessage } from '../../lib/apiUserMessages'
 import { formatUsdMinor } from '../../lib/formatUsdMinor'
 import { usePageTitle } from '../../lib/page-title'
 import { shouldSuppressInlineSessionSupersededMessage } from '../../lib/session-superseded-inline'
+import { IconArrow, IconBook } from './accountIcons'
+import './AccountPage.css'
 
 type PageState =
   | { status: 'loading' }
@@ -15,8 +18,16 @@ type PageState =
 
 function formatProductLabel(row: PurchaseRecord): string {
   if (row.productType === 'bundle') return 'Research Mastery Bundle'
-  if (row.productType === 'course') return 'Single course'
+  if (row.productType === 'course') return 'Single course purchase'
   return row.productType
+}
+
+function formatStatusClass(status: string): string {
+  const normalized = status.trim().toLowerCase()
+  if (normalized === 'paid') return 'paid'
+  if (normalized === 'pending') return 'pending'
+  if (normalized === 'failed') return 'failed'
+  return 'pending'
 }
 
 function formatStatusLabel(status: string): string {
@@ -30,7 +41,12 @@ function formatStatusLabel(status: string): string {
 function formatPurchasedAt(iso: string): string {
   const d = new Date(iso)
   if (Number.isNaN(d.getTime())) return iso
-  return d.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })
+  return d.toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' })
+}
+
+function formatOrderId(id: string): string {
+  const compact = id.replace(/[^a-zA-Z0-9]/g, '').slice(-8).toUpperCase()
+  return compact ? `RS-ORD-${compact}` : id
 }
 
 export default function AccountPurchasesPage() {
@@ -56,51 +72,105 @@ export default function AccountPurchasesPage() {
   }, [load])
 
   return (
-    <section className="text-rs-ink" data-testid="account-purchases">
-      <h2 className="text-xl font-extrabold tracking-tight">My purchases</h2>
-      <p className="mt-2 text-sm text-rs-body">One-time course and bundle purchases linked to your account.</p>
-
-      {state.status === 'loading' ? <p className="mt-6 text-sm text-rs-body">Loading purchases…</p> : null}
-
-      {state.status === 'superseded' ? (
-        <p className="mt-6 text-sm text-rs-body">Your session was replaced by a newer sign-in. Refresh after signing in again.</p>
-      ) : null}
-
-      {state.status === 'error' ? (
-        <div className="mt-6">
-          <p className="text-sm text-red-700" role="alert">
-            {state.message}
-          </p>
+    <div data-testid="account-purchases">
+      <div className="section-sep">
+        <div className="wrap">
+          <div className="section-group-header">
+            <span className="sg-label">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                <rect x="1" y="4" width="22" height="16" rx="2" />
+                <line x1="1" y1="10" x2="23" y2="10" />
+              </svg>
+              Purchases
+            </span>
+          </div>
         </div>
-      ) : null}
+      </div>
 
-      {state.status === 'ready' && state.purchases.length === 0 ? (
-        <div className="mt-6 rounded-2xl border border-rs-line bg-white p-6" data-testid="purchases-empty">
-          <p className="text-sm text-rs-body">You have not purchased any courses yet.</p>
-          <a
-            href="/courses"
-            className="mt-4 inline-flex text-sm font-bold text-rs-blue no-underline hover:opacity-90"
-          >
-            Browse courses
-          </a>
-        </div>
-      ) : null}
+      <section className="db" style={{ paddingTop: 0, paddingBottom: 80 }}>
+        <div className="wrap">
+          <div className="db-head">
+            <div className="ht">
+              <h2>Billing &amp; Purchase History</h2>
+              <span className="htmeta">Your course purchases</span>
+            </div>
+          </div>
 
-      {state.status === 'ready' && state.purchases.length > 0 ? (
-        <ul className="mt-6 divide-y divide-rs-line rounded-2xl border border-rs-line bg-white">
-          {state.purchases.map((row) => (
-            <li key={row.id} className="px-5 py-4">
-              <div className="flex flex-wrap items-baseline justify-between gap-2">
-                <p className="font-bold text-rs-ink">{formatProductLabel(row)}</p>
-                <p className="text-sm font-semibold text-rs-blue">{formatUsdMinor(row.amountMinor)}</p>
+          {state.status === 'loading' ? (
+            <p className="field-hint" role="status">
+              Loading purchases…
+            </p>
+          ) : null}
+
+          {state.status === 'superseded' ? (
+            <p className="field-hint" role="status">
+              Your session was replaced by a newer sign-in. Refresh after signing in again.
+            </p>
+          ) : null}
+
+          {state.status === 'error' ? (
+            <p className="save-error" role="alert">
+              {state.message}
+            </p>
+          ) : null}
+
+          {state.status === 'ready' ? (
+            <div className="acct-card reveal">
+              <div className="bill-table-wrap">
+                <table className="bill-table">
+                  <thead>
+                    <tr>
+                      <th>Order</th>
+                      <th>Date</th>
+                      <th>Product</th>
+                      <th>Amount</th>
+                      <th>Status</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {state.purchases.length === 0 ? (
+                      <tr data-testid="purchases-empty">
+                        <td colSpan={5} className="purchases-empty-cell">
+                          You have not purchased any courses yet.
+                        </td>
+                      </tr>
+                    ) : (
+                      state.purchases.map((row) => (
+                        <tr key={row.id}>
+                          <td className="order-num">{formatOrderId(row.id)}</td>
+                          <td>{formatPurchasedAt(row.createdAt)}</td>
+                          <td className="prod-name">{formatProductLabel(row)}</td>
+                          <td className="amount-col">{formatUsdMinor(row.amountMinor)}</td>
+                          <td>
+                            <span className={`bill-status ${formatStatusClass(row.status)}`}>
+                              {formatStatusLabel(row.status)}
+                            </span>
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
               </div>
-              <p className="mt-1 text-xs text-rs-muted">
-                {formatStatusLabel(row.status)} · {formatPurchasedAt(row.createdAt)}
-              </p>
-            </li>
-          ))}
-        </ul>
-      ) : null}
-    </section>
+              <div className="bill-upsell">
+                <div className="bu-ic">
+                  <IconBook />
+                </div>
+                <div className="bu-info">
+                  <b>Unlock More Courses — from $50</b>
+                  <span>
+                    Individual courses at $50 each, or save with the Research Mastery Bundle at $150 (all four courses).
+                  </span>
+                </div>
+                <Link to="/courses#courses-catalog" className="btn btn-ghost btn-sm" style={{ flex: 'none' }}>
+                  Explore Courses
+                  <IconArrow />
+                </Link>
+              </div>
+            </div>
+          ) : null}
+        </div>
+      </section>
+    </div>
   )
 }

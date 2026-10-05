@@ -311,3 +311,15 @@ class TestLessonProgressRdsRepository:
         assert "completed_at" in sql.lower()
         assert "CASE" in sql.upper()
         assert "NOW()" in sql.upper()
+
+    def test_record_activity_day_inserts_on_conflict_do_nothing(
+        self, repo, fake_conn: FakeConn
+    ) -> None:
+        repo.record_activity_day(user_sub="user-a", day=datetime(2026, 10, 4, tzinfo=timezone.utc).date())
+        sql, params = fake_conn.cursor_obj.executions[0]
+        compact = " ".join(sql.lower().split())
+        assert "insert into learning_activity_days" in compact
+        assert "on conflict" in compact
+        assert "do nothing" in compact
+        assert params[0] == "user-a"
+        assert str(params[1]) == "2026-10-04"

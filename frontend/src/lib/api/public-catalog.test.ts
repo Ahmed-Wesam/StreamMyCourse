@@ -80,6 +80,26 @@ describe('listPublishedCourses', () => {
     })
   })
 
+  it('maps priceAmountMinor onto amountMinor', async () => {
+    vi.mocked(fetch).mockResolvedValue(
+      new Response(
+        JSON.stringify([
+          {
+            id: 'priced',
+            title: 'Priced',
+            description: 'x',
+            status: 'PUBLISHED',
+            priceAmountMinor: 5000,
+          },
+        ]),
+        { status: 200, headers: { 'Content-Type': 'application/json' } },
+      ),
+    )
+
+    const courses = await listPublishedCourses()
+    expect(courses[0]).toMatchObject({ id: 'priced', amountMinor: 5000 })
+  })
+
   it('maps amountMinor and hasAccess when present', async () => {
     vi.mocked(fetch).mockResolvedValue(
       new Response(

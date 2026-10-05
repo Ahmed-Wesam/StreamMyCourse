@@ -80,12 +80,15 @@ def test_full_publish_flow_appears_in_catalog(
     assert upload_resp.status_code == 200
     upload_body = upload_resp.json()
     assert upload_body["uploadUrl"]
-    if expects_s3_presigned_upload():
+    upload_provider = upload_body.get("provider")
+    if upload_provider == "s3":
         assert upload_body["videoKey"].startswith(
             f"{course.course_id}/lessons/{lesson.lesson_id}/video/"
         )
-    else:
+    elif upload_provider == "kinescope":
         uuid.UUID(upload_body["videoKey"])
+    else:
+        raise AssertionError(f"unexpected upload provider: {upload_body!r}")
 
     # 2. Lesson thumbnail + mark the lesson ready (videoKey set + optional thumb).
     thumb = api.get_lesson_thumbnail_upload_url(

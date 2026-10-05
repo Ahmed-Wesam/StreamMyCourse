@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useId, useState } from 'react'
 import { Link } from 'react-router-dom'
 
+import { getLessonTranscript } from '../../lib/api/catalog'
 import { listCourseAssignments } from '../../lib/api/assignments'
 import { listLessonFiles } from '../../lib/api/lessonFiles'
 import {
@@ -15,6 +16,7 @@ import { formatNoteTimestamp, openLessonFileItem } from './lessonPlayerFileActio
 
 const LESSON_PLAYER_TAB_IDS = [
   'overview',
+  'transcript',
   'resources',
   'downloads',
   'notes',
@@ -25,11 +27,15 @@ type LessonPlayerTabId = (typeof LESSON_PLAYER_TAB_IDS)[number]
 
 const TAB_LABELS: Record<LessonPlayerTabId, string> = {
   overview: 'Overview',
+  transcript: 'Transcript',
   resources: 'Resources',
   downloads: 'Downloads',
   notes: 'Notes',
   assignments: 'Assignments',
 }
+
+const EMPTY_TRANSCRIPT =
+  'No lecture transcript is available for this lesson yet. Your instructor can add one from the course editor.'
 
 const EMPTY_RESOURCES = 'No resources for this lesson yet.'
 const EMPTY_DOWNLOADS = 'No downloads for this lesson yet.'
@@ -264,6 +270,9 @@ export function LessonPlayerTabs({
   playbackPositionSec = 0,
   contentEnabled = true,
   assignments: assignmentsProp,
+  lessonTranscriptFromList,
+  transcriptFetchReady = true,
+  prototypeShell = false,
 }: {
   courseId?: string
   lessonId?: string
@@ -276,6 +285,12 @@ export function LessonPlayerTabs({
   contentEnabled?: boolean
   /** Optional preloaded module assignments; when omitted the tab loads via API. */
   assignments?: Assignment[]
+  /** When defined, listLessons already supplied transcript (string may be empty). */
+  lessonTranscriptFromList?: string
+  /** When false, defer transcript API until lesson list has loaded. */
+  transcriptFetchReady?: boolean
+  /** Use MediaPlayer.html tab/panel classes (scoped under .pg-lesson-player). */
+  prototypeShell?: boolean
 }) {
   const [activeTab, setActiveTab] = useState<LessonPlayerTabId>('overview')
   const baseId = useId()
@@ -284,6 +299,8 @@ export function LessonPlayerTabs({
   const [assignments, setAssignments] = useState<Assignment[]>(assignmentsProp ?? [])
   const [openingFileId, setOpeningFileId] = useState<string | null>(null)
   const [notesBusy, setNotesBusy] = useState(false)
+  const [transcript, setTranscript] = useState<string | null>(null)
+  const [transcriptLoaded, setTranscriptLoaded] = useState(false)
 
   const lessonContext = [activeModuleLabel, activeLessonTitle].filter(Boolean).join(' · ')
   const trimmedDescription = courseDescription?.trim() ?? ''
@@ -331,6 +348,32 @@ export function LessonPlayerTabs({
   useEffect(() => {
     void loadAssignments()
   }, [loadAssignments])
+
+  useEffect(() => {
+    setTranscript(null)
+    setTranscriptLoaded(false)
+    if (lessonTranscriptFromList !== undefined) {
+      const fromList = lessonTranscriptFromList.trim()
+      setTranscript(fromList ? fromList : null)
+      setTranscriptLoaded(true)
+      return
+    }
+    if (!contentEnabled || !courseId || !lessonId || !transcriptFetchReady) {
+      if (!transcriptFetchReady) return
+      setTranscriptLoaded(true)
+      return
+    }
+    let cancelled = false
+    void getLessonTranscript(courseId, lessonId).then((text) => {
+      if (!cancelled) {
+        setTranscript(text)
+        setTranscriptLoaded(true)
+      }
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [contentEnabled, courseId, lessonId, lessonTranscriptFromList, transcriptFetchReady])
 
   const resourceFiles = files.filter((f) => f.kind === 'resource' && isReadyLessonFile(f.status))
   const downloadFiles = files.filter((f) => f.kind === 'download' && isReadyLessonFile(f.status))
@@ -381,13 +424,25 @@ export function LessonPlayerTabs({
     }
   }
 
+  const tabListClass = prototypeShell
+    ? 'lp-tabs'
+    : 'flex gap-1 overflow-x-auto border-b border-rs-line pb-px [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden'
+  const tabButtonClass = (selected: boolean) =>
+    prototypeShell
+      ? `lp-tab${selected ? ' active' : ''}`
+      : `shrink-0 rounded-t-lg px-3 py-2.5 text-sm font-semibold transition-colors ${
+          selected
+            ? 'border border-b-0 border-rs-line bg-white text-rs-navy'
+            : 'text-rs-muted hover:bg-rs-sky-2/80 hover:text-rs-navy'
+        }`
+  const panelClass = (selected: boolean) =>
+    prototypeShell
+      ? `lp-panel${selected ? ' active' : ''}`
+      : 'rounded-b-rs-sm border border-t-0 border-rs-line bg-white px-4 py-5 shadow-rs-sm'
+
   return (
-    <div className="mt-5">
-      <div
-        role="tablist"
-        aria-label="Lesson content"
-        className="flex gap-1 overflow-x-auto border-b border-rs-line pb-px [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
-      >
+    <div className={prototypeShell ? '' : 'mt-5'} data-testid="lesson-player-tabs">
+      <div role="tablist" aria-label="Lesson content" className={tabListClass}>
         {LESSON_PLAYER_TAB_IDS.map((tabId) => {
           const selected = activeTab === tabId
           return (
@@ -400,11 +455,7 @@ export function LessonPlayerTabs({
               aria-controls={`${baseId}-panel-${tabId}`}
               tabIndex={selected ? 0 : -1}
               onClick={() => setActiveTab(tabId)}
-              className={`shrink-0 rounded-t-lg px-3 py-2.5 text-sm font-semibold transition-colors ${
-                selected
-                  ? 'border border-b-0 border-rs-line bg-white text-rs-navy'
-                  : 'text-rs-muted hover:bg-rs-sky-2/80 hover:text-rs-navy'
-              }`}
+              className={tabButtonClass(selected)}
             >
               {TAB_LABELS[tabId]}
             </button>
@@ -421,16 +472,47 @@ export function LessonPlayerTabs({
             id={`${baseId}-panel-${tabId}`}
             aria-labelledby={`${baseId}-tab-${tabId}`}
             hidden={!selected}
-            className="rounded-b-rs-sm border border-t-0 border-rs-line bg-white px-4 py-5 shadow-rs-sm"
-            data-testid={selected ? 'lesson-player-tab-panel' : undefined}
+            aria-hidden={!selected}
+            className={panelClass(selected)}
+            data-testid={
+              selected
+                ? tabId === 'transcript'
+                  ? 'lesson-player-transcript-panel'
+                  : 'lesson-player-tab-panel'
+                : undefined
+            }
           >
             {tabId === 'overview' ? (
-              <div className="space-y-3 text-sm leading-relaxed text-rs-body">
-                {trimmedDescription ? <p>{trimmedDescription}</p> : null}
-                {lessonContext ? (
-                  <p className={trimmedDescription ? 'text-rs-muted' : undefined}>{lessonContext}</p>
-                ) : null}
-              </div>
+              prototypeShell ? (
+                <div className="ov">
+                  {trimmedDescription ? <p>{trimmedDescription}</p> : null}
+                  {lessonContext ? <p>{lessonContext}</p> : null}
+                </div>
+              ) : (
+                <div className="space-y-3 text-sm leading-relaxed text-rs-body">
+                  {trimmedDescription ? <p>{trimmedDescription}</p> : null}
+                  {lessonContext ? (
+                    <p className={trimmedDescription ? 'text-rs-muted' : undefined}>{lessonContext}</p>
+                  ) : null}
+                </div>
+              )
+            ) : tabId === 'transcript' ? (
+              <section aria-labelledby={`${baseId}-tab-transcript`}>
+                {!transcriptLoaded ? (
+                  <p className={prototypeShell ? 'transcript-empty' : 'text-sm text-rs-muted'}>Loading transcript…</p>
+                ) : transcript ? (
+                  <div className={prototypeShell ? 'ov transcript-body' : 'transcript-body text-sm text-rs-body'}>
+                    {transcript}
+                  </div>
+                ) : (
+                  <p
+                    className={prototypeShell ? 'transcript-empty' : 'text-sm text-rs-muted'}
+                    data-testid="lesson-player-transcript-empty"
+                  >
+                    {EMPTY_TRANSCRIPT}
+                  </p>
+                )}
+              </section>
             ) : tabId === 'resources' ? (
               <LessonFileCards
                 files={resourceFiles}

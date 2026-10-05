@@ -94,4 +94,20 @@ describe('ProfileMenu', () => {
     renderMenu({ name: '' })
     expect(screen.getByRole('button').textContent).toMatch(/\?/)
   })
+
+  it('prototype chrome uses nav-profile, nav-drop, and nav-chev', () => {
+    const { container } = renderMenu({ chrome: 'prototype' })
+    const trigger = container.querySelector('.nav-profile')
+    expect(trigger).toBeTruthy()
+    expect(container.querySelector('.nav-bell')).toBeNull()
+    expect(trigger?.className ?? '').not.toMatch(/\brelative\b/)
+
+    fireEvent.click(screen.getByRole('button'))
+
+    expect(container.querySelector('.nav-profile.is-open')).toBeTruthy()
+    expect(container.querySelector('.nav-drop')).toBeTruthy()
+    expect(container.querySelector('.nav-avatar')).toBeTruthy()
+    expect(container.querySelector('svg.nav-chev')).toBeTruthy()
+    expect(container.querySelector('.nav-drop-h')).toBeTruthy()
+  })
 })

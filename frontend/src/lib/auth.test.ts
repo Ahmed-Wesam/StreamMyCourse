@@ -4,6 +4,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const amplifyConfigure = vi.hoisted(() => vi.fn())
+const setKeyValueStorage = vi.hoisted(() => vi.fn())
 
 vi.mock('aws-amplify', () => ({
   Amplify: {
@@ -11,7 +12,16 @@ vi.mock('aws-amplify', () => ({
   },
 }))
 
-import { configureAmplify, isAuthConfigured } from './auth'
+vi.mock('aws-amplify/auth/cognito', () => ({
+  cognitoUserPoolsTokenProvider: {
+    setKeyValueStorage: (...args: unknown[]) => setKeyValueStorage(...args),
+  },
+}))
+
+import { CookieStorage, defaultStorage } from 'aws-amplify/utils'
+
+import { applyRememberMeStorage, configureAmplify, isAuthConfigured, keepDefaultAuthStorage } from './auth'
+import { AUTH_REMEMBER_ME_FLAG, clearAmplifyAuthCaches } from './clear-amplify-auth-caches'
 
 describe('isAuthConfigured', () => {
   afterEach(() => {
@@ -40,6 +50,8 @@ describe('isAuthConfigured', () => {
 describe('configureAmplify', () => {
   beforeEach(() => {
     amplifyConfigure.mockClear()
+    setKeyValueStorage.mockReset()
+    localStorage.clear()
     vi.stubGlobal('location', { origin: 'https://learn.example.com' } as Location)
   })
 
@@ -137,5 +149,72 @@ describe('configureAmplify', () => {
     expect(redirects).toContain('http://localhost:5174/')
     expect(redirects).toContain('http://127.0.0.1:5174/')
     expect(redirects).toHaveLength(2)
+  })
+
+  it('applies session CookieStorage before Amplify.configure when remember-me is off', () => {
+    localStorage.setItem(AUTH_REMEMBER_ME_FLAG, 'session')
+    vi.stubEnv('VITE_COGNITO_USER_POOL_ID', 'eu-west-1_pool')
+    vi.stubEnv('VITE_COGNITO_USER_POOL_CLIENT_ID', 'clientid')
+    vi.stubEnv('VITE_COGNITO_DOMAIN', 'myapp.auth.eu-west-1.amazoncognito.com')
+    const order: string[] = []
+    setKeyValueStorage.mockImplementation(() => {
+      order.push('storage')
+    })
+    amplifyConfigure.mockImplementation(() => {
+      order.push('configure')
+    })
+
+    configureAmplify()
+
+    expect(order).toEqual(['storage', 'configure'])
+    const storage = setKeyValueStorage.mock.calls[0][0] as CookieStorage
+    expect(storage).toBeInstanceOf(CookieStorage)
+    expect(storage.secure).toBe(true)
+    expect(storage.sameSite).toBe('lax')
+    expect(storage.expires).toBeUndefined()
+  })
+})
+
+describe('remember me storage', () => {
+  beforeEach(() => {
+    setKeyValueStorage.mockReset()
+    localStorage.clear()
+  })
+
+  it('unchecked selects CookieStorage with no expires', () => {
+    applyRememberMeStorage(false)
+
+    expect(setKeyValueStorage).toHaveBeenCalledTimes(1)
+    const storage = setKeyValueStorage.mock.calls[0][0] as CookieStorage
+    expect(storage).toBeInstanceOf(CookieStorage)
+    expect(storage.secure).toBe(true)
+    expect(storage.sameSite).toBe('lax')
+    expect(storage.expires).toBeUndefined()
+    expect(localStorage.getItem(AUTH_REMEMBER_ME_FLAG)).toBe('session')
+  })
+
+  it('checked uses default storage', () => {
+    applyRememberMeStorage(true)
+
+    expect(setKeyValueStorage).toHaveBeenCalledTimes(1)
+    expect(setKeyValueStorage).toHaveBeenCalledWith(defaultStorage)
+    expect(localStorage.getItem(AUTH_REMEMBER_ME_FLAG)).toBe('remember')
+  })
+
+  it('Google redirect keeps default storage and clears a session-only flag', () => {
+    localStorage.setItem(AUTH_REMEMBER_ME_FLAG, 'session')
+
+    keepDefaultAuthStorage()
+
+    expect(setKeyValueStorage).toHaveBeenCalledWith(defaultStorage)
+    expect(localStorage.getItem(AUTH_REMEMBER_ME_FLAG)).toBeNull()
+  })
+
+  it('clears the non-secret remember-me flag with Amplify auth caches', () => {
+    localStorage.setItem(AUTH_REMEMBER_ME_FLAG, 'session')
+
+    clearAmplifyAuthCaches()
+
+    expect(localStorage.getItem(AUTH_REMEMBER_ME_FLAG)).toBeNull()
   })
 })

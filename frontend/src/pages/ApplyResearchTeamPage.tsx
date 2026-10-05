@@ -1,8 +1,8 @@
-import { useEffect, useMemo, useState, type FormEvent } from 'react'
+import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
 import { Link } from 'react-router-dom'
 
-import { Button } from '../components/ui/Button'
-import { Field } from '../components/ui/Field'
+import { ArrowIcon } from '../components/auth/prototypeAuthParts'
+import { usePageReveal } from '../components/auth/usePageReveal'
 import { ApiError } from '../lib/api/client'
 import {
   RESEARCH_TEAM_AREAS,
@@ -16,6 +16,7 @@ import { fetchMe } from '../lib/api/session'
 import { catalogApiUserMessage } from '../lib/apiUserMessages'
 import { usePageTitle } from '../lib/page-title'
 import { COUNTRIES } from '../lib/profile-options'
+import './ApplyResearchTeamPage.css'
 
 function submitErrorMessage(err: unknown): string {
   if (err instanceof ApiError) {
@@ -38,8 +39,28 @@ function submitErrorMessage(err: unknown): string {
   return catalogApiUserMessage(err)
 }
 
+function CheckBadgeIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M20 6 9 17l-5-5" />
+    </svg>
+  )
+}
+
+function ClockIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <circle cx="12" cy="12" r="10" />
+      <path d="M12 6v6l4 2" />
+    </svg>
+  )
+}
+
 export default function ApplyResearchTeamPage() {
   usePageTitle('Apply to Research Team')
+
+  const rootRef = useRef<HTMLDivElement>(null)
+  usePageReveal(rootRef)
 
   const [fullName, setFullName] = useState('')
   const [country, setCountry] = useState('')
@@ -151,229 +172,348 @@ export default function ApplyResearchTeamPage() {
     }
   }
 
-  const selectClass =
-    'w-full rounded-xl border-[1.5px] border-solid border-rs-line bg-white px-[14px] py-[11px] text-[15px] text-rs-ink outline-none transition duration-200 ease-rs focus:border-rs-blue focus:shadow-[0_0_0_3px_rgba(30,94,255,.10)]'
-
-  const textareaClass =
-    'w-full min-h-[110px] rounded-xl border-[1.5px] border-solid border-rs-line bg-white px-[14px] py-[11px] text-[15px] text-rs-ink outline-none transition duration-200 ease-rs focus:border-rs-blue focus:shadow-[0_0_0_3px_rgba(30,94,255,.10)]'
-
   return (
-    <div className="min-h-screen bg-white text-rs-ink" data-testid="student-page-apply-research-team">
-      <section className="px-5 py-10 sm:px-7 sm:py-14">
-        <div className="mx-auto max-w-2xl">
-          <h1 className="text-3xl font-extrabold tracking-tight text-rs-ink sm:text-4xl">
-            Apply to the Research Team
-          </h1>
-          <p className="mt-3 text-sm leading-relaxed text-rs-body">
-            Tell us about your background and research interests. Required fields must be completed
-            before you can submit.
-          </p>
-
-          {profileLoading ? (
-            <p className="mt-8 text-sm text-rs-body">Loading your profile…</p>
-          ) : null}
-
-          {success ? (
-            <div
-              className="mt-8 rounded-rs border border-[#bce7c8] bg-[#dcf5e3] px-5 py-4"
-              role="status"
-            >
-              <p className="text-sm font-semibold text-[#0d6f3e]">
-                Your application has been submitted. We will review it shortly.
-              </p>
-              <Link
-                to="/research-team"
-                className="mt-3 inline-flex min-h-11 items-center text-sm font-bold text-rs-blue"
-              >
-                Back to Research Team
-              </Link>
+    <div
+      ref={rootRef}
+      className="pg-apply-research-team"
+      data-testid="student-page-apply-research-team"
+    >
+      <section className="rt-hero art-hero">
+        <div className="wrap">
+          <div className="art-hero-inner">
+            <div className="eyebrow reveal" style={{ margin: '0 auto 18px' }}>
+              <span className="dot" aria-hidden="true" />
+              Research Spectrum Program
             </div>
-          ) : null}
+            <h1 className="reveal" data-d="1">
+              Apply to the
+              <br />
+              <span className="g">Research Team</span>
+            </h1>
+            <p className="sub reveal" data-d="2" id="art-hero-sub">
+              You&apos;ve completed every eligibility requirement — the next step is to tell us about
+              yourself and the research you&apos;d like to contribute to.
+            </p>
+          </div>
+        </div>
+      </section>
 
-          {!profileLoading && !success ? (
-            <form className="mt-8 space-y-1" onSubmit={onSubmit} noValidate>
-              <Field
-                label="Full name"
-                value={fullName}
-                onChange={(e) => setFullName(e.target.value)}
-                autoComplete="name"
-                required
-              />
+      <section className="af-section">
+        <div className="wrap">
+          <div className="af-grid">
+            <div className="af-card reveal">
+              <h2 className="af-h">Research Team Application</h2>
+              <p className="af-sub">
+                Please complete every field below. This information helps the Research Spectrum team
+                match you to active research projects.
+              </p>
 
-              <Field label="Country">
-                <select
-                  className={selectClass}
-                  value={country}
-                  onChange={(e) => setCountry(e.target.value)}
-                  required
-                >
-                  <option value="">Select a country</option>
-                  {COUNTRIES.map((item) => (
-                    <option key={item} value={item}>
-                      {item}
-                    </option>
-                  ))}
-                </select>
-              </Field>
-
-              <Field
-                label="Institution"
-                value={institution}
-                onChange={(e) => setInstitution(e.target.value)}
-                required
-              />
-
-              <Field
-                label="Position"
-                value={position}
-                onChange={(e) => setPosition(e.target.value)}
-                required
-              />
-
-              <Field
-                label="Publication count"
-                type="number"
-                min={0}
-                max={9999}
-                inputMode="numeric"
-                value={publicationCount}
-                onChange={(e) => setPublicationCount(e.target.value)}
-                required
-              />
-
-              <Field
-                label="Project count"
-                type="number"
-                min={0}
-                max={9999}
-                inputMode="numeric"
-                value={projectCount}
-                onChange={(e) => setProjectCount(e.target.value)}
-                required
-              />
-
-              <Field label="Statistics experience">
-                <select
-                  className={selectClass}
-                  value={statsExperience}
-                  onChange={(e) =>
-                    setStatsExperience(e.target.value as ResearchTeamExperienceLevel | '')
-                  }
-                  required
-                >
-                  <option value="">Select level</option>
-                  {RESEARCH_TEAM_EXPERIENCE_LEVELS.map((level) => (
-                    <option key={level} value={level}>
-                      {level}
-                    </option>
-                  ))}
-                </select>
-              </Field>
-
-              <Field label="Systematic review experience">
-                <select
-                  className={selectClass}
-                  value={sysReviewExperience}
-                  onChange={(e) =>
-                    setSysReviewExperience(e.target.value as ResearchTeamExperienceLevel | '')
-                  }
-                  required
-                >
-                  <option value="">Select level</option>
-                  {RESEARCH_TEAM_EXPERIENCE_LEVELS.map((level) => (
-                    <option key={level} value={level}>
-                      {level}
-                    </option>
-                  ))}
-                </select>
-              </Field>
-
-              <Field label="Interests">
-                <textarea
-                  className={textareaClass}
-                  value={interests}
-                  onChange={(e) => setInterests(e.target.value)}
-                  required
-                />
-              </Field>
-
-              <Field label="Motivation">
-                <textarea
-                  className={textareaClass}
-                  value={motivation}
-                  onChange={(e) => setMotivation(e.target.value)}
-                  required
-                />
-              </Field>
-
-              <Field label="Weekly hours">
-                <select
-                  className={selectClass}
-                  value={weeklyHours}
-                  onChange={(e) => setWeeklyHours(e.target.value as ResearchTeamWeeklyHours | '')}
-                  required
-                >
-                  <option value="">Select weekly hours</option>
-                  {RESEARCH_TEAM_WEEKLY_HOURS.map((hours) => (
-                    <option key={hours} value={hours}>
-                      {hours}
-                    </option>
-                  ))}
-                </select>
-              </Field>
-
-              <fieldset className="mb-4">
-                <legend className="mb-2 block text-[13px] font-bold tracking-[-0.005em] text-rs-navy">
-                  Research areas (optional)
-                </legend>
-                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                  {RESEARCH_TEAM_AREAS.map((area) => (
-                    <label
-                      key={area}
-                      className="flex min-h-11 cursor-pointer items-center gap-2.5 rounded-xl border border-rs-line px-3 py-2 text-sm text-rs-ink"
-                    >
-                      <input
-                        type="checkbox"
-                        className="size-4 shrink-0 accent-rs-blue"
-                        checked={researchAreas.includes(area)}
-                        onChange={() => toggleArea(area)}
-                      />
-                      <span>{area}</span>
-                    </label>
-                  ))}
-                </div>
-              </fieldset>
-
-              <label className="mb-6 flex min-h-11 cursor-pointer items-start gap-3 rounded-xl border border-rs-line px-4 py-3 text-sm text-rs-ink">
-                <input
-                  type="checkbox"
-                  className="mt-0.5 size-4 shrink-0 accent-rs-blue"
-                  checked={acknowledgement}
-                  onChange={(e) => setAcknowledgement(e.target.checked)}
-                  aria-label="I acknowledge that eligibility does not guarantee acceptance"
-                />
-                <span>
-                  I acknowledge that eligibility does not guarantee acceptance and that my
-                  application will be reviewed by the Research Team.
-                </span>
-              </label>
-
-              {error ? (
-                <p className="mb-4 text-sm font-semibold text-[#b91c1c]" role="alert">
-                  {error}
+              {profileLoading ? (
+                <p className="af-loading" role="status">
+                  Loading your profile…
                 </p>
               ) : null}
 
-              <div className="flex flex-wrap items-center gap-3">
-                <Button type="submit" disabled={!canSubmit || submitting}>
-                  {submitting ? 'Submitting…' : 'Submit application'}
-                </Button>
-                <Button to="/research-team" variant="ghost">
-                  Cancel
-                </Button>
+              {success ? (
+                <div className="af-success" role="status">
+                  <p>Your application has been submitted. We will review it shortly.</p>
+                  <Link to="/research-team">Back to Research Team</Link>
+                </div>
+              ) : null}
+
+              {!profileLoading && !success ? (
+                <form id="rt-apply-form" onSubmit={onSubmit} noValidate>
+                  <fieldset className="af-fieldset">
+                    <h3>Personal Information</h3>
+                    <div className="af-row">
+                      <div className="af-field">
+                        <label htmlFor="af-fullname">Full Name</label>
+                        <input
+                          id="af-fullname"
+                          name="fullName"
+                          type="text"
+                          autoComplete="name"
+                          placeholder="e.g. Sara Al-Khatib"
+                          value={fullName}
+                          onChange={(e) => setFullName(e.target.value)}
+                          required
+                        />
+                      </div>
+                      <div className="af-field">
+                        <label htmlFor="af-country">Country</label>
+                        <select
+                          id="af-country"
+                          name="country"
+                          autoComplete="country-name"
+                          value={country}
+                          onChange={(e) => setCountry(e.target.value)}
+                          required
+                        >
+                          <option value="">Select a country</option>
+                          {COUNTRIES.map((item) => (
+                            <option key={item} value={item}>
+                              {item}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    </div>
+                    <div className="af-row">
+                      <div className="af-field">
+                        <label htmlFor="af-institution">Current Institution</label>
+                        <input
+                          id="af-institution"
+                          name="institution"
+                          type="text"
+                          placeholder="e.g. University of Jordan"
+                          value={institution}
+                          onChange={(e) => setInstitution(e.target.value)}
+                          required
+                        />
+                      </div>
+                      <div className="af-field">
+                        <label htmlFor="af-position">Current Position</label>
+                        <input
+                          id="af-position"
+                          name="position"
+                          type="text"
+                          placeholder="e.g. Medical Student, Resident, Research Assistant"
+                          value={position}
+                          onChange={(e) => setPosition(e.target.value)}
+                          required
+                        />
+                      </div>
+                    </div>
+                  </fieldset>
+
+                  <fieldset className="af-fieldset">
+                    <h3>Research Experience</h3>
+                    <div className="af-row">
+                      <div className="af-field">
+                        <label htmlFor="af-publications">Number of Publications</label>
+                        <input
+                          id="af-publications"
+                          name="publications"
+                          type="number"
+                          min={0}
+                          max={9999}
+                          inputMode="numeric"
+                          placeholder="0"
+                          value={publicationCount}
+                          onChange={(e) => setPublicationCount(e.target.value)}
+                          required
+                        />
+                      </div>
+                      <div className="af-field">
+                        <label htmlFor="af-projects">Number of Research Projects</label>
+                        <input
+                          id="af-projects"
+                          name="projects"
+                          type="number"
+                          min={0}
+                          max={9999}
+                          inputMode="numeric"
+                          placeholder="0"
+                          value={projectCount}
+                          onChange={(e) => setProjectCount(e.target.value)}
+                          required
+                        />
+                      </div>
+                    </div>
+                    <div className="af-row">
+                      <div className="af-field">
+                        <label htmlFor="af-stats-exp">Statistical Analysis Experience</label>
+                        <select
+                          id="af-stats-exp"
+                          name="statsExperience"
+                          value={statsExperience}
+                          onChange={(e) =>
+                            setStatsExperience(e.target.value as ResearchTeamExperienceLevel | '')
+                          }
+                          required
+                        >
+                          <option value="">Select an option</option>
+                          {RESEARCH_TEAM_EXPERIENCE_LEVELS.map((level) => (
+                            <option key={level} value={level}>
+                              {level}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                      <div className="af-field">
+                        <label htmlFor="af-sysreview-exp">Systematic Review Experience</label>
+                        <select
+                          id="af-sysreview-exp"
+                          name="sysReviewExperience"
+                          value={sysReviewExperience}
+                          onChange={(e) =>
+                            setSysReviewExperience(e.target.value as ResearchTeamExperienceLevel | '')
+                          }
+                          required
+                        >
+                          <option value="">Select an option</option>
+                          {RESEARCH_TEAM_EXPERIENCE_LEVELS.map((level) => (
+                            <option key={level} value={level}>
+                              {level}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    </div>
+                  </fieldset>
+
+                  <fieldset className="af-fieldset">
+                    <h3>Research Areas Of Interest</h3>
+                    <p className="af-sub" style={{ marginBottom: 0 }}>
+                      Select all areas that interest you. You can provide additional details below.
+                    </p>
+                    <div className="af-checkgrid">
+                      {RESEARCH_TEAM_AREAS.map((area) => (
+                        <label key={area} className="af-check-option">
+                          <input
+                            type="checkbox"
+                            name="researchAreas"
+                            value={area}
+                            checked={researchAreas.includes(area)}
+                            onChange={() => toggleArea(area)}
+                          />
+                          {area}
+                        </label>
+                      ))}
+                    </div>
+                  </fieldset>
+
+                  <fieldset className="af-fieldset">
+                    <h3>Research Interests</h3>
+                    <div className="af-row full">
+                      <div className="af-field">
+                        <label htmlFor="af-interests">
+                          Tell Us More About Your Research Interests
+                        </label>
+                        <textarea
+                          id="af-interests"
+                          name="interests"
+                          placeholder="Describe specific topics, specialties, populations, diseases, or research questions that particularly interest you."
+                          value={interests}
+                          onChange={(e) => setInterests(e.target.value)}
+                          required
+                        />
+                      </div>
+                    </div>
+                  </fieldset>
+
+                  <fieldset className="af-fieldset">
+                    <h3>Motivation</h3>
+                    <div className="af-row full">
+                      <div className="af-field">
+                        <label htmlFor="af-motivation">
+                          Why do you want to join the Research Spectrum Research Team?
+                        </label>
+                        <textarea
+                          id="af-motivation"
+                          name="motivation"
+                          className="af-motivation"
+                          placeholder="Tell us about your goals, what you hope to contribute, and what you hope to learn..."
+                          value={motivation}
+                          onChange={(e) => setMotivation(e.target.value)}
+                          required
+                        />
+                      </div>
+                    </div>
+                  </fieldset>
+
+                  <fieldset className="af-fieldset" style={{ marginBottom: 0 }}>
+                    <h3>Availability</h3>
+                    <div className="af-row full">
+                      <div className="af-field">
+                        <label htmlFor="af-availability">
+                          How many hours per week can you dedicate to Research Team projects?
+                        </label>
+                        <select
+                          id="af-availability"
+                          name="availability"
+                          value={weeklyHours}
+                          onChange={(e) =>
+                            setWeeklyHours(e.target.value as ResearchTeamWeeklyHours | '')
+                          }
+                          required
+                        >
+                          <option value="">Select an option</option>
+                          {RESEARCH_TEAM_WEEKLY_HOURS.map((hours) => (
+                            <option key={hours} value={hours}>
+                              {hours}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    </div>
+
+                    <div className="af-checkbox">
+                      <input
+                        type="checkbox"
+                        id="af-agree"
+                        name="agreement"
+                        checked={acknowledgement}
+                        onChange={(e) => setAcknowledgement(e.target.checked)}
+                      />
+                      <label htmlFor="af-agree">
+                        I understand that eligibility does not guarantee selection and that Research
+                        Spectrum may accept or reject applications based on project needs and
+                        evaluation criteria.
+                      </label>
+                    </div>
+                  </fieldset>
+
+                  {error ? (
+                    <p className="af-error" id="rt-apply-error" role="alert">
+                      {error}
+                    </p>
+                  ) : null}
+
+                  <div className="af-submit-row">
+                    <button
+                      type="submit"
+                      className={`btn btn-primary${!canSubmit || submitting ? ' btn-disabled' : ''}`}
+                      disabled={!canSubmit || submitting}
+                    >
+                      {submitting ? 'Submitting…' : 'Submit Application'}
+                      {!submitting ? <ArrowIcon /> : null}
+                    </button>
+                    <Link to="/research-team" className="btn btn-ghost">
+                      Cancel
+                    </Link>
+                  </div>
+                </form>
+              ) : null}
+            </div>
+
+            <aside className="af-side">
+              <div className="rt-hero-card reveal">
+                <h3>Your Status</h3>
+                <div className="rt-status-badge rtb-eligible" id="art-status-badge">
+                  <CheckBadgeIcon />
+                  Eligible To Apply
+                </div>
+                <p className="rt-side-desc" id="art-status-desc">
+                  You&apos;ve completed all four Research Spectrum certificates: Research
+                  Methodology, Statistics &amp; SPSS, Scientific Writing, and Systematic Reviews
+                  &amp; Meta-Analysis.
+                </p>
               </div>
-            </form>
-          ) : null}
+              <div className="rt-card reveal">
+                <div className="rc-icon">
+                  <ClockIcon />
+                </div>
+                <h3>What Happens Next?</h3>
+                <p>
+                  Once submitted, your application status will update to <strong>Submitted</strong>{' '}
+                  on the Research Team page. Applications are reviewed on a rolling basis — you&apos;ll
+                  be notified of any status changes (Under Review, Interview, Accepted, or Not
+                  Selected) right there.
+                </p>
+              </div>
+            </aside>
+          </div>
         </div>
       </section>
     </div>

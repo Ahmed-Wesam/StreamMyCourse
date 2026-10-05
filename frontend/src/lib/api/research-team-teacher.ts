@@ -15,6 +15,7 @@ import type {
 
 export type AdminResearchTeamApplication = ResearchTeamApplication & {
   userSub: string
+  researchInterestTags: string[]
 }
 
 type SetCourseResearchTeamRequirementResponse = {
@@ -41,6 +42,9 @@ function normalizeAdminApplication(row: unknown): AdminResearchTeamApplication |
   if (!id) return null
   const researchAreas = Array.isArray(record.researchAreas)
     ? record.researchAreas.filter((item): item is string => typeof item === 'string')
+    : []
+  const researchInterestTags = Array.isArray(record.researchInterestTags)
+    ? record.researchInterestTags.filter((item): item is string => typeof item === 'string')
     : []
   return {
     id,
@@ -70,6 +74,7 @@ function normalizeAdminApplication(row: unknown): AdminResearchTeamApplication |
         ? record.sysReviewExperience
         : 'None',
     researchAreas,
+    researchInterestTags,
     interests: typeof record.interests === 'string' ? record.interests : '',
     motivation: typeof record.motivation === 'string' ? record.motivation : '',
     weeklyHours:

@@ -52,13 +52,7 @@ export function Reveal({ children, className }: RevealProps) {
   return (
     <div
       ref={ref}
-      className={[
-        'opacity-0 translate-y-7 transition duration-700 ease-rs',
-        visible ? 'in !opacity-100 !translate-y-0' : null,
-        className,
-      ]
-        .filter(Boolean)
-        .join(' ')}
+      className={['reveal', visible ? 'in' : null, className].filter(Boolean).join(' ')}
     >
       {children}
     </div>

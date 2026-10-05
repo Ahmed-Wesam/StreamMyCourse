@@ -62,6 +62,7 @@ class ApplicationJson(TypedDict):
 
 class AdminApplicationJson(ApplicationJson):
     userSub: str
+    researchInterestTags: List[str]
 
 
 class MeResearchTeamResponse(TypedDict):
@@ -209,4 +210,8 @@ def application_to_json(row: ApplicationRow) -> ApplicationJson:
 
 def application_to_admin_json(row: ApplicationRow) -> AdminApplicationJson:
     base = application_to_json(row)
-    return {**base, "userSub": row.user_sub}  # type: ignore[return-value]
+    return {
+        **base,
+        "userSub": row.user_sub,
+        "researchInterestTags": list(row.research_interest_tags),
+    }  # type: ignore[return-value]

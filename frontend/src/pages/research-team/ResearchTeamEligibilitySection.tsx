@@ -1,107 +1,117 @@
-import { BookOpen, Info } from 'lucide-react'
+import type { ReactNode } from 'react'
 
-import { Button } from '../../components/ui/Button'
-import { Card } from '../../components/ui/Card'
-import { Reveal } from '../../components/ui/Reveal'
-import { SectionHeader } from '../../components/ui/SectionHeader'
-import type { ResearchTeamRequiredCourse } from '../../lib/api/public-research-team'
-import { researchTeamEligibility } from '../../lib/marketing/researchTeamCopy'
+import { CheckIcon, RtIcon } from './rtIcon'
 
-type ResearchTeamEligibilitySectionProps = {
-  courses: ResearchTeamRequiredCourse[] | null
-  loading?: boolean
-  error?: string | null
+type ResearchTeamEligibilityCourse = {
+  id: string
+  title: string
+  certified: boolean
 }
 
-export function ResearchTeamEligibilitySection({
-  courses,
-  loading = false,
-  error = null,
-}: ResearchTeamEligibilitySectionProps) {
-  const showEmpty = !loading && !error && courses !== null && courses.length === 0
-  const showCourses = !loading && !error && courses !== null && courses.length > 0
+function BookIcon() {
+  return (
+    <RtIcon>
+      <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" />
+      <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2Z" />
+    </RtIcon>
+  )
+}
+
+function iconFor(title: string): ReactNode {
+  const name = title.toLowerCase()
+  if (name.includes('statistic')) {
+    return (
+      <RtIcon>
+        <path d="M3 3v18h18" />
+        <rect x="7" y="13" width="3" height="5" rx="1" />
+        <rect x="12" y="9" width="3" height="9" rx="1" />
+        <rect x="17" y="5" width="3" height="13" rx="1" />
+      </RtIcon>
+    )
+  }
+  if (name.includes('writing')) {
+    return (
+      <RtIcon>
+        <path d="M12 20h9" />
+        <path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z" />
+      </RtIcon>
+    )
+  }
+  if (name.includes('systematic') || name.includes('meta')) {
+    return (
+      <RtIcon>
+        <circle cx="11" cy="11" r="8" />
+        <line x1="21" y1="21" x2="16.65" y2="16.65" />
+      </RtIcon>
+    )
+  }
+  return <BookIcon />
+}
+
+type ResearchTeamEligibilitySectionProps = {
+  courses: ResearchTeamEligibilityCourse[]
+}
+
+export function ResearchTeamEligibilitySection({ courses }: ResearchTeamEligibilitySectionProps) {
+  if (courses.length === 0) return null
 
   return (
-    <section id="eligibility" className="scroll-mt-24 bg-rs-sky-2/40 px-5 py-[68px] sm:px-7 sm:py-24">
-      <div className="mx-auto max-w-wrap">
-        <div className="mx-auto mb-10 max-w-[900px] sm:mb-14">
-          <Reveal>
-            <SectionHeader
-              kicker={researchTeamEligibility.kicker}
-              title={researchTeamEligibility.title}
-              lead={researchTeamEligibility.lead}
-            />
-          </Reveal>
+    <section className="sec sec-tight" id="eligibility">
+      <div className="wrap">
+        <div className="sec-head">
+          <span className="kicker reveal" id="rt-elig-sec-kicker">
+            Before You Apply
+          </span>
+          <h2 className="title reveal" data-d="1" id="rt-elig-sec-h2">
+            Eligibility Requirements
+          </h2>
+          <p className="lead reveal" data-d="2" id="rt-elig-sec-lead">
+            Complete all four Research Spectrum courses to unlock the application.
+          </p>
         </div>
-
-        {loading ? (
-          <p className="mx-auto max-w-[900px] text-center text-sm text-rs-body">
-            Loading requirements…
-          </p>
-        ) : null}
-
-        {error ? (
-          <p className="mx-auto max-w-[900px] text-center text-sm font-semibold text-[#b91c1c]">
-            {error}
-          </p>
-        ) : null}
-
-        {showEmpty ? (
-          <Reveal className="mx-auto max-w-[900px]">
-            <Card
-              className="rounded-rs px-6 py-5 text-center shadow-rs-sm"
-              data-testid="research-team-applications-closed"
+        <div className="rt-req-grid">
+          {courses.map((course, index) => (
+            <div
+              className={course.certified ? 'rt-req-card reveal completed' : 'rt-req-card reveal'}
+              data-d={String((index % 4) + 1)}
+              key={course.id}
             >
-              <p className="text-sm font-semibold text-rs-ink">
-                Applications are not open yet. Required courses will appear here when available.
-              </p>
-            </Card>
-          </Reveal>
-        ) : null}
-
-        {showCourses ? (
-          <div className="mx-auto grid max-w-[900px] grid-cols-1 gap-4 sm:grid-cols-2">
-            {courses.map((course) => (
-              <Reveal key={course.id}>
-                <Card
-                  className="rounded-rs px-6 py-5 shadow-rs-sm"
-                  data-testid="research-team-required-course"
-                >
-                  <div className="mb-3 flex size-11 items-center justify-center rounded-[13px] border border-[#e2ebff] bg-rs-grad-soft text-rs-blue">
-                    <BookOpen aria-hidden className="size-5" strokeWidth={2} />
-                  </div>
-                  <h3 className="text-base font-extrabold tracking-tight text-rs-ink">
-                    {course.title}
-                  </h3>
-                </Card>
-              </Reveal>
-            ))}
-          </div>
-        ) : null}
-
-        {showCourses ? (
-          <Reveal className="mx-auto mt-6 max-w-[900px]">
-            <Card className="rounded-rs px-6 py-5 shadow-rs-sm">
-              <p className="text-sm font-semibold text-rs-ink">
-                {researchTeamEligibility.certificateNote}
-              </p>
-            </Card>
-          </Reveal>
-        ) : null}
-
-        <Reveal className="mx-auto mt-5 max-w-[900px]">
-          <div className="flex items-start gap-2.5 rounded-rs border border-rs-line-2 bg-white px-5 py-4 text-sm leading-relaxed text-rs-body">
-            <Info aria-hidden className="mt-0.5 size-4 shrink-0 text-rs-blue" strokeWidth={2} />
-            {researchTeamEligibility.note}
-          </div>
-        </Reveal>
-
-        <div className="mt-8 text-center">
-          <Reveal>
-            <Button to="/courses" arrow>
-              {researchTeamEligibility.primaryCta}
-            </Button>
-          </Reveal>
+              <div className="req-top">
+                <div className="req-icon">{iconFor(course.title)}</div>
+                {course.certified ? (
+                  <span className="req-status completed">
+                    <CheckIcon /> Completed
+                  </span>
+                ) : (
+                  <span className="req-status pending">Not Yet Completed</span>
+                )}
+              </div>
+              <h3 data-testid="research-team-required-course">{course.title}</h3>
+              <div className="rt-req-prog">
+                <i style={{ width: course.certified ? '100%' : '0%' }} />
+              </div>
+              {course.certified ? (
+                <div className="rt-req-cert earned">
+                  <CheckIcon /> Certificate Earned
+                </div>
+              ) : (
+                <div className="rt-req-cert not-earned">
+                  <RtIcon strokeWidth="1.5">
+                    <circle cx="12" cy="12" r="9" />
+                  </RtIcon>
+                  Certificate Not Yet Earned
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+        <div className="rt-elig-note reveal" data-d="2" id="rt-elig-note">
+          <RtIcon strokeWidth="2">
+            <circle cx="12" cy="12" r="10" />
+            <path d="M12 16v-4M12 8h.01" />
+          </RtIcon>
+          Eligibility does not guarantee acceptance. Selection considers interviews, course
+          performance, assignments, English proficiency, and research skills.
         </div>
       </div>
     </section>

@@ -1,0 +1,1135 @@
+{
+  "teacherEmail": "ci-rds-verify@noreply.local",
+  "studentEmail": "ci-student@noreply.local",
+  "igcseTitle": "IGCSE Computer Science",
+  "progressLessonCount": 3,
+  "certificate": {
+    "courseTitle": "Research Methodology",
+    "suffix": "F00DCAFE01",
+    "instructorName": "Dr. Bahaa Aburayya",
+    "instructorTitle": "Founder & Instructor, Research Spectrum",
+    "fallbackStudentName": "CI Student"
+  },
+  "purchase": {
+    "environment": "prod",
+    "productType": "bundle",
+    "status": "paid",
+    "provider": "paytabs",
+    "providerTranRef": "rs16-seed-ci-student"
+  },
+  "courses": [
+    {
+      "title": "Research Methodology",
+      "description": "Learn to design rigorous, ethical research studies from the ground up — moving from a research question to a complete, runnable protocol.",
+      "priceAmountMinor": 5000,
+      "status": "PUBLISHED",
+      "certificateCode": "16A001",
+      "pageContent": {
+        "problem": {
+          "heading": "Why Most Research Projects Fail Before They Start",
+          "lead": "Many research projects struggle because the foundation is weak long before data collection begins.",
+          "items": [
+            "No clear research question",
+            "Choosing the wrong study design",
+            "Poor sampling methods",
+            "Unclear variables",
+            "Weak methodology sections",
+            "Ethical and protocol issues"
+          ],
+          "calloutTitle": "Stop Guessing How Research Is Done",
+          "calloutBody": "Learn a practical framework for designing publishable research studies from start to finish — so every decision, from your question to your protocol, is deliberate and defensible."
+        },
+        "outcomes": {
+          "heading": "What You Will Be Able To Do",
+          "lead": "By the end of this course, you will understand how to design and structure a complete research project from idea to protocol.",
+          "items": [
+            "Formulate research questions",
+            "Develop study objectives",
+            "Select the correct study design",
+            "Define variables correctly",
+            "Develop data collection tools",
+            "Write a complete methodology section"
+          ]
+        },
+        "curriculumLead": "Twelve structured modules that take you from your first research idea to a complete, executable study protocol.",
+        "inside": {
+          "heading": "Research Concepts Covered",
+          "lead": "Master the core concepts that underpin high-quality healthcare research.",
+          "items": [
+            "Research Process",
+            "Literature Review",
+            "Research Questions",
+            "Hypothesis Development",
+            "Variables",
+            "Operational Definitions",
+            "Study Designs",
+            "Sampling",
+            "Sample Size Concepts",
+            "Bias",
+            "Confounding",
+            "Validity",
+            "Reliability",
+            "Ethics",
+            "Data Collection",
+            "Data Management",
+            "Protocol Development",
+            "IRB Basics"
+          ]
+        },
+        "handsOn": {
+          "heading": "Design Your Own Research Project",
+          "lead": "Build your own research project as you progress through the course. By the end, you'll have a complete study framework ready for implementation — not just notes, but a real plan you can act on.",
+          "cards": [
+            {
+              "title": "Develop Your Own Research Question",
+              "body": "Turn a clinical problem or knowledge gap into a clear, answerable research question."
+            },
+            {
+              "title": "Build Your Own Methodology",
+              "body": "Choose the right design, sampling, and variables and assemble them into a coherent method."
+            },
+            {
+              "title": "Create Data Collection Tools",
+              "body": "Design questionnaires, forms, and case report tools that capture clean, usable data."
+            },
+            {
+              "title": "Prepare For Data Analysis",
+              "body": "Set up your variables and plan so your project flows smoothly into the analysis stage."
+            }
+          ]
+        },
+        "highlights": {
+          "heading": "From Research Idea to Study Protocol",
+          "lead": "Learn how to transform an idea into a structured and executable research project — and see how every piece fits into one complete protocol.",
+          "items": [
+            "Research Question Development",
+            "Study Design Selection",
+            "Sampling Strategy",
+            "Methodology Writing",
+            "Ethics Preparation",
+            "Protocol Development"
+          ],
+          "closingNote": "By the end, you'll see exactly how every piece fits together into a complete, implementation-ready research project."
+        },
+        "assessment": {
+          "heading": "Assignments & Certification",
+          "lead": "Learning is reinforced through assessments and a capstone protocol project — and earns you a verifiable certificate.",
+          "steps": [
+            {
+              "title": "Complete all modules",
+              "body": "Work through every module and its lessons at your own pace."
+            },
+            {
+              "title": "Pass module quizzes",
+              "body": "Each module includes a quiz — you must score at least 70%."
+            },
+            {
+              "title": "Submit the final project",
+              "body": "The course concludes with a complete research protocol as your final assessment."
+            },
+            {
+              "title": "Earn your certificate",
+              "body": "Achieve the required passing score to receive your Certificate of Completion."
+            }
+          ]
+        },
+        "audience": {
+          "heading": "Who This Course Is For",
+          "lead": "Built for healthcare professionals who want to design and run their own research projects.",
+          "items": [
+            "Medical Students",
+            "Residents",
+            "Researchers",
+            "Healthcare Professionals",
+            "Beginners Interested In Research",
+            "Individuals Planning Their Own Research Projects"
+          ]
+        },
+        "enrollCta": {
+          "heading": "Build Research Projects With Confidence",
+          "body": "Move from a research idea to a complete, publication-ready study protocol—without guessing what comes next.",
+          "extraLine": "From your first research question to a protocol ready for ethics approval."
+        },
+        "subtitle": "Learn how to turn a research idea into a complete study protocol ready for implementation, data collection, and publication.",
+        "level": "Beginner",
+        "estimatedHours": 15,
+        "catalogSkills": [
+          "Research Questions",
+          "Study Design",
+          "Protocol Development",
+          "Sampling Methods",
+          "Research Ethics",
+          "Literature Review"
+        ]
+      },
+      "modules": [
+        {
+          "title": "Introduction to Medical Research",
+          "description": "",
+          "lessons": [
+            "What Is Research?",
+            "Why Research Matters",
+            "Types of Medical Research",
+            "The Research Workflow",
+            "Evidence-Based Medicine",
+            "Common Research Myths"
+          ]
+        },
+        {
+          "title": "Finding Research Ideas",
+          "description": "",
+          "lessons": [
+            "Sources of Research Ideas",
+            "Identifying Knowledge Gaps",
+            "Clinical Questions",
+            "Research Prioritization",
+            "Feasibility Assessment",
+            "Turning Problems Into Projects"
+          ]
+        },
+        {
+          "title": "Literature Review",
+          "description": "",
+          "lessons": [
+            "Database Searching",
+            "PubMed Fundamentals",
+            "Search Strategies",
+            "Boolean Operators",
+            "Reference Management",
+            "Organizing Literature"
+          ]
+        },
+        {
+          "title": "Research Questions & Hypotheses",
+          "description": "",
+          "lessons": [
+            "Research Questions",
+            "PICO Framework",
+            "Study Objectives",
+            "Primary & Secondary Outcomes",
+            "Hypothesis Generation",
+            "Refining Research Questions"
+          ]
+        },
+        {
+          "title": "Study Designs",
+          "description": "This module helps you understand when and why to use cross-sectional, cohort, case-control, randomized controlled trial, diagnostic, and ecological study designs. Selecting the appropriate study design is one of the most important decisions in any research project.",
+          "lessons": [
+            "Cross-Sectional Studies",
+            "Case-Control Studies",
+            "Cohort Studies",
+            "Randomized Controlled Trials",
+            "Diagnostic Studies",
+            "Ecological Studies",
+            "Strengths & Limitations of Each Design",
+            "Selecting The Appropriate Design"
+          ]
+        },
+        {
+          "title": "Variables & Measurements",
+          "description": "",
+          "lessons": [
+            "Independent Variables",
+            "Dependent Variables",
+            "Confounders",
+            "Operational Definitions",
+            "Measurement Scales",
+            "Data Types",
+            "Measurement Errors"
+          ]
+        },
+        {
+          "title": "Sampling",
+          "description": "",
+          "lessons": [
+            "Sampling Methods",
+            "Probability Sampling",
+            "Non-Probability Sampling",
+            "Inclusion Criteria",
+            "Exclusion Criteria",
+            "Recruitment Strategies",
+            "Sample Size Concepts"
+          ]
+        },
+        {
+          "title": "Bias & Validity",
+          "description": "",
+          "lessons": [
+            "Selection Bias",
+            "Information Bias",
+            "Recall Bias",
+            "Confounding",
+            "Internal Validity",
+            "External Validity",
+            "Strategies To Minimize Bias"
+          ]
+        },
+        {
+          "title": "Ethics & Approvals",
+          "description": "",
+          "lessons": [
+            "Research Ethics",
+            "IRB Fundamentals",
+            "Informed Consent",
+            "Confidentiality",
+            "Data Protection",
+            "Ethical Principles In Medical Research"
+          ]
+        },
+        {
+          "title": "Data Collection",
+          "description": "",
+          "lessons": [
+            "Surveys",
+            "Questionnaires",
+            "Case Report Forms",
+            "Data Collection Tools",
+            "Data Quality Control",
+            "Data Management Fundamentals"
+          ]
+        },
+        {
+          "title": "Writing The Methodology Section",
+          "description": "",
+          "lessons": [
+            "Structure Of A Methodology Section",
+            "Common Mistakes",
+            "Reporting Guidelines",
+            "Reproducibility",
+            "Writing Clearly & Precisely"
+          ]
+        },
+        {
+          "title": "Protocol Development",
+          "description": "",
+          "lessons": [
+            "Putting Everything Together",
+            "Developing A Research Protocol",
+            "Protocol Review",
+            "Final Project",
+            "Preparing For Data Analysis"
+          ]
+        }
+      ]
+    },
+    {
+      "title": "Statistics & SPSS",
+      "description": "Master practical biostatistics and learn how to independently analyze research datasets using SPSS.",
+      "priceAmountMinor": 5000,
+      "status": "PUBLISHED",
+      "certificateCode": "16A002",
+      "pageContent": {
+        "problem": {
+          "heading": "Why Most Researchers Struggle With Statistics",
+          "lead": "If any of these sound familiar, you're not alone — and they're exactly what this course is built to fix.",
+          "items": [
+            "Not knowing which statistical test to choose",
+            "Confusion when reading SPSS output",
+            "Fear of making mistakes in data analysis",
+            "Dependence on statisticians for simple analyses",
+            "Difficulty writing Methods and Results sections",
+            "Lack of confidence when interpreting results"
+          ],
+          "calloutTitle": "Stop Guessing Which Statistical Test To Use",
+          "calloutBody": "Learn a practical framework for choosing the correct analysis, interpreting SPSS output, and reporting your results with confidence — so you can analyze your own research data without relying on anyone else."
+        },
+        "outcomes": {
+          "heading": "What You Will Be Able To Do",
+          "lead": "Learn how to choose the correct statistical test, analyze data in SPSS, interpret results, and write publication-ready Methods and Results sections.",
+          "items": [
+            "Clean and prepare research datasets",
+            "Choose the correct statistical test",
+            "Perform statistical analyses using SPSS",
+            "Interpret SPSS output confidently",
+            "Write publication-ready Methods and Results sections",
+            "Independently analyze your own research data"
+          ]
+        },
+        "curriculumLead": "Ten structured modules that take you from the basics of SPSS to writing publication-ready results.",
+        "inside": {
+          "heading": "Analyses Covered",
+          "lead": "Learn the statistical techniques most commonly used in healthcare research.",
+          "items": [
+            "Descriptive Statistics",
+            "Independent Samples t-Test",
+            "Paired Samples t-Test",
+            "Mann-Whitney U Test",
+            "Wilcoxon Signed-Rank Test",
+            "One-Way ANOVA",
+            "Kruskal-Wallis Test",
+            "Chi-Square Test",
+            "Fisher's Exact Test",
+            "Pearson Correlation",
+            "Spearman Correlation",
+            "Linear Regression",
+            "Multiple Linear Regression",
+            "Logistic Regression",
+            "Post-Hoc Analysis",
+            "Effect Sizes",
+            "Confidence Intervals",
+            "Reliability Analysis",
+            "ROC Curve Analysis",
+            "Sample Size Concepts",
+            "Multicollinearity Assessment"
+          ]
+        },
+        "handsOn": {
+          "heading": "Analyze Your Own Dataset",
+          "lead": "Apply what you learn to real research projects. Throughout the course you can work on your own datasets or follow along with the provided research datasets — the course is built around practical application, not memorization.",
+          "cards": [
+            {
+              "title": "Use Your Own Research Data",
+              "body": "Bring your own dataset and analyze it step by step as you progress through the course."
+            },
+            {
+              "title": "Follow Along With Provided Datasets",
+              "body": "Prefer to practice first? Work through realistic research datasets included with the course."
+            },
+            {
+              "title": "Real Research Applications",
+              "body": "Every technique is taught in the context of genuine clinical and research scenarios."
+            },
+            {
+              "title": "Practical Decision-Making",
+              "body": "Learn how to choose, justify, and defend the right analysis for any research question."
+            }
+          ],
+          "closingNote": "You won't simply learn how statistical tests work — you'll learn how to use them on realistic research datasets, with worked examples you can apply to your own projects immediately."
+        },
+        "highlights": {
+          "heading": "From SPSS Output to Publication-Ready Results",
+          "lead": "Learn how to transform statistical analyses into publishable scientific writing. Most statistics courses stop after teaching software and tests — this course goes further.",
+          "items": [
+            "Interpret Results Correctly",
+            "Create Publication-Ready Tables",
+            "Present Statistical Findings Clearly",
+            "Write Results Sections",
+            "Avoid Common Reporting Mistakes",
+            "Meet Journal Expectations"
+          ],
+          "closingNote": "The goal isn't merely running analyses — it's communicating your results effectively in scientific manuscripts."
+        },
+        "assessment": {
+          "heading": "Assignments & Certification",
+          "lead": "Learning is reinforced through assessments and a capstone project — and earns you a verifiable certificate.",
+          "steps": [
+            {
+              "title": "Complete all modules",
+              "body": "Work through every module and its lessons at your own pace."
+            },
+            {
+              "title": "Pass module assessments",
+              "body": "Each module contains assessments — you must score at least 70%."
+            },
+            {
+              "title": "Submit the final project",
+              "body": "The course concludes with an independent dataset analysis project."
+            },
+            {
+              "title": "Earn your certificate",
+              "body": "Achieve the required passing score to receive your Certificate of Completion."
+            }
+          ]
+        },
+        "audience": {
+          "heading": "Who This Course Is For",
+          "lead": "Built for healthcare professionals who want to analyze their own research data with confidence.",
+          "items": [
+            "Medical Students",
+            "Residents",
+            "Researchers",
+            "Healthcare Professionals",
+            "Beginners in Statistics",
+            "Individuals Conducting Research Projects"
+          ]
+        },
+        "enrollCta": {
+          "heading": "Become Independent in Statistical Analysis",
+          "body": "Learn how to choose the correct statistical test, analyze data in SPSS, interpret results confidently, and write publication-ready Methods and Results sections.",
+          "extraLine": "From SPSS output to publication-ready results."
+        },
+        "subtitle": "Learn how to independently analyze research data, choose the correct statistical tests, interpret SPSS output, and write publication-ready Methods and Results sections.",
+        "level": "Beginner–Intermediate",
+        "estimatedHours": 20,
+        "catalogSkills": [
+          "Data Cleaning",
+          "Statistical Testing",
+          "Regression Analysis",
+          "SPSS Interpretation",
+          "Results Writing",
+          "Data Visualization"
+        ]
+      },
+      "modules": [
+        {
+          "title": "Introduction to Research Statistics & SPSS",
+          "description": "",
+          "lessons": [
+            "Welcome & Course Roadmap",
+            "What Statistics Actually Does in Research",
+            "Installing and Navigating SPSS",
+            "Understanding Datasets",
+            "Variables and Measurement Scales",
+            "Types of Data",
+            "Common Statistical Terminology",
+            "Research Questions and Statistical Thinking"
+          ]
+        },
+        {
+          "title": "Data Management & Data Cleaning",
+          "description": "",
+          "lessons": [
+            "Creating a Dataset",
+            "Data Entry Best Practices",
+            "Variable Coding",
+            "Data Validation",
+            "Identifying Errors",
+            "Missing Data",
+            "Outliers",
+            "Data Cleaning Workflow",
+            "Transforming Variables",
+            "Recoding Variables"
+          ]
+        },
+        {
+          "title": "Descriptive Statistics",
+          "description": "",
+          "lessons": [
+            "Frequency Tables",
+            "Percentages",
+            "Measures of Central Tendency",
+            "Measures of Dispersion",
+            "Normal Distribution",
+            "Histograms",
+            "Boxplots",
+            "Reporting Descriptive Statistics"
+          ]
+        },
+        {
+          "title": "Choosing the Correct Statistical Test",
+          "description": "",
+          "lessons": [
+            "Building a Statistical Decision Framework",
+            "Independent vs Paired Data",
+            "Categorical vs Continuous Variables",
+            "Parametric vs Nonparametric Tests",
+            "Statistical Test Selection Flowchart",
+            "Common Mistakes in Test Selection"
+          ]
+        },
+        {
+          "title": "Comparing Groups",
+          "description": "",
+          "lessons": [
+            "Independent Samples t-Test",
+            "Paired Samples t-Test",
+            "Mann-Whitney U Test",
+            "Wilcoxon Signed Rank Test",
+            "One-Way ANOVA",
+            "Kruskal-Wallis Test",
+            "Post-Hoc Analysis",
+            "Reporting Group Comparisons"
+          ]
+        },
+        {
+          "title": "Association Analysis",
+          "description": "",
+          "lessons": [
+            "Chi-Square Test",
+            "Fisher's Exact Test",
+            "Correlation Analysis",
+            "Pearson Correlation",
+            "Spearman Correlation",
+            "Interpreting Associations",
+            "Reporting Association Results"
+          ]
+        },
+        {
+          "title": "Regression Analysis",
+          "description": "",
+          "lessons": [
+            "Introduction to Regression",
+            "Simple Linear Regression",
+            "Multiple Linear Regression",
+            "Logistic Regression",
+            "Assumptions of Regression",
+            "Interpreting Regression Output",
+            "Reporting Regression Results"
+          ]
+        },
+        {
+          "title": "Writing Methods & Results",
+          "description": "",
+          "lessons": [
+            "Writing the Statistical Analysis Section",
+            "Reporting Descriptive Statistics",
+            "Reporting Group Comparisons",
+            "Reporting Associations",
+            "Reporting Regression Models",
+            "Creating Publication Tables",
+            "Common Reporting Errors"
+          ]
+        },
+        {
+          "title": "Real-World Applications",
+          "description": "",
+          "lessons": [
+            "Cross-Sectional Study Example",
+            "Retrospective Study Example",
+            "Clinical Research Example",
+            "Database Research Example",
+            "Complete Start-to-Finish Analysis"
+          ]
+        },
+        {
+          "title": "Final Project",
+          "description": "",
+          "lessons": [
+            "Independent Dataset Analysis",
+            "Statistical Test Selection",
+            "Interpretation",
+            "Writing Results",
+            "Final Submission"
+          ]
+        }
+      ]
+    },
+    {
+      "title": "Scientific Writing",
+      "description": "Turn your results into a clear, publishable manuscript and write every section of a scientific paper with confidence.",
+      "priceAmountMinor": 5000,
+      "status": "PUBLISHED",
+      "certificateCode": "16A003",
+      "pageContent": {
+        "problem": {
+          "heading": "Why So Many Research Projects Never Become Publications",
+          "lead": "Many researchers successfully complete studies but struggle when it is time to write the manuscript.",
+          "items": [
+            "Not knowing where to start",
+            "Difficulty writing introductions",
+            "Weak methodology descriptions",
+            "Poor results reporting",
+            "Confusing discussions",
+            "Journal rejection due to writing quality"
+          ],
+          "calloutTitle": "Stop Staring At A Blank Document",
+          "calloutBody": "Learn a practical framework for writing scientific manuscripts from title page to submission — so every section has a clear structure and a clear purpose."
+        },
+        "outcomes": {
+          "heading": "What You Will Be Able To Do",
+          "lead": "By the end of this course, you will be able to independently write and prepare scientific manuscripts for publication.",
+          "items": [
+            "Write a complete scientific manuscript",
+            "Structure every section correctly",
+            "Report results professionally",
+            "Create publication-ready tables",
+            "Respond to reviewer comments",
+            "Submit manuscripts with confidence"
+          ]
+        },
+        "curriculumLead": "Twelve structured modules that take you from a blank document to a complete, submission-ready manuscript.",
+        "inside": {
+          "heading": "Writing Skills Covered",
+          "lead": "Master the essential skills required to write and publish scientific papers.",
+          "items": [
+            "Manuscript Structure",
+            "Title Writing",
+            "Abstract Writing",
+            "Introduction Writing",
+            "Literature Integration",
+            "Methods Writing",
+            "Results Writing",
+            "Discussion Writing",
+            "Conclusion Writing",
+            "Table Construction",
+            "Figure Preparation",
+            "Reference Management",
+            "Journal Selection",
+            "Cover Letters",
+            "Reviewer Responses",
+            "Submission Process",
+            "Reporting Guidelines",
+            "Publication Ethics"
+          ]
+        },
+        "handsOn": {
+          "heading": "Build A Publication-Ready Manuscript",
+          "lead": "Throughout the course, you can apply concepts directly to your own research project or follow along using provided examples. By the end, you'll have a complete manuscript draft suitable for journal submission after final refinement.",
+          "cards": [
+            {
+              "title": "Build Your Own Introduction",
+              "body": "Frame your background, establish the gap, and state clear objectives."
+            },
+            {
+              "title": "Write Your Own Methods",
+              "body": "Describe your design, participants, and analysis with reproducible precision."
+            },
+            {
+              "title": "Report Your Own Results",
+              "body": "Present findings clearly in text, tables, and figures — without interpretation."
+            },
+            {
+              "title": "Draft Your Own Discussion",
+              "body": "Interpret your findings, compare with the literature, and frame the implications."
+            }
+          ]
+        },
+        "highlights": {
+          "heading": "Your Publication Journey",
+          "lead": "See how individual writing skills come together — from finished research results to a submitted, publication-ready manuscript.",
+          "items": [
+            "Research Results",
+            "Methods & Results Writing",
+            "Discussion Development",
+            "Tables & Figures",
+            "Journal Selection",
+            "Submission",
+            "Peer Review",
+            "Publication"
+          ],
+          "closingNote": "By the end, you'll know how to carry a project from finished results all the way to a submitted, publication-ready manuscript."
+        },
+        "assessment": {
+          "heading": "Assignments & Certification",
+          "lead": "Learning is reinforced through assessments and a capstone manuscript project — and earns you a verifiable certificate.",
+          "steps": [
+            {
+              "title": "Complete all modules",
+              "body": "Work through every module and its lessons at your own pace."
+            },
+            {
+              "title": "Pass module quizzes",
+              "body": "Each module includes a quiz — you must score at least 70%."
+            },
+            {
+              "title": "Submit the final project",
+              "body": "The course concludes with a complete manuscript as your final assessment."
+            },
+            {
+              "title": "Earn your certificate",
+              "body": "Achieve the required passing score to receive your Certificate of Completion."
+            }
+          ]
+        },
+        "audience": {
+          "heading": "Who This Course Is For",
+          "lead": "Built for healthcare professionals who want to turn their research into published manuscripts.",
+          "items": [
+            "Medical Students",
+            "Residents",
+            "Researchers",
+            "Healthcare Professionals",
+            "Anyone Preparing A Scientific Manuscript",
+            "Anyone Planning To Publish Research"
+          ]
+        },
+        "enrollCta": {
+          "heading": "Publish Research With Confidence",
+          "body": "Master manuscript writing, journal submission, reviewer responses, and the path from research findings to publication.",
+          "extraLine": "Turn unfinished drafts into published papers with confidence."
+        },
+        "subtitle": "Learn how to transform research findings into clear, professional, publication-ready manuscripts.",
+        "level": "Beginner–Intermediate",
+        "estimatedHours": 12,
+        "catalogSkills": [
+          "Manuscript Writing",
+          "Abstract Development",
+          "Results Presentation",
+          "Journal Submission",
+          "Peer Review Response",
+          "Reference Management"
+        ]
+      },
+      "modules": [
+        {
+          "title": "Introduction to Scientific Writing",
+          "description": "",
+          "lessons": [
+            "Why Scientific Writing Matters",
+            "Common Misconceptions",
+            "Characteristics of Good Writing",
+            "The Publication Process"
+          ]
+        },
+        {
+          "title": "Understanding Manuscript Structure",
+          "description": "",
+          "lessons": [
+            "IMRAD Structure",
+            "Journal Expectations",
+            "Reporting Guidelines",
+            "Writing Workflow"
+          ]
+        },
+        {
+          "title": "Writing Effective Titles & Abstracts",
+          "description": "",
+          "lessons": [
+            "Titles",
+            "Keywords",
+            "Structured Abstracts",
+            "Common Mistakes"
+          ]
+        },
+        {
+          "title": "Writing The Introduction",
+          "description": "",
+          "lessons": [
+            "Background",
+            "Literature Review",
+            "Identifying Gaps",
+            "Building Rationale",
+            "Study Objectives"
+          ]
+        },
+        {
+          "title": "Writing The Methods Section",
+          "description": "The Methods section is where most manuscripts are won or lost in review. This module shows you how to describe your design, participants, variables, and analysis with the precision and reproducibility journals expect.",
+          "lessons": [
+            "Study Design Description",
+            "Participants",
+            "Variables",
+            "Statistical Analysis",
+            "Ethical Approval",
+            "Reproducibility"
+          ]
+        },
+        {
+          "title": "Writing The Results Section",
+          "description": "",
+          "lessons": [
+            "Descriptive Results",
+            "Tables",
+            "Figures",
+            "Statistical Reporting",
+            "Avoiding Interpretation"
+          ]
+        },
+        {
+          "title": "Writing The Discussion Section",
+          "description": "The Discussion section is where research findings are interpreted, compared with existing literature, and translated into meaningful conclusions. Many manuscripts are weakened by poor discussion writing despite having strong data — this module gives you a practical framework for writing clear, persuasive, and publication-ready discussions.",
+          "lessons": [
+            "Interpreting Findings",
+            "Comparing Literature",
+            "Strengths & Limitations",
+            "Implications",
+            "Future Directions"
+          ]
+        },
+        {
+          "title": "References & Citation Management",
+          "description": "",
+          "lessons": [
+            "Citation Styles",
+            "Reference Managers",
+            "Avoiding Citation Mistakes"
+          ]
+        },
+        {
+          "title": "Journal Selection",
+          "description": "",
+          "lessons": [
+            "Choosing Journals",
+            "Scope Matching",
+            "Predatory Journals",
+            "Impact Factors"
+          ]
+        },
+        {
+          "title": "Submission Preparation",
+          "description": "",
+          "lessons": [
+            "Cover Letters",
+            "Formatting",
+            "Submission Systems",
+            "Common Submission Errors"
+          ]
+        },
+        {
+          "title": "Peer Review & Revisions",
+          "description": "",
+          "lessons": [
+            "Reviewer Comments",
+            "Revision Letters",
+            "Rebuttal Documents",
+            "Resubmission Strategies"
+          ]
+        },
+        {
+          "title": "Final Manuscript Project",
+          "description": "",
+          "lessons": [
+            "Assemble Complete Manuscript",
+            "Final Review",
+            "Publication Readiness Checklist"
+          ]
+        }
+      ]
+    },
+    {
+      "title": "Systematic Reviews & Meta-Analysis",
+      "description": "Plan and complete a systematic review and meta-analysis that meets publication standards, from search to pooled effects.",
+      "priceAmountMinor": 5000,
+      "status": "PUBLISHED",
+      "certificateCode": "16A004",
+      "pageContent": {
+        "problem": {
+          "heading": "Why Most Systematic Reviews Fail",
+          "lead": "Conducting a systematic review requires much more than searching PubMed.",
+          "items": [
+            "Poor search strategies",
+            "Incomplete literature searches",
+            "Screening mistakes",
+            "Weak inclusion criteria",
+            "Incorrect data extraction",
+            "Low-quality reporting"
+          ],
+          "calloutTitle": "Stop Following Random YouTube Tutorials"
+        },
+        "outcomes": {
+          "heading": "What You Will Be Able To Do",
+          "lead": "By the end of this course, you will be able to plan, execute, and publish a complete systematic review and meta-analysis.",
+          "items": [
+            "Develop review questions",
+            "Create search strategies",
+            "Screen studies systematically",
+            "Extract research data",
+            "Assess study quality",
+            "Perform meta-analysis",
+            "Interpret forest plots",
+            "Write publishable systematic reviews",
+            "Develop PRISMA-Compliant Protocols"
+          ]
+        },
+        "curriculumLead": "Twelve structured modules that take you from your review question to a published, PRISMA-compliant evidence synthesis.",
+        "inside": {
+          "heading": "Systematic Review Skills & Tools Covered",
+          "lead": "Master the methods — and the software — that turn a search into a publishable evidence synthesis.",
+          "items": [
+            "PRISMA",
+            "Protocol Development",
+            "Research Questions",
+            "Search Strategies",
+            "PubMed Searching",
+            "Embase Concepts",
+            "Screening",
+            "Eligibility Criteria",
+            "Data Extraction",
+            "Risk of Bias",
+            "Evidence Synthesis",
+            "Forest Plots",
+            "Heterogeneity",
+            "Publication Bias",
+            "Meta-Analysis Concepts",
+            "Review Writing",
+            "PRISMA Reporting",
+            "Journal Submission"
+          ]
+        },
+        "handsOn": {
+          "heading": "Build Your Own Systematic Review",
+          "lead": "Develop your own review topic alongside the lessons. By the end of the course, you'll have a complete systematic review framework ready for execution.",
+          "cards": [
+            {
+              "title": "Develop Your Question",
+              "body": "Frame a focused PICO question with a clear scope and review objective."
+            },
+            {
+              "title": "Build Your Search Strategy",
+              "body": "Combine keywords, MeSH terms, and Boolean logic into a defensible search."
+            },
+            {
+              "title": "Create Screening Workflow",
+              "body": "Set inclusion criteria and run title, abstract, and full-text screening."
+            },
+            {
+              "title": "Prepare Extraction Forms",
+              "body": "Design extraction sheets that capture every variable your review needs."
+            }
+          ]
+        },
+        "highlights": {
+          "heading": "The Complete Review Process",
+          "lead": "Every stage of a systematic review and meta-analysis, end to end.",
+          "items": [
+            "Research Question",
+            "Search Strategy",
+            "Screening",
+            "Data Extraction",
+            "Risk of Bias",
+            "Evidence Synthesis",
+            "Meta-Analysis",
+            "Publication"
+          ]
+        },
+        "assessment": {
+          "heading": "Assignments & Certification",
+          "lead": "Learning is reinforced through assessments and a capstone systematic-review project — and earns you a verifiable certificate.",
+          "steps": [
+            {
+              "title": "Complete all modules",
+              "body": "Work through every module and its lessons at your own pace."
+            },
+            {
+              "title": "Pass module quizzes",
+              "body": "Each module includes a quiz — you must score at least 70%."
+            },
+            {
+              "title": "Submit the final project",
+              "body": "The course concludes with a complete systematic-review framework as your final assessment."
+            },
+            {
+              "title": "Earn your certificate",
+              "body": "Achieve the required passing score to receive your Certificate of Completion."
+            }
+          ]
+        },
+        "audience": {
+          "heading": "Who This Course Is For",
+          "lead": "Built for healthcare professionals who want to synthesize evidence into high-quality, publishable reviews.",
+          "items": [
+            "Medical Students",
+            "Residents",
+            "Researchers",
+            "Healthcare Professionals",
+            "Anyone Interested In Evidence-Based Medicine",
+            "Anyone Planning To Publish Reviews"
+          ]
+        },
+        "enrollCta": {
+          "heading": "Master Evidence Synthesis",
+          "body": "Learn how to develop PRISMA-compliant reviews, search databases systematically, assess risk of bias, understand meta-analysis, and produce publication-ready evidence syntheses.",
+          "extraLine": "From your first research question to your final PRISMA diagram — one course, one complete workflow."
+        },
+        "subtitle": "Learn how to systematically identify, evaluate, synthesize, and publish research evidence using internationally recognized methodologies.",
+        "level": "Intermediate",
+        "estimatedHours": 18,
+        "catalogSkills": [
+          "Search Strategy",
+          "Study Screening",
+          "Data Extraction",
+          "Risk of Bias",
+          "Meta-Analysis",
+          "PRISMA Reporting"
+        ]
+      },
+      "modules": [
+        {
+          "title": "Introduction to Evidence Synthesis",
+          "description": "",
+          "lessons": [
+            "What Is a Systematic Review?",
+            "What Is a Meta-Analysis?",
+            "Types of Evidence Synthesis",
+            "Why Reviews Matter"
+          ]
+        },
+        {
+          "title": "Research Questions",
+          "description": "",
+          "lessons": [
+            "PICO",
+            "Defining Scope",
+            "Review Objectives",
+            "Eligibility Criteria"
+          ]
+        },
+        {
+          "title": "Protocol Development",
+          "description": "",
+          "lessons": [
+            "Planning The Review",
+            "Protocol Structure",
+            "Registration Concepts"
+          ]
+        },
+        {
+          "title": "Database Searching",
+          "description": "",
+          "lessons": [
+            "PubMed",
+            "Search Strings",
+            "Keywords",
+            "MeSH Terms",
+            "Search Optimization"
+          ]
+        },
+        {
+          "title": "Study Screening",
+          "description": "",
+          "lessons": [
+            "Title Screening",
+            "Abstract Screening",
+            "Full-Text Review",
+            "Inclusion Decisions"
+          ]
+        },
+        {
+          "title": "Data Extraction",
+          "description": "",
+          "lessons": [
+            "Extraction Sheets",
+            "Variables",
+            "Outcomes",
+            "Quality Checks"
+          ]
+        },
+        {
+          "title": "Risk of Bias Assessment",
+          "description": "",
+          "lessons": [
+            "Bias Concepts",
+            "Assessment Tools",
+            "Interpreting Quality"
+          ]
+        },
+        {
+          "title": "Introduction to Meta-Analysis",
+          "description": "Many researchers want to learn meta-analysis but struggle because they never fully understand the systematic review process that comes before it. This module introduces the core concepts behind meta-analysis and helps you understand how pooled evidence is generated and interpreted.",
+          "lessons": [
+            "Effect Sizes",
+            "Forest Plots",
+            "Heterogeneity",
+            "Fixed vs Random Effects"
+          ]
+        },
+        {
+          "title": "Interpretation",
+          "description": "",
+          "lessons": [
+            "Clinical Significance",
+            "Statistical Significance",
+            "Reporting Findings"
+          ]
+        },
+        {
+          "title": "PRISMA Reporting",
+          "description": "",
+          "lessons": [
+            "Flow Diagrams",
+            "Reporting Standards",
+            "Transparency"
+          ]
+        },
+        {
+          "title": "Writing The Review",
+          "description": "",
+          "lessons": [
+            "Results Section",
+            "Discussion Section",
+            "Limitations",
+            "Conclusions"
+          ]
+        },
+        {
+          "title": "Final Project",
+          "description": "",
+          "lessons": [
+            "Complete Review Workflow",
+            "Publication Readiness Checklist"
+          ]
+        }
+      ]
+    }
+  ]
+}

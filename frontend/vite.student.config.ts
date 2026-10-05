@@ -20,8 +20,13 @@ export default defineConfig(({ mode, command }) => {
     )
   }
   const proxyTarget = target || 'https://placeholder.invalid'
+  const pkg = JSON.parse(fs.readFileSync(path.join(__dirname, 'package.json'), 'utf8')) as { version?: string }
+  const appVersion = `v${pkg.version ?? '0.0.0'}`
 
   return {
+    define: {
+      'import.meta.env.VITE_APP_VERSION': JSON.stringify(appVersion),
+    },
     // Fast Refresh currently errors in this repo ("can't detect preamble") on Windows.
     // Disable it so local dev servers render reliably.
     plugins: [

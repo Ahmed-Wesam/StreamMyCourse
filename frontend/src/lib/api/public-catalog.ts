@@ -74,7 +74,7 @@ function mapPublishedRow(row: unknown): PublicCatalogCourse | null {
   if (isHttpsUrl(record.thumbnailUrl)) {
     course.thumbnailUrl = record.thumbnailUrl
   }
-  const amountRaw = record.amountMinor ?? record.amount_minor
+  const amountRaw = record.amountMinor ?? record.amount_minor ?? record.priceAmountMinor ?? record.price_amount_minor
   if (typeof amountRaw === 'number' && Number.isFinite(amountRaw) && amountRaw > 0) {
     course.amountMinor = amountRaw
   }

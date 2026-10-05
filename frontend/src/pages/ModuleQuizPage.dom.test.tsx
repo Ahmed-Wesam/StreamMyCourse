@@ -16,6 +16,7 @@ const api = vi.hoisted(() => ({
   listLessons: vi.fn(),
   listCourseModules: vi.fn(),
   getCourseProgress: vi.fn(),
+  getCourse: vi.fn(),
 }))
 
 vi.mock('../lib/api/catalog', async (importOriginal) => {
@@ -27,6 +28,7 @@ vi.mock('../lib/api/catalog', async (importOriginal) => {
       api.getCourseProgress(...args) as ReturnType<typeof mod.getCourseProgress>,
     listCourseModules: (...args: unknown[]) =>
       api.listCourseModules(...args) as ReturnType<typeof mod.listCourseModules>,
+    getCourse: (...args: unknown[]) => api.getCourse(...args) as ReturnType<typeof mod.getCourse>,
   }
 })
 
@@ -124,7 +126,41 @@ function optionKeysInFieldset(fieldset: HTMLElement): string[] {
 function optionLabelsInFieldset(fieldset: HTMLElement): string[] {
   return within(fieldset)
     .getAllByRole('radio')
-    .map((input) => input.closest('label')?.textContent?.trim() ?? '')
+    .map((input) => {
+      const label = input.closest('label')?.textContent?.trim() ?? ''
+      const key = (input as HTMLInputElement).value
+      return label.startsWith(key) ? label.slice(key.length).trim() : label
+    })
+}
+
+async function openReviewScreen() {
+  fireEvent.click(screen.getAllByRole('button', { name: /review & submit/i })[0]!)
+  await waitFor(() => {
+    expect(screen.getByText(/ready to submit/i)).toBeTruthy()
+  })
+}
+
+async function answerBothQuestionsInOrder() {
+  await waitFor(() => {
+    expect(screen.getByText('Capital of France?')).toBeTruthy()
+  })
+  const first = screen.getAllByRole('group')[0]!
+  fireEvent.click(within(first).getAllByRole('radio')[0]!)
+  fireEvent.click(screen.getByRole('button', { name: /next question/i }))
+  await waitFor(() => {
+    expect(screen.getByText('What is 2 + 2?')).toBeTruthy()
+  })
+  const second = screen.getAllByRole('group')[0]!
+  fireEvent.click(within(second).getAllByRole('radio')[0]!)
+}
+
+async function submitFromReview() {
+  await openReviewScreen()
+  fireEvent.click(screen.getByRole('button', { name: /submit answers/i }))
+  await waitFor(() => {
+    expect(screen.getByRole('dialog')).toBeTruthy()
+  })
+  fireEvent.click(screen.getByTestId('module-quiz-submit'))
 }
 
 describe('ModuleQuizPage', () => {
@@ -135,6 +171,7 @@ describe('ModuleQuizPage', () => {
     api.listLessons.mockReset()
     api.listCourseModules.mockReset()
     api.getCourseProgress.mockReset()
+    api.getCourse.mockReset()
     api.startModuleQuiz.mockResolvedValue(REVERSED_START_RESPONSE)
     api.listModuleQuizAttempts.mockResolvedValue([])
     api.listCourseModules.mockResolvedValue([
@@ -156,11 +193,41 @@ describe('ModuleQuizPage', () => {
       percentComplete: 0,
       lessons: [],
     })
+    api.getCourse.mockResolvedValue({
+      id: 'c1',
+      title: 'Test Course',
+      description: '',
+      priceAmountMinor: 5000,
+      currency: 'USD',
+      status: 'PUBLISHED',
+    })
   })
 
   afterEach(() => {
     cleanup()
     vi.restoreAllMocks()
+  })
+
+  it('renders the pg-quiz prototype shell', async () => {
+    renderModuleQuiz()
+
+    await waitFor(() => {
+      expect(screen.getByTestId('student-page-module-quiz')).toBeTruthy()
+    })
+    expect(document.querySelector('.pg-quiz')).toBeTruthy()
+  })
+
+  it('omits flag and time-spent prototype UI', async () => {
+    renderModuleQuiz()
+
+    await waitFor(() => {
+      expect(screen.getByText('Capital of France?')).toBeTruthy()
+    })
+
+    expect(screen.queryByTestId('module-quiz-flag')).toBeNull()
+    expect(screen.queryByTestId('module-quiz-time-spent')).toBeNull()
+    expect(screen.queryByText(/^\s*flagged\s*$/i)).toBeNull()
+    expect(screen.queryByText(/time spent/i)).toBeNull()
   })
 
   it('Back to lesson links to the lesson player when returnTo is in location state', async () => {
@@ -209,17 +276,21 @@ describe('ModuleQuizPage', () => {
       ),
     ).toBeTruthy()
 
-    const fieldsets = screen.getAllByRole('group')
-    expect(fieldsets).toHaveLength(2)
-
+    let fieldsets = screen.getAllByRole('group')
+    expect(fieldsets).toHaveLength(1)
     expect(within(fieldsets[0]!).getByText('Capital of France?')).toBeTruthy()
-    expect(within(fieldsets[1]!).getByText('What is 2 + 2?')).toBeTruthy()
-
     expect(optionKeysInFieldset(fieldsets[0]!)).toEqual(['B', 'A'])
     expect(optionLabelsInFieldset(fieldsets[0]!)).toEqual(['Paris', 'Berlin'])
 
-    expect(optionKeysInFieldset(fieldsets[1]!)).toEqual(['B', 'A'])
-    expect(optionLabelsInFieldset(fieldsets[1]!)).toEqual(['4', '3'])
+    fireEvent.click(screen.getByRole('button', { name: /next question/i }))
+    await waitFor(() => {
+      expect(screen.getByText('What is 2 + 2?')).toBeTruthy()
+    })
+    fieldsets = screen.getAllByRole('group')
+    expect(fieldsets).toHaveLength(1)
+    expect(within(fieldsets[0]!).getByText('What is 2 + 2?')).toBeTruthy()
+    expect(optionKeysInFieldset(fieldsets[0]!)).toEqual(['B', 'A'])
+    expect(optionLabelsInFieldset(fieldsets[0]!)).toEqual(['4', '3'])
   })
 
   it('keeps Submit disabled until every question has a selection', async () => {
@@ -229,19 +300,38 @@ describe('ModuleQuizPage', () => {
       expect(screen.getByText('Capital of France?')).toBeTruthy()
     })
 
+    await openReviewScreen()
     const submit = screen.getByRole('button', { name: /submit answers/i }) as HTMLButtonElement
     expect(submit.disabled).toBe(true)
     const helperText = screen.getByText(/answer every question before submitting/i)
     expect(helperText).toBeTruthy()
     expect(submit.getAttribute('aria-describedby')).toBe(helperText.id)
 
+    fireEvent.click(screen.getByRole('button', { name: /return to quiz/i }))
+    await waitFor(() => {
+      expect(screen.getByText('Capital of France?')).toBeTruthy()
+    })
+
     const fieldsets = screen.getAllByRole('group')
     fireEvent.click(within(fieldsets[0]!).getAllByRole('radio')[0]!)
-    expect(submit.disabled).toBe(true)
-    expect(screen.getByText(/answer every question before submitting/i)).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: /next question/i }))
+    await waitFor(() => {
+      expect(screen.getByText('What is 2 + 2?')).toBeTruthy()
+    })
+    await openReviewScreen()
+    expect((screen.getByRole('button', { name: /submit answers/i }) as HTMLButtonElement).disabled).toBe(
+      true,
+    )
 
-    fireEvent.click(within(fieldsets[1]!).getAllByRole('radio')[0]!)
-    expect(submit.disabled).toBe(false)
+    fireEvent.click(screen.getByRole('button', { name: /return to quiz/i }))
+    await waitFor(() => {
+      expect(screen.getByText('What is 2 + 2?')).toBeTruthy()
+    })
+    fireEvent.click(within(screen.getAllByRole('group')[0]!).getAllByRole('radio')[0]!)
+    await openReviewScreen()
+    expect((screen.getByRole('button', { name: /submit answers/i }) as HTMLButtonElement).disabled).toBe(
+      false,
+    )
     expect(screen.queryByText(/answer every question before submitting/i)).toBeNull()
   })
 
@@ -282,7 +372,7 @@ describe('ModuleQuizPage', () => {
     await waitFor(() => {
       expect(screen.getByText('Capital of France?')).toBeTruthy()
     })
-    expect(screen.getByRole('button', { name: /submit answers/i })).toBeTruthy()
+    expect(screen.getAllByRole('button', { name: /review & submit/i }).length).toBeGreaterThan(0)
   })
 
   it('submits attemptId and full answers map on Submit', async () => {
@@ -295,16 +385,8 @@ describe('ModuleQuizPage', () => {
     })
 
     renderModuleQuiz()
-
-    await waitFor(() => {
-      expect(screen.getByText('Capital of France?')).toBeTruthy()
-    })
-
-    const fieldsets = screen.getAllByRole('group')
-    fireEvent.click(within(fieldsets[0]!).getAllByRole('radio')[0]!)
-    fireEvent.click(within(fieldsets[1]!).getAllByRole('radio')[0]!)
-
-    fireEvent.click(screen.getByRole('button', { name: /submit answers/i }))
+    await answerBothQuestionsInOrder()
+    await submitFromReview()
 
     await waitFor(() => {
       expect(api.submitModuleQuiz).toHaveBeenCalledTimes(1)
@@ -330,10 +412,6 @@ describe('ModuleQuizPage', () => {
 
     expect(screen.getByText(/70% to pass/i)).toBeTruthy()
 
-    const fieldsets = screen.getAllByRole('group')
-    fireEvent.click(within(fieldsets[0]!).getAllByRole('radio')[0]!)
-    fireEvent.click(within(fieldsets[1]!).getAllByRole('radio')[0]!)
-
     api.submitModuleQuiz.mockResolvedValue({
       attemptId: 'att-1',
       attemptNumber: 1,
@@ -344,7 +422,8 @@ describe('ModuleQuizPage', () => {
       passed: true,
       questions: LATEST_RESULTS_RESPONSE.latestSubmission.questions,
     })
-    fireEvent.click(screen.getByRole('button', { name: /submit answers/i }))
+    await answerBothQuestionsInOrder()
+    await submitFromReview()
 
     await waitFor(() => {
       expect(screen.getAllByText(/Passed/i).length).toBeGreaterThan(0)
@@ -434,15 +513,8 @@ describe('ModuleQuizPage', () => {
     const err = new ApiError('Attempt not found', 404)
     api.submitModuleQuiz.mockRejectedValueOnce(err)
     renderModuleQuiz()
-
-    await waitFor(() => {
-      expect(screen.getByText('Capital of France?')).toBeTruthy()
-    })
-
-    const fieldsets = screen.getAllByRole('group')
-    fireEvent.click(within(fieldsets[0]!).getAllByRole('radio')[0]!)
-    fireEvent.click(within(fieldsets[1]!).getAllByRole('radio')[0]!)
-    fireEvent.click(screen.getByRole('button', { name: /submit answers/i }))
+    await answerBothQuestionsInOrder()
+    await submitFromReview()
 
     await waitFor(() => {
       expect(screen.getByText(catalogApiUserMessage(err, 'submitModuleQuiz'))).toBeTruthy()
@@ -453,15 +525,8 @@ describe('ModuleQuizPage', () => {
     const err = new ApiError('Stale attempt', 409)
     api.submitModuleQuiz.mockRejectedValueOnce(err)
     renderModuleQuiz()
-
-    await waitFor(() => {
-      expect(screen.getByText('Capital of France?')).toBeTruthy()
-    })
-
-    const fieldsets = screen.getAllByRole('group')
-    fireEvent.click(within(fieldsets[0]!).getAllByRole('radio')[0]!)
-    fireEvent.click(within(fieldsets[1]!).getAllByRole('radio')[0]!)
-    fireEvent.click(screen.getByRole('button', { name: /submit answers/i }))
+    await answerBothQuestionsInOrder()
+    await submitFromReview()
 
     await waitFor(() => {
       expect(screen.getByText(catalogApiUserMessage(err, 'submitModuleQuiz'))).toBeTruthy()
@@ -472,15 +537,8 @@ describe('ModuleQuizPage', () => {
     const err = new ApiError('Invalid payload', 400)
     api.submitModuleQuiz.mockRejectedValueOnce(err)
     renderModuleQuiz()
-
-    await waitFor(() => {
-      expect(screen.getByText('Capital of France?')).toBeTruthy()
-    })
-
-    const fieldsets = screen.getAllByRole('group')
-    fireEvent.click(within(fieldsets[0]!).getAllByRole('radio')[0]!)
-    fireEvent.click(within(fieldsets[1]!).getAllByRole('radio')[0]!)
-    fireEvent.click(screen.getByRole('button', { name: /submit answers/i }))
+    await answerBothQuestionsInOrder()
+    await submitFromReview()
 
     await waitFor(() => {
       expect(screen.getByText(catalogApiUserMessage(err, 'submitModuleQuiz'))).toBeTruthy()

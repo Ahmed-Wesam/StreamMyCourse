@@ -121,6 +121,7 @@ describe('needsAuthBootstrap', () => {
 
     it('returns true for account profile', () => {
       expect(needsAuthBootstrap('/account/profile', '')).toBe(true)
+      expect(needsAuthBootstrap('/settings', '')).toBe(true)
     })
 
     it('returns true for billing success', () => {
@@ -161,6 +162,7 @@ describe('isStudentTermsGateExemptPath', () => {
     expect(isStudentTermsGateExemptPath('/terms')).toBe(true)
     expect(isStudentTermsGateExemptPath('/register')).toBe(true)
     expect(isStudentTermsGateExemptPath('/account/profile')).toBe(true)
+    expect(isStudentTermsGateExemptPath('/settings')).toBe(true)
     expect(isStudentTermsGateExemptPath('/verify-email')).toBe(true)
     expect(isStudentTermsGateExemptPath('/forgot-password')).toBe(true)
     expect(isStudentTermsGateExemptPath('/courses')).toBe(false)

@@ -11,6 +11,8 @@ type ProfileMenuProps = {
   /** e.g. "Student" or "Instructor" */
   subtitle?: string
   items: ProfileMenuItem[]
+  /** Student header uses the prototype dropdown. Omit for the teacher shell. */
+  chrome?: 'prototype'
 }
 
 function initialsFromName(name: string): string {
@@ -23,6 +25,11 @@ function initialsFromName(name: string): string {
     .toUpperCase()
 }
 
+function prototypeFirstName(name: string): string {
+  const first = name.trim().split(/\s+/)[0] || 'Student'
+  return first.charAt(0).toUpperCase() + first.slice(1)
+}
+
 function isLinkItem(item: ProfileMenuItem): item is { href: string; label: string } {
   return 'href' in item
 }
@@ -31,7 +38,7 @@ function cx(...parts: Array<string | undefined | false>) {
   return parts.filter(Boolean).join(' ')
 }
 
-export function ProfileMenu({ name, subtitle, items }: ProfileMenuProps) {
+export function ProfileMenu({ name, subtitle, items, chrome }: ProfileMenuProps) {
   const [open, setOpen] = useState(false)
   const rootRef = useRef<HTMLDivElement>(null)
   const triggerRef = useRef<HTMLButtonElement>(null)
@@ -51,7 +58,8 @@ export function ProfileMenu({ name, subtitle, items }: ProfileMenuProps) {
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key !== 'Escape') return
       setOpen(false)
-      triggerRef.current?.focus()
+      if (chrome === 'prototype') rootRef.current?.focus()
+      else triggerRef.current?.focus()
     }
 
     document.addEventListener('mousedown', onPointerDown)
@@ -60,7 +68,108 @@ export function ProfileMenu({ name, subtitle, items }: ProfileMenuProps) {
       document.removeEventListener('mousedown', onPointerDown)
       document.removeEventListener('keydown', onKeyDown)
     }
-  }, [open])
+  }, [chrome, open])
+
+  if (chrome === 'prototype') {
+    return (
+      <div
+        ref={rootRef}
+        id="navProfile"
+        className={cx('nav-profile', open && 'is-open')}
+        role="button"
+        tabIndex={0}
+        aria-haspopup="menu"
+        aria-expanded={open}
+        aria-controls={menuId}
+        aria-label={name.trim() ? `Account menu for ${name.trim()}` : 'Account menu'}
+        onClick={(event) => {
+          const drop = event.currentTarget.querySelector('.nav-drop')
+          if (drop && event.target instanceof Node && drop.contains(event.target)) return
+          setOpen((value) => !value)
+        }}
+        onKeyDown={(event) => {
+          if (event.target !== event.currentTarget) return
+          if (event.key !== 'Enter' && event.key !== ' ') return
+          event.preventDefault()
+          setOpen((value) => !value)
+        }}
+      >
+        <span className="nav-avatar" aria-hidden="true">
+          {initials}
+        </span>
+        <svg
+          className="nav-chev"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2.4"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          aria-hidden="true"
+        >
+          <path d="m6 9 6 6 6-6" />
+        </svg>
+        {open ? (
+          <div id={menuId} role="menu" className="nav-drop">
+            <div className="nav-drop-h">
+              <span
+                className="nav-avatar"
+                aria-hidden="true"
+                style={{ width: 36, height: 36, fontSize: 13 }}
+              >
+                {initials}
+              </span>
+              <div>
+                <b>{prototypeFirstName(name)}</b>
+                {subtitle ? <span>{subtitle}</span> : null}
+              </div>
+            </div>
+            {items.map((item) => {
+              if (isLinkItem(item)) {
+                const internal = item.href.startsWith('/')
+                if (internal) {
+                  return (
+                    <Link
+                      key={`link:${item.href}:${item.label}`}
+                      role="menuitem"
+                      to={item.href}
+                      onClick={() => setOpen(false)}
+                    >
+                      {item.label}
+                    </Link>
+                  )
+                }
+                return (
+                  <a
+                    key={`a:${item.href}:${item.label}`}
+                    role="menuitem"
+                    href={item.href}
+                    onClick={() => setOpen(false)}
+                  >
+                    {item.label}
+                  </a>
+                )
+              }
+              return (
+                <button
+                  key={`action:${item.label}`}
+                  type="button"
+                  role="menuitem"
+                  className="logout"
+                  onClick={() => {
+                    setOpen(false)
+                    item.onSelect()
+                  }}
+                >
+                  {item.label}
+                </button>
+              )
+            })}
+          </div>
+        ) : null}
+      </div>
+    )
+  }
 
   return (
     <div ref={rootRef} className="relative inline-flex shrink-0">
