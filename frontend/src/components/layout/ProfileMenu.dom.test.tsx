@@ -96,7 +96,12 @@ describe('ProfileMenu', () => {
   })
 
   it('prototype chrome uses nav-profile, nav-drop, and nav-chev', () => {
-    const { container } = renderMenu({ chrome: 'prototype' })
+    const { container } = renderMenu({
+      chrome: 'prototype',
+      name: 'Test Candidate',
+      givenName: 'Test',
+      familyName: 'Candidate',
+    })
     const trigger = container.querySelector('.nav-profile')
     expect(trigger).toBeTruthy()
     expect(container.querySelector('.nav-bell')).toBeNull()
@@ -109,5 +114,9 @@ describe('ProfileMenu', () => {
     expect(container.querySelector('.nav-avatar')).toBeTruthy()
     expect(container.querySelector('svg.nav-chev')).toBeTruthy()
     expect(container.querySelector('.nav-drop-h')).toBeTruthy()
+    expect(container.querySelector('.nav-drop-role')?.textContent).toBe('Student')
+    const menuAvatar = container.querySelector('.nav-drop-h .nav-avatar.nav-avatar--menu')
+    expect(menuAvatar?.textContent?.trim()).toBe('TC')
+    expect(menuAvatar?.classList.contains('nav-drop-role')).toBe(false)
   })
 })

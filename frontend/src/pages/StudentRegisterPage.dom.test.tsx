@@ -117,6 +117,13 @@ describe('StudentRegisterPage', () => {
     expect(google.disabled).toBe(false)
   })
 
+  it('lists Create Account before Continue with Google', () => {
+    renderPage()
+    const submit = screen.getByTestId('register-submit')
+    const google = screen.getByTestId('register-google')
+    expect(submit.compareDocumentPosition(google) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+  })
+
   it('stores register draft before Google redirect', () => {
     renderPage()
     fillRequiredFields()

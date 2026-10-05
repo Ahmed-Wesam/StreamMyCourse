@@ -286,7 +286,8 @@ footer{background:#fff;border-top:1px solid var(--line);padding:64px 0 32px}
 .nav-profile.is-open .nav-drop{opacity:1;visibility:visible;transform:translateY(0)}
 .nav-drop-h{display:flex;align-items:center;gap:12px;padding:12px;border-bottom:1px solid var(--line);margin-bottom:6px}
 .nav-drop-h b{display:block;font-size:14px;font-weight:800;color:var(--ink)}
-.nav-drop-h span{font-size:12px;color:var(--muted);font-weight:600}
+.nav-drop-h .nav-drop-role{font-size:12px;color:var(--muted);font-weight:600;margin-top:1px;display:block}
+.nav-drop-h .nav-avatar{color:#fff;display:inline-flex;align-items:center;justify-content:center;line-height:1;text-align:center}
 .nav-drop a,.nav-drop button{display:block;width:100%;text-align:left;padding:10px 12px;border-radius:8px;font-size:14px;font-weight:600;color:var(--navy);text-decoration:none;border:none;background:transparent;cursor:pointer;font-family:inherit}
 .nav-drop a:hover,.nav-drop button:hover{background:var(--sky-2);color:var(--blue)}
 .nav-drop .logout{color:#b91c1c;border-top:1px solid var(--line);margin-top:6px;border-radius:0}

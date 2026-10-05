@@ -113,7 +113,7 @@ export function ProfileMenu({ name, email, givenName, familyName, subtitle, item
               </span>
               <div>
                 <b>{prototypeFirstName(name)}</b>
-                {subtitle ? <span>{subtitle}</span> : null}
+                {subtitle ? <span className="nav-drop-role">{subtitle}</span> : null}
               </div>
             </div>
             {items.map((item) => {

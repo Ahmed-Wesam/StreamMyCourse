@@ -397,6 +397,30 @@ export default function StudentRegisterPage() {
                     You must agree to the Privacy Policy to continue.
                   </span>
 
+                  <div className={error ? 'form-err visible' : 'form-err'} role="alert" aria-live="assertive">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                      <circle cx="12" cy="12" r="10" />
+                      <line x1="12" y1="8" x2="12" y2="12" />
+                      <line x1="12" y1="16" x2="12.01" y2="16" />
+                    </svg>
+                    <span>{error}</span>
+                  </div>
+
+                  <button
+                    type="submit"
+                    className="btn btn-primary"
+                    id="submitBtn"
+                    data-testid="register-submit"
+                    style={{ width: '100%', justifyContent: 'center', marginTop: 8 }}
+                    disabled={!canSubmit}
+                  >
+                    <span>Create Account</span>
+                    <ButtonSpinner on={submitting} />
+                    <ArrowIcon />
+                  </button>
+
+                  <div className="auth-divider" />
+
                   <button
                     type="button"
                     className="btn btn-ghost"
@@ -421,33 +445,9 @@ export default function StudentRegisterPage() {
                       })
                       beginStudentGoogleSignIn(termsAccepted, privacyAccepted)
                     }}
-                    style={{ width: '100%', justifyContent: 'center', marginTop: 8, opacity: legalAccepted ? 1 : 0.55 }}
+                    style={{ width: '100%', justifyContent: 'center', marginTop: 4, opacity: legalAccepted ? 1 : 0.55 }}
                   >
                     {GOOGLE_SIGN_IN_LABEL}
-                  </button>
-
-                  <div className="auth-divider" />
-
-                  <div className={error ? 'form-err visible' : 'form-err'} role="alert" aria-live="assertive">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                      <circle cx="12" cy="12" r="10" />
-                      <line x1="12" y1="8" x2="12" y2="12" />
-                      <line x1="12" y1="16" x2="12.01" y2="16" />
-                    </svg>
-                    <span>{error}</span>
-                  </div>
-
-                  <button
-                    type="submit"
-                    className="btn btn-primary"
-                    id="submitBtn"
-                    data-testid="register-submit"
-                    style={{ width: '100%', justifyContent: 'center', marginTop: 4 }}
-                    disabled={!canSubmit}
-                  >
-                    <span>Create Account</span>
-                    <ButtonSpinner on={submitting} />
-                    <ArrowIcon />
                   </button>
 
                   <div className="auth-divider" />
