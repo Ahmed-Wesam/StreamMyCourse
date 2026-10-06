@@ -21,10 +21,15 @@
 
 ---
 
+## 2026-10-06 — HyperPay eu-test: restore 3DS2_enrolled on checkout POST
+
+- Billing edge **`HyperPayAdapter`** on **`eu-test.oppwa.com`** again sends **`customParameters[3DS2_enrolled]=true`** with **`testMode=EXTERNAL`**, per HyperPay test setup (Research Spectrum / Zaid). Production host unchanged.
+
+---
+
 ## 2026-10-06 — HyperPay test checkout: no forced 3DS2_enrolled
 
-- Billing edge **`HyperPayAdapter`** on **`eu-test.oppwa.com`** still sends **`testMode=EXTERNAL`** but no longer sets **`customParameters[3DS2_enrolled]=true`**, so COPYandPAY test cards documented as non‑3DS (e.g. Visa **`4012000033330026`**) are not pushed into an artificial 3DS challenge at prepare-checkout time.
-- Unit test: [`tests/unit/billing/test_hyperpay_adapter.py`](tests/unit/billing/test_hyperpay_adapter.py).
+- *(Superseded same day)* Earlier change removed **`3DS2_enrolled`** on eu-test; restored after merchant test params required it for COPYandPAY sessions to register at OPPWA.
 
 ---
 

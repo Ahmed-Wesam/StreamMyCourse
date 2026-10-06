@@ -73,7 +73,7 @@ Deploy job runs `ensure-hyperpay-secret.sh` before payments stack update. **Do n
 
 Cardholder name: any name.
 
-Use only on **`eu-test.oppwa.com`**. Student widget brands: **VISA**, **MASTER** ([`HyperPayWidget.tsx`](../../frontend/src/components/billing/HyperPayWidget.tsx)).
+Use only on **`eu-test.oppwa.com`**. Checkout **`POST /v1/checkouts`** from the billing edge includes **`testMode=EXTERNAL`** and **`customParameters[3DS2_enrolled]=true`** on that host only (HyperPay test entity setup). Student widget brands: **VISA**, **MASTER** ([`HyperPayWidget.tsx`](../../frontend/src/components/billing/HyperPayWidget.tsx)).
 
 **Canonical list prices:** **50 JOD** per course (`50_000` fils), **150 JOD** bundle (`150_000` fils) unless instructors change published prices.
 

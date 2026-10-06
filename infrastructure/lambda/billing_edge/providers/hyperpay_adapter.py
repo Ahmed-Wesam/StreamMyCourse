@@ -487,6 +487,7 @@ class HyperPayAdapter:
         ]
         if self._api_host == _TEST_API_HOST:
             form_fields.append(("testMode", "EXTERNAL"))
+            form_fields.append(("customParameters[3DS2_enrolled]", "true"))
 
         encoded_body = urlencode(form_fields).encode("utf-8")
         url = f"https://{self._api_host}/v1/checkouts"
