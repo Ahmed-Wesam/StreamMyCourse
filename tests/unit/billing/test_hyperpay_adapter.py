@@ -99,7 +99,7 @@ def test_create_checkout_posts_form_body_with_bearer_and_integrity() -> None:
     assert body["customer.email"] == [_CUSTOMER_EMAIL]
     assert body["customer.givenName"] == ["Ada"]
     assert body["billing.country"] == ["JO"]
-    assert body["customParameters[3DS2_enrolled]"] == ["true"]
+    assert "customParameters[3DS2_enrolled]" not in body
     assert body["customParameters[SHOPPER_cart]"] == [cart_id]
     assert (
         result.widget_url

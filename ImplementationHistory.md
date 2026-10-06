@@ -6,6 +6,13 @@
 
 ---
 
+## 2026-10-06 — HyperPay test checkout: no forced 3DS2_enrolled
+
+- Billing edge **`HyperPayAdapter`** on **`eu-test.oppwa.com`** still sends **`testMode=EXTERNAL`** but no longer sets **`customParameters[3DS2_enrolled]=true`**, so COPYandPAY test cards documented as non‑3DS (e.g. Visa **`4012000033330026`**) are not pushed into an artificial 3DS challenge at prepare-checkout time.
+- Unit test: [`tests/unit/billing/test_hyperpay_adapter.py`](tests/unit/billing/test_hyperpay_adapter.py).
+
+---
+
 ## 2026-10-05 — HyperPay status poll at half the published limit
 
 - Result page calls **`POST /billing/checkout-status`** once a minute (HyperPay allows **2** `GET /payment` reads per checkout per minute) and tells the shopper not to leave. **Browse courses** is not shown on that page.
