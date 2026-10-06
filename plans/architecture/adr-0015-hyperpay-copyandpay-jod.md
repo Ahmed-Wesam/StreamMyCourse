@@ -10,7 +10,7 @@ Accepted (Research Spectrum)
 
 Research Spectrum operates in **Jordan** with **JOD** list prices. PayTabs USD HPP did not match merchant setup, legal copy, or instructor pricing UX. HyperPay **COPYandPAY** embeds a PCI-scoped widget on the student checkout page; the platform still must keep payment HTTP **outside** the in-VPC catalog Lambda (no NAT).
 
-Product model is unchanged from ADR 0013: **one-time** per-course purchase or platform **bundle**; access via RDS **`purchases`**; browser return is **not** authoritative — webhook (and optional checkout-status poll) → SQS → fulfillment.
+Product model is unchanged from ADR 0013: **one-time** per-course purchase or platform **bundle**; access via RDS **`purchases`**; browser return is **not** authoritative — webhook → SQS → fulfillment.
 
 ## Decision
 
@@ -29,7 +29,7 @@ Product model is unchanged from ADR 0013: **one-time** per-course purchase or pl
 
 ### Browser return vs webhook
 
-- **`shopperResultUrl`:** student SPA **`/billing/result`** (legacy `/billing/success` redirects). Query param **`id`** = HyperPay checkout id; client calls **`POST /billing/checkout-status`** to poll payment result (does not grant access by itself).
+- **`shopperResultUrl`:** student SPA **`/billing/result`** (legacy `/billing/success` redirects). Query param **`id`** = HyperPay checkout id; client polls **`GET /billing/purchases`** until the session **`checkoutPendingPurchaseId`** row is **`paid`** (webhook fulfillment; does not grant access by itself).
 - **Authority:** encrypted **`POST /webhooks/payments/hyperpay`** → billing edge decrypt (AES-GCM) → domain events → fulfillment SQS → catalog internal hooks (same RS-5 purchase fulfillment as ADR 0013).
 
 ### Billing edge (no VPC)

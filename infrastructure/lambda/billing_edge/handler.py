@@ -20,13 +20,9 @@ from catalog_invoke import (
     CatalogInvokeError,
     invoke_billing_checkout,
     invoke_billing_checkout_rollback,
-    invoke_billing_checkout_status,
 )
 from edge_config import BillingEdgeConfig, get_payment_provider, load_billing_edge_config
-from providers.hyperpay_adapter import (
-    BillingUnconfiguredError,
-    parse_checkout_payment_poll,
-)
+from providers.hyperpay_adapter import BillingUnconfiguredError
 from providers.port import CheckoutProduct, PaymentProviderPort
 from queue_shim import EnqueueError, enqueue_domain_events
 
@@ -37,7 +33,6 @@ _get_payment_provider = get_payment_provider
 _enqueue_domain_events = enqueue_domain_events
 _invoke_billing_checkout = invoke_billing_checkout
 _invoke_billing_checkout_rollback = invoke_billing_checkout_rollback
-_invoke_billing_checkout_status = invoke_billing_checkout_status
 
 _MANAGE_CONFLICT_MESSAGES: Dict[str, str] = {
     "already_owned": "You already own this course or bundle",
@@ -45,11 +40,9 @@ _MANAGE_CONFLICT_MESSAGES: Dict[str, str] = {
     "amount_mismatch": "Payment amount does not match the pending purchase",
 }
 
-_BILLING_MANAGE_POST_PATHS = frozenset({"/billing/checkout-session", "/billing/checkout-status"})
+_BILLING_MANAGE_POST_PATHS = frozenset({"/billing/checkout-session"})
 
-_BILLING_MANAGE_OPTIONS_PATHS = frozenset(
-    {"/billing/checkout-session", "/billing/checkout-status"}
-)
+_BILLING_MANAGE_OPTIONS_PATHS = frozenset({"/billing/checkout-session"})
 
 _CSP_API = "default-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'"
 
@@ -278,19 +271,6 @@ def _parse_checkout_request(
     return product_type, course_id, billing
 
 
-def _parse_checkout_status_request(raw: bytes) -> str | None:
-    if not raw:
-        return None
-    try:
-        payload = json.loads(raw.decode("utf-8"))
-    except (json.JSONDecodeError, UnicodeDecodeError):
-        return None
-    if not isinstance(payload, dict):
-        return None
-    checkout_id = str(payload.get("checkoutId") or payload.get("checkout_id") or "").strip()
-    return checkout_id or None
-
-
 def _webhook_secret_hex(cfg: BillingEdgeConfig) -> str:
     from edge_config import resolve_hyperpay_credentials
 
@@ -428,122 +408,6 @@ def _handle_checkout(
     )
 
 
-def _handle_checkout_status(
-    event: Dict[str, Any],
-    provider: PaymentProviderPort,
-    cfg: BillingEdgeConfig,
-) -> Dict[str, Any]:
-    cors = _cors_origin_for_manage(event, cfg)
-    user_sub = _claims_sub(event)
-    if not user_sub:
-        return _error_response(401, "unauthorized", "Missing authenticated user", cors_origin=cors)
-
-    raw = _raw_body_bytes(event)
-    checkout_id = _parse_checkout_status_request(raw)
-    if not checkout_id:
-        return _error_response(400, "invalid_request", "checkoutId is required", cors_origin=cors)
-
-    catalog_arn = str(cfg.catalog_lambda_arn or "").strip()
-    if not catalog_arn:
-        return _error_response(503, "billing_unconfigured", "Billing is not configured", cors_origin=cors)
-
-    try:
-        poll_payload = provider.fetch_checkout_result(checkout_id)
-    except BillingUnconfiguredError:
-        return _error_response(503, "billing_unconfigured", "Billing is not configured", cors_origin=cors)
-
-    payload_digest = hashlib.sha256(json.dumps(poll_payload, sort_keys=True).encode("utf-8")).hexdigest()
-
-    try:
-        status_label, events = parse_checkout_payment_poll(
-            poll_payload,
-            deployment_environment=cfg.deployment_environment,
-            payload_digest=payload_digest,
-        )
-    except EnvironmentMismatchError:
-        return _error_response(
-            400,
-            "environment_mismatch",
-            "Payment environment does not match deployment",
-            cors_origin=cors,
-        )
-    except InvalidCartMetadataError as exc:
-        return _error_response(400, "invalid_cart_metadata", str(exc), cors_origin=cors)
-
-    purchase_id = ""
-    amount_minor: int | None = None
-    currency: str | None = None
-    if events:
-        purchase_id = str(events[0].purchase_id or "")
-        amount_minor = events[0].amount_minor
-        currency = events[0].currency
-    elif status_label == "pending":
-        from domain.metadata import parse_cart_metadata
-
-        merchant_tx = str(poll_payload.get("merchantTransactionId") or "").strip()
-        if merchant_tx:
-            try:
-                meta = parse_cart_metadata(merchant_tx, cfg.deployment_environment)
-            except (EnvironmentMismatchError, ValueError):
-                return _error_response(
-                    400,
-                    "invalid_cart_metadata",
-                    "Invalid merchant transaction id",
-                    cors_origin=cors,
-                )
-            if meta.user_sub != user_sub:
-                return _error_response(
-                    403,
-                    "forbidden",
-                    "Purchase does not belong to this user",
-                    cors_origin=cors,
-                )
-            purchase_id = meta.purchase_id
-            try:
-                major = float(poll_payload.get("amount"))
-                amount_minor = int(round(major * 1000))
-            except (TypeError, ValueError):
-                amount_minor = None
-            currency = str(poll_payload.get("currency") or "").strip().upper() or None
-
-    if purchase_id:
-        try:
-            verify = _invoke_billing_checkout_status(
-                user_sub=user_sub,
-                purchase_id=purchase_id,
-                amount_minor=amount_minor,
-                currency=currency,
-                catalog_lambda_arn=catalog_arn,
-            )
-        except CatalogInvokeError:
-            return _error_response(503, "billing_unconfigured", "Billing is not configured", cors_origin=cors)
-
-        block = verify.get("blockReason")
-        if block in _MANAGE_CONFLICT_MESSAGES:
-            return _manage_conflict_response(str(block), cors_origin=cors)
-        if block:
-            return _error_response(403, "forbidden", "Purchase not authorized", cors_origin=cors)
-
-    if status_label == "pending":
-        return _json_response(200, {"status": "pending"}, cors_origin=cors)
-
-    if not events:
-        return _json_response(200, {"status": status_label}, cors_origin=cors)
-
-    queue_url = cfg.fulfillment_queue_url or ""
-    try:
-        _enqueue_domain_events(events, queue_url=queue_url)
-    except EnqueueError:
-        logger.exception(
-            "checkout_status_enqueue_failed requestId=%s event_count=%s",
-            _request_id(event),
-            len(events),
-        )
-        return _error_response(500, "enqueue_failed", "Failed to enqueue billing events", cors_origin=cors)
-
-    return _json_response(200, {"status": status_label}, cors_origin=cors)
-
-
 def _handle_hyperpay_webhook(
     event: Dict[str, Any],
     provider: PaymentProviderPort,
@@ -557,7 +421,7 @@ def _handle_hyperpay_webhook(
     iv_hex = _header_lookup(headers, "X-Initialization-Vector")
     tag_hex = _header_lookup(headers, "X-Authentication-Tag")
     if not iv_hex or not tag_hex:
-        return _error_response(400, "invalid_request", "Missing webhook IV or authentication tag")
+        return _json_response(200, {"status": "ok"})
 
     raw = _raw_body_bytes(event)
     try:
@@ -642,8 +506,6 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
 
     if method == "POST" and path == "/billing/checkout-session":
         return _handle_checkout(event, provider, cfg)
-    if method == "POST" and path == "/billing/checkout-status":
-        return _handle_checkout_status(event, provider, cfg)
     if method == "POST" and path == "/webhooks/payments/hyperpay":
         return _handle_hyperpay_webhook(event, provider, cfg)
 

@@ -90,20 +90,18 @@ def _checkout_event(**overrides: Any) -> Dict[str, Any]:
     return evt
 
 
-def _checkout_status_event(**overrides: Any) -> Dict[str, Any]:
+def test_checkout_status_route_returns_not_found(monkeypatch: pytest.MonkeyPatch) -> None:
+    _patch_mock_checkout(monkeypatch)
     evt: Dict[str, Any] = {
         "httpMethod": "POST",
         "path": "/billing/checkout-status",
-        "requestContext": {
-            "resourcePath": "/billing/checkout-status",
-            "stage": "dev",
-            "authorizer": {"claims": {"sub": _USER_SUB}},
-        },
+        "requestContext": {"resourcePath": "/billing/checkout-status"},
         "headers": {"content-type": "application/json"},
         "body": json.dumps({"checkoutId": "MOCK-HP-CHECKOUT"}),
     }
-    evt.update(overrides)
-    return evt
+    resp = billing_handler.lambda_handler(evt, None)
+    assert resp["statusCode"] == 404
+    assert _parse_body(resp)["code"] == "not_found"
 
 
 def _encrypt_notification(payload: dict[str, Any]) -> tuple[bytes, str, str]:
@@ -167,25 +165,6 @@ def test_checkout_returns_503_billing_unconfigured(monkeypatch: pytest.MonkeyPat
     resp = billing_handler.lambda_handler(_checkout_event(), None)
     assert resp["statusCode"] == 503
     assert _parse_body(resp)["code"] == "billing_unconfigured"
-
-
-def test_checkout_status_options_succeeds_when_billing_unconfigured(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.setattr(
-        billing_handler,
-        "_load_config",
-        lambda: _edge_config(payment_provider="hyperpay", billing_shopper_result_url=""),
-    )
-    monkeypatch.setattr(billing_handler, "_get_payment_provider", lambda _cfg: None)
-
-    evt = _checkout_status_event()
-    evt["httpMethod"] = "OPTIONS"
-    evt["headers"] = {"Origin": "https://researchspectrum.org"}
-    resp = billing_handler.lambda_handler(evt, None)
-
-    assert resp["statusCode"] == 204
-    assert resp["headers"]["Access-Control-Allow-Origin"] == "https://researchspectrum.org"
 
 
 def test_checkout_returns_401_without_auth(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -287,30 +266,6 @@ def test_checkout_mock_returns_hyperpay_widget_fields(monkeypatch: pytest.Monkey
     assert body["currency"] == "JOD"
 
 
-def test_checkout_status_pending_does_not_enqueue(monkeypatch: pytest.MonkeyPatch) -> None:
-    _patch_mock_checkout(monkeypatch)
-    enqueue = MagicMock()
-    monkeypatch.setattr(billing_handler, "_enqueue_domain_events", enqueue)
-    monkeypatch.setattr(
-        billing_handler,
-        "_invoke_billing_checkout_status",
-        lambda **_kw: {"ok": True},
-    )
-
-    resp = billing_handler.lambda_handler(_checkout_status_event(), None)
-    assert resp["statusCode"] == 200
-    assert _parse_body(resp) == {"status": "pending"}
-    enqueue.assert_not_called()
-
-
-def test_checkout_status_requires_auth(monkeypatch: pytest.MonkeyPatch) -> None:
-    _patch_mock_checkout(monkeypatch)
-    evt = _checkout_status_event()
-    evt["requestContext"] = {"resourcePath": "/billing/checkout-status"}
-    resp = billing_handler.lambda_handler(evt, None)
-    assert resp["statusCode"] == 401
-
-
 def test_paytabs_webhook_route_is_gone(monkeypatch: pytest.MonkeyPatch) -> None:
     _patch_mock_checkout(monkeypatch)
     evt = {
@@ -321,6 +276,30 @@ def test_paytabs_webhook_route_is_gone(monkeypatch: pytest.MonkeyPatch) -> None:
     }
     resp = billing_handler.lambda_handler(evt, None)
     assert resp["statusCode"] == 404
+
+
+def test_hyperpay_webhook_activation_probe_without_headers_returns_200_no_enqueue(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _patch_mock_checkout(monkeypatch)
+    enqueue = MagicMock()
+    monkeypatch.setattr(billing_handler, "_enqueue_domain_events", enqueue)
+    evt = {
+        "httpMethod": "POST",
+        "path": "/webhooks/payments/hyperpay",
+        "requestContext": {
+            "resourcePath": "/webhooks/payments/hyperpay",
+            "stage": "dev",
+            "requestId": "req-activation-probe",
+        },
+        "headers": {"content-type": "application/json"},
+        "body": "",
+        "isBase64Encoded": False,
+    }
+    resp = billing_handler.lambda_handler(evt, None)
+    assert resp["statusCode"] == 200
+    assert _parse_body(resp)["status"] == "ok"
+    enqueue.assert_not_called()
 
 
 def test_hyperpay_webhook_returns_503_when_webhook_secret_empty(

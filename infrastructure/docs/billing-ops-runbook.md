@@ -12,7 +12,7 @@
 | Component | VPC | Role |
 |-----------|-----|------|
 | Catalog Lambda | **In VPC** | Checkout precheck, price manage, internal fulfillment — **no** outbound HyperPay HTTP |
-| Billing edge Lambda | **No VPC** | `POST /billing/checkout-session`, `POST /billing/checkout-status`, decrypt **`POST /webhooks/payments/hyperpay`** → enqueue SQS |
+| Billing edge Lambda | **No VPC** | `POST /billing/checkout-session`, decrypt **`POST /webhooks/payments/hyperpay`** → enqueue SQS |
 | Billing fulfillment Lambda | In VPC | Apply `purchase.paid|failed|revoked` to RDS |
 
 ---
@@ -97,6 +97,8 @@ Example prod pattern: resolve **`ApiEndpoint`** from `StreamMyCourse-Api-prod` s
 
 **Verification:** webhook secret in SM must match HyperPay portal. Mismatch → **401** `invalid_webhook`. Missing secret on edge → **503** `billing_unconfigured`.
 
+**Activation (HyperPay back office):** HyperPay may send a probe `POST` without `X-Initialization-Vector` / `X-Authentication-Tag`. The billing edge responds **200** `{"status":"ok"}` and does **not** enqueue. Real notifications include both headers and encrypted body.
+
 **Integration tests:** set **`INTEGRATION_HYPERPAY_WEBHOOK_SECRET`** (or `HYPERPAY_WEBHOOK_SECRET`) to the same hex key — never log the value. See [`tests/integration/README.md`](../../tests/integration/README.md).
 
 ---
@@ -125,7 +127,7 @@ Encrypted webhooks still require **`HYPERPAY_WEBHOOK_SECRET`** (or SM `webhook_s
 1. Signed-in **`POST /billing/checkout-session`** `{ "productType": "course"|"bundle", "courseId"? }`.
 2. Response includes **`checkoutId`**, **`widgetScriptUrl`**, **`integrity`**, **`shopperResultUrl`**, **`amountMinor`**, **`currency": "JOD"`**.
 3. Student pays in embedded widget; browser returns to **`/billing/result?id=<checkoutId>`**.
-4. SPA polls **`POST /billing/checkout-status`** once a minute (half of HyperPay's **2** status reads per checkout per minute) and checks RDS purchases first when possible. The billing edge reuses a still-pending HyperPay response for **60 seconds** so extra polls do not call **GET** `/v1/checkouts/{id}/payment` again. Poll result does **not** alone grant access.
+4. SPA polls **`GET /billing/purchases`** until the pending row is **`paid`** (HyperPay **`POST /webhooks/payments/hyperpay`** → SQS → fulfillment). Do not use HyperPay **`GET /payment`** from the browser.
 5. HyperPay **`POST /webhooks/payments/hyperpay`** → SQS → fulfillment marks **`purchases`** `paid`.
 
 Missing purchase → playback **403** `purchase_required`.
@@ -168,8 +170,7 @@ Optional stack param **`BillingFulfillmentAlertEmail`** subscribes SNS at deploy
 **Triage:** Logs `/aws/lambda/StreamMyCourse-BillingEdge-{env}` — filter by route:
 
 - `POST /billing/checkout-session` — catalog precheck / `billing_unconfigured`
-- `POST /webhooks/payments/hyperpay` — decrypt / parse / enqueue
-- `POST /billing/checkout-status` — poll after shopper return
+- `POST /webhooks/payments/hyperpay` — decrypt / parse / enqueue (activation probe without IV/tag → **200**, no enqueue)
 
 ---
 
@@ -191,7 +192,7 @@ Teachers copy from **Payment setup** (`/settings/payments`) if preferred.
 
 1. **GitHub `prod` secrets:** `HYPERPAY_ACCESS_TOKEN`, `HYPERPAY_ENTITY_ID` only; `ensure-hyperpay-secret.sh` → SM **`streammycourse/hyperpay/prod`** (`api_host`: `eu-test.oppwa.com`).
 2. **`PAYMENT_PROVIDER=hyperpay`**; redeploy payments + API stacks.
-3. **Smoke:** student checkout → widget on `eu-test.oppwa.com` → return URL → **`POST /billing/checkout-status`** → purchase **`paid`** → playback **200** (test cards from runbook).
+3. **Smoke:** student checkout → widget on `eu-test.oppwa.com` → return URL → webhook marks purchase **`paid`** → playback **200** (test cards from runbook).
 
 **Phase 2 — Webhooks (only after HyperPay Administration → Webhooks)**
 

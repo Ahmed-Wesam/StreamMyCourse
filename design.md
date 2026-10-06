@@ -362,7 +362,7 @@ The frontend is built as **two separate SPAs** deployed to different subdomains:
 /account/profile                     # Signed-in profile (PATCH /users/me)
 /account/purchases                   # Purchase history (RS-5)
 /checkout                            # One-time checkout (HyperPay COPYandPAY widget; course or bundle)
-/billing/result                      # HyperPay shopperResultUrl return (?id=checkoutId → checkout-status poll)
+/billing/result                      # HyperPay shopperResultUrl return (?id=checkoutId → poll purchases until webhook marks paid)
 /billing/success                     # Legacy redirect → /billing/result
 /billing/cancel                      # Legacy redirect → /billing/result
 /courses/:courseId                   # Course detail (purchase CTA when hasAccess === false)

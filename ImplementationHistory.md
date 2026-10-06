@@ -6,6 +6,14 @@
 
 ---
 
+## 2026-10-06 — HyperPay webhook activation + drop checkout-status poll
+
+- Billing edge **`POST /webhooks/payments/hyperpay`**: missing **`X-Initialization-Vector`** / **`X-Authentication-Tag`** → **200** (HyperPay activation probe; no enqueue). Encrypted notifications unchanged → SQS fulfillment.
+- Removed **`POST /billing/checkout-status`** from billing edge; **`/billing/result`** waits on **`GET /billing/purchases`** until webhook fulfillment marks **`paid`**.
+- Ops: set **`webhook_secret`** in **`streammycourse/hyperpay/prod`** to match HyperPay portal before Zaid re-activates the webhook.
+
+---
+
 ## 2026-10-06 — HyperPay 200.300.404 → failed (not endless pending)
 
 - **`GET /payment`** code **`200.300.404`** (no payment session at OPPWA) is **`failed`** on **`POST /billing/checkout-status`**, not **`pending`**, so shoppers are not stuck on “Processing payment” when the card step never completed.
