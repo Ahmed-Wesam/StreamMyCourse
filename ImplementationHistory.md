@@ -6,6 +6,13 @@
 
 ---
 
+## 2026-10-05 — HyperPay status poll at half the published limit
+
+- Result page calls **`POST /billing/checkout-status`** once a minute (HyperPay allows **2** `GET /payment` reads per checkout per minute) and tells the shopper not to leave. **Browse courses** is not shown on that page.
+- Billing edge reuses a still-pending HyperPay status, including **`000.200.000`**, for **60 seconds**.
+
+---
+
 ## 2026-10-05 — HyperPay COPYandPAY (JOD) billing integration (Slice 8)
 
 ### What landed

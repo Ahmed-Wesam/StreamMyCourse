@@ -39,11 +39,10 @@ _POLL_TREAT_AS_PENDING_CODES = frozenset(
 )
 _POLL_TREAT_AS_PENDING_PREFIXES = ("800.120.",)
 
-# Debounce GET /checkouts/{id}/payment while status is still pending (per warm Lambda).
+# HyperPay allows 2 GET /payment calls per checkout per minute. Stay at half that rate.
 _CHECKOUT_POLL_CACHE: dict[str, tuple[float, dict[str, Any]]] = {}
 _CHECKOUT_POLL_CACHE_MAX = 256
-_POLL_DEFER_PENDING_SEC = 5.0
-_POLL_DEFER_RATE_LIMIT_SEC = 15.0
+_POLL_DEFER_SEC = 60.0
 
 _MOCK_API_HOST = "mock.hyperpay.example"
 _ALLOWED_API_HOSTS = frozenset({_TEST_API_HOST, _PROD_API_HOST, _MOCK_API_HOST})
@@ -179,11 +178,9 @@ def _poll_defer_interval_sec(payload: dict[str, Any]) -> float:
     result_code = _poll_result_code(payload)
     if not result_code:
         return 0.0
-    if not _poll_treat_as_pending_code(result_code):
-        return 0.0
-    if result_code.startswith("800.120."):
-        return _POLL_DEFER_RATE_LIMIT_SEC
-    return _POLL_DEFER_PENDING_SEC
+    if _poll_treat_as_pending_code(result_code) or classify_result_code(result_code) == "pending":
+        return _POLL_DEFER_SEC
+    return 0.0
 
 
 def _trim_checkout_poll_cache() -> None:

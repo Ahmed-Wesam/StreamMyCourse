@@ -12,11 +12,14 @@ import { usePageTitle } from '../lib/page-title'
 import type { PurchaseRecord } from '../lib/api/types'
 import './BillingReturnPage.css'
 
-const STATUS_POLL_INITIAL_MS = 3000
-const STATUS_POLL_MAX_MS = 10000
-const STATUS_POLL_BACKOFF = 1.4
+/** Half of HyperPay's 2 status reads per checkout per minute. */
+const STATUS_POLL_MS = 60_000
+const STATUS_MAX_ATTEMPTS = 30
 const PURCHASE_POLL_MS = 2000
-const MAX_ATTEMPTS = 40
+const PURCHASE_MAX_ATTEMPTS = 40
+
+const STAY_ON_PAGE_MESSAGE =
+  'Do not leave this page. We confirm your payment about once a minute, and leaving early can stop it.'
 
 type ResultPhase = 'loading' | 'success' | 'canceled' | 'pending' | 'error'
 
@@ -73,7 +76,7 @@ export default function BillingResultPage() {
     }
 
     const pollPurchases = async () => {
-      while (!cancelled && purchaseAttempts < MAX_ATTEMPTS) {
+      while (!cancelled && purchaseAttempts < PURCHASE_MAX_ATTEMPTS) {
         purchaseAttempts += 1
         try {
           const purchases = await getPurchases()
@@ -88,7 +91,6 @@ export default function BillingResultPage() {
       }
       if (!cancelled) {
         setPhase('pending')
-        setMessage(billingSuccessMessage)
       }
     }
 
@@ -103,18 +105,13 @@ export default function BillingResultPage() {
         // continue to HyperPay status poll
       }
 
-      let nextStatusPollMs = STATUS_POLL_INITIAL_MS
-      while (!cancelled && statusAttempts < MAX_ATTEMPTS) {
+      while (!cancelled && statusAttempts < STATUS_MAX_ATTEMPTS) {
         statusAttempts += 1
         try {
           const { status } = await getCheckoutStatus(checkoutId)
           const normalized = (status ?? '').trim().toLowerCase()
           if (normalized === 'pending') {
-            await new Promise((r) => setTimeout(r, nextStatusPollMs))
-            nextStatusPollMs = Math.min(
-              STATUS_POLL_MAX_MS,
-              Math.round(nextStatusPollMs * STATUS_POLL_BACKOFF),
-            )
+            await new Promise((r) => setTimeout(r, STATUS_POLL_MS))
             continue
           }
           if (normalized === 'failed' || normalized === 'error') {
@@ -135,7 +132,6 @@ export default function BillingResultPage() {
       }
       if (!cancelled) {
         setPhase('pending')
-        setMessage(billingSuccessMessage)
       }
     }
 
@@ -159,14 +155,11 @@ export default function BillingResultPage() {
         {bodyCopy ? <p>{bodyCopy}</p> : null}
         {phase === 'loading' || phase === 'pending' ? (
           <p className="billing-result-status" role="status">
-            Please wait…
+            {STAY_ON_PAGE_MESSAGE}
           </p>
         ) : null}
-        <Link to="/courses" className="btn btn-primary">
-          Browse courses
-        </Link>
         {phase === 'success' ? (
-          <Link to="/dashboard" className="btn btn-ghost" style={{ marginLeft: 12 }}>
+          <Link to="/dashboard" className="btn btn-primary">
             Go to dashboard
           </Link>
         ) : null}

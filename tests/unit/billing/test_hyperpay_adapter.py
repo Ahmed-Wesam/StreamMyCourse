@@ -263,6 +263,25 @@ def test_parse_checkout_poll_uses_shopper_cart_custom_parameter() -> None:
     assert events[0].purchase_id == _PURCHASE_ID
 
 
+def test_fetch_checkout_result_debounces_transaction_pending() -> None:
+    adapter = _adapter()
+    calls = {"n": 0}
+
+    def fake_urlopen(req: Any, timeout: float = 0) -> Any:
+        calls["n"] += 1
+        return BytesIO(
+            json.dumps(
+                {"result": {"code": "000.200.000", "description": "transaction pending"}}
+            ).encode("utf-8")
+        )
+
+    with patch("providers.hyperpay_adapter.urlopen", side_effect=fake_urlopen):
+        adapter.fetch_checkout_result("CHECKOUT-PENDING")
+        adapter.fetch_checkout_result("CHECKOUT-PENDING")
+
+    assert calls["n"] == 1
+
+
 def test_fetch_checkout_result_debounces_pending_polls() -> None:
     clear_checkout_poll_cache()
     adapter = _adapter()

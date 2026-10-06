@@ -106,6 +106,15 @@ describe('Billing return pages', () => {
     expect(screen.queryByRole('heading', { name: /Payment received/i })).toBeNull()
   })
 
+  it('tells the shopper to stay on the page and hides browse courses', async () => {
+    billingApi.getPurchases.mockResolvedValue([])
+    billingApi.getCheckoutStatus.mockResolvedValue({ status: 'pending' })
+    renderResult('/billing/result?id=CHK-1')
+
+    expect(await screen.findByText(/Do not leave this page/i)).toBeTruthy()
+    expect(screen.queryByRole('link', { name: /browse courses/i })).toBeNull()
+  })
+
   it('shows cancel copy when redirected from legacy cancel route', async () => {
     renderResult('/billing/cancel')
 
