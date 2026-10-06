@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Ensure streammycourse/hyperpay/prod exists for billing edge (HyperPay credentials).
-# Set HYPERPAY_ACCESS_TOKEN, HYPERPAY_ENTITY_ID, and optionally HYPERPAY_WEBHOOK_SECRET
-# (GitHub Actions secrets or env) when creating or rotating credentials.
+# Set HYPERPAY_ACCESS_TOKEN and HYPERPAY_ENTITY_ID (Zaid COPYandPAY test credentials).
+# HYPERPAY_WEBHOOK_SECRET is optional — only when HyperPay back office webhooks are configured (later phase).
 set -euo pipefail
 
 SECRET_ID="${HYPERPAY_SECRET_ID:-streammycourse/hyperpay/prod}"

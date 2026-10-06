@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import _vendor_bootstrap  # noqa: F401  # must precede cryptography (vendored in Lambda)
+
 import base64
 import hashlib
 import json

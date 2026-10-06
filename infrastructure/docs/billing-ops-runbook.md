@@ -185,13 +185,22 @@ Teachers copy from **Payment setup** (`/settings/payments`) if preferred.
 
 ---
 
-## Go-live checklist (operator → HyperPay / Zaid)
+## Go-live checklist (follow HyperPay email order)
 
-1. **GitHub `prod` secrets:** `HYPERPAY_ACCESS_TOKEN`, `HYPERPAY_ENTITY_ID`, `HYPERPAY_WEBHOOK_SECRET` (64-char hex); confirm `ensure-hyperpay-secret.sh` updated SM **`streammycourse/hyperpay/prod`**.
-2. **Set `PAYMENT_PROVIDER=hyperpay`** (GitHub Environment variable) when moving off mock; redeploy payments stack.
-3. **Email Zaid (HyperPay):** register webhook URL `https://<api-endpoint>/<stage>/webhooks/payments/hyperpay`; confirm test entity on **`eu-test.oppwa.com`**; request production entity when ready.
-4. **Smoke:** test card checkout → webhook in CloudWatch → `purchases` `paid` → playback **200**.
-5. **Alarms:** confirm SNS email on `StreamMyCourse-BillingFulfillment-Alerts-prod`.
+**Phase 1 — COPYandPAY (Zaid test credentials)**
+
+1. **GitHub `prod` secrets:** `HYPERPAY_ACCESS_TOKEN`, `HYPERPAY_ENTITY_ID` only; `ensure-hyperpay-secret.sh` → SM **`streammycourse/hyperpay/prod`** (`api_host`: `eu-test.oppwa.com`).
+2. **`PAYMENT_PROVIDER=hyperpay`**; redeploy payments + API stacks.
+3. **Smoke:** student checkout → widget on `eu-test.oppwa.com` → return URL → **`POST /billing/checkout-status`** → purchase **`paid`** → playback **200** (test cards from runbook).
+
+**Phase 2 — Webhooks (only after HyperPay Administration → Webhooks)**
+
+4. Configure URL `https://<api-endpoint>/<stage>/webhooks/payments/hyperpay` and **their** 64-hex secret in back office; copy the same secret into SM `webhook_secret` / `HYPERPAY_WEBHOOK_SECRET`, redeploy edge.
+5. **Email Zaid** if they must activate the webhook on their side.
+
+**Ops**
+
+6. **Alarms:** SNS on `StreamMyCourse-BillingFulfillment-Alerts-prod`.
 
 ---
 
