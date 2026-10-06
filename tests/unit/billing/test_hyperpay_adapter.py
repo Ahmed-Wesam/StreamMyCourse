@@ -201,6 +201,20 @@ def test_create_checkout_raises_when_credentials_missing() -> None:
         )
 
 
+def test_parse_checkout_poll_rate_limit_is_pending() -> None:
+    status, events = parse_checkout_payment_poll(
+        {
+            "result": {
+                "code": "800.120.100",
+                "description": "Too many requests. Please try again later.",
+            }
+        },
+        deployment_environment="prod",
+    )
+    assert status == "pending"
+    assert events == []
+
+
 def test_parse_checkout_poll_no_payment_session_is_pending() -> None:
     status, events = parse_checkout_payment_poll(
         {

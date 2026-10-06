@@ -12,7 +12,7 @@ import { usePageTitle } from '../lib/page-title'
 import type { PurchaseRecord } from '../lib/api/types'
 import './BillingReturnPage.css'
 
-const STATUS_POLL_MS = 1500
+const STATUS_POLL_MS = 2500
 const PURCHASE_POLL_MS = 2000
 const MAX_ATTEMPTS = 40
 

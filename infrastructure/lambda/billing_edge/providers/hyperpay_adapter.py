@@ -29,12 +29,14 @@ logger = logging.getLogger(__name__)
 _TEST_API_HOST = "eu-test.oppwa.com"
 _PROD_API_HOST = "eu-prod.oppwa.com"
 
-# HyperPay may return these when GET /payment is early or the session expired (no payment row yet).
+# HyperPay may return these when GET /payment is early, expired, or temporarily unavailable.
 _POLL_TREAT_AS_PENDING_CODES = frozenset(
     {
         "200.300.404",
+        "800.120.100",
     }
 )
+_POLL_TREAT_AS_PENDING_PREFIXES = ("800.120.",)
 _MOCK_API_HOST = "mock.hyperpay.example"
 _ALLOWED_API_HOSTS = frozenset({_TEST_API_HOST, _PROD_API_HOST, _MOCK_API_HOST})
 
@@ -186,7 +188,9 @@ def parse_checkout_payment_poll(
     if not result_code:
         raise InvalidCartMetadataError("result.code is required for checkout payment poll")
 
-    if result_code in _POLL_TREAT_AS_PENDING_CODES:
+    if result_code in _POLL_TREAT_AS_PENDING_CODES or result_code.startswith(
+        _POLL_TREAT_AS_PENDING_PREFIXES
+    ):
         return "pending", []
 
     classification = classify_result_code(result_code)
