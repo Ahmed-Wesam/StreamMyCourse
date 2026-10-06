@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+import time
 from typing import Any, List
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode
@@ -37,6 +38,13 @@ _POLL_TREAT_AS_PENDING_CODES = frozenset(
     }
 )
 _POLL_TREAT_AS_PENDING_PREFIXES = ("800.120.",)
+
+# Debounce GET /checkouts/{id}/payment while status is still pending (per warm Lambda).
+_CHECKOUT_POLL_CACHE: dict[str, tuple[float, dict[str, Any]]] = {}
+_CHECKOUT_POLL_CACHE_MAX = 256
+_POLL_DEFER_PENDING_SEC = 5.0
+_POLL_DEFER_RATE_LIMIT_SEC = 15.0
+
 _MOCK_API_HOST = "mock.hyperpay.example"
 _ALLOWED_API_HOSTS = frozenset({_TEST_API_HOST, _PROD_API_HOST, _MOCK_API_HOST})
 
@@ -155,6 +163,46 @@ def _extract_merchant_transaction_id(payload: dict[str, Any]) -> str:
     return _custom_parameter_cart_id(payload)
 
 
+def clear_checkout_poll_cache() -> None:
+    """Clear debounce cache (unit tests)."""
+    _CHECKOUT_POLL_CACHE.clear()
+
+
+def _poll_treat_as_pending_code(result_code: str) -> bool:
+    return result_code in _POLL_TREAT_AS_PENDING_CODES or result_code.startswith(
+        _POLL_TREAT_AS_PENDING_PREFIXES
+    )
+
+
+def _poll_defer_interval_sec(payload: dict[str, Any]) -> float:
+    """How long to reuse a poll response without calling HyperPay again."""
+    result_code = _poll_result_code(payload)
+    if not result_code:
+        return 0.0
+    if not _poll_treat_as_pending_code(result_code):
+        return 0.0
+    if result_code.startswith("800.120."):
+        return _POLL_DEFER_RATE_LIMIT_SEC
+    return _POLL_DEFER_PENDING_SEC
+
+
+def _trim_checkout_poll_cache() -> None:
+    if len(_CHECKOUT_POLL_CACHE) <= _CHECKOUT_POLL_CACHE_MAX:
+        return
+    oldest_key = min(_CHECKOUT_POLL_CACHE, key=lambda k: _CHECKOUT_POLL_CACHE[k][0])
+    del _CHECKOUT_POLL_CACHE[oldest_key]
+
+
+def _store_checkout_poll_cache(checkout: str, payload: dict[str, Any]) -> dict[str, Any]:
+    defer = _poll_defer_interval_sec(payload)
+    if defer > 0.0:
+        _CHECKOUT_POLL_CACHE[checkout] = (time.monotonic(), payload)
+        _trim_checkout_poll_cache()
+    else:
+        _CHECKOUT_POLL_CACHE.pop(checkout, None)
+    return payload
+
+
 def _poll_result_code(payload: dict[str, Any]) -> str:
     result = payload.get("result")
     if isinstance(result, dict):
@@ -188,9 +236,7 @@ def parse_checkout_payment_poll(
     if not result_code:
         raise InvalidCartMetadataError("result.code is required for checkout payment poll")
 
-    if result_code in _POLL_TREAT_AS_PENDING_CODES or result_code.startswith(
-        _POLL_TREAT_AS_PENDING_PREFIXES
-    ):
+    if _poll_treat_as_pending_code(result_code):
         return "pending", []
 
     classification = classify_result_code(result_code)
@@ -492,6 +538,14 @@ class HyperPayAdapter:
         if not checkout:
             raise BillingUnconfiguredError()
 
+        now = time.monotonic()
+        cached = _CHECKOUT_POLL_CACHE.get(checkout)
+        if cached is not None:
+            cached_at, cached_payload = cached
+            defer = _poll_defer_interval_sec(cached_payload)
+            if defer > 0.0 and (now - cached_at) < defer:
+                return cached_payload
+
         query = urlencode({"entityId": self._entity_id})
         url = f"https://{self._api_host}/v1/checkouts/{checkout}/payment?{query}"
         req = Request(url, method="GET", headers=self._auth_header())
@@ -505,7 +559,7 @@ class HyperPayAdapter:
             except (json.JSONDecodeError, UnicodeDecodeError) as parse_exc:
                 raise BillingUnconfiguredError() from exc
             if isinstance(payload, dict) and _poll_result_code(payload):
-                return payload
+                return _store_checkout_poll_cache(checkout, payload)
             raise BillingUnconfiguredError() from exc
         except (URLError, TimeoutError) as exc:
             raise BillingUnconfiguredError() from exc
@@ -517,7 +571,8 @@ class HyperPayAdapter:
 
         if not isinstance(payload, dict):
             raise BillingUnconfiguredError()
-        return payload
+
+        return _store_checkout_poll_cache(checkout, payload)
 
     @staticmethod
     def decrypt_webhook(

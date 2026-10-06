@@ -62,9 +62,9 @@ describe('Billing return pages', () => {
     renderResult('/billing/result?id=MOCK-HP-CHECKOUT')
 
     await waitFor(() => {
-      expect(billingApi.getCheckoutStatus).toHaveBeenCalledWith('MOCK-HP-CHECKOUT')
       expect(billingApi.getPurchases).toHaveBeenCalled()
     })
+    expect(billingApi.getCheckoutStatus).not.toHaveBeenCalled()
 
     expect(await screen.findByRole('heading', { name: /Payment received/i })).toBeTruthy()
     expect(screen.getByText(billingSuccessMessage)).toBeTruthy()
@@ -115,6 +115,7 @@ describe('Billing return pages', () => {
   })
 
   it('redirects legacy success route to result with query preserved', async () => {
+    billingApi.getPurchases.mockResolvedValue([])
     renderResult('/billing/success?id=CHK-99')
 
     expect(await screen.findByTestId('billing-result-page')).toBeTruthy()

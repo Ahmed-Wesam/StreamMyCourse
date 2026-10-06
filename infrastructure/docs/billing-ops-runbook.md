@@ -125,7 +125,7 @@ Encrypted webhooks still require **`HYPERPAY_WEBHOOK_SECRET`** (or SM `webhook_s
 1. Signed-in **`POST /billing/checkout-session`** `{ "productType": "course"|"bundle", "courseId"? }`.
 2. Response includes **`checkoutId`**, **`widgetScriptUrl`**, **`integrity`**, **`shopperResultUrl`**, **`amountMinor`**, **`currency": "JOD"`**.
 3. Student pays in embedded widget; browser returns to **`/billing/result?id=<checkoutId>`**.
-4. SPA polls **`POST /billing/checkout-status`** — does **not** alone grant access.
+4. SPA polls **`POST /billing/checkout-status`** (with backoff; checks RDS purchases first when possible). Each poll triggers HyperPay **GET** `/v1/checkouts/{id}/payment` unless the billing edge **debounces** a recent still-pending response (avoids **`800.120.100`** rate limits on shared **test** credentials). Poll result does **not** alone grant access.
 5. HyperPay **`POST /webhooks/payments/hyperpay`** → SQS → fulfillment marks **`purchases`** `paid`.
 
 Missing purchase → playback **403** `purchase_required`.

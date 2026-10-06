@@ -14,9 +14,17 @@ from domain.checkout_billing import CheckoutBillingContact
 from providers.hyperpay_adapter import (
     BillingUnconfiguredError,
     HyperPayAdapter,
+    clear_checkout_poll_cache,
     parse_checkout_payment_poll,
 )
 from providers.port import CheckoutProduct
+
+@pytest.fixture(autouse=True)
+def _clear_hyperpay_poll_cache() -> None:
+    clear_checkout_poll_cache()
+    yield
+    clear_checkout_poll_cache()
+
 
 _USER_SUB = "cognito-sub-abc"
 _PURCHASE_ID = "c0000000-0000-4000-8000-000000000001"
@@ -253,6 +261,32 @@ def test_parse_checkout_poll_uses_shopper_cart_custom_parameter() -> None:
     assert status == "success"
     assert len(events) == 1
     assert events[0].purchase_id == _PURCHASE_ID
+
+
+def test_fetch_checkout_result_debounces_pending_polls() -> None:
+    clear_checkout_poll_cache()
+    adapter = _adapter()
+    calls = {"n": 0}
+
+    def fake_urlopen(req: Any, timeout: float = 0) -> Any:
+        from urllib.error import HTTPError
+
+        calls["n"] += 1
+        body = json.dumps(
+            {
+                "result": {
+                    "code": "200.300.404",
+                    "description": "No payment session found",
+                }
+            }
+        ).encode("utf-8")
+        raise HTTPError(req.full_url, 400, "Bad Request", hdrs=None, fp=BytesIO(body))
+
+    with patch("providers.hyperpay_adapter.urlopen", side_effect=fake_urlopen):
+        adapter.fetch_checkout_result("CHECKOUT-DEBOUNCE")
+        adapter.fetch_checkout_result("CHECKOUT-DEBOUNCE")
+
+    assert calls["n"] == 1
 
 
 def test_fetch_checkout_result_parses_http_400_json_body() -> None:

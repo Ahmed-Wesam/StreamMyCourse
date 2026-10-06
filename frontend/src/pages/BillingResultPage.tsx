@@ -12,7 +12,9 @@ import { usePageTitle } from '../lib/page-title'
 import type { PurchaseRecord } from '../lib/api/types'
 import './BillingReturnPage.css'
 
-const STATUS_POLL_MS = 2500
+const STATUS_POLL_INITIAL_MS = 3000
+const STATUS_POLL_MAX_MS = 10000
+const STATUS_POLL_BACKOFF = 1.4
 const PURCHASE_POLL_MS = 2000
 const MAX_ATTEMPTS = 40
 
@@ -91,13 +93,28 @@ export default function BillingResultPage() {
     }
 
     const run = async () => {
+      try {
+        const purchases = await getPurchases()
+        if (isTargetPurchasePaid(purchases, pendingPurchaseId)) {
+          finishSuccess()
+          return
+        }
+      } catch {
+        // continue to HyperPay status poll
+      }
+
+      let nextStatusPollMs = STATUS_POLL_INITIAL_MS
       while (!cancelled && statusAttempts < MAX_ATTEMPTS) {
         statusAttempts += 1
         try {
           const { status } = await getCheckoutStatus(checkoutId)
           const normalized = (status ?? '').trim().toLowerCase()
           if (normalized === 'pending') {
-            await new Promise((r) => setTimeout(r, STATUS_POLL_MS))
+            await new Promise((r) => setTimeout(r, nextStatusPollMs))
+            nextStatusPollMs = Math.min(
+              STATUS_POLL_MAX_MS,
+              Math.round(nextStatusPollMs * STATUS_POLL_BACKOFF),
+            )
             continue
           }
           if (normalized === 'failed' || normalized === 'error') {
