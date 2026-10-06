@@ -547,11 +547,15 @@ fi
 
 if [[ -n "${CATALOG_LAMBDA_ARN:-}" && "${CATALOG_LAMBDA_ARN}" != "None" ]]; then
   export CATALOG_LAMBDA_ARN
-  export BILLING_SHOPPER_RESULT_URL="${BILLING_SHOPPER_RESULT_URL:-}"
-  PAY_SCRIPT="${ROOT}/scripts/deploy-payments.sh"
-  chmod +x "$PAY_SCRIPT"
-  echo "Updating payments stack with catalog invoke + billing return URLs"
-  "$PAY_SCRIPT" "$ENV" "$REGION" "$ARTIFACT_BUCKET" "$SUFFIX"
+  if [[ -n "${BILLING_SHOPPER_RESULT_URL:-}" ]]; then
+    export BILLING_SHOPPER_RESULT_URL
+    PAY_SCRIPT="${ROOT}/scripts/deploy-payments.sh"
+    chmod +x "$PAY_SCRIPT"
+    echo "Updating payments stack with catalog invoke + billing return URLs"
+    "$PAY_SCRIPT" "$ENV" "$REGION" "$ARTIFACT_BUCKET" "$SUFFIX"
+  else
+    echo "Skipping payments stack update: BILLING_SHOPPER_RESULT_URL unset (edge StudentSiteUrl missing)"
+  fi
 fi
 
 # Video provider edge (Kinescope): first-time env only — catalog did not exist pre-deploy.

@@ -169,6 +169,25 @@ def test_checkout_returns_503_billing_unconfigured(monkeypatch: pytest.MonkeyPat
     assert _parse_body(resp)["code"] == "billing_unconfigured"
 
 
+def test_checkout_status_options_succeeds_when_billing_unconfigured(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        billing_handler,
+        "_load_config",
+        lambda: _edge_config(payment_provider="hyperpay", billing_shopper_result_url=""),
+    )
+    monkeypatch.setattr(billing_handler, "_get_payment_provider", lambda _cfg: None)
+
+    evt = _checkout_status_event()
+    evt["httpMethod"] = "OPTIONS"
+    evt["headers"] = {"Origin": "https://researchspectrum.org"}
+    resp = billing_handler.lambda_handler(evt, None)
+
+    assert resp["statusCode"] == 204
+    assert resp["headers"]["Access-Control-Allow-Origin"] == "https://researchspectrum.org"
+
+
 def test_checkout_returns_401_without_auth(monkeypatch: pytest.MonkeyPatch) -> None:
     _patch_mock_checkout(monkeypatch)
     evt = _checkout_event()

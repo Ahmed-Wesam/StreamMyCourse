@@ -620,9 +620,13 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     _ = context
 
     cfg = _load_config()
-    provider = _get_payment_provider(cfg)
     method = (event.get("httpMethod") or "").upper()
     path = _apigw_routing_path(event)
+
+    if method == "OPTIONS" and path in _BILLING_MANAGE_OPTIONS_PATHS:
+        return _options_response(event, cfg)
+
+    provider = _get_payment_provider(cfg)
 
     if provider is None:
         if path in _BILLING_MANAGE_POST_PATHS:
@@ -635,9 +639,6 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         if path == "/webhooks/payments/hyperpay":
             return _error_response(503, "billing_unconfigured", "Billing is not configured")
         return _error_response(404, "not_found", "Not found")
-
-    if method == "OPTIONS" and path in _BILLING_MANAGE_OPTIONS_PATHS:
-        return _options_response(event, cfg)
 
     if method == "POST" and path == "/billing/checkout-session":
         return _handle_checkout(event, provider, cfg)

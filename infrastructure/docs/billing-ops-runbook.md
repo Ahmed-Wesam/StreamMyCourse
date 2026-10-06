@@ -27,7 +27,7 @@
 | `HYPERPAY_WEBHOOK_SECRET` | **64-char hex** AES-GCM key for encrypted webhooks (also stored in SM JSON as `webhook_secret`) |
 | `BILLING_SHOPPER_RESULT_URL` | Student SPA **`https://<student-host>/billing/result`** (HyperPay `shopperResultUrl`) |
 
-Deploy sets `BILLING_SHOPPER_RESULT_URL` from the student site URL ([`deploy-backend.sh`](../../scripts/deploy-backend.sh)).
+Deploy sets `BILLING_SHOPPER_RESULT_URL` from the edge stack **StudentSiteUrl** ([`deploy-backend.sh`](../../scripts/deploy-backend.sh), [`deploy-payments.sh`](../../scripts/deploy-payments.sh)). Deploy **must not** pass an empty value (that disables HyperPay). If checkout returns **503** `billing_unconfigured` with **OPTIONS** also failing, verify this env on **StreamMyCourse-BillingEdge-prod**.
 
 ---
 

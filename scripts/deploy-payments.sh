@@ -27,6 +27,27 @@ CATALOG_LAMBDA_ARN="${CATALOG_LAMBDA_ARN:-}"
 BILLING_SHOPPER_RESULT_URL="${BILLING_SHOPPER_RESULT_URL:-}"
 CORS="${CORS:-https://researchspectrum.org,https://teach.researchspectrum.org,http://localhost:5173,http://localhost:5174}"
 
+_resolve_billing_shopper_result_url() {
+  if [[ -n "${BILLING_SHOPPER_RESULT_URL}" ]]; then
+    return 0
+  fi
+  local edge_stack="StreamMyCourse-EdgeHosting-${ENV}"
+  local edge_region="${EDGE_REGION:-us-east-1}"
+  local student_url=""
+  if aws cloudformation describe-stacks --stack-name "$edge_stack" --region "$edge_region" &>/dev/null; then
+    student_url="$(aws cloudformation describe-stacks \
+      --stack-name "$edge_stack" \
+      --region "$edge_region" \
+      --query 'Stacks[0].Outputs[?OutputKey==`StudentSiteUrl`].OutputValue' \
+      --output text)"
+  fi
+  if [[ -n "${student_url}" && "${student_url}" != "None" ]]; then
+    BILLING_SHOPPER_RESULT_URL="${student_url%/}/billing/result"
+  fi
+}
+
+_resolve_billing_shopper_result_url
+
 EDGE_ZIP="/tmp/billing-edge-${ENV}-$$.zip"
 FULFILL_ZIP="/tmp/billing-fulfillment-${ENV}-$$.zip"
 EDGE_BUILD="/tmp/billing-edge-build-${ENV}-$$"
@@ -202,6 +223,10 @@ fi
 
 # Fail deploy when HyperPay credentials are empty after GitHub env + SM hydration (mock skips).
 if [[ "$PAYMENT_PROVIDER" != "mock" ]]; then
+  if [[ -z "${BILLING_SHOPPER_RESULT_URL}" ]]; then
+    echo "BILLING_SHOPPER_RESULT_URL is empty; deploy edge hosting first or set StudentSiteUrl output" >&2
+    exit 1
+  fi
   if [[ -z "${HYPERPAY_ACCESS_TOKEN}" ]]; then
     echo "HYPERPAY_ACCESS_TOKEN is empty after hydration; set GitHub secrets or SM streammycourse/hyperpay/${ENV} with non-empty access_token" >&2
     exit 1
