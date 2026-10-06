@@ -11,7 +11,11 @@ from urllib.parse import parse_qs
 import pytest
 
 from domain.checkout_billing import CheckoutBillingContact
-from providers.hyperpay_adapter import BillingUnconfiguredError, HyperPayAdapter
+from providers.hyperpay_adapter import (
+    BillingUnconfiguredError,
+    HyperPayAdapter,
+    parse_checkout_payment_poll,
+)
 from providers.port import CheckoutProduct
 
 _USER_SUB = "cognito-sub-abc"
@@ -195,6 +199,68 @@ def test_create_checkout_raises_when_credentials_missing() -> None:
             customer_email=_CUSTOMER_EMAIL,
             billing=_BILLING,
         )
+
+
+def test_parse_checkout_poll_no_payment_session_is_pending() -> None:
+    status, events = parse_checkout_payment_poll(
+        {
+            "result": {
+                "code": "200.300.404",
+                "description": "No payment session found for the requested id",
+            }
+        },
+        deployment_environment="prod",
+    )
+    assert status == "pending"
+    assert events == []
+
+
+def test_parse_checkout_poll_failed_without_merchant_tx_returns_failed() -> None:
+    status, events = parse_checkout_payment_poll(
+        {"result": {"code": "100.380.401", "description": "declined"}},
+        deployment_environment="prod",
+    )
+    assert status == "failed"
+    assert events == []
+
+
+def test_parse_checkout_poll_uses_shopper_cart_custom_parameter() -> None:
+    cart = f"v2|prod|{_USER_SUB}|course|{_COURSE_ID}|{_PURCHASE_ID}"
+    status, events = parse_checkout_payment_poll(
+        {
+            "id": "PAY-9",
+            "amount": "50.00",
+            "currency": "JOD",
+            "result": {"code": "000.000.000"},
+            "customParameters": {"SHOPPER_cart": cart},
+        },
+        deployment_environment="prod",
+    )
+    assert status == "success"
+    assert len(events) == 1
+    assert events[0].purchase_id == _PURCHASE_ID
+
+
+def test_fetch_checkout_result_parses_http_400_json_body() -> None:
+    adapter = _adapter()
+
+    def fake_urlopen(req: Any, timeout: float = 0) -> Any:
+        from urllib.error import HTTPError
+
+        body = json.dumps(
+            {
+                "result": {
+                    "code": "200.300.404",
+                    "description": "No payment session found",
+                }
+            }
+        ).encode("utf-8")
+        raise HTTPError(req.full_url, 400, "Bad Request", hdrs=None, fp=BytesIO(body))
+
+    with patch("providers.hyperpay_adapter.urlopen", side_effect=fake_urlopen):
+        payload = adapter.fetch_checkout_result("CHECKOUT-ID-1")
+
+    assert payload["result"]["code"] == "200.300.404"
 
 
 def test_fetch_checkout_result_uses_bearer_get() -> None:

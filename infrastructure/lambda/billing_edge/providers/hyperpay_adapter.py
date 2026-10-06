@@ -28,6 +28,13 @@ logger = logging.getLogger(__name__)
 
 _TEST_API_HOST = "eu-test.oppwa.com"
 _PROD_API_HOST = "eu-prod.oppwa.com"
+
+# HyperPay may return these when GET /payment is early or the session expired (no payment row yet).
+_POLL_TREAT_AS_PENDING_CODES = frozenset(
+    {
+        "200.300.404",
+    }
+)
 _MOCK_API_HOST = "mock.hyperpay.example"
 _ALLOWED_API_HOSTS = frozenset({_TEST_API_HOST, _PROD_API_HOST, _MOCK_API_HOST})
 
@@ -120,6 +127,46 @@ def _purchase_domain_event(
     )
 
 
+def _custom_parameter_cart_id(payload: dict[str, Any]) -> str:
+    custom = payload.get("customParameters")
+    if not isinstance(custom, dict):
+        return ""
+    for key in ("SHOPPER_cart", "SHOPPER_CART"):
+        val = str(custom.get(key) or "").strip()
+        if val:
+            return val
+    return ""
+
+
+def _extract_merchant_transaction_id(payload: dict[str, Any]) -> str:
+    merchant_tx = str(payload.get("merchantTransactionId") or "").strip()
+    if merchant_tx:
+        return merchant_tx
+    payment_block = payload.get("payment")
+    if isinstance(payment_block, dict):
+        merchant_tx = str(payment_block.get("merchantTransactionId") or "").strip()
+        if merchant_tx:
+            return merchant_tx
+        merchant_tx = _custom_parameter_cart_id(payment_block)
+        if merchant_tx:
+            return merchant_tx
+    return _custom_parameter_cart_id(payload)
+
+
+def _poll_result_code(payload: dict[str, Any]) -> str:
+    result = payload.get("result")
+    if isinstance(result, dict):
+        code = str(result.get("code") or "").strip()
+        if code:
+            return code
+    payment_block = payload.get("payment")
+    if isinstance(payment_block, dict):
+        nested = payment_block.get("result")
+        if isinstance(nested, dict):
+            return str(nested.get("code") or "").strip()
+    return ""
+
+
 def parse_checkout_payment_poll(
     payload: dict[str, Any],
     *,
@@ -127,29 +174,28 @@ def parse_checkout_payment_poll(
     payload_digest: str = "",
 ) -> tuple[str, list[BillingDomainEvent]]:
     """Map GET checkout/payment JSON to pending|success|failed and domain events."""
-    result = payload.get("result")
-    result_code = ""
-    if isinstance(result, dict):
-        result_code = str(result.get("code") or "").strip()
+    result_code = _poll_result_code(payload)
+    payment_block = payload.get("payment")
+    if not result_code and isinstance(payment_block, dict):
+        nested = payment_block.get("result")
+        if isinstance(nested, dict):
+            result_code = str(nested.get("code") or "").strip()
 
-    merchant_tx = str(payload.get("merchantTransactionId") or "").strip()
-    if not merchant_tx:
-        payment_block = payload.get("payment")
-        if isinstance(payment_block, dict):
-            merchant_tx = str(payment_block.get("merchantTransactionId") or "").strip()
-            if not result_code:
-                nested = payment_block.get("result")
-                if isinstance(nested, dict):
-                    result_code = str(nested.get("code") or "").strip()
+    merchant_tx = _extract_merchant_transaction_id(payload)
 
     if not result_code:
         raise InvalidCartMetadataError("result.code is required for checkout payment poll")
+
+    if result_code in _POLL_TREAT_AS_PENDING_CODES:
+        return "pending", []
 
     classification = classify_result_code(result_code)
     if classification == "pending":
         return "pending", []
 
     if not merchant_tx:
+        if classification == "failed":
+            return "failed", []
         raise InvalidCartMetadataError(
             "merchantTransactionId is required for checkout payment poll"
         )
@@ -448,7 +494,16 @@ class HyperPayAdapter:
         try:
             with urlopen(req, timeout=30) as response:
                 raw = response.read()
-        except (HTTPError, URLError, TimeoutError) as exc:
+        except HTTPError as exc:
+            raw = exc.read()
+            try:
+                payload = json.loads(raw.decode("utf-8"))
+            except (json.JSONDecodeError, UnicodeDecodeError) as parse_exc:
+                raise BillingUnconfiguredError() from exc
+            if isinstance(payload, dict) and _poll_result_code(payload):
+                return payload
+            raise BillingUnconfiguredError() from exc
+        except (URLError, TimeoutError) as exc:
             raise BillingUnconfiguredError() from exc
 
         try:
