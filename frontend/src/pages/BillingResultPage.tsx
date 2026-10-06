@@ -7,7 +7,11 @@ import {
   clearCheckoutPendingPurchaseId,
   readCheckoutPendingPurchaseId,
 } from '../lib/checkoutPendingPurchase'
-import { billingCancelMessage, billingSuccessMessage } from '../lib/purchaseCopy'
+import {
+  billingCancelMessage,
+  billingStayOnPageMessage,
+  billingSuccessMessage,
+} from '../lib/purchaseCopy'
 import { usePageTitle } from '../lib/page-title'
 import type { PurchaseRecord } from '../lib/api/types'
 import './BillingReturnPage.css'
@@ -17,9 +21,6 @@ const STATUS_POLL_MS = 60_000
 const STATUS_MAX_ATTEMPTS = 30
 const PURCHASE_POLL_MS = 2000
 const PURCHASE_MAX_ATTEMPTS = 40
-
-const STAY_ON_PAGE_MESSAGE =
-  'Do not leave this page. We confirm your payment about once a minute, and leaving early can stop it.'
 
 type ResultPhase = 'loading' | 'success' | 'canceled' | 'pending' | 'error'
 
@@ -155,7 +156,7 @@ export default function BillingResultPage() {
         {bodyCopy ? <p>{bodyCopy}</p> : null}
         {phase === 'loading' || phase === 'pending' ? (
           <p className="billing-result-status" role="status">
-            {STAY_ON_PAGE_MESSAGE}
+            {billingStayOnPageMessage}
           </p>
         ) : null}
         {phase === 'success' ? (

@@ -15,5 +15,8 @@ export const checkoutLoadingLabel = 'Starting checkout…'
 export const billingSuccessMessage =
   'Payment received. Your course access will appear after payment confirmation—refresh this page in a moment if needed.'
 
+export const billingStayOnPageMessage =
+  'Do not leave this page until you see Payment received. Closing this tab or navigating away can prevent your course access from being granted.'
+
 export const billingCancelMessage =
   'Checkout canceled. You can purchase anytime from a course page or the catalog.'
