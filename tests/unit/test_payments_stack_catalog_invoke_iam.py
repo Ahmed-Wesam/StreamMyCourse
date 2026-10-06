@@ -24,6 +24,8 @@ def test_payments_stack_billing_edge_env_catalog_and_return_urls() -> None:
     block = text[start:end]
     assert "CATALOG_LAMBDA_ARN:" in block
     assert "BILLING_SHOPPER_RESULT_URL:" in block
+    assert "ALLOWED_ORIGINS:" in block
+    assert "CorsAllowOrigin" in text
     assert "SUBSCRIPTION_PLAN_ID:" not in block
     assert "HYPERPAY_SECRET_ARN:" in block
     assert "CatalogLambdaArn" in block

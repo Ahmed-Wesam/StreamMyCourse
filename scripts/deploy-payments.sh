@@ -25,6 +25,7 @@ RDS_STACK="${RDS_STACK_NAME:-StreamMyCourse-Rds-${ENV}}"
 
 CATALOG_LAMBDA_ARN="${CATALOG_LAMBDA_ARN:-}"
 BILLING_SHOPPER_RESULT_URL="${BILLING_SHOPPER_RESULT_URL:-}"
+CORS="${CORS:-https://researchspectrum.org,https://teach.researchspectrum.org,http://localhost:5173,http://localhost:5174}"
 
 EDGE_ZIP="/tmp/billing-edge-${ENV}-$$.zip"
 FULFILL_ZIP="/tmp/billing-fulfillment-${ENV}-$$.zip"
@@ -241,4 +242,5 @@ aws cloudformation deploy \
   "HyperpayWebhookSecret=${HYPERPAY_WEBHOOK_SECRET}" \
   "BillingFulfillmentAlertEmail=${BILLING_FULFILLMENT_ALERT_EMAIL}" \
   "CatalogLambdaArn=${CATALOG_LAMBDA_ARN}" \
-  "BillingShopperResultUrl=${BILLING_SHOPPER_RESULT_URL}"
+  "BillingShopperResultUrl=${BILLING_SHOPPER_RESULT_URL}" \
+  "CorsAllowOrigin=${CORS}"

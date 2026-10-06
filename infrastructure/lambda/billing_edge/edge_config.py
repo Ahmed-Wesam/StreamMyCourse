@@ -6,6 +6,7 @@ import os
 from dataclasses import dataclass
 from typing import Optional
 
+from cors import parse_allowed_origins
 from hyperpay_secrets import load_hyperpay_from_secret
 from providers.hyperpay_adapter import HyperPayAdapter
 from providers.mock_adapter import MockHyperPayAdapter
@@ -33,6 +34,7 @@ class BillingEdgeConfig:
     fulfillment_queue_url: str | None
     catalog_lambda_arn: str | None
     billing_shopper_result_url: str | None
+    allowed_origins: tuple[str, ...]
 
     def is_prod(self) -> bool:
         return self.deployment_environment.lower() == "prod"
@@ -62,6 +64,7 @@ def load_billing_edge_config() -> BillingEdgeConfig:
         fulfillment_queue_url=_env("FULFILLMENT_QUEUE_URL"),
         catalog_lambda_arn=_env("CATALOG_LAMBDA_ARN"),
         billing_shopper_result_url=_env("BILLING_SHOPPER_RESULT_URL"),
+        allowed_origins=tuple(parse_allowed_origins(_env("ALLOWED_ORIGINS"))),
     )
 
 

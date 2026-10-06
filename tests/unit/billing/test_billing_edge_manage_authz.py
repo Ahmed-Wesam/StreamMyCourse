@@ -29,6 +29,7 @@ def _edge_config(**overrides: Any) -> BillingEdgeConfig:
         "fulfillment_queue_url": "https://sqs.eu-west-1.amazonaws.com/1/q",
         "catalog_lambda_arn": _CATALOG_ARN,
         "billing_shopper_result_url": "https://student.example.com/billing/result",
+        "allowed_origins": ("https://researchspectrum.org",),
     }
     base.update(overrides)
     return BillingEdgeConfig(**base)

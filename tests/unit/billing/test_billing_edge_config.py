@@ -88,7 +88,16 @@ def test_dev_hyperpay_when_inline_keys_present(monkeypatch: pytest.MonkeyPatch) 
     monkeypatch.setenv("HYPERPAY_ACCESS_TOKEN", "dev-token")
     monkeypatch.setenv("HYPERPAY_ENTITY_ID", "dev-entity")
     monkeypatch.setenv("BILLING_SHOPPER_RESULT_URL", "https://student.example.com/billing/result")
-    provider = get_payment_provider(load_billing_edge_config())
+    monkeypatch.setenv(
+        "ALLOWED_ORIGINS",
+        "https://researchspectrum.org,https://teach.researchspectrum.org",
+    )
+    cfg = load_billing_edge_config()
+    assert cfg.allowed_origins == (
+        "https://researchspectrum.org",
+        "https://teach.researchspectrum.org",
+    )
+    provider = get_payment_provider(cfg)
     assert isinstance(provider, HyperPayAdapter)
 
 
@@ -103,6 +112,7 @@ def test_billing_edge_config_is_frozen_dataclass() -> None:
         fulfillment_queue_url=None,
         catalog_lambda_arn=None,
         billing_shopper_result_url=None,
+        allowed_origins=(),
     )
     with pytest.raises(AttributeError):
         cfg.deployment_environment = "prod"  # type: ignore[misc]

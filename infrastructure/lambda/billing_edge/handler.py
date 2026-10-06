@@ -10,6 +10,7 @@ import json
 import logging
 from typing import Any, Dict
 
+from cors import pick_origin
 from domain.checkout_billing import parse_checkout_billing
 from domain.metadata import (
     EnvironmentMismatchError,
@@ -53,45 +54,77 @@ _BILLING_MANAGE_OPTIONS_PATHS = frozenset(
 _CSP_API = "default-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'"
 
 
-def _json_response(status_code: int, body: Dict[str, Any]) -> Dict[str, Any]:
+def _request_origin(event: Dict[str, Any]) -> str:
+    headers = event.get("headers") or {}
+    if isinstance(headers, dict):
+        return _header_lookup(headers, "Origin")
+    return ""
+
+
+def _json_response(
+    status_code: int,
+    body: Dict[str, Any],
+    *,
+    cors_origin: str | None = None,
+) -> Dict[str, Any]:
+    headers: Dict[str, str] = {
+        "content-type": "application/json",
+        "X-Content-Type-Options": "nosniff",
+        "X-Frame-Options": "DENY",
+        "Content-Security-Policy": _CSP_API,
+        "Cache-Control": "no-store",
+    }
+    if cors_origin:
+        headers["Access-Control-Allow-Origin"] = cors_origin
+        headers["Access-Control-Allow-Methods"] = "POST,OPTIONS"
+        headers["Access-Control-Allow-Headers"] = "Content-Type,Authorization"
+        if cors_origin.startswith("https://"):
+            headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
     return {
         "statusCode": status_code,
-        "headers": {
-            "content-type": "application/json",
-            "X-Content-Type-Options": "nosniff",
-            "X-Frame-Options": "DENY",
-            "Content-Security-Policy": _CSP_API,
-            "Cache-Control": "no-store",
-        },
+        "headers": headers,
         "body": json.dumps(body),
     }
 
 
-def _error_response(status_code: int, code: str, message: str) -> Dict[str, Any]:
-    return _json_response(status_code, {"code": code, "message": message})
+def _error_response(
+    status_code: int,
+    code: str,
+    message: str,
+    *,
+    cors_origin: str | None = None,
+) -> Dict[str, Any]:
+    return _json_response(status_code, {"code": code, "message": message}, cors_origin=cors_origin)
 
 
-def _manage_conflict_response(error_code: str) -> Dict[str, Any]:
+def _cors_origin_for_manage(event: Dict[str, Any], cfg: BillingEdgeConfig) -> str | None:
+    return pick_origin(list(cfg.allowed_origins), _request_origin(event) or None)
+
+
+def _manage_conflict_response(
+    error_code: str,
+    *,
+    cors_origin: str | None = None,
+) -> Dict[str, Any]:
     message = _MANAGE_CONFLICT_MESSAGES.get(
         error_code,
         "Checkout cannot proceed in the current state",
     )
-    return _error_response(409, error_code, message)
+    return _error_response(409, error_code, message, cors_origin=cors_origin)
 
 
-def _options_response(event: Dict[str, Any]) -> Dict[str, Any]:
-    headers = event.get("headers") or {}
-    origin = _header_lookup(headers, "Origin") if isinstance(headers, dict) else ""
+def _options_response(event: Dict[str, Any], cfg: BillingEdgeConfig) -> Dict[str, Any]:
+    cors_origin = _cors_origin_for_manage(event, cfg)
     response_headers: Dict[str, str] = {
         "X-Content-Type-Options": "nosniff",
         "X-Frame-Options": "DENY",
         "Content-Security-Policy": _CSP_API,
     }
-    if origin:
-        response_headers["Access-Control-Allow-Origin"] = origin
+    if cors_origin:
+        response_headers["Access-Control-Allow-Origin"] = cors_origin
         response_headers["Access-Control-Allow-Methods"] = "POST,OPTIONS"
         response_headers["Access-Control-Allow-Headers"] = "Content-Type,Authorization"
-        if origin.startswith("https://"):
+        if cors_origin.startswith("https://"):
             response_headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
     return {
         "statusCode": 204,
@@ -273,9 +306,10 @@ def _handle_checkout(
     provider: PaymentProviderPort,
     cfg: BillingEdgeConfig,
 ) -> Dict[str, Any]:
+    cors = _cors_origin_for_manage(event, cfg)
     user_sub = _claims_sub(event)
     if not user_sub:
-        return _error_response(401, "unauthorized", "Missing authenticated user")
+        return _error_response(401, "unauthorized", "Missing authenticated user", cors_origin=cors)
 
     raw = _raw_body_bytes(event)
     parsed_request = _parse_checkout_request(raw)
@@ -284,27 +318,33 @@ def _handle_checkout(
             try:
                 json.loads(raw.decode("utf-8"))
             except (json.JSONDecodeError, UnicodeDecodeError):
-                return _error_response(400, "invalid_request", "Invalid JSON body")
+                return _error_response(400, "invalid_request", "Invalid JSON body", cors_origin=cors)
         return _error_response(
             400,
             "invalid_request",
             "productType is required (course or bundle); courseId required for course",
+            cors_origin=cors,
         )
 
     product_type, course_id, billing = parsed_request
     if product_type == "__billing_error__":
-        return _error_response(400, "invalid_request", str(course_id or "Invalid billing"))
+        return _error_response(400, "invalid_request", str(course_id or "Invalid billing"), cors_origin=cors)
 
     customer_email = _claims_email(event)
     if not customer_email:
-        return _error_response(400, "invalid_request", "Authenticated user email is required for checkout")
+        return _error_response(
+            400,
+            "invalid_request",
+            "Authenticated user email is required for checkout",
+            cors_origin=cors,
+        )
 
     catalog_arn = str(cfg.catalog_lambda_arn or "").strip()
     if not catalog_arn:
-        return _error_response(503, "billing_unconfigured", "Billing is not configured")
+        return _error_response(503, "billing_unconfigured", "Billing is not configured", cors_origin=cors)
 
     if not (cfg.billing_shopper_result_url or "").strip():
-        return _error_response(503, "billing_unconfigured", "Billing is not configured")
+        return _error_response(503, "billing_unconfigured", "Billing is not configured", cors_origin=cors)
 
     try:
         precheck = _invoke_billing_checkout(
@@ -314,11 +354,11 @@ def _handle_checkout(
             catalog_lambda_arn=catalog_arn,
         )
     except CatalogInvokeError:
-        return _error_response(503, "billing_unconfigured", "Billing is not configured")
+        return _error_response(503, "billing_unconfigured", "Billing is not configured", cors_origin=cors)
 
     block_reason = precheck.get("blockReason")
     if block_reason == "already_owned":
-        return _manage_conflict_response("already_owned")
+        return _manage_conflict_response("already_owned", cors_origin=cors)
     if block_reason == "checkout_in_progress":
         return _error_response(
             409,
@@ -327,6 +367,7 @@ def _handle_checkout(
                 "A checkout is already in progress. "
                 "Wait a moment or try again shortly."
             ),
+            cors_origin=cors,
         )
 
     parsed_product = _parse_checkout_product(
@@ -340,7 +381,7 @@ def _handle_checkout(
             course_id=course_id,
             catalog_lambda_arn=catalog_arn,
         )
-        return _error_response(503, "billing_unconfigured", "Billing is not configured")
+        return _error_response(503, "billing_unconfigured", "Billing is not configured", cors_origin=cors)
 
     checkout_product, purchase_id, product_course_id = parsed_product
     sale_course_id = course_id or product_course_id
@@ -362,7 +403,7 @@ def _handle_checkout(
             course_id=course_id,
             catalog_lambda_arn=catalog_arn,
         )
-        return _error_response(503, "billing_unconfigured", "Billing is not configured")
+        return _error_response(503, "billing_unconfigured", "Billing is not configured", cors_origin=cors)
     except NotImplementedError:
         _invoke_billing_checkout_rollback(
             user_sub=user_sub,
@@ -370,7 +411,7 @@ def _handle_checkout(
             course_id=course_id,
             catalog_lambda_arn=catalog_arn,
         )
-        return _error_response(501, "not_implemented", "Checkout is not implemented yet")
+        return _error_response(501, "not_implemented", "Checkout is not implemented yet", cors_origin=cors)
 
     return _json_response(
         200,
@@ -383,6 +424,7 @@ def _handle_checkout(
             "amountMinor": checkout_product.amount_minor,
             "currency": checkout_product.currency,
         },
+        cors_origin=cors,
     )
 
 
@@ -391,23 +433,24 @@ def _handle_checkout_status(
     provider: PaymentProviderPort,
     cfg: BillingEdgeConfig,
 ) -> Dict[str, Any]:
+    cors = _cors_origin_for_manage(event, cfg)
     user_sub = _claims_sub(event)
     if not user_sub:
-        return _error_response(401, "unauthorized", "Missing authenticated user")
+        return _error_response(401, "unauthorized", "Missing authenticated user", cors_origin=cors)
 
     raw = _raw_body_bytes(event)
     checkout_id = _parse_checkout_status_request(raw)
     if not checkout_id:
-        return _error_response(400, "invalid_request", "checkoutId is required")
+        return _error_response(400, "invalid_request", "checkoutId is required", cors_origin=cors)
 
     catalog_arn = str(cfg.catalog_lambda_arn or "").strip()
     if not catalog_arn:
-        return _error_response(503, "billing_unconfigured", "Billing is not configured")
+        return _error_response(503, "billing_unconfigured", "Billing is not configured", cors_origin=cors)
 
     try:
         poll_payload = provider.fetch_checkout_result(checkout_id)
     except BillingUnconfiguredError:
-        return _error_response(503, "billing_unconfigured", "Billing is not configured")
+        return _error_response(503, "billing_unconfigured", "Billing is not configured", cors_origin=cors)
 
     payload_digest = hashlib.sha256(json.dumps(poll_payload, sort_keys=True).encode("utf-8")).hexdigest()
 
@@ -418,9 +461,14 @@ def _handle_checkout_status(
             payload_digest=payload_digest,
         )
     except EnvironmentMismatchError:
-        return _error_response(400, "environment_mismatch", "Payment environment does not match deployment")
+        return _error_response(
+            400,
+            "environment_mismatch",
+            "Payment environment does not match deployment",
+            cors_origin=cors,
+        )
     except InvalidCartMetadataError as exc:
-        return _error_response(400, "invalid_cart_metadata", str(exc))
+        return _error_response(400, "invalid_cart_metadata", str(exc), cors_origin=cors)
 
     purchase_id = ""
     amount_minor: int | None = None
@@ -437,9 +485,19 @@ def _handle_checkout_status(
             try:
                 meta = parse_cart_metadata(merchant_tx, cfg.deployment_environment)
             except (EnvironmentMismatchError, ValueError):
-                return _error_response(400, "invalid_cart_metadata", "Invalid merchant transaction id")
+                return _error_response(
+                    400,
+                    "invalid_cart_metadata",
+                    "Invalid merchant transaction id",
+                    cors_origin=cors,
+                )
             if meta.user_sub != user_sub:
-                return _error_response(403, "forbidden", "Purchase does not belong to this user")
+                return _error_response(
+                    403,
+                    "forbidden",
+                    "Purchase does not belong to this user",
+                    cors_origin=cors,
+                )
             purchase_id = meta.purchase_id
             try:
                 major = float(poll_payload.get("amount"))
@@ -458,19 +516,19 @@ def _handle_checkout_status(
                 catalog_lambda_arn=catalog_arn,
             )
         except CatalogInvokeError:
-            return _error_response(503, "billing_unconfigured", "Billing is not configured")
+            return _error_response(503, "billing_unconfigured", "Billing is not configured", cors_origin=cors)
 
         block = verify.get("blockReason")
         if block in _MANAGE_CONFLICT_MESSAGES:
-            return _manage_conflict_response(str(block))
+            return _manage_conflict_response(str(block), cors_origin=cors)
         if block:
-            return _error_response(403, "forbidden", "Purchase not authorized")
+            return _error_response(403, "forbidden", "Purchase not authorized", cors_origin=cors)
 
     if status_label == "pending":
-        return _json_response(200, {"status": "pending"})
+        return _json_response(200, {"status": "pending"}, cors_origin=cors)
 
     if not events:
-        return _json_response(200, {"status": status_label})
+        return _json_response(200, {"status": status_label}, cors_origin=cors)
 
     queue_url = cfg.fulfillment_queue_url or ""
     try:
@@ -481,9 +539,9 @@ def _handle_checkout_status(
             _request_id(event),
             len(events),
         )
-        return _error_response(500, "enqueue_failed", "Failed to enqueue billing events")
+        return _error_response(500, "enqueue_failed", "Failed to enqueue billing events", cors_origin=cors)
 
-    return _json_response(200, {"status": status_label})
+    return _json_response(200, {"status": status_label}, cors_origin=cors)
 
 
 def _handle_hyperpay_webhook(
@@ -567,12 +625,19 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     path = _apigw_routing_path(event)
 
     if provider is None:
-        if path in _BILLING_MANAGE_POST_PATHS or path == "/webhooks/payments/hyperpay":
+        if path in _BILLING_MANAGE_POST_PATHS:
+            return _error_response(
+                503,
+                "billing_unconfigured",
+                "Billing is not configured",
+                cors_origin=_cors_origin_for_manage(event, cfg),
+            )
+        if path == "/webhooks/payments/hyperpay":
             return _error_response(503, "billing_unconfigured", "Billing is not configured")
         return _error_response(404, "not_found", "Not found")
 
     if method == "OPTIONS" and path in _BILLING_MANAGE_OPTIONS_PATHS:
-        return _options_response(event)
+        return _options_response(event, cfg)
 
     if method == "POST" and path == "/billing/checkout-session":
         return _handle_checkout(event, provider, cfg)

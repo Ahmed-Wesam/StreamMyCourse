@@ -85,7 +85,14 @@ Parameters:
     Type: String
     Default: ''
     Description: >-
-      HyperPay shopperResultUrl (student edge /billing/hyperpay/return after widget checkout).
+      HyperPay shopperResultUrl (student SPA /billing/result after widget checkout).
+
+  CorsAllowOrigin:
+    Type: String
+    Default: ''
+    Description: >-
+      Comma-separated browser origins for billing manage routes (checkout-session,
+      checkout-status). Must match api-stack CorsAllowOrigin.
 
 Conditions:
   HasBillingFulfillmentAlertEmail: !Not [!Equals [!Ref BillingFulfillmentAlertEmail, '']]
@@ -222,6 +229,7 @@ Resources:
           HYPERPAY_WEBHOOK_SECRET: !Ref HyperpayWebhookSecret
           CATALOG_LAMBDA_ARN: !Ref CatalogLambdaArn
           BILLING_SHOPPER_RESULT_URL: !Ref BillingShopperResultUrl
+          ALLOWED_ORIGINS: !Ref CorsAllowOrigin
           LOG_LEVEL: INFO
       Tags:
         - Key: Project
