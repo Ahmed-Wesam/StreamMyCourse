@@ -6,6 +6,13 @@
 
 ---
 
+## 2026-10-06 — HyperPay 200.300.404 → failed (not endless pending)
+
+- **`GET /payment`** code **`200.300.404`** (no payment session at OPPWA) is **`failed`** on **`POST /billing/checkout-status`**, not **`pending`**, so shoppers are not stuck on “Processing payment” when the card step never completed.
+- Result page stops after max poll attempts with **`billingPaymentIncompleteMessage`** instead of indefinite “Confirming payment”.
+
+---
+
 ## 2026-10-06 — HyperPay test checkout: no forced 3DS2_enrolled
 
 - Billing edge **`HyperPayAdapter`** on **`eu-test.oppwa.com`** still sends **`testMode=EXTERNAL`** but no longer sets **`customParameters[3DS2_enrolled]=true`**, so COPYandPAY test cards documented as non‑3DS (e.g. Visa **`4012000033330026`**) are not pushed into an artificial 3DS challenge at prepare-checkout time.

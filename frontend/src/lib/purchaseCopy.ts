@@ -18,5 +18,8 @@ export const billingSuccessMessage =
 export const billingStayOnPageMessage =
   'Do not leave this page until you see Payment received. Closing this tab or navigating away can prevent your course access from being granted.'
 
+export const billingPaymentIncompleteMessage =
+  'Payment was not completed. Start checkout again from the catalog or a course page.'
+
 export const billingCancelMessage =
   'Checkout canceled. You can purchase anytime from a course page or the catalog.'

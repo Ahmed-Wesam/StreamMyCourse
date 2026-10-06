@@ -21,7 +21,7 @@ vi.mock('../lib/api/billing', async (importOriginal) => {
 
 import BillingResultPage from './BillingResultPage'
 import { BillingCancelRedirect, BillingSuccessRedirect } from './BillingLegacyRedirect'
-import { billingCancelMessage, billingSuccessMessage } from '../lib/purchaseCopy'
+import { billingCancelMessage, billingPaymentIncompleteMessage, billingSuccessMessage } from '../lib/purchaseCopy'
 
 function renderResult(path: string) {
   return render(
@@ -104,6 +104,15 @@ describe('Billing return pages', () => {
       expect(billingApi.getPurchases.mock.calls.length).toBeGreaterThan(0)
     })
     expect(screen.queryByRole('heading', { name: /Payment received/i })).toBeNull()
+  })
+
+  it('shows payment issue when checkout-status reports failed', async () => {
+    billingApi.getPurchases.mockResolvedValue([])
+    billingApi.getCheckoutStatus.mockResolvedValue({ status: 'failed' })
+    renderResult('/billing/result?id=CHK-failed')
+
+    expect(await screen.findByRole('heading', { name: /Payment issue/i })).toBeTruthy()
+    expect(screen.getByText(billingPaymentIncompleteMessage)).toBeTruthy()
   })
 
   it('tells the shopper to stay on the page and hides browse courses', async () => {

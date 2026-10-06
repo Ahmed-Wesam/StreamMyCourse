@@ -223,7 +223,7 @@ def test_parse_checkout_poll_rate_limit_is_pending() -> None:
     assert events == []
 
 
-def test_parse_checkout_poll_no_payment_session_is_pending() -> None:
+def test_parse_checkout_poll_no_payment_session_is_failed() -> None:
     status, events = parse_checkout_payment_poll(
         {
             "result": {
@@ -233,7 +233,7 @@ def test_parse_checkout_poll_no_payment_session_is_pending() -> None:
         },
         deployment_environment="prod",
     )
-    assert status == "pending"
+    assert status == "failed"
     assert events == []
 
 
@@ -294,8 +294,8 @@ def test_fetch_checkout_result_debounces_pending_polls() -> None:
         body = json.dumps(
             {
                 "result": {
-                    "code": "200.300.404",
-                    "description": "No payment session found",
+                    "code": "800.120.100",
+                    "description": "Too many requests",
                 }
             }
         ).encode("utf-8")

@@ -30,10 +30,9 @@ logger = logging.getLogger(__name__)
 _TEST_API_HOST = "eu-test.oppwa.com"
 _PROD_API_HOST = "eu-prod.oppwa.com"
 
-# HyperPay may return these when GET /payment is early, expired, or temporarily unavailable.
+# HyperPay may return these when GET /payment should be retried without failing the checkout.
 _POLL_TREAT_AS_PENDING_CODES = frozenset(
     {
-        "200.300.404",
         "800.120.100",
     }
 )

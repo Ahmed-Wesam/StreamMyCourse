@@ -9,6 +9,7 @@ import {
 } from '../lib/checkoutPendingPurchase'
 import {
   billingCancelMessage,
+  billingPaymentIncompleteMessage,
   billingStayOnPageMessage,
   billingSuccessMessage,
 } from '../lib/purchaseCopy'
@@ -91,7 +92,9 @@ export default function BillingResultPage() {
         await new Promise((r) => setTimeout(r, PURCHASE_POLL_MS))
       }
       if (!cancelled) {
-        setPhase('pending')
+        clearCheckoutPendingPurchaseId()
+        setPhase('error')
+        setMessage(billingPaymentIncompleteMessage)
       }
     }
 
@@ -115,10 +118,10 @@ export default function BillingResultPage() {
             await new Promise((r) => setTimeout(r, STATUS_POLL_MS))
             continue
           }
-          if (normalized === 'failed' || normalized === 'error') {
+            if (normalized === 'failed' || normalized === 'error') {
             clearCheckoutPendingPurchaseId()
             setPhase('error')
-            setMessage('Payment could not be completed. You can try checkout again from the catalog.')
+            setMessage(billingPaymentIncompleteMessage)
             return
           }
           void pollPurchases()
@@ -132,7 +135,9 @@ export default function BillingResultPage() {
         }
       }
       if (!cancelled) {
-        setPhase('pending')
+        clearCheckoutPendingPurchaseId()
+        setPhase('error')
+        setMessage(billingPaymentIncompleteMessage)
       }
     }
 
