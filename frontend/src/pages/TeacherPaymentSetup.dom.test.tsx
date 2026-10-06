@@ -90,7 +90,9 @@ describe('TeacherPaymentSetup', () => {
     renderPaymentSetup()
 
     expect(await screen.findByRole('heading', { name: /^Pricing$/i })).toBeTruthy()
-    expect(screen.getByText(/HyperPay/i)).toBeTruthy()
+    expect(
+      screen.getByRole('heading', { name: /HyperPay merchant profile URLs/i }),
+    ).toBeTruthy()
     expect(document.body.textContent?.includes('PayTabs')).toBe(false)
     expect(screen.queryByTestId('merchant-payout-status')).toBeNull()
   })
