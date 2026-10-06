@@ -8,6 +8,7 @@ import { setBundlePrice } from '../lib/api/pricing'
 import { ApiError } from '../lib/api/client'
 import { BRAND_NAME } from '../lib/brand'
 import { jodMinorToInputValue, parseJodInputToMinor } from '../lib/jodPriceInput'
+import { privacyUrl, termsUrl } from '../lib/legalUrls'
 import { usePageTitle } from '../lib/page-title'
 
 function bundlePriceUserMessage(err: unknown): string {
@@ -121,6 +122,23 @@ export default function TeacherPaymentSetup() {
             </Button>
           </>
         )}
+      </Card>
+
+      <Card className="mt-6 p-4">
+        <h2 className="text-sm font-extrabold text-rs-navy">HyperPay merchant profile URLs</h2>
+        <p className="mt-2 text-sm text-rs-body">
+          Copy these absolute links into the HyperPay merchant portal (terms and privacy fields).
+        </p>
+        <dl className="mt-4 space-y-3 text-sm">
+          <div>
+            <dt className="font-semibold text-rs-navy">Terms</dt>
+            <dd className="mt-1 break-all font-mono text-xs text-rs-body">{termsUrl()}</dd>
+          </div>
+          <div>
+            <dt className="font-semibold text-rs-navy">Privacy</dt>
+            <dd className="mt-1 break-all font-mono text-xs text-rs-body">{privacyUrl()}</dd>
+          </div>
+        </dl>
       </Card>
     </main>
   )

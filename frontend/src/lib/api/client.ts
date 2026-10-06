@@ -258,11 +258,6 @@ export async function httpGet<T>(path: string): Promise<T> {
   return (await res.json()) as T
 }
 
-/** Authenticated GET against the catalog API (for domain-specific clients such as billing). */
-export async function catalogGet<T>(path: string): Promise<T> {
-  return httpGet<T>(path)
-}
-
 export async function httpPost<T>(path: string, body: unknown): Promise<T> {
   const API_BASE_URL = requireApiBaseUrl()
   const headers = await mergeHeaders({ 'Content-Type': 'application/json' })
