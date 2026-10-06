@@ -1,3 +1,3 @@
 # WS2: verify_webhook uses stdlib only (hmac/hashlib).
 # urllib3 may be added in WS6 for PayTabs HPP HTTP calls.
-cryptography>=42.0.0,<45
+cryptography>=49.0.0,<51
