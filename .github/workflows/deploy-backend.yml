@@ -555,6 +555,7 @@ jobs:
         env:
           HYPERPAY_ACCESS_TOKEN: ${{ secrets.HYPERPAY_ACCESS_TOKEN }}
           HYPERPAY_ENTITY_ID: ${{ secrets.HYPERPAY_ENTITY_ID }}
+          HYPERPAY_WEBHOOK_SECRET: ${{ secrets.HYPERPAY_WEBHOOK_SECRET }}
         run: |
           set -euo pipefail
           chmod +x scripts/ensure-hyperpay-secret.sh
@@ -564,6 +565,7 @@ jobs:
       - name: Deploy prod
         env:
           HYPERPAY_SECRET_ARN: ${{ secrets.HYPERPAY_SECRET_ARN }}
+          HYPERPAY_WEBHOOK_SECRET: ${{ secrets.HYPERPAY_WEBHOOK_SECRET }}
           PAYMENT_PROVIDER: ${{ vars.PAYMENT_PROVIDER }}
           BILLING_FULFILLMENT_ALERT_EMAIL: ${{ vars.BILLING_FULFILLMENT_ALERT_EMAIL }}
           BILLING_TEACHER_SUB: ${{ vars.BILLING_TEACHER_SUB }}

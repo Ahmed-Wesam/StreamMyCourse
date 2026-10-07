@@ -280,6 +280,7 @@ def test_deploy_workflow_runs_ensure_hyperpay_secret_prod() -> None:
     prod_block = _job_block(text, "deploy-backend-prod", "\n  # Prod-only")
     assert "Ensure HyperPay secret (prod)" in prod_block
     assert "ensure-hyperpay-secret.sh" in prod_block
+    assert "HYPERPAY_WEBHOOK_SECRET: ${{ secrets.HYPERPAY_WEBHOOK_SECRET }}" in prod_block
     assert "streammycourse/hyperpay/prod" in prod_block
     assert "streammycourse/paytabs/prod" not in prod_block
     assert "Ensure PayTabs placeholder secret (prod)" not in prod_block

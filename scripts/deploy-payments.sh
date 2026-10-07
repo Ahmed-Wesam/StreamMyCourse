@@ -235,6 +235,10 @@ if [[ "$PAYMENT_PROVIDER" != "mock" ]]; then
     echo "HYPERPAY_ENTITY_ID is empty after hydration; set GitHub secrets or SM streammycourse/hyperpay/${ENV} with non-empty entity_id" >&2
     exit 1
   fi
+  if [[ -z "${HYPERPAY_WEBHOOK_SECRET}" ]]; then
+    echo "HYPERPAY_WEBHOOK_SECRET is empty after hydration; set GitHub prod secret or SM streammycourse/hyperpay/${ENV} webhook_secret (HyperPay Administration → Webhooks)" >&2
+    exit 1
+  fi
 fi
 
 PAYMENTS_TEMPLATE="${TEMPLATE_DIR}/payments-stack.yaml"

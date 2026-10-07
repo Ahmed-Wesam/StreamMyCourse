@@ -21,6 +21,12 @@
 
 ---
 
+## 2026-10-07 — HyperPay webhook secret: GitHub prod + deploy wiring
+
+- GitHub Environment **`prod`** secret **`HYPERPAY_WEBHOOK_SECRET`** (HyperPay portal encryption key); **`ensure-hyperpay-secret.sh`** and **`deploy-backend.yml`** sync it to SM **`webhook_secret`** and billing edge **`HYPERPAY_WEBHOOK_SECRET`** on deploy. **`deploy-payments.sh`** fails fast when hyperpay is selected and the webhook key is missing after hydration.
+
+---
+
 ## 2026-10-06 — HyperPay eu-test: restore 3DS2_enrolled on checkout POST
 
 - Billing edge **`HyperPayAdapter`** on **`eu-test.oppwa.com`** again sends **`customParameters[3DS2_enrolled]=true`** with **`testMode=EXTERNAL`**, per HyperPay test setup (Research Spectrum / Zaid). Production host unchanged.

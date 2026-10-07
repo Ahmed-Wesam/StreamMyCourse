@@ -24,7 +24,7 @@
 | `PAYMENT_PROVIDER` | `mock` (no outbound OPPWA) or `hyperpay` (live/test entity) |
 | `HYPERPAY_SECRET_ARN` | Secrets Manager ARN — preferred on prod |
 | `HYPERPAY_ACCESS_TOKEN` / `HYPERPAY_ENTITY_ID` | Optional inline (CI/local); prod uses SM |
-| `HYPERPAY_WEBHOOK_SECRET` | **64-char hex** AES-GCM key for encrypted webhooks (also stored in SM JSON as `webhook_secret`) |
+| `HYPERPAY_WEBHOOK_SECRET` | GitHub **`prod`** secret — HyperPay portal webhook encryption key (64-char hex per [their docs](https://hyperpay.docs.oppwa.com/tutorials/webhooks)); mirrored to SM `webhook_secret` and billing edge Lambda env on deploy |
 | `BILLING_SHOPPER_RESULT_URL` | Student SPA **`https://<student-host>/billing/result`** (HyperPay `shopperResultUrl`) |
 
 Deploy sets `BILLING_SHOPPER_RESULT_URL` from the edge stack **StudentSiteUrl** ([`deploy-backend.sh`](../../scripts/deploy-backend.sh), [`deploy-payments.sh`](../../scripts/deploy-payments.sh)). Deploy **must not** pass an empty value (that disables HyperPay). If checkout returns **503** `billing_unconfigured` with **OPTIONS** also failing, verify this env on **StreamMyCourse-BillingEdge-prod**.
