@@ -302,7 +302,7 @@ def test_hyperpay_webhook_activation_probe_without_headers_returns_200_no_enqueu
     enqueue.assert_not_called()
 
 
-def test_hyperpay_webhook_returns_503_when_webhook_secret_empty(
+def test_hyperpay_webhook_fail_open_when_webhook_secret_empty(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     _patch_mock_checkout(monkeypatch, hyperpay_webhook_secret=None)
@@ -311,20 +311,26 @@ def test_hyperpay_webhook_returns_503_when_webhook_secret_empty(
         _hyperpay_webhook_event(body_hex=body_hex, iv_hex=iv_hex, tag_hex=tag_hex),
         None,
     )
-    assert resp["statusCode"] == 503
-    assert _parse_body(resp)["code"] == "billing_unconfigured"
+    assert resp["statusCode"] == 200
+    assert _parse_body(resp)["status"] == "ok"
 
 
-def test_hyperpay_webhook_bad_decrypt_returns_401(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_hyperpay_webhook_bad_decrypt_fail_open_returns_200(
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
     _patch_mock_checkout(monkeypatch)
+    caplog.set_level("WARNING")
     body_hex, iv_hex, _tag_hex = _encrypt_notification({"type": "PAYMENT", "payload": {}})
     bad_tag = "0" * 32
     resp = billing_handler.lambda_handler(
         _hyperpay_webhook_event(body_hex=body_hex, iv_hex=iv_hex, tag_hex=bad_tag),
         None,
     )
-    assert resp["statusCode"] == 401
-    assert _parse_body(resp)["code"] == "invalid_webhook"
+    assert resp["statusCode"] == 200
+    assert _parse_body(resp)["status"] == "ok"
+    assert any("hyperpay_webhook_debug" in r.message for r in caplog.records)
+    assert any("decrypt_failed" in r.message for r in caplog.records)
 
 
 def test_hyperpay_webhook_valid_decrypt_enqueues_purchase_paid(
@@ -355,6 +361,26 @@ def test_hyperpay_webhook_valid_decrypt_enqueues_purchase_paid(
     events: List[BillingDomainEvent] = enqueue.call_args[0][0]
     assert len(events) == 1
     assert events[0].event_type == "purchase.paid"
+
+
+def test_hyperpay_webhook_json_encrypted_body_wrapper(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _patch_mock_checkout(monkeypatch)
+    enqueue = MagicMock()
+    monkeypatch.setattr(billing_handler, "_enqueue_domain_events", enqueue)
+    notification = {
+        "type": "REGISTRATION",
+        "action": "CREATED",
+        "payload": {},
+    }
+    body_hex, iv_hex, tag_hex = _encrypt_notification(notification)
+    wrapped = json.dumps({"encryptedBody": body_hex.decode("ascii")}).encode("utf-8")
+    event = _hyperpay_webhook_event(body_hex=wrapped, iv_hex=iv_hex, tag_hex=tag_hex)
+    resp = billing_handler.lambda_handler(event, None)
+    assert resp["statusCode"] == 200
+    assert _parse_body(resp) == {"status": "ok"}
+    enqueue.assert_not_called()
 
 
 def test_webhook_enqueue_failure_returns_500(monkeypatch: pytest.MonkeyPatch) -> None:

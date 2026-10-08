@@ -27,6 +27,24 @@ from providers.port import CheckoutProduct, HyperPayCheckoutResult
 _PROVIDER = "hyperpay"
 logger = logging.getLogger(__name__)
 
+
+def extract_hyperpay_webhook_ciphertext_hex(raw: bytes) -> str:
+    """HyperPay sends raw hex or JSON ``{"encryptedBody": "<hex>"}`` (portal wrapper)."""
+    text = raw.decode("utf-8").strip()
+    if not text:
+        raise ValueError("empty webhook body")
+    if text.startswith("{"):
+        envelope = json.loads(text)
+        if not isinstance(envelope, dict):
+            raise ValueError("invalid webhook JSON envelope")
+        wrapped = envelope.get("encryptedBody") or envelope.get("EncryptedBody")
+        if wrapped is not None:
+            inner = str(wrapped).strip()
+            if inner:
+                return inner
+    return text
+
+
 _TEST_API_HOST = "eu-test.oppwa.com"
 _PROD_API_HOST = "eu-prod.oppwa.com"
 

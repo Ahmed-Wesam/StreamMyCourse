@@ -6,6 +6,14 @@
 
 ---
 
+## 2026-10-08 — HyperPay webhook: JSON wrapper + pre-launch fail-open
+
+- Billing edge decrypts **`encryptedBody`** JSON wrapper or raw hex ([`extract_hyperpay_webhook_ciphertext_hex`](infrastructure/lambda/billing_edge/providers/hyperpay_adapter.py)) per [HyperPay webhooks](https://hyperpay.docs.oppwa.com/tutorials/webhooks).
+- **Temporary (pre-activation):** decrypt/parse failures return **200** and log **`hyperpay_webhook_debug`** (full headers/body) so HyperPay **Click to Test** can activate; re-tighten to **401** after activation. Documented in [`billing-ops-runbook.md`](infrastructure/docs/billing-ops-runbook.md).
+- Ops probe: [`scripts/verify-hyperpay-webhook-prod.py`](scripts/verify-hyperpay-webhook-prod.py).
+
+---
+
 ## 2026-10-06 — HyperPay webhook activation + drop checkout-status poll
 
 - Billing edge **`POST /webhooks/payments/hyperpay`**: missing **`X-Initialization-Vector`** / **`X-Authentication-Tag`** → **200** (HyperPay activation probe; no enqueue). Encrypted notifications unchanged → SQS fulfillment.

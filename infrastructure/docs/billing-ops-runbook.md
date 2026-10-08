@@ -95,7 +95,7 @@ Example prod pattern: resolve **`ApiEndpoint`** from `StreamMyCourse-Api-prod` s
 - `X-Initialization-Vector`
 - `X-Authentication-Tag`
 
-**Verification:** webhook secret in SM must match HyperPay portal. Mismatch → **401** `invalid_webhook`. Missing secret on edge → **503** `billing_unconfigured`.
+**Verification:** webhook secret in SM must match HyperPay portal. **Pre-launch (temporary):** billing edge returns **200** on decrypt/parse failures so HyperPay can activate the endpoint; failures log **`hyperpay_webhook_debug`** in CloudWatch (full body/headers). Re-enable **401**/`invalid_webhook` after activation and a successful encrypted test. Missing secret on edge also fail-opens **200** until go-live tighten-up.
 
 **Activation (HyperPay back office):** HyperPay may send a probe `POST` without `X-Initialization-Vector` / `X-Authentication-Tag`. The billing edge responds **200** `{"status":"ok"}` and does **not** enqueue. Real notifications include both headers and encrypted body.
 

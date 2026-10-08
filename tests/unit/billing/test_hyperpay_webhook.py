@@ -9,7 +9,11 @@ import pytest
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
 from domain.metadata import InvalidCartMetadataError
-from providers.hyperpay_adapter import HyperPayAdapter, parse_hyperpay_webhook
+from providers.hyperpay_adapter import (
+    HyperPayAdapter,
+    extract_hyperpay_webhook_ciphertext_hex,
+    parse_hyperpay_webhook,
+)
 
 _PURCHASE_ID = "c0000000-0000-4000-8000-000000000001"
 _COURSE_ID = "b0000000-0000-4000-8000-000000000001"
@@ -18,6 +22,13 @@ _CART_V2_COURSE = f"v2|dev|{_USER_SUB}|course|{_COURSE_ID}|{_PURCHASE_ID}"
 _DIGEST = "d" * 64
 
 _WEBHOOK_KEY_HEX = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+
+
+def test_extract_webhook_ciphertext_hex_raw_and_json_wrapper() -> None:
+    raw = b"abc123"
+    assert extract_hyperpay_webhook_ciphertext_hex(raw) == "abc123"
+    wrapped = json.dumps({"encryptedBody": "deadbeef"}).encode()
+    assert extract_hyperpay_webhook_ciphertext_hex(wrapped) == "deadbeef"
 
 
 def _encrypt_notification(
