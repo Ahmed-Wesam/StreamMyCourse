@@ -6,6 +6,11 @@
 
 ---
 
+## 2026-10-11 — HyperPay widget: stop forcing paymentTarget _top
+
+- Student checkout no longer sets `wpwlOptions.paymentTarget` to `_top` ([`HyperPayWidget.tsx`](frontend/src/components/billing/HyperPayWidget.tsx)). Browser recordings showed Pay jumping straight to `/billing/result` with no bank-check page and no payment at HyperPay.
+- HyperPay’s default still sends the shopper to `shopperResultUrl` after the card step. The bank-check page can use the widget’s own target.
+
 ## 2026-10-11 — HyperPay webhook active; strict validation restored
 
 - HyperPay confirmed webhook **Active** after **Click to Test** (**200**); prod log showed decrypt + `webhook_no_domain_events` (activation payload, no enqueue).

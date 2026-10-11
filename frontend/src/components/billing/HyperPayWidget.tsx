@@ -8,7 +8,7 @@ type HyperPayWidgetProps = {
 
 declare global {
   interface Window {
-    wpwlOptions?: { paymentTarget: string }
+    wpwlOptions?: Record<string, unknown>
   }
 }
 
@@ -17,7 +17,9 @@ export function HyperPayWidget({ widgetScriptUrl, integrity, shopperResultUrl }:
   const formRef = useRef<HTMLFormElement>(null)
 
   useEffect(() => {
-    window.wpwlOptions = { paymentTarget: '_top' }
+    // Do not set paymentTarget "_top". That sent Pay straight to the result
+    // page and skipped HyperPay's bank-check redirect.
+    delete window.wpwlOptions
 
     const script = document.createElement('script')
     script.src = widgetScriptUrl

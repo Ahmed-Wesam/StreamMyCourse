@@ -153,7 +153,7 @@ describe('CheckoutPage', () => {
     const form = screen.getByTestId('hyperpay-widget-form')
     expect(form.getAttribute('action')).toBe('https://student.example.com/billing/result')
     expect(form.getAttribute('data-brands')).toBe('VISA MASTER')
-    expect(window.wpwlOptions).toEqual({ paymentTarget: '_top' })
+    expect(window.wpwlOptions).toBeUndefined()
     const script = document.querySelector('script[src*="paymentWidgets.js"]')
     expect(script?.getAttribute('integrity')).toBe('sha384-mock')
     expect(script?.getAttribute('crossorigin')).toBe('anonymous')

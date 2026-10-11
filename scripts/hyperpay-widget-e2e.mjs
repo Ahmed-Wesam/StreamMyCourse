@@ -134,7 +134,6 @@ function buildWidgetHtml(session) {
 <html><head><meta charset="utf-8"><title>HyperPay widget e2e</title></head>
 <body>
 <form action="${action}" class="paymentWidgets" data-brands="VISA MASTER"></form>
-<script>var wpwlOptions = { paymentTarget: "_top" };</script>
 <script src="${src}"></script>
 </body></html>`
 }
