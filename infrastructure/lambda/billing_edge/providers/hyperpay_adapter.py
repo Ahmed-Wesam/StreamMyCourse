@@ -461,6 +461,9 @@ class HyperPayAdapter:
     ) -> HyperPayCheckoutResult:
         if not self._has_credentials() or not self._shopper_result_url:
             raise BillingUnconfiguredError()
+        # The card form sends shopperResultUrl once, on Pay. Repeating it on
+        # checkout creation makes HyperPay reject the payment with
+        # "shopperResultUrl was already set and cannot be overwritten".
 
         try:
             _validate_api_host(self._api_host)
@@ -492,7 +495,6 @@ class HyperPayAdapter:
             ("paymentType", "DB"),
             ("integrity", "true"),
             ("merchantTransactionId", cart_id),
-            ("shopperResultUrl", self._shopper_result_url),
             ("customer.email", email),
             ("customer.givenName", billing.given_name),
             ("customer.surname", billing.surname),

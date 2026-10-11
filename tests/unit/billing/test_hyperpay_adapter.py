@@ -96,7 +96,7 @@ def test_create_checkout_posts_form_body_with_bearer_and_integrity() -> None:
     assert body["customParameters[3DS2_enrolled]"] == ["true"]
     cart_id = f"v2|dev|{_USER_SUB}|course|{_COURSE_ID}|{_PURCHASE_ID}"
     assert body["merchantTransactionId"] == [cart_id]
-    assert body["shopperResultUrl"] == [_SHOPPER_RESULT_URL]
+    assert "shopperResultUrl" not in body
     assert body["customer.email"] == [_CUSTOMER_EMAIL]
     assert body["customer.givenName"] == ["Ada"]
     assert body["billing.country"] == ["JO"]
@@ -130,6 +130,7 @@ def test_create_checkout_omits_test_mode_on_production_host() -> None:
 
     assert "testMode" not in captured["body"]
     assert "customParameters[3DS2_enrolled]" not in captured["body"]
+    assert "shopperResultUrl" not in captured["body"]
 
 
 def test_create_checkout_rejects_non_whole_jod_amount() -> None:

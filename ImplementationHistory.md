@@ -6,6 +6,11 @@
 
 ---
 
+## 2026-10-11 — HyperPay checkout: send the return URL only from the card form
+
+- Pay failed because checkout creation and the card form both sent `shopperResultUrl`. HyperPay answered `shopperResultUrl was already set and cannot be overwritten`, then reported no payment.
+- Billing edge no longer sends `shopperResultUrl` on `POST /v1/checkouts`. The student page still receives it and the card form sends it once on Pay.
+
 ## 2026-10-11 — HyperPay widget: stop forcing paymentTarget _top
 
 - Student checkout no longer sets `wpwlOptions.paymentTarget` to `_top` ([`HyperPayWidget.tsx`](frontend/src/components/billing/HyperPayWidget.tsx)). Browser recordings showed Pay jumping straight to `/billing/result` with no bank-check page and no payment at HyperPay.
