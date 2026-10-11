@@ -1230,6 +1230,11 @@ describe('CourseManagement', () => {
           'c1',
           true,
         )
+        const saved = screen.getByRole('checkbox', {
+          name: /Required for Research Team/i,
+        }) as HTMLInputElement
+        expect(saved.checked).toBe(true)
+        expect(saved.disabled).toBe(false)
       })
 
       fireEvent.click(screen.getByRole('checkbox', { name: /Required for Research Team/i }))
