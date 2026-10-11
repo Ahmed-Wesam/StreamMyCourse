@@ -246,11 +246,11 @@ describe('StudentDashboardPage', () => {
     })
   })
 
-  it('shows retry UI when purchases fetch fails', async () => {
+  it('still loads when purchases are unavailable', async () => {
     getPurchases.mockRejectedValue(new Error('billing down'))
     renderDashboard()
-    expect(await screen.findByTestId('student-dashboard-error')).toBeTruthy()
-    expect(screen.queryByTestId('student-dashboard-course-c1')).toBeNull()
+    expect(await screen.findByTestId('student-dashboard-stats')).toBeTruthy()
+    expect(screen.queryByTestId('student-dashboard-error')).toBeNull()
   })
 
   it('shows unavailable progress on per-course load failure', async () => {
