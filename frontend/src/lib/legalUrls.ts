@@ -2,7 +2,7 @@ import { legalConfig } from './legalConfig'
 
 const DEFAULT_STUDENT_ORIGIN = `https://${legalConfig.websiteHost}`
 
-/** Student SPA origin for absolute legal links (HyperPay merchant profile, footers). */
+/** Student site origin for absolute legal links in the teacher shell. */
 export function studentSiteOrigin(): string {
   const env = import.meta.env.VITE_STUDENT_SITE_URL
   if (typeof env === 'string' && env.trim().length > 0) {
@@ -11,14 +11,3 @@ export function studentSiteOrigin(): string {
   return DEFAULT_STUDENT_ORIGIN
 }
 
-function legalPath(path: string): string {
-  return `${studentSiteOrigin()}${path}`
-}
-
-export function termsUrl(): string {
-  return legalPath('/terms')
-}
-
-export function privacyUrl(): string {
-  return legalPath('/privacy')
-}

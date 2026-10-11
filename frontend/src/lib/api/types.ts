@@ -280,11 +280,7 @@ export type CheckoutSessionResponse = {
   currency?: string
 }
 
-export type CheckoutStatusResponse = {
-  status: string
-}
-
-export type CheckoutProductType = 'course' | 'bundle'
+type CheckoutProductType = 'course' | 'bundle'
 
 export type CreateCheckoutSessionBody = {
   productType: CheckoutProductType

@@ -3,11 +3,6 @@
  * Student checkout lives in `./billing.ts`.
  */
 import { httpPatch } from './client'
-import type { BundleOffer } from './types'
-
-export async function setBundlePrice(amountMinor: number): Promise<BundleOffer> {
-  return httpPatch<BundleOffer>('/billing/bundle', { amountMinor })
-}
 
 export async function setCoursePrice(
   courseId: string,
