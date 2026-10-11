@@ -12,6 +12,7 @@ from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
 from billing._imports import billing_handler
 from domain.events import BillingDomainEvent
+from domain.metadata import EnvironmentMismatchError, InvalidCartMetadataError
 from edge_config import BillingEdgeConfig
 from providers.mock_adapter import MockHyperPayAdapter
 from providers.hyperpay_adapter import BillingUnconfiguredError
@@ -302,7 +303,7 @@ def test_hyperpay_webhook_activation_probe_without_headers_returns_200_no_enqueu
     enqueue.assert_not_called()
 
 
-def test_hyperpay_webhook_fail_open_when_webhook_secret_empty(
+def test_hyperpay_webhook_returns_503_when_webhook_secret_empty(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     _patch_mock_checkout(monkeypatch, hyperpay_webhook_secret=None)
@@ -311,26 +312,125 @@ def test_hyperpay_webhook_fail_open_when_webhook_secret_empty(
         _hyperpay_webhook_event(body_hex=body_hex, iv_hex=iv_hex, tag_hex=tag_hex),
         None,
     )
-    assert resp["statusCode"] == 200
-    assert _parse_body(resp)["status"] == "ok"
+    assert resp["statusCode"] == 503
+    assert _parse_body(resp)["code"] == "billing_unconfigured"
 
 
-def test_hyperpay_webhook_bad_decrypt_fail_open_returns_200(
-    monkeypatch: pytest.MonkeyPatch,
-    caplog: pytest.LogCaptureFixture,
-) -> None:
+def test_hyperpay_webhook_bad_decrypt_returns_401(monkeypatch: pytest.MonkeyPatch) -> None:
     _patch_mock_checkout(monkeypatch)
-    caplog.set_level("WARNING")
     body_hex, iv_hex, _tag_hex = _encrypt_notification({"type": "PAYMENT", "payload": {}})
     bad_tag = "0" * 32
     resp = billing_handler.lambda_handler(
         _hyperpay_webhook_event(body_hex=body_hex, iv_hex=iv_hex, tag_hex=bad_tag),
         None,
     )
+    assert resp["statusCode"] == 401
+    assert _parse_body(resp)["code"] == "invalid_webhook"
+
+
+def test_hyperpay_webhook_environment_mismatch_returns_400(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class MismatchProvider(MockHyperPayAdapter):
+        def parse_webhook(
+            self,
+            raw_body: bytes,
+            *,
+            deployment_environment: str,
+            payload_digest: str = "",
+        ) -> list[BillingDomainEvent]:
+            raise EnvironmentMismatchError("cart env mismatch")
+
+    monkeypatch.setattr(billing_handler, "_load_config", lambda: _edge_config())
+    monkeypatch.setattr(
+        billing_handler,
+        "_get_payment_provider",
+        lambda _cfg: MismatchProvider(),
+    )
+    notification = {
+        "type": "PAYMENT",
+        "payload": {
+            "id": "pay-mismatch",
+            "paymentType": "DB",
+            "amount": "50.00",
+            "currency": "JOD",
+            "merchantTransactionId": _CART_V2,
+            "result": {"code": "000.000.000"},
+        },
+    }
+    body_hex, iv_hex, tag_hex = _encrypt_notification(notification)
+    resp = billing_handler.lambda_handler(
+        _hyperpay_webhook_event(body_hex=body_hex, iv_hex=iv_hex, tag_hex=tag_hex),
+        None,
+    )
+    assert resp["statusCode"] == 400
+    assert _parse_body(resp)["code"] == "environment_mismatch"
+
+
+def test_hyperpay_webhook_invalid_cart_metadata_returns_400(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class BadCartProvider(MockHyperPayAdapter):
+        def parse_webhook(
+            self,
+            raw_body: bytes,
+            *,
+            deployment_environment: str,
+            payload_digest: str = "",
+        ) -> list[BillingDomainEvent]:
+            raise InvalidCartMetadataError("bad cart")
+
+    monkeypatch.setattr(billing_handler, "_load_config", lambda: _edge_config())
+    monkeypatch.setattr(
+        billing_handler,
+        "_get_payment_provider",
+        lambda _cfg: BadCartProvider(),
+    )
+    notification = {
+        "type": "PAYMENT",
+        "payload": {
+            "id": "pay-bad-cart",
+            "paymentType": "DB",
+            "amount": "50.00",
+            "currency": "JOD",
+            "merchantTransactionId": _CART_V2,
+            "result": {"code": "000.000.000"},
+        },
+    }
+    body_hex, iv_hex, tag_hex = _encrypt_notification(notification)
+    resp = billing_handler.lambda_handler(
+        _hyperpay_webhook_event(body_hex=body_hex, iv_hex=iv_hex, tag_hex=tag_hex),
+        None,
+    )
+    assert resp["statusCode"] == 400
+    assert _parse_body(resp)["code"] == "invalid_cart_metadata"
+
+
+def test_hyperpay_webhook_activation_probe_with_body_does_not_log_debug(
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    _patch_mock_checkout(monkeypatch)
+    caplog.set_level("WARNING")
+    enqueue = MagicMock()
+    monkeypatch.setattr(billing_handler, "_enqueue_domain_events", enqueue)
+    evt = {
+        "httpMethod": "POST",
+        "path": "/webhooks/payments/hyperpay",
+        "requestContext": {
+            "resourcePath": "/webhooks/payments/hyperpay",
+            "stage": "dev",
+            "requestId": "req-activation-with-body",
+        },
+        "headers": {"content-type": "application/json"},
+        "body": "probe-body-not-logged",
+        "isBase64Encoded": False,
+    }
+    resp = billing_handler.lambda_handler(evt, None)
     assert resp["statusCode"] == 200
-    assert _parse_body(resp)["status"] == "ok"
-    assert any("hyperpay_webhook_debug" in r.message for r in caplog.records)
-    assert any("decrypt_failed" in r.message for r in caplog.records)
+    enqueue.assert_not_called()
+    assert not any("hyperpay_webhook_debug" in r.message for r in caplog.records)
+    assert not any("probe-body-not-logged" in r.message for r in caplog.records)
 
 
 def test_hyperpay_webhook_valid_decrypt_enqueues_purchase_paid(

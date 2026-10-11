@@ -271,52 +271,6 @@ def _parse_checkout_request(
     return product_type, course_id, billing
 
 
-def _log_hyperpay_webhook_request(
-    event: Dict[str, Any],
-    raw: bytes,
-    *,
-    request_id: str,
-    stage: str,
-    reason: str,
-    exc: BaseException | None = None,
-) -> None:
-    """Pre-launch: log full inbound webhook for HyperPay activation debugging."""
-    headers = event.get("headers") or {}
-    body_text = raw.decode("utf-8", errors="replace") if raw else ""
-    logger.warning(
-        "hyperpay_webhook_debug requestId=%s stage=%s reason=%s exc=%s "
-        "isBase64Encoded=%s body_len=%s headers=%s body=%s",
-        request_id,
-        stage,
-        reason,
-        repr(exc) if exc else "",
-        bool(event.get("isBase64Encoded")),
-        len(raw),
-        json.dumps(headers),
-        body_text,
-    )
-
-
-def _hyperpay_webhook_ok_fail_open(
-    event: Dict[str, Any],
-    raw: bytes,
-    *,
-    request_id: str,
-    reason: str,
-    exc: BaseException | None = None,
-) -> Dict[str, Any]:
-    """Return 200 so HyperPay can activate the webhook (pre-launch; re-tighten after)."""
-    _log_hyperpay_webhook_request(
-        event,
-        raw,
-        request_id=request_id,
-        stage="fail_open",
-        reason=reason,
-        exc=exc,
-    )
-    return _json_response(200, {"status": "ok"})
-
-
 def _webhook_secret_hex(cfg: BillingEdgeConfig) -> str:
     from edge_config import resolve_hyperpay_credentials
 
@@ -459,32 +413,17 @@ def _handle_hyperpay_webhook(
     provider: PaymentProviderPort,
     cfg: BillingEdgeConfig,
 ) -> Dict[str, Any]:
-    request_id = _request_id(event)
-    raw = _raw_body_bytes(event)
-
     webhook_secret = _webhook_secret_hex(cfg)
     if not webhook_secret:
-        return _hyperpay_webhook_ok_fail_open(
-            event,
-            raw,
-            request_id=request_id,
-            reason="billing_unconfigured_no_webhook_secret",
-        )
+        return _error_response(503, "billing_unconfigured", "Billing is not configured")
 
     headers = event.get("headers") or {}
     iv_hex = _header_lookup(headers, "X-Initialization-Vector")
     tag_hex = _header_lookup(headers, "X-Authentication-Tag")
     if not iv_hex or not tag_hex:
-        if raw:
-            _log_hyperpay_webhook_request(
-                event,
-                raw,
-                request_id=request_id,
-                stage="activation_probe",
-                reason="missing_iv_or_auth_tag",
-            )
         return _json_response(200, {"status": "ok"})
 
+    raw = _raw_body_bytes(event)
     try:
         ciphertext_hex = extract_hyperpay_webhook_ciphertext_hex(raw)
         decrypted = provider.decrypt_webhook(
@@ -493,16 +432,11 @@ def _handle_hyperpay_webhook(
             auth_tag_hex=tag_hex,
             webhook_secret_hex=webhook_secret,
         )
-    except (ValueError, json.JSONDecodeError, UnicodeDecodeError) as exc:
-        return _hyperpay_webhook_ok_fail_open(
-            event,
-            raw,
-            request_id=request_id,
-            reason="decrypt_failed",
-            exc=exc,
-        )
+    except (ValueError, json.JSONDecodeError, UnicodeDecodeError):
+        return _error_response(401, "invalid_webhook", "Invalid webhook payload")
 
     payload_digest = hashlib.sha256(decrypted).hexdigest()
+    request_id = _request_id(event)
 
     try:
         events = provider.parse_webhook(
@@ -510,22 +444,10 @@ def _handle_hyperpay_webhook(
             deployment_environment=cfg.deployment_environment,
             payload_digest=payload_digest,
         )
-    except EnvironmentMismatchError as exc:
-        return _hyperpay_webhook_ok_fail_open(
-            event,
-            raw,
-            request_id=request_id,
-            reason="environment_mismatch",
-            exc=exc,
-        )
+    except EnvironmentMismatchError:
+        return _error_response(400, "environment_mismatch", "Webhook environment does not match deployment")
     except InvalidCartMetadataError as exc:
-        return _hyperpay_webhook_ok_fail_open(
-            event,
-            raw,
-            request_id=request_id,
-            reason="invalid_cart_metadata",
-            exc=exc,
-        )
+        return _error_response(400, "invalid_cart_metadata", str(exc))
 
     if not events:
         logger.info(

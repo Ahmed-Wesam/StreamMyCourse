@@ -110,10 +110,10 @@ def main() -> int:
         timeout=30.0,
     )
     print(f"Wrong-key probe: HTTP {r2.status_code} body={r2.text[:120]}")
-    if r2.status_code != 200:
-        print(f"WARN: pre-launch fail-open expects 200 even on bad decrypt (got {r2.status_code})")
-    else:
-        print("OK: wrong key still 200 (pre-launch fail-open; check CloudWatch hyperpay_webhook_debug)")
+    if r2.status_code != 401:
+        print(f"FAIL: expected 401 for wrong key (got {r2.status_code})")
+        return 1
+    print("OK: wrong key rejected (401)")
 
     # 4) JSON wrapper (HyperPay optional) — we do not support it today
     good_hex, good_iv, good_tag = encrypt_hyperpay_notification(

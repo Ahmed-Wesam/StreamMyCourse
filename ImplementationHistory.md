@@ -6,11 +6,16 @@
 
 ---
 
-## 2026-10-08 — HyperPay webhook: JSON wrapper + pre-launch fail-open
+## 2026-10-11 — HyperPay webhook active; strict validation restored
+
+- HyperPay confirmed webhook **Active** after **Click to Test** (**200**); prod log showed decrypt + `webhook_no_domain_events` (activation payload, no enqueue).
+- Removed pre-launch fail-open and **`hyperpay_webhook_debug`** full-body logging; decrypt failure → **401**, parse/env errors → **400**, missing secret → **503**. Kept **`encryptedBody`** JSON wrapper support.
+- Ops probe: [`scripts/verify-hyperpay-webhook-prod.py`](scripts/verify-hyperpay-webhook-prod.py).
+
+## 2026-10-08 — HyperPay webhook: JSON wrapper + pre-launch fail-open (superseded 2026-10-11)
 
 - Billing edge decrypts **`encryptedBody`** JSON wrapper or raw hex ([`extract_hyperpay_webhook_ciphertext_hex`](infrastructure/lambda/billing_edge/providers/hyperpay_adapter.py)) per [HyperPay webhooks](https://hyperpay.docs.oppwa.com/tutorials/webhooks).
-- **Temporary (pre-activation):** decrypt/parse failures return **200** and log **`hyperpay_webhook_debug`** (full headers/body) so HyperPay **Click to Test** can activate; re-tighten to **401** after activation. Documented in [`billing-ops-runbook.md`](infrastructure/docs/billing-ops-runbook.md).
-- Ops probe: [`scripts/verify-hyperpay-webhook-prod.py`](scripts/verify-hyperpay-webhook-prod.py).
+- Fail-open **200** on decrypt errors was temporary for portal activation only.
 
 ---
 
