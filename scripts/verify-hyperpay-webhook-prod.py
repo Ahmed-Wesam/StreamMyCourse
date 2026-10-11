@@ -115,7 +115,7 @@ def main() -> int:
         return 1
     print("OK: wrong key rejected (401)")
 
-    # 4) JSON wrapper (HyperPay optional) — we do not support it today
+    # 4) JSON wrapper (HyperPay portal option)
     good_hex, good_iv, good_tag = encrypt_hyperpay_notification(
         {"type": "REGISTRATION", "action": "CREATED", "payload": {}},
         webhook_secret_hex=secret,
@@ -133,9 +133,9 @@ def main() -> int:
     )
     print(f"JSON wrapper probe: HTTP {r3.status_code} body={r3.text[:120]}")
     if r3.status_code != 200:
-        print("WARN: expected 200 for JSON encryptedBody wrapper (portal Click to Test)")
-    else:
-        print("OK: JSON encryptedBody wrapper accepted")
+        print(f"FAIL: expected 200 for JSON encryptedBody wrapper (got {r3.status_code})")
+        return 1
+    print("OK: JSON encryptedBody wrapper accepted")
 
     # 5) Billing edge invocations in last 24h (REPORT count)
     import time
