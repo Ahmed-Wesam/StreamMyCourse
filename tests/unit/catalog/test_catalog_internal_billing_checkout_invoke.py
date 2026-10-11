@@ -47,6 +47,18 @@ class TestInternalBillingCheckoutInvoke:
             )
             assert out == {"blockReason": "already_owned"}
 
+    def test_checkout_status_dispatched_to_billing_handler(self) -> None:
+        expected = {"ok": True}
+        with patch("index._handle_internal_billing_event", return_value=expected) as mock:
+            event = {
+                "internal": "billing.checkout_status",
+                "userSub": "cognito-sub-1",
+                "purchaseId": "c0000000-0000-4000-8000-000000000001",
+            }
+            out = lambda_handler(event, None)
+            mock.assert_called_once_with(event)
+            assert out == expected
+
     def test_apigw_event_not_treated_as_internal(self, make_lambda_event) -> None:
         with patch("index._handle_internal_billing_event") as mock_internal:
             with patch("index.load_config") as mock_cfg:

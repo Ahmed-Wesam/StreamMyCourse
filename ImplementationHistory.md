@@ -6,6 +6,11 @@
 
 ---
 
+## 2026-10-11 — Catalog accepts the checkout status check
+
+- After the bank check, the result page asks the catalog whether the pending purchase is still valid. That request was rejected as an unknown internal event, so the page showed “Billing is not configured.”
+- The catalog now routes `billing.checkout_status` to the same billing handler as checkout creation.
+
 ## 2026-10-11 — HyperPay checkout: send the return URL only from the card form
 
 - Pay failed because checkout creation and the card form both sent `shopperResultUrl`. HyperPay answered `shopperResultUrl was already set and cannot be overwritten`, then reported no payment.

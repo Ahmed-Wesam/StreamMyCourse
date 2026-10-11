@@ -159,6 +159,7 @@ def _handle_internal_event(event: Dict[str, Any]) -> Dict[str, Any]:
     internal = event.get("internal")
     if internal in (
         _INTERNAL_BILLING_CHECKOUT,
+        _INTERNAL_BILLING_CHECKOUT_STATUS,
         _INTERNAL_BILLING_ROLLBACK,
     ):
         return _handle_internal_billing_event(event)
