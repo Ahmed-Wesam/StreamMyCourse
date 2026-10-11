@@ -87,7 +87,7 @@ Enrollment rows do **not** grant lesson access under RS-5 (purchases do); table 
 
 | File | Layer | Notes |
 |------|-------|------|
-| `service.py` | Domain | `CourseAccessService.has_course_access` — paid course or paid bundle; owner/admin bypass |
+| `service.py` | Domain | `CourseAccessService.has_course_access` — signed-in access to published courses until payments return; owner/admin bypass |
 | `checkout_service.py` / `manage_service.py` | Application | Checkout precheck; bundle/course price manage |
 | `controller.py` | HTTP adapter | `POST /billing/checkout-session`, `GET /billing/bundle`, `GET /billing/purchases`, price/bundle PATCH routes |
 | `internal_checkout.py` | Internal | Fulfillment-facing helpers invoked from billing queue path |
@@ -96,7 +96,7 @@ Enrollment rows do **not** grant lesson access under RS-5 (purchases do); table 
 
 **Supersedes** subscription module / `access-policy-v1` subscription rules (ADR 0013).
 
-**Sibling:** `infrastructure/lambda/billing_edge/` — no-VPC HyperPay checkout + encrypted webhook → SQS events (`purchase.paid|failed|revoked`) — [ADR 0015](./adr-0015-hyperpay-copyandpay-jod.md).
+**Payments:** the HyperPay edge, fulfillment worker, and payments stack were removed. Rebuild from the local plan `plans/payment-rebuild.md` (not in git).
 
 ### `services/billing_merchant/` (implemented)
 
@@ -182,7 +182,7 @@ Cross-cutting utilities shared by multiple contexts:
 | Package / stack | Role |
 |-----------------|------|
 | `infrastructure/lambda/video_provider_edge/` | Kinescope HTTP (no VPC) — ADR 0011 |
-| `infrastructure/lambda/billing_edge/` | HyperPay COPYandPAY + webhook → SQS — ADR 0013 / 0015 |
+| Payments | Removed. Rebuild from local `plans/payment-rebuild.md` (not in git). |
 | `infrastructure/lambda/transactional_mail/` | Zoho SMTP consumer — contact + notify; same secret posture as CustomEmailSender |
 | `infrastructure/lambda/media_cleanup/` | Async S3 deletes after course/media delete |
 | `infrastructure/lambda/cognito_pre_signup/` | Account linking / duplicate email — ADR 0014 |

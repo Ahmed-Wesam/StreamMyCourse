@@ -550,42 +550,13 @@ jobs:
           GOOGLE_OAUTH_CLIENT_ID: ${{ secrets.GOOGLE_OAUTH_CLIENT_ID }}
           GOOGLE_OAUTH_CLIENT_SECRET: ${{ secrets.GOOGLE_OAUTH_CLIENT_SECRET }}
 
-      - name: Ensure HyperPay secret (prod)
-        id: hyperpay_secret_prod
-        env:
-          HYPERPAY_ACCESS_TOKEN: ${{ secrets.HYPERPAY_ACCESS_TOKEN }}
-          HYPERPAY_ENTITY_ID: ${{ secrets.HYPERPAY_ENTITY_ID }}
-          HYPERPAY_WEBHOOK_SECRET: ${{ secrets.HYPERPAY_WEBHOOK_SECRET }}
-        run: |
-          set -euo pipefail
-          chmod +x scripts/ensure-hyperpay-secret.sh
-          eval "$(./scripts/ensure-hyperpay-secret.sh | tail -n 1)"
-          echo "arn=${HYPERPAY_SECRET_ARN}" >> "$GITHUB_OUTPUT"
-
       - name: Deploy prod
         env:
-          HYPERPAY_SECRET_ARN: ${{ secrets.HYPERPAY_SECRET_ARN }}
-          HYPERPAY_WEBHOOK_SECRET: ${{ secrets.HYPERPAY_WEBHOOK_SECRET }}
-          PAYMENT_PROVIDER: ${{ vars.PAYMENT_PROVIDER }}
-          BILLING_FULFILLMENT_ALERT_EMAIL: ${{ vars.BILLING_FULFILLMENT_ALERT_EMAIL }}
           BILLING_TEACHER_SUB: ${{ vars.BILLING_TEACHER_SUB }}
           VIDEO_PROVIDER: s3
           ZOHO_SMTP_SECRET_ARN: ${{ steps.zoho_smtp_secret_prod.outputs.arn }}
         run: |
           set -euo pipefail
-          if [[ -z "${HYPERPAY_SECRET_ARN:-}" ]]; then
-            HYPERPAY_SECRET_ARN="$(aws secretsmanager describe-secret \
-              --secret-id streammycourse/hyperpay/prod \
-              --region "${AWS_REGION:-eu-west-1}" \
-              --query ARN \
-              --output text 2>/dev/null || true)"
-            if [[ -n "${HYPERPAY_SECRET_ARN}" && "${HYPERPAY_SECRET_ARN}" != "None" ]]; then
-              export HYPERPAY_SECRET_ARN
-            fi
-          fi
-          if [[ -z "${HYPERPAY_SECRET_ARN:-}" && -n "${{ steps.hyperpay_secret_prod.outputs.arn }}" ]]; then
-            export HYPERPAY_SECRET_ARN="${{ steps.hyperpay_secret_prod.outputs.arn }}"
-          fi
           chmod +x scripts/deploy-backend.sh
           ./scripts/deploy-backend.sh prod
 

@@ -200,28 +200,12 @@ def test_deploy_backend_prod_packages_cognito_pre_signup_lambda() -> None:
     assert "ZohoSmtpSecretArn=${{ steps.zoho_smtp_secret_prod.outputs.arn }}" in block
 
 
-def test_deploy_backend_sh_invokes_deploy_payments_for_prod_only() -> None:
+def test_deploy_backend_sh_does_not_deploy_payments() -> None:
     text = _deploy_backend_sh_text()
-    assert "deploy-payments.sh" in text
-    assert 'case "$ENV" in' in text
-    assert "prod)" in text
-    assert "dev | prod)" not in text
-    assert "StreamMyCourse-Payments-prod" in text or "StreamMyCourse-Payments-${ENV}" in text
-    assert "BillingEdgeLambdaArn" in text
-    assert "BILLING_PARAM_OVERRIDES" in text
-
-
-def test_deploy_backend_sh_passes_billing_fulfillment_alert_email_to_payments() -> None:
-    text = _deploy_backend_sh_text()
-    assert "export BILLING_FULFILLMENT_ALERT_EMAIL" in text
-    payments_block = text[text.index("deploy-payments.sh") : text.index("PAYMENTS_STACK=")]
-    assert "BILLING_FULFILLMENT_ALERT_EMAIL" in payments_block
-
-
-def test_deploy_backend_sh_passes_billing_edge_arn_to_api_stack() -> None:
-    text = _deploy_backend_sh_text()
-    assert '"BillingEdgeLambdaArn=${BILLING_EDGE_ARN}"' in text
-    assert "BillingFulfillmentQueueUrl=" not in text
+    assert "deploy-payments.sh" not in text
+    assert 'BILLING_PARAM_OVERRIDES=("BillingEdgeLambdaArn=")' in text
+    assert "StreamMyCourse-Payments-${ENV}" in text
+    assert "delete-stack" in text
     assert "${BILLING_PARAM_OVERRIDES[@]}" in text
 
 
@@ -229,23 +213,6 @@ def test_deploy_backend_sh_passes_billing_teacher_sub_to_api_stack() -> None:
     text = _deploy_backend_sh_text()
     assert 'export BILLING_TEACHER_SUB="${BILLING_TEACHER_SUB:-}"' in text
     assert '"BillingTeacherSub=${BILLING_TEACHER_SUB:-}"' in text
-
-
-def test_deploy_backend_sh_redeploys_payments_with_catalog_invoke() -> None:
-    text = _deploy_backend_sh_text()
-    assert "CATALOG_LAMBDA_ARN" in text
-    assert "BILLING_SHOPPER_RESULT_URL" in text
-    assert "billing/result" in text
-    assert "StudentSiteUrl" in text
-    assert "deploy-payments.sh" in text
-    assert "EDGE_REGION" in text
-
-
-def test_deploy_payments_sh_passes_shopper_result_url() -> None:
-    path = _repo_root() / "scripts" / "deploy-payments.sh"
-    text = path.read_text(encoding="utf-8")
-    assert "BILLING_SHOPPER_RESULT_URL" in text
-    assert "BillingShopperResultUrl=" in text
 
 
 def test_api_stack_exposes_billing_and_hyperpay_webhook_routes() -> None:
@@ -264,23 +231,11 @@ def test_api_stack_exposes_billing_and_hyperpay_webhook_routes() -> None:
     assert "${BillingEdgeLambdaArn}/invocations" in text
 
 
-def test_deploy_workflow_prod_passes_hyperpay_secret_arn_only() -> None:
+def test_deploy_workflow_prod_does_not_provision_hyperpay() -> None:
     text = _workflow_text()
     block = _job_block(text, "deploy-backend-prod", "\n  # Prod-only")
-    deploy_prod = block[block.index("- name: Deploy prod") :]
-    assert "HYPERPAY_SECRET_ARN: ${{ secrets.HYPERPAY_SECRET_ARN }}" in deploy_prod
-    assert "PAYMENT_PROVIDER: ${{ vars.PAYMENT_PROVIDER }}" in deploy_prod
-    assert "BILLING_TEACHER_SUB: ${{ vars.BILLING_TEACHER_SUB }}" in deploy_prod
-    assert "HYPERPAY_ACCESS_TOKEN" not in deploy_prod
-    assert "ensure-hyperpay-secret.sh" in block
-
-
-def test_deploy_workflow_runs_ensure_hyperpay_secret_prod() -> None:
-    text = _workflow_text()
-    prod_block = _job_block(text, "deploy-backend-prod", "\n  # Prod-only")
-    assert "Ensure HyperPay secret (prod)" in prod_block
-    assert "ensure-hyperpay-secret.sh" in prod_block
-    assert "HYPERPAY_WEBHOOK_SECRET: ${{ secrets.HYPERPAY_WEBHOOK_SECRET }}" in prod_block
-    assert "streammycourse/hyperpay/prod" in prod_block
-    assert "streammycourse/paytabs/prod" not in prod_block
-    assert "Ensure PayTabs placeholder secret (prod)" not in prod_block
+    assert "ensure-hyperpay-secret.sh" not in block
+    assert "HYPERPAY_ACCESS_TOKEN" not in block
+    assert "HYPERPAY_SECRET_ARN" not in block
+    assert "streammycourse/hyperpay/prod" not in block
+    assert "BILLING_TEACHER_SUB: ${{ vars.BILLING_TEACHER_SUB }}" in block

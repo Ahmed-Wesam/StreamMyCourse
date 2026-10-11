@@ -6,6 +6,11 @@
 
 ---
 
+## 2026-10-11 — Payments removed from the product and from prod
+
+- HyperPay checkout, the billing edge, the fulfillment worker, and the payments stack are gone. Deploy passes an empty billing edge ARN so the API drops those routes, then deletes `StreamMyCourse-Payments-{env}` and the HyperPay secret.
+- A signed-in student can open a published course until checkout is rebuilt. The rebuild notes, including sandbox card and provider secrets, are only in local `plans/payment-rebuild.md` and are not in git.
+
 ## 2026-10-11 — Catalog accepts the checkout status check
 
 - After the bank check, the result page asks the catalog whether the pending purchase is still valid. That request was rejected as an unknown internal event, so the page showed “Billing is not configured.”

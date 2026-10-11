@@ -108,7 +108,7 @@ function eligibilityLabel(team: TeamState): string {
 async function loadDashboard(): Promise<Exclude<DashboardLoadState, { status: 'loading' }>> {
   const [catalog, purchases, meResult, certificatesResult, teamResult, activityResult] = await Promise.all([
     listPublishedCourses(),
-    getPurchases(),
+    getPurchases().catch(() => []),
     fetchMe().then(
       (profile) => ({
         givenName: profile.givenName ?? null,

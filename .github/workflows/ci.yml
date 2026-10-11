@@ -88,7 +88,6 @@ jobs:
           cfn-lint --config-file .cfnlintrc infrastructure/templates/rds-stack.yaml
           cfn-lint --config-file .cfnlintrc infrastructure/templates/media-cleanup-stack.yaml
           cfn-lint --config-file .cfnlintrc infrastructure/templates/transactional-mail-stack.yaml
-          cfn-lint --config-file .cfnlintrc infrastructure/templates/payments-stack.yaml
 
   security:
     name: Security scans
@@ -132,7 +131,6 @@ jobs:
             -r infrastructure/lambda/catalog/requirements.txt \
             -r infrastructure/lambda/cognito_user_profile_sync/requirements.txt \
             -r infrastructure/lambda/catalog_token_authorizer/requirements.txt \
-            -r infrastructure/lambda/billing_fulfillment/requirements.txt \
             -r tests/unit/requirements.txt \
             -r tests/integration/requirements.txt
 

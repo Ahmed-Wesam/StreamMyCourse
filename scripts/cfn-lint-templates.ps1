@@ -37,7 +37,6 @@ $templates = @(
     'infrastructure/templates/billing-alarm.yaml',
     'infrastructure/templates/rds-stack.yaml',
     'infrastructure/templates/media-cleanup-stack.yaml',
-    'infrastructure/templates/payments-stack.yaml',
     'infrastructure/templates/video-provider-edge-stack.yaml'
 )
 

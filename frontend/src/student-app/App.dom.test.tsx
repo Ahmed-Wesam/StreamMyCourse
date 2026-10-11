@@ -78,9 +78,6 @@ vi.mock('../components/auth/StudentLessonAuth', () => ({
 vi.mock('../components/auth/StudentModuleQuizAuth', () => ({
   StudentModuleQuizAuth: () => <div data-testid="student-page-quiz" />,
 }))
-vi.mock('../pages/BillingResultPage', () => ({
-  default: () => <div data-testid="student-page-billing-result" />,
-}))
 vi.mock('../pages/account/AccountProfilePage', () => ({
   default: () => <div data-testid="student-page-account-profile" />,
 }))
@@ -233,10 +230,10 @@ describe('StudentApp', () => {
     })
   })
 
-  it('redirects legacy billing success to the result page', async () => {
+  it('shows the closed checkout page for a legacy billing return', async () => {
     renderAt('/billing/success')
     await waitFor(() => {
-      expect(screen.getByTestId('student-page-billing-result')).toBeTruthy()
+      expect(screen.getByTestId('student-page-checkout')).toBeTruthy()
     })
   })
 
