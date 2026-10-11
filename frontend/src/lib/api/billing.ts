@@ -2,6 +2,7 @@ import { httpGet, httpPost } from './client'
 import type {
   BundleOffer,
   CheckoutSessionResponse,
+  CheckoutStatusResponse,
   CreateCheckoutSessionBody,
   PurchaseRecord,
   PurchasesListResponse,
@@ -30,4 +31,9 @@ export async function createCheckoutSession(
     body.billing = params.billing
   }
   return httpPost<CheckoutSessionResponse>('/billing/checkout-session', body)
+}
+
+/** Poll HyperPay checkout result after shopper return (POST /billing/checkout-status). */
+export async function getCheckoutStatus(checkoutId: string): Promise<CheckoutStatusResponse> {
+  return httpPost<CheckoutStatusResponse>('/billing/checkout-status', { checkoutId })
 }

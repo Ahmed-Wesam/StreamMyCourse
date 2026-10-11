@@ -91,7 +91,7 @@ def _checkout_event(**overrides: Any) -> Dict[str, Any]:
     return evt
 
 
-def test_checkout_status_route_returns_not_found(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_checkout_status_returns_401_without_auth(monkeypatch: pytest.MonkeyPatch) -> None:
     _patch_mock_checkout(monkeypatch)
     evt: Dict[str, Any] = {
         "httpMethod": "POST",
@@ -101,8 +101,8 @@ def test_checkout_status_route_returns_not_found(monkeypatch: pytest.MonkeyPatch
         "body": json.dumps({"checkoutId": "MOCK-HP-CHECKOUT"}),
     }
     resp = billing_handler.lambda_handler(evt, None)
-    assert resp["statusCode"] == 404
-    assert _parse_body(resp)["code"] == "not_found"
+    assert resp["statusCode"] == 401
+    assert _parse_body(resp)["code"] == "unauthorized"
 
 
 def _encrypt_notification(payload: dict[str, Any]) -> tuple[bytes, str, str]:

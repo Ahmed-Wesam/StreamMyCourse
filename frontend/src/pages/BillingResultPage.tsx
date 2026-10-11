@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 
-import { getPurchases } from '../lib/api/billing'
+import { getCheckoutStatus, getPurchases } from '../lib/api/billing'
+import { catalogApiUserMessage } from '../lib/apiUserMessages'
 import {
   clearCheckoutPendingPurchaseId,
   readCheckoutPendingPurchaseId,
@@ -16,8 +17,11 @@ import { usePageTitle } from '../lib/page-title'
 import type { PurchaseRecord } from '../lib/api/types'
 import './BillingReturnPage.css'
 
+/** Half of HyperPay's 2 status reads per checkout per minute. */
+const STATUS_POLL_MS = 60_000
+const STATUS_MAX_ATTEMPTS = 30
 const PURCHASE_POLL_MS = 2000
-const PURCHASE_MAX_ATTEMPTS = 90
+const PURCHASE_MAX_ATTEMPTS = 40
 
 type ResultPhase = 'loading' | 'success' | 'canceled' | 'pending' | 'error'
 
@@ -26,10 +30,10 @@ function isTargetPurchasePaid(
   pendingPurchaseId: string | null,
 ): boolean {
   const isPaid = (row: PurchaseRecord) => (row.status ?? '').trim().toLowerCase() === 'paid'
-  if (!pendingPurchaseId) {
-    return false
+  if (pendingPurchaseId) {
+    return purchases.some((row) => row.id === pendingPurchaseId && isPaid(row))
   }
-  return purchases.some((row) => row.id === pendingPurchaseId && isPaid(row))
+  return false
 }
 
 export default function BillingResultPage() {
@@ -61,7 +65,9 @@ export default function BillingResultPage() {
     }
 
     let cancelled = false
+    let statusAttempts = 0
     let purchaseAttempts = 0
+
     const pendingPurchaseId = readCheckoutPendingPurchaseId()
 
     const finishSuccess = () => {
@@ -71,8 +77,7 @@ export default function BillingResultPage() {
       }
     }
 
-    const run = async () => {
-      setPhase('pending')
+    const pollPurchases = async () => {
       while (!cancelled && purchaseAttempts < PURCHASE_MAX_ATTEMPTS) {
         purchaseAttempts += 1
         try {
@@ -82,9 +87,52 @@ export default function BillingResultPage() {
             return
           }
         } catch {
-          // HyperPay webhook may still be in flight
+          // keep polling while checkout status may still be settling
         }
         await new Promise((r) => setTimeout(r, PURCHASE_POLL_MS))
+      }
+      if (!cancelled) {
+        clearCheckoutPendingPurchaseId()
+        setPhase('error')
+        setMessage(billingPaymentIncompleteMessage)
+      }
+    }
+
+    const run = async () => {
+      try {
+        const purchases = await getPurchases()
+        if (isTargetPurchasePaid(purchases, pendingPurchaseId)) {
+          finishSuccess()
+          return
+        }
+      } catch {
+        // continue to HyperPay status poll
+      }
+
+      while (!cancelled && statusAttempts < STATUS_MAX_ATTEMPTS) {
+        statusAttempts += 1
+        try {
+          const { status } = await getCheckoutStatus(checkoutId)
+          const normalized = (status ?? '').trim().toLowerCase()
+          if (normalized === 'pending') {
+            await new Promise((r) => setTimeout(r, STATUS_POLL_MS))
+            continue
+          }
+            if (normalized === 'failed' || normalized === 'error') {
+            clearCheckoutPendingPurchaseId()
+            setPhase('error')
+            setMessage(billingPaymentIncompleteMessage)
+            return
+          }
+          void pollPurchases()
+          return
+        } catch (err) {
+          if (!cancelled) {
+            setPhase('error')
+            setMessage(catalogApiUserMessage(err, 'checkout'))
+          }
+          return
+        }
       }
       if (!cancelled) {
         clearCheckoutPendingPurchaseId()

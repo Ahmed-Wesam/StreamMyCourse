@@ -12,6 +12,7 @@ from botocore.exceptions import BotoCoreError, ClientError
 logger = logging.getLogger(__name__)
 
 _INTERNAL_CHECKOUT = "billing.checkout"
+_INTERNAL_CHECKOUT_STATUS = "billing.checkout_status"
 _INTERNAL_ROLLBACK = "billing.rollback_checkout"
 
 
@@ -90,6 +91,28 @@ def invoke_billing_checkout(
         extra["courseId"] = course_id
     return _invoke_catalog_internal(
         internal=_INTERNAL_CHECKOUT,
+        user_sub=user_sub,
+        catalog_lambda_arn=catalog_lambda_arn,
+        extra=extra,
+    )
+
+
+def invoke_billing_checkout_status(
+    *,
+    user_sub: str,
+    purchase_id: str,
+    amount_minor: int | None,
+    currency: str | None,
+    catalog_lambda_arn: str,
+) -> Dict[str, Any]:
+    """Verify pending purchase belongs to user before returning checkout poll status."""
+    extra: Dict[str, Any] = {"purchaseId": purchase_id}
+    if amount_minor is not None:
+        extra["amountMinor"] = amount_minor
+    if currency:
+        extra["currency"] = currency
+    return _invoke_catalog_internal(
+        internal=_INTERNAL_CHECKOUT_STATUS,
         user_sub=user_sub,
         catalog_lambda_arn=catalog_lambda_arn,
         extra=extra,

@@ -7,6 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const billingApi = vi.hoisted(() => ({
   getPurchases: vi.fn(),
+  getCheckoutStatus: vi.fn(),
 }))
 
 vi.mock('../lib/api/billing', async (importOriginal) => {
@@ -14,6 +15,7 @@ vi.mock('../lib/api/billing', async (importOriginal) => {
   return {
     ...mod,
     getPurchases: (...args: unknown[]) => billingApi.getPurchases(...args),
+    getCheckoutStatus: (...args: unknown[]) => billingApi.getCheckoutStatus(...args),
   }
 })
 
@@ -36,6 +38,8 @@ function renderResult(path: string) {
 describe('Billing return pages', () => {
   beforeEach(() => {
     billingApi.getPurchases.mockReset()
+    billingApi.getCheckoutStatus.mockReset()
+    billingApi.getCheckoutStatus.mockResolvedValue({ status: 'pending' })
     sessionStorage.clear()
     billingApi.getPurchases.mockResolvedValue([
       {
@@ -84,6 +88,7 @@ describe('Billing return pages', () => {
       expect(billingApi.getPurchases).toHaveBeenCalled()
     })
     expect(screen.queryByRole('heading', { name: /Payment received/i })).toBeNull()
+    expect(screen.getByText(/Do not leave this page/i)).toBeTruthy()
   })
 
   it('does not treat an older paid purchase as success for a new checkout', async () => {

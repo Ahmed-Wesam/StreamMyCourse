@@ -23,6 +23,8 @@ Catalog lesson access requires a **paid course or bundle purchase** (not enrollm
 
 If the payments stack is missing or billing is unconfigured, helpers skip with reasons such as **404** (route missing), **503 `billing_unconfigured`**, or **401** (webhook decrypt failed — check webhook secret).
 
+**HyperPay full flow (eu-test widget URL + webhook → paid):** `tests/integration/test_billing_hyperpay_full_flow.py` needs a student **without** a paid bundle (default `ci-student@noreply.local` is RS-16 seeded — use `student-test@noreply.local` via `ensure-ci-rds-verify-cognito-user.sh` and `LOCAL_COGNITO_USERNAME_STUDENT=student-test@noreply.local ./scripts/run-local-integration-tests.sh tests/integration/test_billing_hyperpay_full_flow.py`).
+
 **Checkout E2E (WS6):** `tests/integration/test_billing_checkout_e2e.py` exercises `POST /billing/checkout-session` → HyperPay webhook → playback **200**, **409 `already_owned`** when the student already has a paid bundle (`ensure_student_subscription`), and **409 `checkout_in_progress`** on a second checkout before webhook (pending row). Requires **`INTEGRATION_COGNITO_JWT_STUDENT`** and webhook secret. Run only that file:
 
 ```bash

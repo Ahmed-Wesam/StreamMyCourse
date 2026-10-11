@@ -21,9 +21,12 @@ export function HyperPayWidget({ widgetScriptUrl, integrity, shopperResultUrl }:
 
     const script = document.createElement('script')
     script.src = widgetScriptUrl
-    script.setAttribute('integrity', integrity)
-    script.setAttribute('crossorigin', 'anonymous')
-    script.async = true
+    const skipIntegrity = import.meta.env.VITE_HYPERPAY_SKIP_WIDGET_INTEGRITY === 'true'
+    if (integrity && !skipIntegrity) {
+      script.setAttribute('integrity', integrity)
+      script.setAttribute('crossorigin', 'anonymous')
+    }
+    script.async = false
     document.body.appendChild(script)
 
     return () => {

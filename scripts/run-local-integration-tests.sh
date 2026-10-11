@@ -34,11 +34,15 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 
 # Load .env.local if it exists (for LOCAL_COGNITO_PASSWORD, etc.)
+CLI_LOCAL_COGNITO_USERNAME_STUDENT="${LOCAL_COGNITO_USERNAME_STUDENT:-}"
 if [[ -f "$REPO_ROOT/.env.local" ]]; then
     # shellcheck source=/dev/null
     set -a
     source "$REPO_ROOT/.env.local"
     set +a
+fi
+if [[ -n "$CLI_LOCAL_COGNITO_USERNAME_STUDENT" ]]; then
+    export LOCAL_COGNITO_USERNAME_STUDENT="$CLI_LOCAL_COGNITO_USERNAME_STUDENT"
 fi
 
 REGION="${AWS_REGION:-${AWS_DEFAULT_REGION:-eu-west-1}}"
