@@ -200,6 +200,13 @@ def test_deploy_backend_prod_packages_cognito_pre_signup_lambda() -> None:
     assert "ZohoSmtpSecretArn=${{ steps.zoho_smtp_secret_prod.outputs.arn }}" in block
 
 
+def test_deploy_payments_sh_cleans_rollback_and_orphan_sqs() -> None:
+    text = (_repo_root() / "scripts" / "deploy-payments.sh").read_text(encoding="utf-8")
+    assert "_ensure_payments_stack_deployable" in text
+    assert "ROLLBACK_COMPLETE" in text
+    assert "StreamMyCourse-BillingFulfillment-DLQ-" in text
+
+
 def test_deploy_backend_sh_deploys_payments_before_api_stack() -> None:
     text = _deploy_backend_sh_text()
     assert "deploy-payments.sh" in text

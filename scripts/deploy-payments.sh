@@ -241,6 +241,36 @@ if [[ "$PAYMENT_PROVIDER" != "mock" ]]; then
   fi
 fi
 
+_ensure_payments_stack_deployable() {
+  if aws cloudformation describe-stacks --stack-name "$PAYMENTS_STACK" --region "$REGION" &>/dev/null; then
+    local status
+    status="$(aws cloudformation describe-stacks \
+      --stack-name "$PAYMENTS_STACK" \
+      --region "$REGION" \
+      --query 'Stacks[0].StackStatus' \
+      --output text)"
+    case "$status" in
+      ROLLBACK_COMPLETE|ROLLBACK_FAILED)
+        echo "Deleting payments stack in ${status} before redeploy"
+        aws cloudformation delete-stack --stack-name "$PAYMENTS_STACK" --region "$REGION"
+        aws cloudformation wait stack-delete-complete --stack-name "$PAYMENTS_STACK" --region "$REGION"
+        ;;
+    esac
+  fi
+  if ! aws cloudformation describe-stacks --stack-name "$PAYMENTS_STACK" --region "$REGION" &>/dev/null; then
+    for q in "StreamMyCourse-BillingFulfillment-DLQ-${ENV}" "StreamMyCourse-BillingFulfillment-${ENV}"; do
+      local url=""
+      url="$(aws sqs get-queue-url --queue-name "$q" --region "$REGION" --output text 2>/dev/null || true)"
+      if [[ -n "${url}" && "${url}" != "None" ]]; then
+        echo "Deleting orphan SQS queue ${q} (no active payments stack)"
+        aws sqs delete-queue --queue-url "$url" --region "$REGION"
+      fi
+    done
+  fi
+}
+
+_ensure_payments_stack_deployable
+
 PAYMENTS_TEMPLATE="${TEMPLATE_DIR}/payments-stack.yaml"
 if command -v cygpath >/dev/null 2>&1; then
   VALIDATE_BODY_URI="file://$(cygpath -m "$PAYMENTS_TEMPLATE")"
