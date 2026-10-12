@@ -51,13 +51,13 @@ def test_subscribed_student_gets_playback_url(
     api.delete_course(course_id)
 
 
-def test_signed_in_non_owner_can_play_published_course_while_payments_are_removed(
+def test_non_owner_gets_purchase_required_on_playback(
     api: ApiClient,
-    alt_api: ApiClient,
+    student_api: ApiClient,
     course_factory,
     lesson_factory,
 ) -> None:
-    """Paywall is off until checkout is rebuilt. A signed-in non-owner can play a published course."""
+    """Signed-in student without a paid purchase cannot play a published course."""
     course = course_factory(label="non-subscribed-playback-course")
     course_id = course.course_id
 
@@ -73,11 +73,14 @@ def test_signed_in_non_owner_can_play_published_course_while_payments_are_remove
     publish_resp = api.publish_course(course_id)
     assert publish_resp.status_code == 200, f"publish_course failed: {publish_resp.text}"
 
-    playback_resp = alt_api.get_playback(course_id, lesson_id)
-    assert playback_resp.status_code == 200, (
-        f"Expected 200 while the paywall is off, got {playback_resp.status_code}: {playback_resp.text}"
+    skip_if_student_has_subscription(student_api, course_id, lesson_id)
+
+    playback_resp = student_api.get_playback(course_id, lesson_id)
+    assert playback_resp.status_code == 403, (
+        f"Expected 403 purchase_required, got {playback_resp.status_code}: {playback_resp.text}"
     )
-    assert_playback_contract(playback_resp.json())
+    body = playback_resp.json()
+    assert body.get("code") == "purchase_required"
 
     api.delete_course(course_id)
 

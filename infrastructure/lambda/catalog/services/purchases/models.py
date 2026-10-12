@@ -1,4 +1,7 @@
-"""Domain types for one-time purchases (RS-5)."""
+"""Domain types for one-time purchases (RS-5).
+
+Megaplan **provider payment id** (HyperPay) is stored in RDS column ``provider_tran_ref``.
+"""
 
 from __future__ import annotations
 

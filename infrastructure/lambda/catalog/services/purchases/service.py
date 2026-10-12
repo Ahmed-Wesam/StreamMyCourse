@@ -42,9 +42,9 @@ class CourseAccessService:
             return True
         if course.status != "PUBLISHED":
             return False
-        # Checkout is removed. A signed-in student can open a published course
-        # until payments are rebuilt. Do not treat this as a permanent paywall.
-        return True
+        if self._purchase_repo.has_paid_bundle(normalized_sub):
+            return True
+        return self._purchase_repo.has_paid_course_purchase(normalized_sub, course.id)
 
     def _norm_role(self, role: str) -> str:
         return (role or "").strip().lower()

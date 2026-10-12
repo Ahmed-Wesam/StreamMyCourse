@@ -6,10 +6,16 @@
 
 ---
 
+## 2026-10-11 — WS1: purchase paywall restored in catalog (payment rebuild)
+
+- **`CourseAccessService.has_course_access`** again requires a **`paid`** course or bundle row (or owner/admin) for published content; removed the temporary `return True` gap left when checkout was torn down ([`services/purchases/service.py`](infrastructure/lambda/catalog/services/purchases/service.py)).
+- Unit tests: [`tests/unit/catalog/test_purchase_access_service.py`](tests/unit/catalog/test_purchase_access_service.py). Integration: [`test_non_owner_gets_purchase_required_on_playback`](tests/integration/test_playback_auth.py) expects **`purchase_required`** on playback without a purchase.
+- Megaplan **Zero customers (pre-launch)** documents prod data/migration freedom; checkout/webhook routes remain WS2/WS3. Rebuild operator notes stay in local `plans/payment-rebuild*.md` (not committed).
+
 ## 2026-10-11 — Payments removed from the product and from prod
 
 - HyperPay checkout, the billing edge, the fulfillment worker, and the payments stack are gone. Deploy passes an empty billing edge ARN so the API drops those routes, then deletes `StreamMyCourse-Payments-{env}` and the HyperPay secret.
-- A signed-in student can open a published course until checkout is rebuilt. The rebuild notes, including sandbox card and provider secrets, are only in local `plans/payment-rebuild.md` and are not in git.
+- **Superseded in catalog code by WS1 paywall restore above** once that Lambda revision is deployed; students cannot self-serve unlock until WS2/WS3 restore checkout + webhook.
 
 ## 2026-10-11 — Catalog accepts the checkout status check
 
