@@ -105,6 +105,16 @@ WHERE id = %s::uuid
 LIMIT 1
 """
 
+_GET_PURCHASE_STATUS_FOR_USER_SQL = """
+SELECT status
+FROM purchases
+WHERE id = %s::uuid
+  AND user_sub = %s
+  AND environment = %s
+  AND status IN ('paid', 'pending', 'failed')
+LIMIT 1
+"""
+
 _DELETE_PENDING_CHECKOUT_SQL = """
 DELETE FROM purchases
 WHERE user_sub = %s AND environment = %s
@@ -370,6 +380,20 @@ class PurchaseRdsRepository:
             ),
         )
         return cur.fetchone() is not None
+
+    def get_purchase_status_for_user(self, user_sub: str, purchase_id: str) -> str | None:
+        normalized_sub = (user_sub or "").strip()
+        pid = (purchase_id or "").strip()
+        if not normalized_sub or not pid:
+            return None
+        cur = self._execute(
+            _GET_PURCHASE_STATUS_FOR_USER_SQL,
+            (pid, normalized_sub, self._deployment_environment),
+        )
+        row = cur.fetchone()
+        if row is None:
+            return None
+        return str(row[0])
 
     def get_pending_purchase_for_user(
         self,

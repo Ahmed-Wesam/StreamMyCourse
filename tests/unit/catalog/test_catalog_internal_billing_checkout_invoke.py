@@ -48,7 +48,7 @@ class TestInternalBillingCheckoutInvoke:
             assert out == {"blockReason": "already_owned"}
 
     def test_checkout_status_dispatched_to_billing_handler(self) -> None:
-        expected = {"ok": True}
+        expected = {"status": "pending"}
         with patch("index._handle_internal_billing_event", return_value=expected) as mock:
             event = {
                 "internal": "billing.checkout_status",

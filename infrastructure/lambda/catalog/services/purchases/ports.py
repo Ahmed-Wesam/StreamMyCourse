@@ -52,6 +52,8 @@ class PurchaseRepositoryPort(Protocol):
         ttl_minutes: int,
     ) -> bool: ...
 
+    def get_purchase_status_for_user(self, user_sub: str, purchase_id: str) -> str | None: ...
+
     def delete_pending_checkout(
         self,
         user_sub: str,

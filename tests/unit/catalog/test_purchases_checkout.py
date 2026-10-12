@@ -160,46 +160,79 @@ class TestPurchaseInternalCheckout:
         )
 
 
-class TestPurchaseCheckoutStatusVerify:
-    def test_verify_pending_purchase_ok(self) -> None:
-        svc, repo, conn = _service()
-        conn.cursor_obj.fetchone_results = [(50_000, "JOD", "pending")]
+class TestPurchaseStatusRead:
+    def test_returns_pending_status(self) -> None:
+        svc, _repo, conn = _service()
+        conn.cursor_obj.fetchone_results = [("pending",)]
 
-        result = svc.verify_pending_purchase_for_checkout_status(
-            "student-sub",
-            purchase_id=PURCHASE_ID,
-            amount_minor=50_000,
-            currency="JOD",
-        )
+        result = svc.get_purchase_status("student-sub", purchase_id=PURCHASE_ID)
 
-        assert result == {"ok": True}
+        assert result == {"status": "pending"}
 
-    def test_verify_pending_purchase_not_found(self) -> None:
+    def test_returns_paid_status(self) -> None:
+        svc, _repo, conn = _service()
+        conn.cursor_obj.fetchone_results = [("paid",)]
+
+        result = svc.get_purchase_status("student-sub", purchase_id=PURCHASE_ID)
+
+        assert result == {"status": "paid"}
+
+    def test_returns_failed_status(self) -> None:
+        svc, _repo, conn = _service()
+        conn.cursor_obj.fetchone_results = [("failed",)]
+
+        result = svc.get_purchase_status("student-sub", purchase_id=PURCHASE_ID)
+
+        assert result == {"status": "failed"}
+
+    def test_not_found_when_row_missing(self) -> None:
         svc, _repo, conn = _service()
         conn.cursor_obj.fetchone_results = [None]
 
-        result = svc.verify_pending_purchase_for_checkout_status(
-            "student-sub",
+        result = svc.get_purchase_status("student-sub", purchase_id=PURCHASE_ID)
+
+        assert result == {"blockReason": "not_found"}
+
+    def test_wrong_user_cannot_read_another_users_purchase(self) -> None:
+        svc, _repo, conn = _service()
+        conn.cursor_obj.fetchone_results = [None]
+
+        result = svc.get_purchase_status(
+            "other-user-sub",
             purchase_id=PURCHASE_ID,
-            amount_minor=50_000,
-            currency="JOD",
         )
 
         assert result == {"blockReason": "not_found"}
+        _, params = conn.cursor_obj.executions[0]
+        assert params[1] == "other-user-sub"
+
+
+class TestPurchaseCheckoutStatusVerify:
+    def test_checkout_status_returns_purchase_status(self) -> None:
+        svc, _repo, conn = _service()
+        conn.cursor_obj.fetchone_results = [("pending",)]
+
+        result = svc.get_purchase_status(
+            "student-sub",
+            purchase_id=PURCHASE_ID,
+        )
+
+        assert result == {"status": "pending"}
 
     def test_internal_checkout_status_handler(self) -> None:
         from services.purchases.internal_checkout import handle_internal_purchase_checkout_status
 
         mock_svc = MagicMock()
-        mock_svc.verify_pending_purchase_for_checkout_status.return_value = {"ok": True}
+        mock_svc.get_purchase_status.return_value = {"status": "pending"}
         out = handle_internal_purchase_checkout_status(
             {
                 "userSub": "u",
                 "purchaseId": PURCHASE_ID,
-                "amountMinor": 50_000,
-                "currency": "JOD",
             },
             checkout_service=mock_svc,
         )
-        assert out == {"ok": True}
-        mock_svc.verify_pending_purchase_for_checkout_status.assert_called_once()
+        assert out == {"status": "pending"}
+        mock_svc.get_purchase_status.assert_called_once_with(
+            "u",
+            purchase_id=PURCHASE_ID,
+        )

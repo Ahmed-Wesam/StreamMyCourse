@@ -6,6 +6,15 @@
 
 ---
 
+## 2026-10-12 — WS2: checkout-session + checkout-status (payment rebuild)
+
+- **Catalog** — **`PurchaseCheckoutService.get_purchase_status`** reads the user’s purchase row in RDS via **`get_purchase_status_for_user`** ([`services/purchases/checkout_service.py`](infrastructure/lambda/catalog/services/purchases/checkout_service.py), [`repo.py`](infrastructure/lambda/catalog/services/purchases/repo.py)); internal invoke **`billing.checkout_status`** requires **`purchaseId`** ([`internal_checkout.py`](infrastructure/lambda/catalog/services/purchases/internal_checkout.py), [`index.py`](infrastructure/lambda/catalog/index.py)).
+- **Billing edge restored (repo)** — **`POST /billing/checkout-session`** and **`POST /billing/checkout-status`** on [`infrastructure/lambda/billing_edge/handler.py`](infrastructure/lambda/billing_edge/handler.py); status path invokes catalog with **`purchaseId` only** (no **`amountMinor`** / **`currency`** on the slim WS2 path). **No OPPWA `GET /payment` poll** on checkout-status ([`test_checkout_status_catalog_only.py`](tests/unit/billing/test_checkout_status_catalog_only.py)).
+- **HyperPay checkout create** — **`HyperPayAdapter`** does **not** send **`shopperResultUrl`** on **`POST /v1/checkouts`**; checkout-session response still returns **`shopperResultUrl`** for the COPYandPAY widget ([`hyperpay_adapter.py`](infrastructure/lambda/billing_edge/providers/hyperpay_adapter.py), [`test_checkout_session_hyperpay_post.py`](tests/unit/billing/test_checkout_session_hyperpay_post.py)).
+- **Webhook stub (WS3)** — **`POST /webhooks/payments/hyperpay`** on billing edge returns **404** `not_found` until fulfillment/SQS wiring ships in WS3.
+- **Prod API** — Billing routes remain **off** on deployed prod: [`api-stack.yaml`](infrastructure/templates/api-stack.yaml) **`HasBillingEdgeLambdaArn`** gates **`/billing/*`** and webhook resources; [`scripts/deploy-backend.sh`](scripts/deploy-backend.sh) passes **`BillingEdgeLambdaArn=`** until WS3 redeploys **`StreamMyCourse-Payments-{env}`** and wires the edge ARN ([`AGENTS.md`](AGENTS.md)).
+- **Tests** — Catalog status: [`tests/unit/catalog/test_purchases_checkout.py`](tests/unit/catalog/test_purchases_checkout.py) (`TestPurchaseStatusRead`, internal handler).
+
 ## 2026-10-11 — WS1: purchase paywall restored in catalog (payment rebuild)
 
 - **`CourseAccessService.has_course_access`** again requires a **`paid`** course or bundle row (or owner/admin) for published content; removed the temporary `return True` gap left when checkout was torn down ([`services/purchases/service.py`](infrastructure/lambda/catalog/services/purchases/service.py)).

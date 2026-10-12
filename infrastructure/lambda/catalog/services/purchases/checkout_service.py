@@ -64,22 +64,16 @@ class PurchaseCheckoutService:
             product = {**product, "purchase_id": purchase_id}
         return {"blockReason": None, "product": product}
 
-    def verify_pending_purchase_for_checkout_status(
+    def get_purchase_status(
         self,
         user_sub: str,
         *,
         purchase_id: str,
-        amount_minor: int | None = None,
-        currency: str | None = None,
     ) -> Dict[str, Any]:
-        row = self._repo.get_pending_purchase_for_user(user_sub, purchase_id)
-        if row is None:
+        status = self._repo.get_purchase_status_for_user(user_sub, purchase_id)
+        if status is None:
             return {"blockReason": "not_found"}
-        if amount_minor is not None and int(row["amount_minor"]) != amount_minor:
-            return {"blockReason": "amount_mismatch"}
-        if currency and str(row.get("currency") or "").upper() != currency.upper():
-            return {"blockReason": "amount_mismatch"}
-        return {"ok": True}
+        return {"status": status}
 
     def rollback_purchase_checkout_precheck(
         self,
