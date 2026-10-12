@@ -1,0 +1,412 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'StreamMyCourse - Billing edge (no VPC) + fulfillment queue/worker (VPC stub, WS2)'
+
+Parameters:
+  Environment:
+    Type: String
+    AllowedValues: [prod]
+    Default: prod
+    Description: Deployment environment
+
+  LambdaCodeS3Bucket:
+    Type: String
+    Description: Artifacts bucket containing billing Lambda deployment zips
+
+  BillingEdgeCodeS3Key:
+    Type: String
+    Description: S3 key for the billing edge Lambda deployment package
+
+  BillingFulfillmentCodeS3Key:
+    Type: String
+    Description: S3 key for the billing fulfillment Lambda deployment package
+
+  RdsStackName:
+    Type: String
+    MinLength: 1
+    Description: >-
+      RDS stack (e.g. StreamMyCourse-Rds-prod) whose exports provide VPC subnet
+      and Lambda security group for the fulfillment worker.
+
+  MessageRetentionPeriod:
+    Type: Number
+    Default: 1209600
+    Description: SQS message retention in seconds (default 14 days)
+
+  MaxReceiveCount:
+    Type: Number
+    Default: 3
+    Description: Receives before message goes to DLQ
+
+  PaymentProvider:
+    Type: String
+    Default: hyperpay
+    AllowedValues:
+      - hyperpay
+      - mock
+    Description: PAYMENT_PROVIDER env (hyperpay live checkout or mock adapter)
+
+  HyperpaySecretArn:
+    Type: String
+    Default: ''
+    Description: HYPERPAY_SECRET_ARN (Secrets Manager streammycourse/hyperpay/{env})
+
+  HyperpayAccessToken:
+    Type: String
+    Default: ''
+    NoEcho: true
+    Description: Optional inline HYPERPAY_ACCESS_TOKEN (prod prefers Secrets Manager)
+
+  HyperpayEntityId:
+    Type: String
+    Default: ''
+    Description: Optional inline HYPERPAY_ENTITY_ID (prod prefers Secrets Manager)
+
+  HyperpayWebhookSecret:
+    Type: String
+    Default: ''
+    NoEcho: true
+    Description: Optional HYPERPAY_WEBHOOK_SECRET (64-char hex for AES-GCM webhooks)
+
+  BillingFulfillmentAlertEmail:
+    Type: String
+    Default: ''
+    Description: >-
+      Optional email for DLQ CloudWatch alarm notifications (SNS email subscription).
+      Leave empty to create the topic without a subscription (configure in console).
+
+  CatalogLambdaArn:
+    Type: String
+    Default: ''
+    Description: >-
+      ARN of the catalog Lambda (checkout precheck invoke). Empty skips invoke IAM
+      and leaves CATALOG_LAMBDA_ARN unset until a follow-up deploy.
+
+  BillingShopperResultUrl:
+    Type: String
+    Default: ''
+    Description: >-
+      HyperPay shopperResultUrl (student SPA /billing/result after widget checkout).
+
+  CorsAllowOrigin:
+    Type: String
+    Default: ''
+    Description: >-
+      Comma-separated browser origins for billing manage routes (checkout-session,
+      checkout-status). Must match api-stack CorsAllowOrigin.
+
+Conditions:
+  HasBillingFulfillmentAlertEmail: !Not [!Equals [!Ref BillingFulfillmentAlertEmail, '']]
+  HasCatalogLambdaArn: !Not [!Equals [!Ref CatalogLambdaArn, '']]
+
+Resources:
+  BillingFulfillmentAlertTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      TopicName: !Sub 'StreamMyCourse-BillingFulfillment-Alerts-${Environment}'
+      Tags:
+        - Key: Project
+          Value: StreamMyCourse
+        - Key: Environment
+          Value: !Ref Environment
+
+  BillingFulfillmentAlertEmailSubscription:
+    Type: AWS::SNS::Subscription
+    Condition: HasBillingFulfillmentAlertEmail
+    Properties:
+      TopicArn: !Ref BillingFulfillmentAlertTopic
+      Protocol: email
+      Endpoint: !Ref BillingFulfillmentAlertEmail
+
+  BillingFulfillmentDlq:
+    Type: AWS::SQS::Queue
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      QueueName: !Sub 'StreamMyCourse-BillingFulfillment-DLQ-${Environment}'
+      MessageRetentionPeriod: !Ref MessageRetentionPeriod
+      Tags:
+        - Key: Project
+          Value: StreamMyCourse
+        - Key: Environment
+          Value: !Ref Environment
+
+  BillingFulfillmentQueue:
+    Type: AWS::SQS::Queue
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      QueueName: !Sub 'StreamMyCourse-BillingFulfillment-${Environment}'
+      VisibilityTimeout: 300
+      MessageRetentionPeriod: !Ref MessageRetentionPeriod
+      RedrivePolicy:
+        deadLetterTargetArn: !GetAtt BillingFulfillmentDlq.Arn
+        maxReceiveCount: !Ref MaxReceiveCount
+      Tags:
+        - Key: Project
+          Value: StreamMyCourse
+        - Key: Environment
+          Value: !Ref Environment
+
+  BillingEdgeRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub 'StreamMyCourse-BillingEdgeRole-${Environment}'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: CloudWatchLogs
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource: !Sub 'arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/StreamMyCourse-BillingEdge-${Environment}:*'
+        - PolicyName: SqsBillingFulfillmentSend
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - sqs:SendMessage
+                Resource: !GetAtt BillingFulfillmentQueue.Arn
+        - PolicyName: SecretsManagerHyperpay
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - secretsmanager:GetSecretValue
+                Resource: !Sub 'arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:streammycourse/hyperpay/*'
+      Tags:
+        - Key: Project
+          Value: StreamMyCourse
+        - Key: Environment
+          Value: !Ref Environment
+
+  BillingEdgeCatalogInvokePolicy:
+    Type: AWS::IAM::Policy
+    Condition: HasCatalogLambdaArn
+    Properties:
+      PolicyName: InvokeCatalogCheckoutPrecheck
+      Roles:
+        - !Ref BillingEdgeRole
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Action:
+              - lambda:InvokeFunction
+            Resource: !Ref CatalogLambdaArn
+
+  BillingEdge:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub 'StreamMyCourse-BillingEdge-${Environment}'
+      Runtime: python3.11
+      Handler: handler.lambda_handler
+      Timeout: 30
+      MemorySize: 256
+      Role: !GetAtt BillingEdgeRole.Arn
+      Code:
+        S3Bucket: !Ref LambdaCodeS3Bucket
+        S3Key: !Ref BillingEdgeCodeS3Key
+      Environment:
+        Variables:
+          DEPLOYMENT_ENVIRONMENT: !Ref Environment
+          FULFILLMENT_QUEUE_URL: !Ref BillingFulfillmentQueue
+          PAYMENT_PROVIDER: !Ref PaymentProvider
+          HYPERPAY_SECRET_ARN: !Ref HyperpaySecretArn
+          HYPERPAY_ACCESS_TOKEN: !Ref HyperpayAccessToken
+          HYPERPAY_ENTITY_ID: !Ref HyperpayEntityId
+          HYPERPAY_WEBHOOK_SECRET: !Ref HyperpayWebhookSecret
+          CATALOG_LAMBDA_ARN: !Ref CatalogLambdaArn
+          BILLING_SHOPPER_RESULT_URL: !Ref BillingShopperResultUrl
+          ALLOWED_ORIGINS: !Ref CorsAllowOrigin
+          LOG_LEVEL: INFO
+      Tags:
+        - Key: Project
+          Value: StreamMyCourse
+        - Key: Environment
+          Value: !Ref Environment
+
+  BillingFulfillmentRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub 'StreamMyCourse-BillingFulfillmentRole-${Environment}'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: CloudWatchLogs
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource: !Sub 'arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/StreamMyCourse-BillingFulfillment-${Environment}:*'
+        - PolicyName: SqsConsumeFulfillmentQueue
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - sqs:ReceiveMessage
+                  - sqs:DeleteMessage
+                  - sqs:GetQueueAttributes
+                  - sqs:ChangeMessageVisibility
+                Resource: !GetAtt BillingFulfillmentQueue.Arn
+        - PolicyName: SecretsManagerRdsCreds
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - secretsmanager:GetSecretValue
+                Resource: !ImportValue
+                  'Fn::Sub': '${RdsStackName}-DbSecretArn'
+        - PolicyName: LambdaVpcEni
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - ec2:CreateNetworkInterface
+                  - ec2:DescribeNetworkInterfaces
+                  - ec2:DeleteNetworkInterface
+                  - ec2:AssignPrivateIpAddresses
+                  - ec2:UnassignPrivateIpAddresses
+                Resource: '*'
+      Tags:
+        - Key: Project
+          Value: StreamMyCourse
+        - Key: Environment
+          Value: !Ref Environment
+
+  BillingFulfillment:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub 'StreamMyCourse-BillingFulfillment-${Environment}'
+      Runtime: python3.11
+      Handler: worker.lambda_handler
+      Timeout: 300
+      MemorySize: 256
+      Role: !GetAtt BillingFulfillmentRole.Arn
+      Code:
+        S3Bucket: !Ref LambdaCodeS3Bucket
+        S3Key: !Ref BillingFulfillmentCodeS3Key
+      VpcConfig:
+        SubnetIds:
+          - !ImportValue
+            'Fn::Sub': '${RdsStackName}-PrivateSubnetId'
+        SecurityGroupIds:
+          - !ImportValue
+            'Fn::Sub': '${RdsStackName}-LambdaSecurityGroupId'
+      Environment:
+        Variables:
+          DEPLOYMENT_ENVIRONMENT: !Ref Environment
+          DB_HOST: !ImportValue
+            'Fn::Sub': '${RdsStackName}-DbHost'
+          DB_PORT: !ImportValue
+            'Fn::Sub': '${RdsStackName}-DbPort'
+          DB_NAME: !ImportValue
+            'Fn::Sub': '${RdsStackName}-DbName'
+          DB_SECRET_ARN: !ImportValue
+            'Fn::Sub': '${RdsStackName}-DbSecretArn'
+          LOG_LEVEL: INFO
+      Tags:
+        - Key: Project
+          Value: StreamMyCourse
+        - Key: Environment
+          Value: !Ref Environment
+
+  BillingFulfillmentDlqAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub 'StreamMyCourse-BillingFulfillment-DLQ-${Environment}-Visible'
+      AlarmDescription: Billing fulfillment DLQ has one or more visible messages
+      Namespace: AWS/SQS
+      MetricName: ApproximateNumberOfMessagesVisible
+      Dimensions:
+        - Name: QueueName
+          Value: !GetAtt BillingFulfillmentDlq.QueueName
+      Statistic: Maximum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 0
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: notBreaching
+      AlarmActions:
+        - !Ref BillingFulfillmentAlertTopic
+      Tags:
+        - Key: Project
+          Value: StreamMyCourse
+        - Key: Environment
+          Value: !Ref Environment
+
+  BillingEdgeErrorAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub 'StreamMyCourse-BillingEdge-${Environment}-Errors'
+      AlarmDescription: Alerts when billing edge Lambda fails
+      MetricName: Errors
+      Namespace: AWS/Lambda
+      Statistic: Sum
+      Period: 86400
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      Dimensions:
+        - Name: FunctionName
+          Value: !Ref BillingEdge
+      TreatMissingData: notBreaching
+      AlarmActions:
+        - !Ref BillingFulfillmentAlertTopic
+      Tags:
+        - Key: Project
+          Value: StreamMyCourse
+        - Key: Environment
+          Value: !Ref Environment
+
+  BillingFulfillmentEventSourceMapping:
+    Type: AWS::Lambda::EventSourceMapping
+    Properties:
+      BatchSize: 10
+      Enabled: true
+      EventSourceArn: !GetAtt BillingFulfillmentQueue.Arn
+      FunctionName: !Ref BillingFulfillment
+      FunctionResponseTypes:
+        - ReportBatchItemFailures
+
+Outputs:
+  BillingEdgeLambdaArn:
+    Description: ARN of the billing edge Lambda (api-stack integration target)
+    Value: !GetAtt BillingEdge.Arn
+    Export:
+      Name: !Sub '${AWS::StackName}-BillingEdgeLambdaArn'
+
+  BillingFulfillmentQueueUrl:
+    Description: URL of the billing fulfillment SQS queue
+    Value: !Ref BillingFulfillmentQueue
+    Export:
+      Name: !Sub '${AWS::StackName}-BillingFulfillmentQueueUrl'
+
+  BillingFulfillmentQueueArn:
+    Description: ARN of the billing fulfillment SQS queue
+    Value: !GetAtt BillingFulfillmentQueue.Arn
+    Export:
+      Name: !Sub '${AWS::StackName}-BillingFulfillmentQueueArn'

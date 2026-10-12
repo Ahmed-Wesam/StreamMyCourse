@@ -315,9 +315,43 @@ if [[ -n "${TM_QUEUE_URL:-}" && -n "${TM_QUEUE_ARN:-}" ]]; then
   )
 fi
 
-# Payments are removed. Pass an empty edge ARN so API Gateway drops billing routes.
-# Omitting the parameter would keep the previous ARN.
-BILLING_PARAM_OVERRIDES=("BillingEdgeLambdaArn=")
+# Billing edge + fulfillment queue (WS2). Override all three to skip payments stack redeploy.
+BILLING_EDGE_ARN="${BILLING_EDGE_LAMBDA_ARN:-}"
+BILLING_QUEUE_URL="${BILLING_FULFILLMENT_QUEUE_URL:-}"
+BILLING_QUEUE_ARN="${BILLING_FULFILLMENT_QUEUE_ARN:-}"
+if [[ -z "$BILLING_EDGE_ARN" || -z "$BILLING_QUEUE_URL" || -z "$BILLING_QUEUE_ARN" ]]; then
+  PAY_SCRIPT="${ROOT}/scripts/deploy-payments.sh"
+  chmod +x "$PAY_SCRIPT"
+  export BILLING_FULFILLMENT_ALERT_EMAIL="${BILLING_FULFILLMENT_ALERT_EMAIL:-}"
+  "$PAY_SCRIPT" "$ENV" "$REGION" "$ARTIFACT_BUCKET" "$SUFFIX"
+  PAYMENTS_STACK="StreamMyCourse-Payments-${ENV}"
+  BILLING_EDGE_ARN="$(aws cloudformation describe-stacks \
+    --stack-name "$PAYMENTS_STACK" \
+    --region "$REGION" \
+    --query 'Stacks[0].Outputs[?OutputKey==`BillingEdgeLambdaArn`].OutputValue' \
+    --output text)"
+  BILLING_QUEUE_URL="$(aws cloudformation describe-stacks \
+    --stack-name "$PAYMENTS_STACK" \
+    --region "$REGION" \
+    --query 'Stacks[0].Outputs[?OutputKey==`BillingFulfillmentQueueUrl`].OutputValue' \
+    --output text)"
+  BILLING_QUEUE_ARN="$(aws cloudformation describe-stacks \
+    --stack-name "$PAYMENTS_STACK" \
+    --region "$REGION" \
+    --query 'Stacks[0].Outputs[?OutputKey==`BillingFulfillmentQueueArn`].OutputValue' \
+    --output text)"
+  if [[ -z "$BILLING_EDGE_ARN" || "$BILLING_EDGE_ARN" == "None" \
+    || -z "$BILLING_QUEUE_URL" || "$BILLING_QUEUE_URL" == "None" \
+    || -z "$BILLING_QUEUE_ARN" || "$BILLING_QUEUE_ARN" == "None" ]]; then
+    echo "Failed to read payments stack outputs (edge ARN / fulfillment queue URL / ARN)" >&2
+    exit 1
+  fi
+fi
+
+BILLING_PARAM_OVERRIDES=()
+if [[ -n "${BILLING_EDGE_ARN:-}" ]]; then
+  BILLING_PARAM_OVERRIDES=("BillingEdgeLambdaArn=${BILLING_EDGE_ARN}")
+fi
 
 echo "Deploying API stack: $API_STACK (video bucket: $VIDEO_BUCKET, video provider: $VIDEO_PROVIDER)"
 # JWT audience validation in the TOKEN authorizer must accept every app client that mints
@@ -483,22 +517,7 @@ if [[ "$VIDEO_PROVIDER" == "kinescope" ]]; then
   "$CONFIG_DRM_SCRIPT" "$API_ENDPOINT" "$KINESCOPE_PARENT_ID"
 fi
 
-# Drop the payments stack after API Gateway no longer points at it.
-PAYMENTS_STACK="StreamMyCourse-Payments-${ENV}"
-if aws cloudformation describe-stacks --stack-name "$PAYMENTS_STACK" --region "$REGION" &>/dev/null; then
-  echo "Deleting payments stack $PAYMENTS_STACK"
-  aws cloudformation delete-stack --stack-name "$PAYMENTS_STACK" --region "$REGION"
-  aws cloudformation wait stack-delete-complete --stack-name "$PAYMENTS_STACK" --region "$REGION"
-fi
-if aws secretsmanager describe-secret --secret-id "streammycourse/hyperpay/${ENV}" --region "$REGION" &>/dev/null; then
-  echo "Deleting HyperPay secret streammycourse/hyperpay/${ENV}"
-  aws secretsmanager delete-secret \
-    --secret-id "streammycourse/hyperpay/${ENV}" \
-    --force-delete-without-recovery \
-    --region "$REGION" >/dev/null
-fi
-
-# Video provider edge still needs the catalog function ARN.
+# WS6: wire catalog checkout precheck invoke + return URLs on billing edge (after catalog exists).
 CATALOG_FN_NAME="$(aws cloudformation describe-stacks \
   --stack-name "$API_STACK" \
   --region "$REGION" \
@@ -510,6 +529,33 @@ if [[ -n "${CATALOG_FN_NAME}" && "${CATALOG_FN_NAME}" != "None" ]]; then
     --region "$REGION" \
     --query 'Configuration.FunctionArn' \
     --output text)"
+fi
+
+EDGE_STACK="StreamMyCourse-EdgeHosting-${ENV}"
+EDGE_REGION="${EDGE_REGION:-us-east-1}"
+STUDENT_SITE_URL=""
+if aws cloudformation describe-stacks --stack-name "$EDGE_STACK" --region "$EDGE_REGION" &>/dev/null; then
+  STUDENT_SITE_URL="$(aws cloudformation describe-stacks \
+    --stack-name "$EDGE_STACK" \
+    --region "$EDGE_REGION" \
+    --query 'Stacks[0].Outputs[?OutputKey==`StudentSiteUrl`].OutputValue' \
+    --output text)"
+fi
+if [[ -n "${STUDENT_SITE_URL}" && "${STUDENT_SITE_URL}" != "None" ]]; then
+  BILLING_SHOPPER_RESULT_URL="${STUDENT_SITE_URL%/}/billing/result"
+fi
+
+if [[ -n "${CATALOG_LAMBDA_ARN:-}" && "${CATALOG_LAMBDA_ARN}" != "None" ]]; then
+  export CATALOG_LAMBDA_ARN
+  if [[ -n "${BILLING_SHOPPER_RESULT_URL:-}" ]]; then
+    export BILLING_SHOPPER_RESULT_URL
+    PAY_SCRIPT="${ROOT}/scripts/deploy-payments.sh"
+    chmod +x "$PAY_SCRIPT"
+    echo "Updating payments stack with catalog invoke + billing return URLs"
+    "$PAY_SCRIPT" "$ENV" "$REGION" "$ARTIFACT_BUCKET" "$SUFFIX"
+  else
+    echo "Skipping payments stack update: BILLING_SHOPPER_RESULT_URL unset (edge StudentSiteUrl missing)"
+  fi
 fi
 
 # Video provider edge (Kinescope): first-time env only — catalog did not exist pre-deploy.

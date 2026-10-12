@@ -52,7 +52,13 @@ jobs:
         run: |
           python - <<'PY'
           import glob, py_compile
-          paths = glob.glob('infrastructure/lambda/catalog/**/*.py', recursive=True)
+          paths = []
+          for pattern in (
+              'infrastructure/lambda/catalog/**/*.py',
+              'infrastructure/lambda/billing_edge/**/*.py',
+              'infrastructure/lambda/billing_fulfillment/**/*.py',
+          ):
+              paths.extend(glob.glob(pattern, recursive=True))
           for p in paths:
               py_compile.compile(p, doraise=True)
           print('OK', len(paths))
@@ -88,6 +94,7 @@ jobs:
           cfn-lint --config-file .cfnlintrc infrastructure/templates/rds-stack.yaml
           cfn-lint --config-file .cfnlintrc infrastructure/templates/media-cleanup-stack.yaml
           cfn-lint --config-file .cfnlintrc infrastructure/templates/transactional-mail-stack.yaml
+          cfn-lint --config-file .cfnlintrc infrastructure/templates/payments-stack.yaml
 
   security:
     name: Security scans

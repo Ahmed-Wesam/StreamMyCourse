@@ -6,6 +6,14 @@
 
 ---
 
+## 2026-10-12 — WS3: HyperPay webhook + payments stack (payment rebuild)
+
+- **Billing edge** — **`POST /webhooks/payments/hyperpay`**: AES-GCM decrypt, `parse_hyperpay_webhook` → **`purchase.paid|failed|revoked`** domain events, durable **SQS** enqueue before **200** ([`handler.py`](infrastructure/lambda/billing_edge/handler.py), [`billing_sqs/enqueue.py`](infrastructure/lambda/billing_edge/billing_sqs/enqueue.py)). Activation probe (no IV/tag) → **200** without enqueue. **`POST /billing/checkout-status`** unchanged (catalog RDS only; no OPPWA poll).
+- **Fulfillment** — VPC **`billing_fulfillment`** worker consumes SQS; idempotent **`payment_webhook_events`** + **`UPDATE purchases`** to **`paid`/`failed`** ([`fulfillment_repo.py`](infrastructure/lambda/billing_fulfillment/fulfillment_repo.py)).
+- **IaC / deploy** — Restored [`payments-stack.yaml`](infrastructure/templates/payments-stack.yaml), [`deploy-payments.sh`](scripts/deploy-payments.sh), [`ensure-hyperpay-secret.sh`](scripts/ensure-hyperpay-secret.sh); [`deploy-backend.sh`](scripts/deploy-backend.sh) deploys payments **before** API and passes **`BillingEdgeLambdaArn`** (removed post-deploy payments stack/secret deletion). Deploy workflow: Ensure HyperPay secret + env ([`deploy-backend.yml`](.github/workflows/deploy-backend.yml)).
+- **Tests / CI** — [`tests/unit/billing/`](tests/unit/billing/) (64 tests); stack contract [`test_payments_stack_ws3.py`](tests/unit/billing/test_payments_stack_ws3.py); [`ci.yml`](.github/workflows/ci.yml) compiles billing lambdas + `cfn-lint` payments stack.
+- **Prod (post-merge deploy)** — Operator: GitHub **`prod`** secrets **`HYPERPAY_*`**; HyperPay portal webhook URL + encryption key; **`scripts/verify-hyperpay-webhook-prod.py`** / portal **Click to Test** → CloudWatch (not **404**). Card E2E remains **WS4**.
+
 ## 2026-10-12 — WS2: checkout-session + checkout-status (payment rebuild)
 
 - **Catalog** — **`PurchaseCheckoutService.get_purchase_status`** reads the user’s purchase row in RDS via **`get_purchase_status_for_user`** ([`services/purchases/checkout_service.py`](infrastructure/lambda/catalog/services/purchases/checkout_service.py), [`repo.py`](infrastructure/lambda/catalog/services/purchases/repo.py)); internal invoke **`billing.checkout_status`** requires **`purchaseId`** ([`internal_checkout.py`](infrastructure/lambda/catalog/services/purchases/internal_checkout.py), [`index.py`](infrastructure/lambda/catalog/index.py)).

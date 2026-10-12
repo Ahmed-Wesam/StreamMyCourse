@@ -68,6 +68,7 @@ _BILLING_EDGE_BOTO3_ALLOWED = frozenset(
     {
         _p("infrastructure/lambda/billing_edge/catalog_invoke.py"),
         _p("infrastructure/lambda/billing_edge/hyperpay_secrets.py"),
+        _p("infrastructure/lambda/billing_edge/billing_sqs/enqueue.py"),
     }
 )
 

@@ -1,16 +1,21 @@
-"""Billing edge Lambda — HyperPay checkout session/status (WS2 slim; webhooks deferred WS3)."""
+"""Billing edge Lambda — HyperPay checkout session/status + encrypted webhooks."""
 
 from __future__ import annotations
 
 import _vendor_bootstrap  # noqa: F401  # must precede cryptography (vendored in Lambda)
 
 import base64
+import hashlib
 import json
 import logging
 from typing import Any, Dict
 
 from cors import pick_origin
 from domain.checkout_billing import parse_checkout_billing
+from domain.metadata import (
+    EnvironmentMismatchError,
+    InvalidCartMetadataError,
+)
 from catalog_invoke import (
     CatalogInvokeError,
     invoke_billing_checkout,
@@ -18,13 +23,18 @@ from catalog_invoke import (
     invoke_billing_checkout_status,
 )
 from edge_config import BillingEdgeConfig, get_payment_provider, load_billing_edge_config
-from providers.hyperpay_adapter import BillingUnconfiguredError
+from providers.hyperpay_adapter import (
+    BillingUnconfiguredError,
+    extract_hyperpay_webhook_ciphertext_hex,
+)
 from providers.port import CheckoutProduct, PaymentProviderPort
+from queue_shim import EnqueueError, enqueue_domain_events
 
 logger = logging.getLogger(__name__)
 
 _load_config = load_billing_edge_config
 _get_payment_provider = get_payment_provider
+_enqueue_domain_events = enqueue_domain_events
 _invoke_billing_checkout = invoke_billing_checkout
 _invoke_billing_checkout_rollback = invoke_billing_checkout_rollback
 _invoke_billing_checkout_status = invoke_billing_checkout_status
@@ -206,6 +216,16 @@ def _checkout_id_prefix(checkout_id: str) -> str:
     if len(normalized) <= 16:
         return normalized
     return f"{normalized[:16]}…"
+
+
+def _webhook_secret_hex(cfg: BillingEdgeConfig) -> str:
+    from edge_config import resolve_hyperpay_credentials
+
+    creds = resolve_hyperpay_credentials(cfg)
+    if creds is None:
+        return (cfg.hyperpay_webhook_secret or "").strip()
+    _access, _entity, webhook_secret, _host = creds
+    return (webhook_secret or cfg.hyperpay_webhook_secret or "").strip()
 
 
 def _parse_checkout_product(
@@ -498,6 +518,81 @@ def _handle_checkout_status(
     return _json_response(200, {"status": status.strip()}, cors_origin=cors)
 
 
+def _handle_hyperpay_webhook(
+    event: Dict[str, Any],
+    provider: PaymentProviderPort,
+    cfg: BillingEdgeConfig,
+) -> Dict[str, Any]:
+    webhook_secret = _webhook_secret_hex(cfg)
+    if not webhook_secret:
+        return _error_response(503, "billing_unconfigured", "Billing is not configured")
+
+    headers = event.get("headers") or {}
+    iv_hex = _header_lookup(headers, "X-Initialization-Vector")
+    tag_hex = _header_lookup(headers, "X-Authentication-Tag")
+    if not iv_hex or not tag_hex:
+        return _json_response(200, {"status": "ok"})
+
+    raw = _raw_body_bytes(event)
+    try:
+        ciphertext_hex = extract_hyperpay_webhook_ciphertext_hex(raw)
+        decrypted = provider.decrypt_webhook(
+            ciphertext_hex=ciphertext_hex,
+            iv_hex=iv_hex,
+            auth_tag_hex=tag_hex,
+            webhook_secret_hex=webhook_secret,
+        )
+    except (ValueError, json.JSONDecodeError, UnicodeDecodeError):
+        logger.info(
+            "webhook_decrypt_failed requestId=%s",
+            _request_id(event),
+        )
+        return _error_response(401, "invalid_webhook", "Invalid webhook payload")
+
+    payload_digest = hashlib.sha256(decrypted).hexdigest()
+    request_id = _request_id(event)
+
+    try:
+        events = provider.parse_webhook(
+            decrypted,
+            deployment_environment=cfg.deployment_environment,
+            payload_digest=payload_digest,
+        )
+    except EnvironmentMismatchError:
+        return _error_response(400, "environment_mismatch", "Webhook environment does not match deployment")
+    except InvalidCartMetadataError as exc:
+        return _error_response(400, "invalid_cart_metadata", str(exc))
+
+    if not events:
+        logger.info(
+            "webhook_no_domain_events requestId=%s digest_prefix=%s",
+            request_id,
+            payload_digest[:12],
+        )
+        return _json_response(200, {"status": "ok"})
+
+    queue_url = cfg.fulfillment_queue_url or ""
+    try:
+        _enqueue_domain_events(events, queue_url=queue_url)
+    except EnqueueError:
+        logger.exception(
+            "webhook_enqueue_failed requestId=%s event_count=%s",
+            request_id,
+            len(events),
+        )
+        return _error_response(500, "enqueue_failed", "Failed to enqueue billing events")
+
+    for domain_event in events:
+        logger.info(
+            "webhook_enqueued requestId=%s provider_event_id=%s event_type=%s",
+            request_id,
+            domain_event.provider_event_id,
+            domain_event.event_type,
+        )
+
+    return _json_response(200, {"status": "ok"})
+
+
 def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     """API Gateway proxy entry point."""
     logging.getLogger().setLevel(logging.INFO)
@@ -510,9 +605,6 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     if method == "OPTIONS" and path in _BILLING_MANAGE_OPTIONS_PATHS:
         return _options_response(event, cfg)
 
-    if method == "POST" and path == "/webhooks/payments/hyperpay":
-        return _error_response(404, "not_found", "Not found")
-
     provider = _get_payment_provider(cfg)
 
     if provider is None:
@@ -523,11 +615,15 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 "Billing is not configured",
                 cors_origin=_cors_origin_for_manage(event, cfg),
             )
+        if path == "/webhooks/payments/hyperpay":
+            return _error_response(503, "billing_unconfigured", "Billing is not configured")
         return _error_response(404, "not_found", "Not found")
 
     if method == "POST" and path == "/billing/checkout-session":
         return _handle_checkout(event, provider, cfg)
     if method == "POST" and path == "/billing/checkout-status":
         return _handle_checkout_status(event, provider, cfg)
+    if method == "POST" and path == "/webhooks/payments/hyperpay":
+        return _handle_hyperpay_webhook(event, provider, cfg)
 
     return _error_response(404, "not_found", "Not found")

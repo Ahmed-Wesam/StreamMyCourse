@@ -200,13 +200,15 @@ def test_deploy_backend_prod_packages_cognito_pre_signup_lambda() -> None:
     assert "ZohoSmtpSecretArn=${{ steps.zoho_smtp_secret_prod.outputs.arn }}" in block
 
 
-def test_deploy_backend_sh_does_not_deploy_payments() -> None:
+def test_deploy_backend_sh_deploys_payments_before_api_stack() -> None:
     text = _deploy_backend_sh_text()
-    assert "deploy-payments.sh" not in text
-    assert 'BILLING_PARAM_OVERRIDES=("BillingEdgeLambdaArn=")' in text
+    assert "deploy-payments.sh" in text
+    assert 'BILLING_PARAM_OVERRIDES=("BillingEdgeLambdaArn=${BILLING_EDGE_ARN}")' in text
     assert "StreamMyCourse-Payments-${ENV}" in text
-    assert "delete-stack" in text
+    assert "delete-stack" not in text
+    assert "streammycourse/hyperpay" not in text
     assert "${BILLING_PARAM_OVERRIDES[@]}" in text
+    assert "Updating payments stack with catalog invoke + billing return URLs" in text
 
 
 def test_deploy_backend_sh_passes_billing_teacher_sub_to_api_stack() -> None:
@@ -231,11 +233,13 @@ def test_api_stack_exposes_billing_and_hyperpay_webhook_routes() -> None:
     assert "${BillingEdgeLambdaArn}/invocations" in text
 
 
-def test_deploy_workflow_prod_does_not_provision_hyperpay() -> None:
+def test_deploy_workflow_prod_provisions_hyperpay_secret() -> None:
     text = _workflow_text()
     block = _job_block(text, "deploy-backend-prod", "\n  # Prod-only")
-    assert "ensure-hyperpay-secret.sh" not in block
-    assert "HYPERPAY_ACCESS_TOKEN" not in block
-    assert "HYPERPAY_SECRET_ARN" not in block
-    assert "streammycourse/hyperpay/prod" not in block
+    assert "Ensure HyperPay secret (prod)" in block
+    assert "ensure-hyperpay-secret.sh" in block
+    assert "HYPERPAY_ACCESS_TOKEN" in block
+    assert "HYPERPAY_SECRET_ARN" in block
+    assert "streammycourse/hyperpay/prod" in block
     assert "BILLING_TEACHER_SUB: ${{ vars.BILLING_TEACHER_SUB }}" in block
+    assert "PAYMENT_PROVIDER: ${{ vars.PAYMENT_PROVIDER }}" in block
