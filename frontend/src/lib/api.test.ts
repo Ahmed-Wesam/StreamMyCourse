@@ -29,6 +29,7 @@ vi.mock('./student-session-refresh', async (importOriginal) => {
 import {
   ApiError,
   createCheckoutSession,
+  getCheckoutStatus,
   getBundle,
   getPurchases,
   createCourse,
@@ -583,6 +584,76 @@ describe('createCheckoutSession', () => {
       status: 409,
       code: 'already_owned',
     })
+  })
+})
+
+describe('getCheckoutStatus', () => {
+  const originalEnv = import.meta.env.VITE_API_BASE_URL
+
+  beforeEach(() => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => {
+        return new Response(JSON.stringify({ status: 'pending' }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        })
+      }),
+    )
+    fetchAuthSessionMock.mockResolvedValue({ tokens: { idToken: 't' } })
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    ;(import.meta as any).env.VITE_API_BASE_URL = 'https://api.example/v1'
+  })
+
+  afterEach(() => {
+    vi.unstubAllGlobals()
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    ;(import.meta as any).env.VITE_API_BASE_URL = originalEnv
+    vi.clearAllMocks()
+  })
+
+  it('POSTs /billing/checkout-status with purchaseId only', async () => {
+    const result = await getCheckoutStatus('purch-abc')
+    expect(result.status).toBe('pending')
+    const [url, init] = vi.mocked(fetch).mock.calls[0]
+    expect(String(url)).toContain('/billing/checkout-status')
+    expect(JSON.parse((init?.body as string) ?? '{}')).toEqual({ purchaseId: 'purch-abc' })
+  })
+})
+
+describe('setBundlePrice', () => {
+  const originalEnv = import.meta.env.VITE_API_BASE_URL
+
+  beforeEach(() => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => {
+        return new Response(
+          JSON.stringify({ amountMinor: 150_000, currency: 'JOD' }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } },
+        )
+      }),
+    )
+    fetchAuthSessionMock.mockResolvedValue({ tokens: { idToken: 't' } })
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    ;(import.meta as any).env.VITE_API_BASE_URL = 'https://api.example/v1'
+  })
+
+  afterEach(() => {
+    vi.unstubAllGlobals()
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    ;(import.meta as any).env.VITE_API_BASE_URL = originalEnv
+    vi.clearAllMocks()
+  })
+
+  it('PATCHes /billing/bundle with amountMinor', async () => {
+    const { setBundlePrice } = await import('./api/pricing')
+    const offer = await setBundlePrice(150_000)
+    expect(offer.amountMinor).toBe(150_000)
+    const [url, init] = vi.mocked(fetch).mock.calls[0]
+    expect(String(url)).toContain('/billing/bundle')
+    expect(init?.method).toBe('PATCH')
+    expect(JSON.parse((init?.body as string) ?? '{}')).toEqual({ amountMinor: 150_000 })
   })
 })
 

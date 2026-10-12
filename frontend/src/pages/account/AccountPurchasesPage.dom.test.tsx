@@ -51,6 +51,52 @@ describe('AccountPurchasesPage', () => {
     expect(screen.getByText(/have not purchased/i)).toBeTruthy()
   })
 
+  it('hides pending and failed rows from the table', async () => {
+    getPurchases.mockResolvedValue([
+      {
+        id: 'p-pending',
+        productType: 'course',
+        status: 'pending',
+        amountMinor: 50_000,
+        currency: 'JOD',
+        createdAt: '2026-03-01T12:00:00.000Z',
+      },
+      {
+        id: 'p-paid',
+        productType: 'bundle',
+        status: 'paid',
+        amountMinor: 150_000,
+        currency: 'JOD',
+        createdAt: '2026-03-02T12:00:00.000Z',
+      },
+    ])
+
+    render(
+      <MemoryRouter>
+        <AccountPurchasesPage />
+      </MemoryRouter>,
+    )
+
+    await waitFor(() => {
+      expect(screen.getByText('Research Mastery Bundle')).toBeTruthy()
+    })
+    expect(screen.queryByText(/Pending/i)).toBeNull()
+  })
+
+  it('shows empty state when billing is unavailable (503)', async () => {
+    const { ApiError } = await import('../../lib/api/client')
+    getPurchases.mockRejectedValue(new ApiError('Unavailable', 503, 'billing_unconfigured'))
+
+    render(
+      <MemoryRouter>
+        <AccountPurchasesPage />
+      </MemoryRouter>,
+    )
+
+    expect(await screen.findByTestId('purchases-empty')).toBeTruthy()
+    expect(screen.queryByRole('alert')).toBeNull()
+  })
+
   it('lists paid purchases with formatted amounts', async () => {
     getPurchases.mockResolvedValue([
       {

@@ -6,6 +6,15 @@
 
 ---
 
+## 2026-10-12 — WS4: billing UI restored (payment rebuild)
+
+- **Student checkout** — Restored [`CheckoutPage.tsx`](frontend/src/pages/CheckoutPage.tsx) + HyperPay COPYandPAY [`HyperPayWidget.tsx`](frontend/src/components/billing/HyperPayWidget.tsx) (no `wpwlOptions.paymentTarget`); billing address on-site; **`POST /billing/checkout-session`** only; pending context in [`checkoutPendingPurchase.ts`](frontend/src/lib/checkoutPendingPurchase.ts).
+- **Result page** — [`BillingResultPage.tsx`](frontend/src/pages/BillingResultPage.tsx) polls **`POST /billing/checkout-status`** with **`purchaseId`** only (megaplan copy); legacy **`/billing/success`** / **`/billing/cancel`** → result via [`BillingLegacyRedirect.tsx`](frontend/src/pages/BillingLegacyRedirect.tsx); routes in [`student-app/App.tsx`](frontend/src/student-app/App.tsx).
+- **API client** — [`getCheckoutStatus`](frontend/src/lib/api/billing.ts), [`setBundlePrice`](frontend/src/lib/api/pricing.ts); copy in [`purchaseCopy.ts`](frontend/src/lib/purchaseCopy.ts).
+- **Teacher / account** — [`TeacherPaymentSetup.tsx`](frontend/src/pages/TeacherPaymentSetup.tsx) bundle JOD price; [`AccountPurchasesPage.tsx`](frontend/src/pages/account/AccountPurchasesPage.tsx) lists **paid** rows only; 503 billing-off → empty state.
+- **Tests** — Vitest: checkout, billing return, widget, API, teacher pricing, purchases (917 frontend tests green).
+- **Prod card E2E** — Operator after **Deploy** student SPA: test Visa on `https://researchspectrum.org/billing/result` per [`infrastructure/docs/billing-ops-runbook.md`](infrastructure/docs/billing-ops-runbook.md).
+
 ## 2026-10-12 — WS3: HyperPay webhook + payments stack (payment rebuild)
 
 - **Billing edge** — **`POST /webhooks/payments/hyperpay`**: AES-GCM decrypt, `parse_hyperpay_webhook` → **`purchase.paid|failed|revoked`** domain events, durable **SQS** enqueue before **200** ([`handler.py`](infrastructure/lambda/billing_edge/handler.py), [`billing_sqs/enqueue.py`](infrastructure/lambda/billing_edge/billing_sqs/enqueue.py)). Activation probe (no IV/tag) → **200** without enqueue. **`POST /billing/checkout-status`** unchanged (catalog RDS only; no OPPWA poll).

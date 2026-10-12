@@ -31,3 +31,10 @@ export async function createCheckoutSession(
   }
   return httpPost<CheckoutSessionResponse>('/billing/checkout-session', body)
 }
+
+/** Poll catalog purchase row status (pending / paid / failed). Never calls HyperPay. */
+export async function getCheckoutStatus(
+  purchaseId: string,
+): Promise<{ status: string }> {
+  return httpPost<{ status: string }>('/billing/checkout-status', { purchaseId })
+}

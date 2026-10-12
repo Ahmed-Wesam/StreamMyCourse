@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 
 import { getPurchases } from '../../lib/api/billing'
 import type { PurchaseRecord } from '../../lib/api/types'
+import { isBillingUnconfiguredError } from '../../lib/api/client'
 import { catalogApiUserMessage } from '../../lib/apiUserMessages'
 import { formatJodMinor } from '../../lib/formatJodMinor'
 import { usePageTitle } from '../../lib/page-title'
@@ -57,10 +58,15 @@ export default function AccountPurchasesPage() {
     setState({ status: 'loading' })
     try {
       const purchases = await getPurchases()
-      setState({ status: 'ready', purchases })
+      const paidOnly = purchases.filter((row) => row.status.trim().toLowerCase() === 'paid')
+      setState({ status: 'ready', purchases: paidOnly })
     } catch (err) {
       if (shouldSuppressInlineSessionSupersededMessage(err)) {
         setState({ status: 'superseded' })
+        return
+      }
+      if (isBillingUnconfiguredError(err)) {
+        setState({ status: 'ready', purchases: [] })
         return
       }
       setState({ status: 'error', message: catalogApiUserMessage(err, 'loadPurchases') })

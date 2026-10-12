@@ -230,10 +230,10 @@ describe('StudentApp', () => {
     })
   })
 
-  it('shows the closed checkout page for a legacy billing return', async () => {
+  it('redirects legacy billing success to the billing result page', async () => {
     renderAt('/billing/success')
     await waitFor(() => {
-      expect(screen.getByTestId('student-page-checkout')).toBeTruthy()
+      expect(screen.getByTestId('billing-result-page')).toBeTruthy()
     })
   })
 
