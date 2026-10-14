@@ -84,3 +84,14 @@ describe('BundleCertificateDocument', () => {
     )
   })
 })
+
+describe('certificate documents ignore site-wide header/footer styles', () => {
+  it('render no header, footer, or aside elements', () => {
+    const course = render(<CertificateDocument certificate={validCertificate} />)
+    expect(course.container.querySelector('header, footer, aside')).toBeNull()
+    course.unmount()
+
+    const bundle = render(<BundleCertificateDocument certificate={validBundleCertificate} />)
+    expect(bundle.container.querySelector('header, footer, aside')).toBeNull()
+  })
+})

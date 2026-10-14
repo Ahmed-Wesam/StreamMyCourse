@@ -38,7 +38,7 @@ export function BundleCertificateDocument({ certificate, qrSrc }: BundleCertific
         aria-hidden="true"
       />
 
-      <aside className="bundle-certificate-document__layer bundle-certificate-document__side">
+      <div className="bundle-certificate-document__layer bundle-certificate-document__side">
         <div className="bundle-certificate-document__layer bundle-certificate-document__edge" aria-hidden="true" />
         <div className="bundle-certificate-document__layer bundle-certificate-document__badge">
           <img src={brandMark} alt="" />
@@ -62,7 +62,7 @@ export function BundleCertificateDocument({ certificate, qrSrc }: BundleCertific
           <b>{totalHours}</b>
           <span>Total Hours</span>
         </div>
-      </aside>
+      </div>
 
       <svg
         className="bundle-certificate-document__layer bundle-certificate-document__frame"
@@ -91,10 +91,10 @@ export function BundleCertificateDocument({ certificate, qrSrc }: BundleCertific
         <use href="#bundle-cert-cn" transform="translate(312 30)" />
       </svg>
 
-      <header className="bundle-certificate-document__layer bundle-certificate-document__head">
+      <div className="bundle-certificate-document__layer bundle-certificate-document__head">
         <div className="bundle-certificate-document__tag">Research Spectrum</div>
         <div className="bundle-certificate-document__tag">Evidence-Based Research Education</div>
-      </header>
+      </div>
 
       <div className="bundle-certificate-document__layer bundle-certificate-document__t1">CERTIFICATE</div>
       <div className="bundle-certificate-document__layer bundle-certificate-document__t2">OF MASTERY</div>
@@ -112,7 +112,7 @@ export function BundleCertificateDocument({ certificate, qrSrc }: BundleCertific
         <small className="bundle-certificate-document__hours">{bundleHoursLine}</small>
       </div>
 
-      <footer className="bundle-certificate-document__layer bundle-certificate-document__foot">
+      <div className="bundle-certificate-document__layer bundle-certificate-document__foot">
         <div className="bundle-certificate-document__sig">
           <div className="bundle-certificate-document__sig-script">Bahaa Aburayya</div>
           <div className="bundle-certificate-document__sig-line">
@@ -170,7 +170,7 @@ export function BundleCertificateDocument({ certificate, qrSrc }: BundleCertific
             {qrSrc ? <img src={qrSrc} alt="" /> : null}
           </div>
         </div>
-      </footer>
+      </div>
     </article>
   )
 }

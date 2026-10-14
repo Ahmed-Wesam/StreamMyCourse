@@ -32,6 +32,19 @@ function publicVerifyUrl(credentialId: string): string {
   return `https://researchspectrum.org/verify/${credentialId}`
 }
 
+// html2canvas finds each font's baseline from a 1×1 img placed inline after
+// sample text. Tailwind preflight makes every img display:block, which drops
+// that probe onto its own line and paints all text about one line too low.
+const HTML2CANVAS_BASELINE_PROBE_CSS = 'body > div > img[width="1"][height="1"] { display: inline; }'
+
+function installBaselineProbeFix(): HTMLStyleElement {
+  const style = document.createElement('style')
+  style.setAttribute('data-certificate-pdf-baseline', 'true')
+  style.textContent = HTML2CANVAS_BASELINE_PROBE_CSS
+  document.head.appendChild(style)
+  return style
+}
+
 function mountCaptureHost(): HTMLDivElement {
   const host = document.createElement('div')
   host.setAttribute('data-certificate-pdf-host', 'true')
@@ -79,6 +92,7 @@ async function waitForHostImages(host: HTMLElement): Promise<void> {
 
 async function renderCertificatePdf(node: ReactNode, filename: string): Promise<void> {
   const host = mountCaptureHost()
+  const baselineFix = installBaselineProbeFix()
   const root = createRoot(host)
   flushSync(() => {
     root.render(node)
@@ -110,6 +124,7 @@ async function renderCertificatePdf(node: ReactNode, filename: string): Promise<
   } finally {
     root.unmount()
     host.remove()
+    baselineFix.remove()
   }
 }
 

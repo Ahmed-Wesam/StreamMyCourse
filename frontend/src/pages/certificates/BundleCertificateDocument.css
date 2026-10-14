@@ -56,7 +56,6 @@
   height: 794px;
   background: linear-gradient(170deg, #0a1733 0%, #0d1f4d 55%, #10245a 100%);
   overflow: hidden;
-  text-align: left;
 }
 
 .bundle-certificate-document__edge {
@@ -120,6 +119,7 @@
   width: 286px;
   min-height: 34px;
   margin-bottom: 34px;
+  text-align: left;
   padding-left: 90px;
   padding-right: 26px;
 }
@@ -195,6 +195,8 @@
     Georgia,
     serif;
   color: var(--cert-gold2);
+  white-space: nowrap;
+  overflow: hidden;
 }
 
 .bundle-certificate-document__total span {
@@ -298,8 +300,6 @@
     cursive;
   color: var(--cert-blue);
   white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
 }
 
 .bundle-certificate-document__rule {

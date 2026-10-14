@@ -155,7 +155,6 @@
   top: 272px;
   left: 100px;
   right: 100px;
-  height: 92px;
   margin: 0;
   font:
     400 76px/1.2 'Great Vibes',
@@ -163,8 +162,6 @@
     cursive;
   color: var(--cert-blue);
   white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
 }
 
 .certificate-document__rule {

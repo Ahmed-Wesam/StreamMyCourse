@@ -60,7 +60,7 @@ export function CertificateDocument({ certificate, qrSrc }: CertificateDocumentP
         <use href="#cert-doc-cn" transform="translate(1123 794) scale(-1 -1)" />
       </svg>
 
-      <header className="certificate-document__layer certificate-document__head">
+      <div className="certificate-document__layer certificate-document__head">
         <div className="certificate-document__brand">
           <img src={brandMark} alt="" />
           <div className="certificate-document__brand-name">
@@ -68,7 +68,7 @@ export function CertificateDocument({ certificate, qrSrc }: CertificateDocumentP
           </div>
         </div>
         <div className="certificate-document__tag">Evidence-Based Research Education</div>
-      </header>
+      </div>
 
       <div className="certificate-document__layer certificate-document__t1">CERTIFICATE</div>
       <div className="certificate-document__layer certificate-document__t2">OF COMPLETION</div>
@@ -86,7 +86,7 @@ export function CertificateDocument({ certificate, qrSrc }: CertificateDocumentP
         {hoursLine ? <small className="certificate-document__hours">{hoursLine}</small> : null}
       </div>
 
-      <footer className="certificate-document__layer certificate-document__foot">
+      <div className="certificate-document__layer certificate-document__foot">
         <div className="certificate-document__sig">
           <div className="certificate-document__sig-script">Bahaa Aburayya</div>
           <div className="certificate-document__sig-line">
@@ -151,7 +151,7 @@ export function CertificateDocument({ certificate, qrSrc }: CertificateDocumentP
             {qrSrc ? <img src={qrSrc} alt="" /> : null}
           </div>
         </div>
-      </footer>
+      </div>
     </article>
   )
 }

@@ -130,6 +130,25 @@ describe('certificatePdf', () => {
     expect(hosts.length).toBe(0)
   })
 
+  it('keeps the html2canvas baseline probe inline during capture and removes it after', async () => {
+    let probeCss: string | null | undefined
+    html2canvasMock.mockImplementationOnce(async () => {
+      probeCss = document.querySelector('style[data-certificate-pdf-baseline]')?.textContent
+      return { toDataURL: () => 'data:image/png;base64,abc', width: 1123, height: 794 }
+    })
+
+    await generateCertificatePDF({
+      name: 'Ada Lovelace',
+      title: 'Research Methodology',
+      cred: CRED,
+      date: 'September 2026',
+    })
+
+    expect(probeCss).toContain('img[width="1"][height="1"]')
+    expect(probeCss).toContain('display: inline')
+    expect(document.querySelector('style[data-certificate-pdf-baseline]')).toBeNull()
+  })
+
   it('removes the host element when html2canvas throws', async () => {
     html2canvasMock.mockRejectedValueOnce(new Error('capture failed'))
 
@@ -144,5 +163,6 @@ describe('certificatePdf', () => {
 
     const hosts = document.querySelectorAll('[data-certificate-pdf-host]')
     expect(hosts.length).toBe(0)
+    expect(document.querySelector('style[data-certificate-pdf-baseline]')).toBeNull()
   })
 })
