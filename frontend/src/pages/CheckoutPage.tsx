@@ -48,7 +48,7 @@ type BillingFieldKey = 'givenName' | 'surname' | 'street' | 'city' | 'state' | '
 const CHECKOUT_FAQ: { q: string; a: ReactNode }[] = [
   {
     q: 'Do I get lifetime access?',
-    a: 'Yes. All Research Spectrum courses include lifetime access for as long as the course remains available. Work through the material at your own pace and return to any module at any time ΓÇö including future course updates.',
+    a: 'Yes. All Research Spectrum courses include lifetime access for as long as the course remains available. Work through the material at your own pace and return to any module at any time — including future course updates.',
   },
   {
     q: 'How do certificates work?',
@@ -56,7 +56,7 @@ const CHECKOUT_FAQ: { q: string; a: ReactNode }[] = [
   },
   {
     q: 'Can I apply to the Research Team?',
-    a: 'Yes. Completing all four courses and earning their certificates makes you eligible to apply for the Research Spectrum Research Team ΓÇö where members contribute to peer-reviewed publications under faculty mentorship. The Research Mastery Bundle is the fastest pathway to eligibility.',
+    a: 'Yes. Completing all four courses and earning their certificates makes you eligible to apply for the Research Spectrum Research Team — where members contribute to peer-reviewed publications under faculty mentorship. The Research Mastery Bundle is the fastest pathway to eligibility.',
   },
   {
     q: 'What payment methods are supported?',
@@ -70,7 +70,7 @@ const CHECKOUT_FAQ: { q: string; a: ReactNode }[] = [
         <Link to="/refund" style={{ color: 'var(--blue)', fontWeight: 700 }}>
           Refund Policy
         </Link>{' '}
-        ΓÇö access begins immediately upon payment. If you have questions before purchasing, please{' '}
+        — access begins immediately upon payment. If you have questions before purchasing, please{' '}
         <Link to="/contact" style={{ color: 'var(--blue)', fontWeight: 700 }}>
           contact us
         </Link>
@@ -439,7 +439,7 @@ export default function CheckoutPage() {
     : submitting
       ? checkoutLoadingLabel
       : priceLabel
-        ? `Complete Purchase ΓÇö ${priceLabel}`
+        ? `Complete Purchase — ${priceLabel}`
         : 'Complete Purchase'
 
   if (!checkoutParams) {
@@ -507,7 +507,7 @@ export default function CheckoutPage() {
                 <div className="hsc-product">{productLabel}</div>
                 <div className="hsc-price">
                   {origLabel && isBundle ? <span className="orig">{origLabel}</span> : null}
-                  <span>{priceLabel ?? 'ΓÇª'}</span>
+                  <span>{priceLabel ?? '…'}</span>
                 </div>
                 <div className="hsc-divider" />
                 <div className="hsc-row">
@@ -565,7 +565,7 @@ export default function CheckoutPage() {
                   onClick={() => selectProduct(course.id)}
                 >
                   <div className="pb-label">{course.title}</div>
-                  <div className="pb-price">{price ?? 'ΓÇª'}</div>
+                  <div className="pb-price">{price ?? '…'}</div>
                 </button>
               )
             })}
@@ -576,7 +576,7 @@ export default function CheckoutPage() {
             >
               <div className="pb-badge">Best Value</div>
               <div className="pb-label">Research Mastery Bundle</div>
-              <div className="pb-price">{jodPrice(bundleAmountMinor) ?? 'ΓÇª'}</div>
+              <div className="pb-price">{jodPrice(bundleAmountMinor) ?? '…'}</div>
             </button>
           </div>
         </div>
@@ -693,7 +693,7 @@ export default function CheckoutPage() {
                       onChange={(e) => setBillCountry(e.target.value)}
                       disabled={signedIn !== true || Boolean(widgetSession)}
                     >
-                      <option value="">SelectΓÇª</option>
+                      <option value="">Select…</option>
                       {CHECKOUT_COUNTRIES.map((country) => (
                         <option key={country.code} value={country.code}>
                           {country.label}
@@ -794,7 +794,7 @@ export default function CheckoutPage() {
                     </Icon>
                     <span>
                       {alreadyOwned
-                        ? `You already have access to ${productLabel}. No additional purchase is needed ΓÇö visit your Dashboard to continue learning.`
+                        ? `You already have access to ${productLabel}. No additional purchase is needed — visit your Dashboard to continue learning.`
                         : submitError}
                     </span>
                   </div>
@@ -808,7 +808,7 @@ export default function CheckoutPage() {
               <div className="os-title">Order Summary</div>
               <div className="os-product">{productLabel}</div>
               <div className="os-product-sub">
-                {isBundle ? 'All 4 courses included' : `${productLabel} ┬╖ 1 course`}
+                {isBundle ? 'All 4 courses included' : `${productLabel} · 1 course`}
               </div>
               {loadError ? (
                 <p style={{ color: '#b91c1c', fontWeight: 600 }} role="alert">
@@ -819,7 +819,7 @@ export default function CheckoutPage() {
                   <div className="os-price-rows">
                     <div className="os-pr">
                       <span>{isBundle ? 'Bundle Price' : 'Course Price'}</span>
-                      <span>{origLabel && isBundle ? origLabel : priceLabel ?? 'ΓÇª'}</span>
+                      <span>{origLabel && isBundle ? origLabel : priceLabel ?? '…'}</span>
                     </div>
                     {discountLabel && isBundle ? (
                       <div className="os-pr discount">
@@ -830,7 +830,7 @@ export default function CheckoutPage() {
                   </div>
                   <div className="os-total">
                     <span className="os-total-lbl">Total</span>
-                    <span className="os-total-price">{priceLabel ?? 'ΓÇª'}</span>
+                    <span className="os-total-price">{priceLabel ?? '…'}</span>
                   </div>
                   <div className="os-includes">
                     <div className="os-inc-title">Included</div>
@@ -869,7 +869,7 @@ export default function CheckoutPage() {
                   <rect x="3" y="11" width="18" height="11" rx="2" />
                   <path d="M7 11V7a5 5 0 0 1 10 0v4" />
                 </Icon>
-                Secure ┬╖ Encrypted ┬╖ Trusted
+                Secure · Encrypted · Trusted
               </div>
               <div
                 style={{
@@ -891,7 +891,7 @@ export default function CheckoutPage() {
                   <Link to="/refund" style={{ color: 'var(--blue)' }}>
                     Refund Policy
                   </Link>{' '}
-                  ΓÇö access begins immediately upon payment.
+                  — access begins immediately upon payment.
                 </div>
                 <div>
                   Completing all 4 courses (incl. via this Bundle) makes you eligible to apply for the{' '}
@@ -916,9 +916,9 @@ export default function CheckoutPage() {
               'Created by a published physician-researcher',
               'Competency-based Certificate of Completion pathway',
               'Public certificate verification with unique credential ID',
-              'Lifetime access ΓÇö no subscription, no recurring fees',
+              'Lifetime access — no subscription, no recurring fees',
               'Practical project-based learning with expert feedback',
-              'Research Team pathway ΓÇö contribute to published studies',
+              'Research Team pathway — contribute to published studies',
             ].map((item) => (
               <div key={item} className="co-trust-item">
                 <span className="co-trust-ck">
@@ -940,14 +940,14 @@ export default function CheckoutPage() {
               <div className="ic-title">Postdoctoral Research Fellow</div>
               <div className="ic-affil">
                 <div className="ic-affil-item">
-                  <b>Department of Surgery ΓÇö Division of Cardiothoracic Surgery</b>
+                  <b>Department of Surgery — Division of Cardiothoracic Surgery</b>
                   <br />
                   Mayo Clinic Arizona
                 </div>
                 <div className="ic-affil-item" style={{ marginTop: 4 }}>
-                  <b>Department of Surgery ΓÇö Division of Surgical Oncology</b>
+                  <b>Department of Surgery — Division of Surgical Oncology</b>
                   <br />
-                  University of California, San Francisco (UCSF) ΓÇö Remote Research Collaborator
+                  University of California, San Francisco (UCSF) — Remote Research Collaborator
                 </div>
               </div>
               <div className="ic-bio">
@@ -1038,7 +1038,7 @@ export default function CheckoutPage() {
             <p className="kicker">For Organizations</p>
             <h2 className="title">Need Access For Multiple Learners?</h2>
             <p className="lead" style={{ marginTop: 12 }}>
-              Research Spectrum supports group access for hospitals, universities, and research departments ΓÇö with
+              Research Spectrum supports group access for hospitals, universities, and research departments — with
               simplified billing and onboarding for your team.
             </p>
           </div>
