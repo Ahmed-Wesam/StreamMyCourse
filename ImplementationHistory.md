@@ -6,6 +6,11 @@
 
 ---
 
+## 2026-10-14 — Certificate PDF matches the shared HTML footer
+
+- **Capture** — [`certificatePdf.ts`](frontend/src/pages/certificates/certificatePdf.ts) rasterizes the 1123×794 article in a fixed host at the viewport origin. A host at `left: -10000px` made html2canvas paint white footer blocks and drop the seal. Page size is landscape px `[1123, 794]`, not stretched A4.
+- **Footer** — Course and bundle PDFs use the HTML signature (**Dr. Bahaa Aburayya, MD** / **Founder & Course Instructor**), an HTML `<img>` for the seal mark (SVG `<image href>` webp did not paint), and a QR (`qrcode`) for `https://researchspectrum.org/verify/{credentialId}` instead of a wrapped URL. Stored instructor snapshot and public verify copy are unchanged.
+
 ## 2026-10-14 — RS-12 certificate redesign + bundle mastery credential
 
 - **UI** — Student [`CertificatesPage.tsx`](frontend/src/pages/CertificatesPage.tsx) and public verify use redesigned certificate layouts ([`CertificateDocument`](frontend/src/pages/certificates/CertificateDocument.tsx), [`BundleCertificateDocument`](frontend/src/pages/certificates/BundleCertificateDocument.tsx)); PDF export via **html2canvas** + **jspdf** in [`certificatePdf.ts`](frontend/src/pages/certificates/certificatePdf.ts) (lazy chunk). Self-hosted display fonts (`@fontsource/playfair-display`, `great-vibes`, `cormorant-garamond`) in certificate CSS; **knip** ignores those deps (CSS `@import`).
