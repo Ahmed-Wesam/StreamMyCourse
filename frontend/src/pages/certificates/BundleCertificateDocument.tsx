@@ -5,6 +5,7 @@ import './BundleCertificateDocument.css'
 
 type BundleCertificateDocumentProps = {
   certificate: BundleCertificateFixture
+  qrSrc?: string
 }
 
 const BUNDLE_TITLE = 'Research Mastery Bundle'
@@ -15,7 +16,7 @@ function publicVerifyUrl(credentialId: string): string {
 }
 
 /** Printable bundle certificate layout (landscape 1123×794). */
-export function BundleCertificateDocument({ certificate }: BundleCertificateDocumentProps) {
+export function BundleCertificateDocument({ certificate, qrSrc }: BundleCertificateDocumentProps) {
   const pathwayRows = bundlePathwayRows()
   const totalHours = bundleTotalHours()
   const verifyUrl = publicVerifyUrl(certificate.credentialId)
@@ -109,12 +110,13 @@ export function BundleCertificateDocument({ certificate }: BundleCertificateDocu
         <div className="bundle-certificate-document__sig">
           <div className="bundle-certificate-document__sig-script">Bahaa Aburayya</div>
           <div className="bundle-certificate-document__sig-line">
-            <b>{certificate.instructorName}</b>
-            <span>{certificate.instructorTitle}</span>
+            <b>Dr. Bahaa Aburayya, MD</b>
+            <span>Founder &amp; Course Instructor</span>
           </div>
         </div>
 
-        <svg className="bundle-certificate-document__seal" viewBox="0 0 140 160" aria-hidden="true">
+        <div className="bundle-certificate-document__seal">
+        <svg viewBox="0 0 140 160" aria-hidden="true">
           <defs>
             <linearGradient id="bundle-cert-gg" x1="0" y1="0" x2="1" y2="1">
               <stop offset="0" stopColor="#f4df9c" />
@@ -135,7 +137,6 @@ export function BundleCertificateDocument({ certificate }: BundleCertificateDocu
           <circle cx="70" cy="70" r="55" fill="#0a1733" />
           <circle cx="70" cy="70" r="50" fill="none" stroke="#e6c871" strokeWidth="1.2" />
           <circle cx="70" cy="62" r="30" fill="#fff" />
-          <image href={brandMark} x="51" y="46" width="38" height="33" preserveAspectRatio="xMidYMid meet" />
           <text
             x="70"
             y="108"
@@ -149,6 +150,8 @@ export function BundleCertificateDocument({ certificate }: BundleCertificateDocu
             MASTERY
           </text>
         </svg>
+        <img className="bundle-certificate-document__seal-logo" src={brandMark} alt="" />
+        </div>
 
         <div className="bundle-certificate-document__ver">
           <div className="bundle-certificate-document__meta">
@@ -156,7 +159,9 @@ export function BundleCertificateDocument({ certificate }: BundleCertificateDocu
             <span>Date of Issue</span>
             <code>{certificate.credentialId}</code>
             <span>Credential ID</span>
-            <em>{verifyUrl}</em>
+          </div>
+          <div className="bundle-certificate-document__qr" data-verify-url={verifyUrl}>
+            {qrSrc ? <img src={qrSrc} alt="" /> : null}
           </div>
         </div>
       </footer>

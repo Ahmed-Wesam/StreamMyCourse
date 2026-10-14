@@ -13,6 +13,12 @@ vi.mock('jspdf', () => ({
   jsPDF: jsPDFCtorMock,
 }))
 
+vi.mock('qrcode', () => ({
+  default: {
+    toDataURL: vi.fn(async () => 'data:image/png;base64,qr'),
+  },
+}))
+
 import { generateBundleCertificatePDF, generateCertificatePDF } from './certificatePdf'
 
 const CRED = 'RS-A1B7F3-2026-9C2E10B4D8'
@@ -32,15 +38,15 @@ function makeJsPdfInstance() {
 }
 
 describe('certificatePdf', () => {
-  let capturedHostText = ''
+  let capturedHost: HTMLElement | null = null
 
   beforeEach(() => {
-    capturedHostText = ''
+    capturedHost = null
     html2canvasMock.mockReset()
     jsPDFCtorMock.mockReset()
 
     html2canvasMock.mockImplementation(async (host: HTMLElement) => {
-      capturedHostText = host.textContent ?? ''
+      capturedHost = host
       return {
         toDataURL: () => 'data:image/png;base64,abc',
         width: 1123,
@@ -67,14 +73,27 @@ describe('certificatePdf', () => {
 
     expect(jsPDFCtorMock).toHaveBeenCalledWith({
       orientation: 'landscape',
-      unit: 'pt',
-      format: 'a4',
+      unit: 'px',
+      format: [1123, 794],
     })
 
-    expect(html2canvasMock).toHaveBeenCalled()
-
-    expect(html2canvasMock).toHaveBeenCalled()
-    expect(capturedHostText).toContain(VERIFY_HTTPS)
+    expect(html2canvasMock).toHaveBeenCalledWith(
+      expect.any(HTMLElement),
+      expect.objectContaining({
+        scale: 2,
+        backgroundColor: '#ffffff',
+        useCORS: true,
+        width: 1123,
+        height: 794,
+        windowWidth: 1123,
+      }),
+    )
+    expect(capturedHost?.querySelector('[data-verify-url]')?.getAttribute('data-verify-url')).toBe(
+      VERIFY_HTTPS,
+    )
+    expect(capturedHost?.querySelector('.certificate-document__qr img')?.getAttribute('src')).toBe(
+      'data:image/png;base64,qr',
+    )
 
     const doc = jsPDFCtorMock.mock.results[0]?.value
     expect(doc?.addImage).toHaveBeenCalled()
@@ -90,8 +109,10 @@ describe('certificatePdf', () => {
 
     expect(html2canvasMock).toHaveBeenCalled()
 
-    expect(capturedHostText).toContain(BUNDLE_VERIFY_HTTPS)
-    expect(capturedHostText).toContain('Research Mastery Bundle')
+    expect(capturedHost?.querySelector('[data-verify-url]')?.getAttribute('data-verify-url')).toBe(
+      BUNDLE_VERIFY_HTTPS,
+    )
+    expect(capturedHost?.textContent).toContain('Research Mastery Bundle')
 
     const doc = jsPDFCtorMock.mock.results[0]?.value
     expect(doc?.save).toHaveBeenCalledWith(`Research-Spectrum-Mastery-Certificate-${BUNDLE_CRED}.pdf`)

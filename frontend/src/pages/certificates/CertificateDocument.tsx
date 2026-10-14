@@ -5,6 +5,7 @@ import './CertificateDocument.css'
 
 type CertificateDocumentProps = {
   certificate: CertificateFixture
+  qrSrc?: string
 }
 
 function publicVerifyUrl(credentialId: string): string {
@@ -12,7 +13,7 @@ function publicVerifyUrl(credentialId: string): string {
 }
 
 /** Printable course certificate layout (landscape 1123×794). */
-export function CertificateDocument({ certificate }: CertificateDocumentProps) {
+export function CertificateDocument({ certificate, qrSrc }: CertificateDocumentProps) {
   const hoursLine = durationLine(certificate.courseTitle)
   const verifyUrl = publicVerifyUrl(certificate.credentialId)
 
@@ -83,12 +84,13 @@ export function CertificateDocument({ certificate }: CertificateDocumentProps) {
         <div className="certificate-document__sig">
           <div className="certificate-document__sig-script">Bahaa Aburayya</div>
           <div className="certificate-document__sig-line">
-            <b>{certificate.instructorName}</b>
-            <span>{certificate.instructorTitle}</span>
+            <b>Dr. Bahaa Aburayya, MD</b>
+            <span>Founder &amp; Course Instructor</span>
           </div>
         </div>
 
-        <svg className="certificate-document__seal" viewBox="0 0 140 156" aria-hidden="true">
+        <div className="certificate-document__seal">
+        <svg viewBox="0 0 140 156" aria-hidden="true">
           <defs>
             <linearGradient id="cert-doc-gg" x1="0" y1="0" x2="1" y2="1">
               <stop offset="0" stopColor="#f4df9c" />
@@ -116,7 +118,6 @@ export function CertificateDocument({ certificate }: CertificateDocumentProps) {
           />
           <circle cx="70" cy="70" r="50" fill="#fff" />
           <circle cx="70" cy="70" r="46" fill="none" stroke="#b8923a" strokeWidth="1.5" />
-          <image href={brandMark} x="42" y="46" width="56" height="49" preserveAspectRatio="xMidYMid meet" />
           <text
             x="70"
             y="108"
@@ -130,6 +131,8 @@ export function CertificateDocument({ certificate }: CertificateDocumentProps) {
             VERIFIED
           </text>
         </svg>
+        <img className="certificate-document__seal-logo" src={brandMark} alt="" />
+        </div>
 
         <div className="certificate-document__ver">
           <div className="certificate-document__meta">
@@ -137,7 +140,9 @@ export function CertificateDocument({ certificate }: CertificateDocumentProps) {
             <span>Date of Issue</span>
             <code className="certificate-document__credential">{certificate.credentialId}</code>
             <span>Credential ID</span>
-            <em>{verifyUrl}</em>
+          </div>
+          <div className="certificate-document__qr" data-verify-url={verifyUrl}>
+            {qrSrc ? <img src={qrSrc} alt="" /> : null}
           </div>
         </div>
       </footer>

@@ -50,12 +50,14 @@ describe('CertificateDocument', () => {
     expect(container.innerHTML).not.toContain('<script')
   })
 
-  it('shows the public verify URL with the credential id', () => {
+  it('puts the public verify URL on the QR box', () => {
     const { container } = render(<CertificateDocument certificate={validCertificate} />)
 
-    expect(container.textContent).toContain(
-      `researchspectrum.org/verify/${validCertificate.credentialId}`,
+    expect(container.querySelector('[data-verify-url]')?.getAttribute('data-verify-url')).toBe(
+      `https://researchspectrum.org/verify/${validCertificate.credentialId}`,
     )
+    expect(container.textContent).toContain('Dr. Bahaa Aburayya, MD')
+    expect(container.textContent).toContain('Founder & Course Instructor')
   })
 })
 
@@ -74,11 +76,11 @@ describe('BundleCertificateDocument', () => {
     expect(container.textContent).not.toMatch(/\b65\b/)
   })
 
-  it('shows the public verify URL with the bundle credential id', () => {
+  it('puts the public verify URL on the bundle QR box', () => {
     const { container } = render(<BundleCertificateDocument certificate={validBundleCertificate} />)
 
-    expect(container.textContent).toContain(
-      `researchspectrum.org/verify/${validBundleCertificate.credentialId}`,
+    expect(container.querySelector('[data-verify-url]')?.getAttribute('data-verify-url')).toBe(
+      `https://researchspectrum.org/verify/${validBundleCertificate.credentialId}`,
     )
   })
 })

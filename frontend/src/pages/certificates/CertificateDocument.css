@@ -208,21 +208,23 @@
 }
 
 .certificate-document__foot {
-  top: 560px;
   left: 100px;
   right: 100px;
-  height: 168px;
+  bottom: 66px;
+  height: 150px;
+  background: transparent;
 }
 
 .certificate-document__foot > * {
   position: absolute;
-  top: 0;
+  bottom: 0;
 }
 
 .certificate-document__sig {
   left: 0;
   width: 290px;
   text-align: center;
+  background: transparent;
 }
 
 .certificate-document__sig-script {
@@ -258,9 +260,26 @@
 .certificate-document__seal {
   left: 50%;
   margin-left: -70px;
-  top: 0;
+  bottom: -12px;
   width: 140px;
   height: 156px;
+  background: transparent;
+}
+
+.certificate-document__seal svg {
+  display: block;
+  width: 140px;
+  height: 156px;
+}
+
+.certificate-document__seal-logo {
+  position: absolute;
+  left: 42px;
+  top: 46px;
+  width: 56px;
+  height: 49px;
+  object-fit: contain;
+  pointer-events: none;
 }
 
 .certificate-document__ver {
@@ -271,6 +290,23 @@
   gap: 16px;
   text-align: left;
   justify-content: flex-end;
+  background: transparent;
+}
+
+.certificate-document__qr {
+  width: 84px;
+  height: 84px;
+  padding: 5px;
+  background: #fff;
+  border: 1.5px solid var(--cert-line);
+  border-radius: 10px;
+  flex: none;
+}
+
+.certificate-document__qr img {
+  width: 72px;
+  height: 72px;
+  display: block;
 }
 
 .certificate-document__meta b {
@@ -303,12 +339,3 @@
   margin-top: 2px;
 }
 
-.certificate-document__meta em {
-  display: block;
-  font:
-    normal 600 9.5px inherit;
-    font-family: inherit;
-  color: var(--cert-muted);
-  margin-top: -2px;
-  font-style: normal;
-}

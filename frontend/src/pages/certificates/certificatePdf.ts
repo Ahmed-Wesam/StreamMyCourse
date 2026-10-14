@@ -1,5 +1,6 @@
 import html2canvas from 'html2canvas'
 import { jsPDF } from 'jspdf'
+import QRCode from 'qrcode'
 import { createElement, type ReactNode } from 'react'
 import { flushSync } from 'react-dom'
 import { createRoot } from 'react-dom/client'
@@ -8,8 +9,11 @@ import type { BundleCertificateFixture, CertificateFixture } from './certificate
 import { BundleCertificateDocument } from './BundleCertificateDocument'
 import { CertificateDocument } from './CertificateDocument'
 
-const DEFAULT_INSTRUCTOR_NAME = 'Dr. Bahaa Aburayya'
-const DEFAULT_INSTRUCTOR_TITLE = 'Founder & Instructor, Research Spectrum'
+const CERT_WIDTH = 1123
+const CERT_HEIGHT = 794
+
+const PDF_INSTRUCTOR_NAME = 'Dr. Bahaa Aburayya, MD'
+const PDF_INSTRUCTOR_TITLE = 'Founder & Course Instructor'
 
 type CertificatePdfData = {
   name: string
@@ -24,17 +28,34 @@ type BundleCertificatePdfData = {
   date: string
 }
 
-function mountOffScreenHost(): HTMLDivElement {
+function publicVerifyUrl(credentialId: string): string {
+  return `https://researchspectrum.org/verify/${credentialId}`
+}
+
+function mountCaptureHost(): HTMLDivElement {
   const host = document.createElement('div')
   host.setAttribute('data-certificate-pdf-host', 'true')
+  // In the viewport (not shifted off-screen). html2canvas paints white blocks
+  // and drops the seal when the node sits at a large negative left.
   host.style.position = 'fixed'
-  host.style.left = '-10000px'
+  host.style.left = '0'
   host.style.top = '0'
-  host.style.pointerEvents = 'none'
+  host.style.width = `${CERT_WIDTH}px`
+  host.style.height = `${CERT_HEIGHT}px`
   host.style.zIndex = '-1'
-  // Do not set opacity to 0 — html2canvas captures a blank/white page when the subtree is fully transparent.
+  host.style.pointerEvents = 'none'
+  host.style.background = '#ffffff'
   document.body.appendChild(host)
   return host
+}
+
+async function verifyQrDataUrl(credentialId: string): Promise<string> {
+  return QRCode.toDataURL(publicVerifyUrl(credentialId), {
+    errorCorrectionLevel: 'M',
+    margin: 0,
+    width: 200,
+    color: { dark: '#0a1733', light: '#ffffff' },
+  })
 }
 
 async function waitForHostImages(host: HTMLElement): Promise<void> {
@@ -57,7 +78,7 @@ async function waitForHostImages(host: HTMLElement): Promise<void> {
 }
 
 async function renderCertificatePdf(node: ReactNode, filename: string): Promise<void> {
-  const host = mountOffScreenHost()
+  const host = mountCaptureHost()
   const root = createRoot(host)
   flushSync(() => {
     root.render(node)
@@ -70,16 +91,21 @@ async function renderCertificatePdf(node: ReactNode, filename: string): Promise<
     await new Promise<void>((resolve) => {
       requestAnimationFrame(() => requestAnimationFrame(() => resolve()))
     })
-    const canvas = await html2canvas(host, {
+    const target = host.querySelector('article') ?? host
+    const canvas = await html2canvas(target, {
       scale: 2,
       backgroundColor: '#ffffff',
       useCORS: true,
+      width: CERT_WIDTH,
+      height: CERT_HEIGHT,
+      windowWidth: CERT_WIDTH,
     })
-    const doc = new jsPDF({ orientation: 'landscape', unit: 'pt', format: 'a4' })
-    const pageW = doc.internal.pageSize.getWidth()
-    const pageH = doc.internal.pageSize.getHeight()
-    const imgData = canvas.toDataURL('image/png')
-    doc.addImage(imgData, 'PNG', 0, 0, pageW, pageH)
+    const doc = new jsPDF({
+      orientation: 'landscape',
+      unit: 'px',
+      format: [CERT_WIDTH, CERT_HEIGHT],
+    })
+    doc.addImage(canvas.toDataURL('image/jpeg', 0.96), 'JPEG', 0, 0, CERT_WIDTH, CERT_HEIGHT)
     doc.save(filename)
   } finally {
     root.unmount()
@@ -88,34 +114,36 @@ async function renderCertificatePdf(node: ReactNode, filename: string): Promise<
 }
 
 export async function generateCertificatePDF(data: CertificatePdfData): Promise<void> {
+  const qrSrc = await verifyQrDataUrl(data.cred)
   const certificate: CertificateFixture = {
     studentName: data.name,
     courseTitle: data.title,
     credentialId: data.cred,
     issueLabel: data.date,
-    instructorName: DEFAULT_INSTRUCTOR_NAME,
-    instructorTitle: DEFAULT_INSTRUCTOR_TITLE,
+    instructorName: PDF_INSTRUCTOR_NAME,
+    instructorTitle: PDF_INSTRUCTOR_TITLE,
     status: 'valid',
     verifyPath: `/verify/${data.cred}`,
   }
 
   await renderCertificatePdf(
-    createElement(CertificateDocument, { certificate }),
+    createElement(CertificateDocument, { certificate, qrSrc }),
     `Research-Spectrum-Certificate-${data.cred}.pdf`,
   )
 }
 
 export async function generateBundleCertificatePDF(data: BundleCertificatePdfData): Promise<void> {
+  const qrSrc = await verifyQrDataUrl(data.cred)
   const certificate: BundleCertificateFixture = {
     studentName: data.name,
     credentialId: data.cred,
     issueLabel: data.date,
-    instructorName: DEFAULT_INSTRUCTOR_NAME,
-    instructorTitle: DEFAULT_INSTRUCTOR_TITLE,
+    instructorName: PDF_INSTRUCTOR_NAME,
+    instructorTitle: PDF_INSTRUCTOR_TITLE,
   }
 
   await renderCertificatePdf(
-    createElement(BundleCertificateDocument, { certificate }),
+    createElement(BundleCertificateDocument, { certificate, qrSrc }),
     `Research-Spectrum-Mastery-Certificate-${data.cred}.pdf`,
   )
 }

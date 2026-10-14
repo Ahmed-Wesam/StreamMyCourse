@@ -399,6 +399,23 @@
   bottom: -14px;
   width: 140px;
   height: 160px;
+  background: transparent;
+}
+
+.bundle-certificate-document__seal svg {
+  display: block;
+  width: 140px;
+  height: 160px;
+}
+
+.bundle-certificate-document__seal-logo {
+  position: absolute;
+  left: 51px;
+  top: 46px;
+  width: 38px;
+  height: 33px;
+  object-fit: contain;
+  pointer-events: none;
 }
 
 .bundle-certificate-document__ver {
@@ -409,6 +426,23 @@
   gap: 14px;
   text-align: left;
   justify-content: flex-end;
+  background: transparent;
+}
+
+.bundle-certificate-document__qr {
+  width: 84px;
+  height: 84px;
+  padding: 5px;
+  background: #fff;
+  border: 1.5px solid var(--cert-line);
+  border-radius: 10px;
+  flex: none;
+}
+
+.bundle-certificate-document__qr img {
+  width: 72px;
+  height: 72px;
+  display: block;
 }
 
 .bundle-certificate-document__meta b {
@@ -441,12 +475,3 @@
   margin-top: 2px;
 }
 
-.bundle-certificate-document__meta em {
-  display: block;
-  font:
-    normal 600 9.5px inherit;
-    font-family: inherit;
-  color: var(--cert-muted);
-  margin-top: -2px;
-  font-style: normal;
-}
