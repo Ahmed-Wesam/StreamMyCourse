@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import List, NotRequired, TypedDict
+from typing import List, Literal, NotRequired, TypedDict
 
 
 class CertificatePublicItem(TypedDict):
@@ -23,6 +23,7 @@ class CertificateMineItem(TypedDict):
     instructorName: str
     instructorTitle: str
     courseId: str
+    kind: NotRequired[Literal["course", "bundle"]]
 
 
 class InProgressItem(TypedDict):

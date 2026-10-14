@@ -10,7 +10,7 @@ from typing import Callable, Dict, List, Optional, Sequence
 import pytest
 
 from services.certificates.eligibility import AssignmentRequirement, QuizRequirement
-from services.certificates.ports import CertificateRow, CourseInfo
+from services.certificates.ports import BundleCertificateRow, CertificateRow, CourseInfo
 from services.common.errors import BadRequest, Forbidden, NotFound
 
 _COURSE = "11111111-1111-1111-1111-111111111111"
@@ -27,6 +27,8 @@ class FakeRepo:
     def __init__(self) -> None:
         self.rows: Dict[str, CertificateRow] = {}
         self.by_user_course: Dict[tuple[str, str], str] = {}
+        self.bundle_rows: Dict[str, BundleCertificateRow] = {}
+        self.bundle_by_user: Dict[str, str] = {}
         self.insert_calls = 0
         self.lookup_calls = 0
 
@@ -76,6 +78,47 @@ class FakeRepo:
             revoked_by=revoked_by,
         )
         self.rows[certificate_id] = updated
+        return updated
+
+    def get_bundle_by_user(self, user_sub: str) -> Optional[BundleCertificateRow]:
+        rid = self.bundle_by_user.get(user_sub)
+        return self.bundle_rows.get(rid) if rid else None
+
+    def insert_bundle_certificate(self, row: BundleCertificateRow) -> BundleCertificateRow:
+        if row.user_sub in self.bundle_by_user:
+            existing = self.bundle_rows[self.bundle_by_user[row.user_sub]]
+            return existing
+        self.bundle_rows[row.id] = row
+        self.bundle_by_user[row.user_sub] = row.id
+        return row
+
+    def get_bundle_by_credential_id(self, credential_id: str) -> Optional[BundleCertificateRow]:
+        needle = credential_id.upper()
+        for row in self.bundle_rows.values():
+            if row.credential_id.upper() == needle:
+                return row
+        return None
+
+    def revoke_bundle_for_user(
+        self,
+        user_sub: str,
+        *,
+        revoked_by: str,
+        revoked_at: datetime,
+    ) -> Optional[BundleCertificateRow]:
+        rid = self.bundle_by_user.get(user_sub)
+        if not rid:
+            return None
+        row = self.bundle_rows[rid]
+        if row.status != "valid":
+            return row
+        updated = replace(
+            row,
+            status="revoked",
+            revoked_at=revoked_at,
+            revoked_by=revoked_by,
+        )
+        self.bundle_rows[rid] = updated
         return updated
 
 

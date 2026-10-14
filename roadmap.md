@@ -90,7 +90,7 @@ Existing MVP +
 |---------|-------------|------------|
 | **Admin Panel** | User mgmt, course moderation, refunds | High |
 | **Full-Text Search** | OpenSearch for course discovery | High |
-| **Certificates** | **Shipped in MVP (RS-12)** — one certificate per course, public verify, client PDF. Prod migration **021** applied (RS-15 Deploy). | — |
+| **Certificates** | **Shipped in MVP (RS-12)** — per-course + Research Mastery Bundle credential, public verify, client PDF (html2canvas + jspdf). Migrations **021** / **025**. | — |
 | **Batch Uploads** | Multiple lessons at once | Medium |
 | **WebSocket API** | Real-time upload progress, future live chat | Medium |
 | **WAF** | DDoS protection, advanced security rules | Low — deferred (RDS + API GW limits shipped; see [ADR-0012](plans/architecture/adr-0012-api-abuse-protection.md)) |

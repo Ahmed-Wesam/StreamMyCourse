@@ -550,6 +550,20 @@ def test_deploy_backend_bundles_migration_023() -> None:
     assert chunk.index("022_research_team.sql") < chunk.index(needle)
 
 
+def test_deploy_backend_bundles_migration_025() -> None:
+    """deploy-backend.yml must cat 025 after 024 in the prod schema bundle."""
+    path = _ROOT / ".github" / "workflows" / "deploy-backend.yml"
+    text = path.read_text(encoding="utf-8")
+    needle = "025_bundle_certificates.sql"
+    marker = "rds-schema-apply-prod-"
+    start = text.index(marker)
+    end = text.index('> "$PKG/schema.sql"', start)
+    chunk = text[start:end]
+    assert needle in chunk
+    assert "024_hyperpay_jod.sql" in chunk
+    assert chunk.index("024_hyperpay_jod.sql") < chunk.index(needle)
+
+
 def test_deploy_backend_bundles_migration_022() -> None:
     """deploy-backend.yml must cat 022 after 021 in the prod schema bundle."""
     path = _ROOT / ".github" / "workflows" / "deploy-backend.yml"

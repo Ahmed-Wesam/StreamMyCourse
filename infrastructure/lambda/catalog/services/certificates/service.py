@@ -31,12 +31,16 @@ from services.certificates.eligibility import (
     is_course_eligible,
 )
 from services.certificates.models import (
+    BUNDLE_CERTIFICATE_CODE,
+    BUNDLE_COURSE_TITLE,
     INSTRUCTOR_NAME,
     INSTRUCTOR_TITLE,
+    PATHWAY_COURSE_TITLES,
     PROFILE_HREF,
     PROFILE_INCOMPLETE_MESSAGE,
 )
 from services.certificates.ports import (
+    BundleCertificateRow,
     CertificateRow,
     CertificatesRepositoryPort,
     CourseAccessPort,
@@ -170,7 +174,75 @@ class CertificatesService:
             "instructorName": row.instructor_name,
             "instructorTitle": row.instructor_title,
             "courseId": row.course_id,
+            "kind": "course",
         }
+
+    def _bundle_to_mine(self, row: BundleCertificateRow) -> CertificateMineItem:
+        return {
+            "id": row.id,
+            "credentialId": row.credential_id,
+            "status": row.status,
+            "studentName": row.student_name,
+            "courseTitle": BUNDLE_COURSE_TITLE,
+            "issueDate": format_issue_label(row.issue_date),
+            "instructorName": row.instructor_name,
+            "instructorTitle": row.instructor_title,
+            "courseId": "",
+            "kind": "bundle",
+        }
+
+    def _bundle_to_public(self, row: BundleCertificateRow) -> CertificatePublicItem:
+        return {
+            "credentialId": row.credential_id,
+            "status": row.status,
+            "studentName": row.student_name,
+            "courseTitle": BUNDLE_COURSE_TITLE,
+            "issueDate": format_issue_label(row.issue_date),
+        }
+
+    def _select_pathway_certs(self, user_sub: str) -> Optional[List[CertificateRow]]:
+        valid = [r for r in self._repo.list_for_user(user_sub) if r.status == "valid"]
+        used: set[str] = set()
+        selected: List[CertificateRow] = []
+        for title in PATHWAY_COURSE_TITLES:
+            candidates = [
+                r for r in valid if r.course_title == title and r.course_id not in used
+            ]
+            if not candidates:
+                return None
+            pick = max(candidates, key=lambda r: (r.issue_date, r.id))
+            selected.append(pick)
+            used.add(pick.course_id)
+        return selected
+
+    def _try_issue_bundle(self, user_sub: str) -> None:
+        if self._repo.get_bundle_by_user(user_sub) is not None:
+            return
+        selected = self._select_pathway_certs(user_sub)
+        if selected is None:
+            return
+        given, family = self._profile.get_given_and_family_name(user_sub)
+        student_name = _compose_student_name(given, family)
+        if student_name is None:
+            student_name = max(selected, key=lambda r: (r.issue_date, r.id)).student_name
+        issue_date = max(r.issue_date for r in selected)
+        now = self._now()
+        credential_id = generate_credential_id(
+            course_certificate_code=BUNDLE_CERTIFICATE_CODE,
+            now=now,
+            rng=self._rng,
+        )
+        row = BundleCertificateRow(
+            id=str(uuid4()),
+            user_sub=user_sub,
+            credential_id=credential_id,
+            student_name=student_name,
+            issue_date=issue_date,
+            instructor_name=INSTRUCTOR_NAME,
+            instructor_title=INSTRUCTOR_TITLE,
+            status="valid",
+        )
+        self._repo.insert_bundle_certificate(row)
 
     def not_found_public_body(self, credential_id: str = "") -> NotFoundPublicBody:
         body: NotFoundPublicBody = {"status": "not_found"}
@@ -182,10 +254,14 @@ class CertificatesService:
         raw = (credential_id or "").strip()
         if not is_valid_credential_id(raw):
             raise BadRequest("Invalid credential id", code="invalid_credential_id")
-        row = self._repo.get_by_credential_id(normalize_credential_id(raw))
-        if row is None:
+        normalized = normalize_credential_id(raw)
+        row = self._repo.get_by_credential_id(normalized)
+        if row is not None:
+            return self._row_to_public(row)
+        bundle = self._repo.get_bundle_by_credential_id(normalized)
+        if bundle is None:
             raise NotFound("Certificate not found", code="not_found")
-        return self._row_to_public(row)
+        return self._bundle_to_public(bundle)
 
     def get_by_credential_id_for_test(self, credential_id: str) -> Optional[CertificateRow]:
         """Test helper: return the stored row without HTTP shaping."""
@@ -265,8 +341,13 @@ class CertificatesService:
         for course_id in entitled_ids:
             self.try_issue(user_sub=sub, course_id=course_id, role=role)
 
+        self._try_issue_bundle(sub)
+
         certificates = [self._row_to_mine(r) for r in self._repo.list_for_user(sub)]
-        issued_course_ids = {c["courseId"] for c in certificates}
+        bundle = self._repo.get_bundle_by_user(sub)
+        if bundle is not None:
+            certificates.append(self._bundle_to_mine(bundle))
+        issued_course_ids = {c["courseId"] for c in certificates if c.get("courseId")}
 
         in_progress: List[InProgressItem] = []
         profile_incomplete: List[ProfileIncompleteItem] = []
@@ -354,11 +435,19 @@ class CertificatesService:
                 "credentialId": row.credential_id,
                 "status": row.status,
             }
+        revoked_at = self._now()
+        revoked_by = (cognito_sub or "").strip()
         updated = self._repo.revoke(
             certificate_id,
-            revoked_by=(cognito_sub or "").strip(),
-            revoked_at=self._now(),
+            revoked_by=revoked_by,
+            revoked_at=revoked_at,
         )
+        if updated.course_title in PATHWAY_COURSE_TITLES:
+            self._repo.revoke_bundle_for_user(
+                updated.user_sub,
+                revoked_by=revoked_by,
+                revoked_at=revoked_at,
+            )
         return {
             "id": updated.id,
             "credentialId": updated.credential_id,

@@ -13,6 +13,8 @@ const getPurchasesMock = vi.hoisted(() => vi.fn())
 const listPublishedCoursesMock = vi.hoisted(() => vi.fn())
 const getCourseProgressMock = vi.hoisted(() => vi.fn())
 const getMyResearchTeamMock = vi.hoisted(() => vi.fn())
+const generateCertificatePDFMock = vi.hoisted(() => vi.fn().mockResolvedValue(undefined))
+const generateBundleCertificatePDFMock = vi.hoisted(() => vi.fn().mockResolvedValue(undefined))
 
 vi.mock('../../lib/api/certificates', () => ({
   listMyCertificates: listMyCertificatesMock,
@@ -34,12 +36,49 @@ vi.mock('../../lib/api/research-team', () => ({
   getMyResearchTeam: getMyResearchTeamMock,
 }))
 
+vi.mock('./certificatePdf', () => ({
+  generateCertificatePDF: generateCertificatePDFMock,
+  generateBundleCertificatePDF: generateBundleCertificatePDFMock,
+}))
+
 import CertificatesPage from '../CertificatesPage'
+import { PATHWAY_COURSE_TITLES } from './courseCertificateMeta'
 import { validCertificate } from './certificateFixture'
 
 const CREDENTIAL_ID = validCertificate.credentialId
+const BUNDLE_CREDENTIAL_ID = 'RS-BUNDLE-2026-MASTER01'
 const PAGE_DIR = dirname(fileURLToPath(import.meta.url))
 const FRONTEND_SRC = join(PAGE_DIR, '..', '..')
+
+function pathwayCourseCertificates() {
+  return PATHWAY_COURSE_TITLES.map((title, index) => ({
+    id: `cert-course-${index + 1}`,
+    credentialId: `RS-COURSE-${index + 1}-2026`,
+    status: 'valid' as const,
+    studentName: validCertificate.studentName,
+    courseTitle: title,
+    issueDate: validCertificate.issueLabel,
+    instructorName: validCertificate.instructorName,
+    instructorTitle: validCertificate.instructorTitle,
+    courseId: `course-${index + 1}`,
+    kind: 'course' as const,
+  }))
+}
+
+function bundleCertificateRow() {
+  return {
+    id: 'cert-bundle-1',
+    credentialId: BUNDLE_CREDENTIAL_ID,
+    status: 'valid' as const,
+    studentName: validCertificate.studentName,
+    courseTitle: 'Research Mastery Bundle',
+    issueDate: validCertificate.issueLabel,
+    instructorName: validCertificate.instructorName,
+    instructorTitle: validCertificate.instructorTitle,
+    courseId: '',
+    kind: 'bundle' as const,
+  }
+}
 
 function collectTsFiles(dir: string): string[] {
   const entries = readdirSync(dir, { withFileTypes: true })
@@ -60,6 +99,8 @@ describe('CertificatesPage', () => {
   const writeText = vi.fn().mockResolvedValue(undefined)
 
   beforeEach(() => {
+    generateCertificatePDFMock.mockClear()
+    generateBundleCertificatePDFMock.mockClear()
     writeText.mockClear()
     Object.defineProperty(navigator, 'clipboard', {
       configurable: true,
@@ -161,6 +202,8 @@ describe('CertificatesPage', () => {
     })
 
     expect(jspdfImporters).toEqual([join(PAGE_DIR, 'certificatePdf.ts')])
+    expect(pageSource).not.toMatch(/from\s+['"]html2canvas['"]/)
+    expect(pdfSource).toMatch(/from\s+['"]html2canvas['"]|import\s+html2canvas/)
   })
 
   it('verify link points at /verify/{credentialId}', async () => {
@@ -172,5 +215,108 @@ describe('CertificatesPage', () => {
 
     const verifyLink = await screen.findByRole('link', { name: /verify certificate/i })
     expect(verifyLink.getAttribute('href')).toBe(`/verify/${CREDENTIAL_ID}`)
+  })
+
+  it('counts four pathway course certificates (not bundle) in hero stats and learning hours', async () => {
+    listMyCertificatesMock.mockResolvedValue({
+      certificates: [...pathwayCourseCertificates(), bundleCertificateRow()],
+      inProgress: [],
+      profileIncomplete: [],
+    })
+    listPublishedCoursesMock.mockResolvedValue(
+      PATHWAY_COURSE_TITLES.map((title, index) => ({
+        id: `course-${index + 1}`,
+        title,
+        description: '',
+      })),
+    )
+
+    render(
+      <MemoryRouter>
+        <CertificatesPage />
+      </MemoryRouter>,
+    )
+
+    const earnedHeading = await screen.findByRole('heading', { name: /earned certificates/i })
+    const earnedSection = earnedHeading.closest('section')
+    expect(earnedSection).toBeTruthy()
+    const earnedCards = within(earnedSection as HTMLElement).getAllByRole('article')
+    expect(earnedCards.length).toBe(5)
+
+    expect(
+      screen.queryByRole('heading', { name: /you've completed the full research spectrum pathway/i }),
+    ).toBeNull()
+
+    const statGrid = document.getElementById('cert-stat-section')
+    expect(statGrid).toBeTruthy()
+    const earnedStat = within(statGrid as HTMLElement).getByText('Certificates Earned').parentElement
+    expect(earnedStat?.querySelector('.val')?.textContent).toBe('4')
+    expect(earnedStat?.querySelector('.vsub')?.textContent).toBe('of 4 available')
+    expect(within(statGrid as HTMLElement).getByText('Total Learning Hours').parentElement?.querySelector('.val')?.textContent).toBe(
+      '140',
+    )
+    expect(screen.queryByText('5 of 4')).toBeNull()
+  })
+
+  it('downloads bundle mastery PDF via generateBundleCertificatePDF dynamic import', async () => {
+    listMyCertificatesMock.mockResolvedValue({
+      certificates: [...pathwayCourseCertificates(), bundleCertificateRow()],
+      inProgress: [],
+      profileIncomplete: [],
+    })
+    listPublishedCoursesMock.mockResolvedValue(
+      PATHWAY_COURSE_TITLES.map((title, index) => ({
+        id: `course-${index + 1}`,
+        title,
+        description: '',
+      })),
+    )
+
+    render(
+      <MemoryRouter>
+        <CertificatesPage />
+      </MemoryRouter>,
+    )
+
+    const bundleTitle = await screen.findByRole('heading', { name: /research mastery bundle/i })
+    const bundleCard = bundleTitle.closest('article')
+    expect(bundleCard).toBeTruthy()
+
+    const downloadBtn = within(bundleCard as HTMLElement).getByRole('button', { name: /download certificate/i })
+    fireEvent.click(downloadBtn)
+
+    await waitFor(() => {
+      expect(generateBundleCertificatePDFMock).toHaveBeenCalledWith({
+        name: validCertificate.studentName,
+        cred: BUNDLE_CREDENTIAL_ID,
+        date: validCertificate.issueLabel,
+      })
+    })
+    expect(generateCertificatePDFMock).not.toHaveBeenCalled()
+  })
+
+  it('uses course-only count for PATHWAY_TOTAL eligibility (four courses, not bundle)', async () => {
+    listMyCertificatesMock.mockResolvedValue({
+      certificates: [...pathwayCourseCertificates(), bundleCertificateRow()],
+      inProgress: [],
+      profileIncomplete: [],
+    })
+    listPublishedCoursesMock.mockResolvedValue(
+      PATHWAY_COURSE_TITLES.map((title, index) => ({
+        id: `course-${index + 1}`,
+        title,
+        description: '',
+      })),
+    )
+
+    render(
+      <MemoryRouter>
+        <CertificatesPage />
+      </MemoryRouter>,
+    )
+
+    expect(await screen.findByRole('heading', { name: /you're eligible to apply/i })).toBeTruthy()
+    expect(screen.queryByText(/5\/4/)).toBeNull()
+    expect(screen.queryByText(/5 of 4/)).toBeNull()
   })
 })

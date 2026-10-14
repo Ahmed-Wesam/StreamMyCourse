@@ -7,7 +7,11 @@ from datetime import datetime
 from typing import Any, Callable, List, Optional
 from uuid import uuid4
 
-from services.certificates.ports import CertificateRow, CertificatesRepositoryPort
+from services.certificates.ports import (
+    BundleCertificateRow,
+    CertificateRow,
+    CertificatesRepositoryPort,
+)
 
 try:  # pragma: no cover
     import psycopg2
@@ -24,6 +28,26 @@ _SELECT_COLS = """
     id, user_sub, course_id, credential_id, student_name, course_title,
     issue_date, instructor_name, instructor_title, status, revoked_at, revoked_by
 """
+
+_BUNDLE_SELECT_COLS = """
+    id, user_sub, credential_id, student_name, issue_date,
+    instructor_name, instructor_title, status, revoked_at, revoked_by
+"""
+
+
+def _bundle_row_from_db(row: tuple) -> BundleCertificateRow:
+    return BundleCertificateRow(
+        id=str(row[0]),
+        user_sub=str(row[1]),
+        credential_id=str(row[2]),
+        student_name=str(row[3]),
+        issue_date=row[4],
+        instructor_name=str(row[5]),
+        instructor_title=str(row[6]),
+        status=str(row[7]),
+        revoked_at=row[8],
+        revoked_by=str(row[9]) if row[9] is not None else None,
+    )
 
 
 def _row_from_db(row: tuple) -> CertificateRow:
@@ -89,6 +113,22 @@ class CertificatesRdsRepository(CertificatesRepositoryPort):
             "certificates_user_course" in constraint
             or "certificates_user_course" in message
             or "user_sub" in message
+        )
+
+    def _is_bundle_user_unique_violation(self, exc: BaseException) -> bool:
+        if psycopg2 is None or errorcodes is None:
+            return False
+        if not isinstance(exc, psycopg2.IntegrityError):
+            return False
+        if getattr(exc, "pgcode", None) != errorcodes.UNIQUE_VIOLATION:
+            return False
+        diag = getattr(exc, "diag", None)
+        constraint = str(getattr(diag, "constraint_name", "") or "").lower()
+        message = str(exc).lower()
+        return (
+            "bundle_certificates_user_sub" in constraint
+            or "bundle_certificates_user_sub_key" in constraint
+            or "bundle_certificates_user_sub" in message
         )
 
     def insert_certificate(self, row: CertificateRow) -> CertificateRow:
@@ -212,3 +252,88 @@ class CertificatesRdsRepository(CertificatesRepositoryPort):
         if row is None:
             raise RuntimeError(f"revoke target missing: {certificate_id}")
         return _row_from_db(row)
+
+    def get_bundle_by_user(self, user_sub: str) -> Optional[BundleCertificateRow]:
+        cur = self._execute(
+            f"""
+            SELECT {_BUNDLE_SELECT_COLS}
+            FROM bundle_certificates
+            WHERE user_sub = %s
+            """,
+            (user_sub,),
+        )
+        row = cur.fetchone()
+        return _bundle_row_from_db(row) if row else None
+
+    def insert_bundle_certificate(self, row: BundleCertificateRow) -> BundleCertificateRow:
+        cert_id = row.id or str(uuid4())
+        try:
+            cur = self._execute(
+                f"""
+                INSERT INTO bundle_certificates (
+                    id, user_sub, credential_id, student_name, issue_date,
+                    instructor_name, instructor_title, status
+                ) VALUES (
+                    %s, %s, %s, %s, %s, %s, %s, %s
+                )
+                RETURNING {_BUNDLE_SELECT_COLS}
+                """,
+                (
+                    cert_id,
+                    row.user_sub,
+                    row.credential_id,
+                    row.student_name,
+                    row.issue_date,
+                    row.instructor_name,
+                    row.instructor_title,
+                    row.status,
+                ),
+                commit=True,
+            )
+            fetched = cur.fetchone()
+            if fetched is None:
+                raise RuntimeError("INSERT bundle_certificates returned no row")
+            return _bundle_row_from_db(fetched)
+        except Exception as exc:
+            if self._is_bundle_user_unique_violation(exc):
+                existing = self.get_bundle_by_user(row.user_sub)
+                if existing is not None:
+                    return existing
+            raise
+
+    def get_bundle_by_credential_id(
+        self, credential_id: str
+    ) -> Optional[BundleCertificateRow]:
+        cur = self._execute(
+            f"""
+            SELECT {_BUNDLE_SELECT_COLS}
+            FROM bundle_certificates
+            WHERE upper(credential_id) = upper(%s)
+            """,
+            (credential_id,),
+        )
+        row = cur.fetchone()
+        return _bundle_row_from_db(row) if row else None
+
+    def revoke_bundle_for_user(
+        self,
+        user_sub: str,
+        *,
+        revoked_by: str,
+        revoked_at: datetime,
+    ) -> Optional[BundleCertificateRow]:
+        cur = self._execute(
+            f"""
+            UPDATE bundle_certificates
+               SET status = 'revoked',
+                   revoked_at = %s,
+                   revoked_by = %s
+             WHERE user_sub = %s
+               AND status = 'valid'
+         RETURNING {_BUNDLE_SELECT_COLS}
+            """,
+            (revoked_at, revoked_by, user_sub),
+            commit=True,
+        )
+        row = cur.fetchone()
+        return _bundle_row_from_db(row) if row else None

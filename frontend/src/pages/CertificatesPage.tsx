@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom'
 
 import { getPurchases } from '../lib/api/billing'
 import { getCourseProgress } from '../lib/api/catalog'
-import { listMyCertificates, type MeCertificatesResponse } from '../lib/api/certificates'
+import { listMyCertificates, type MeCertificatesResponse, type MyCertificate } from '../lib/api/certificates'
 import { listPublishedCourses } from '../lib/api/public-catalog'
 import { getMyResearchTeam } from '../lib/api/research-team'
 import { ownedCoursesFromPurchases } from '../lib/ownedFromPurchases'
@@ -31,7 +31,7 @@ type LoadState =
       lockedRows: LockedCertificateRow[]
     }
 
-function toFixture(item: MeCertificatesResponse['certificates'][number]): CertificateFixture {
+function toFixture(item: MyCertificate): CertificateFixture {
   return {
     studentName: item.studentName,
     courseTitle: item.courseTitle,
@@ -41,6 +41,7 @@ function toFixture(item: MeCertificatesResponse['certificates'][number]): Certif
     instructorTitle: item.instructorTitle || DEFAULT_INSTRUCTOR_TITLE,
     status: item.status,
     verifyPath: `/verify/${item.credentialId}`,
+    kind: item.kind,
   }
 }
 
@@ -50,8 +51,16 @@ function errorMessage(err: unknown): string {
 }
 
 async function downloadCertificate(certificate: CertificateFixture): Promise<void> {
-  const { generateCertificatePDF } = await import('./certificates/certificatePdf')
-  generateCertificatePDF({
+  const pdf = await import('./certificates/certificatePdf')
+  if (certificate.kind === 'bundle') {
+    await pdf.generateBundleCertificatePDF({
+      name: certificate.studentName,
+      cred: certificate.credentialId,
+      date: certificate.issueLabel,
+    })
+    return
+  }
+  await pdf.generateCertificatePDF({
     name: certificate.studentName,
     title: certificate.courseTitle,
     cred: certificate.credentialId,
@@ -68,13 +77,17 @@ function validEarned(data: MeCertificatesResponse) {
   return data.certificates.filter((row) => row.status !== 'revoked')
 }
 
+function courseEarned(data: MeCertificatesResponse) {
+  return validEarned(data).filter((row) => row.kind !== 'bundle')
+}
+
 function earnedTitles(data: MeCertificatesResponse): Set<string> {
-  return new Set(validEarned(data).map((row) => row.courseTitle))
+  return new Set(courseEarned(data).map((row) => row.courseTitle))
 }
 
 function learningHours(data: MeCertificatesResponse): number {
   let total = 0
-  for (const row of validEarned(data)) {
+  for (const row of courseEarned(data)) {
     const title = row.courseTitle as (typeof PATHWAY_COURSE_TITLES)[number]
     if (title in CERT_LEARNING_HOURS) {
       total += CERT_LEARNING_HOURS[title as keyof typeof CERT_LEARNING_HOURS]
@@ -104,7 +117,7 @@ async function loadLockedRows(
   catalog: Awaited<ReturnType<typeof listPublishedCourses>>,
   purchases: Awaited<ReturnType<typeof getPurchases>>,
 ): Promise<{ lockedRows: LockedCertificateRow[] }> {
-  const earnedIds = new Set(validEarned(data).map((row) => row.courseId))
+  const earnedIds = new Set(courseEarned(data).map((row) => row.courseId))
   const earnedNames = earnedTitles(data)
   const owned = ownedCoursesFromPurchases(purchases)
   const titleToCourse = new Map<string, { id: string; title: string }>()
@@ -308,8 +321,13 @@ export default function CertificatesPage() {
 
   const ready = state.status === 'ready' ? state : null
   const earned = ready ? validEarned(ready.data) : []
-  const certCount = earned.length
-  const allComplete = certCount >= PATHWAY_TOTAL
+  const courseCerts = ready ? courseEarned(ready.data) : []
+  const certCount = courseCerts.length
+  const hasBundleCert = earned.some((row) => row.kind === 'bundle')
+  const pathwayComplete = certCount >= PATHWAY_TOTAL
+  const allComplete = pathwayComplete
+  const showPathwayStats = !pathwayComplete || hasBundleCert
+  const showPathwayGraduateBanner = pathwayComplete && !hasBundleCert
   const totalHours = ready ? learningHours(ready.data) : 0
   const profileIncompleteReady = ready
     ? ready.data.profileIncomplete.filter((item) => item.requirementsMet)
@@ -362,7 +380,7 @@ export default function CertificatesPage() {
         </section>
       ) : null}
 
-      {ready && !allComplete ? (
+      {ready && showPathwayStats ? (
         <section className="db" id="cert-stat-section">
           <div className="wrap">
             <div className="stat-grid">
@@ -405,7 +423,7 @@ export default function CertificatesPage() {
         </section>
       ) : null}
 
-      {ready && allComplete ? (
+      {ready && showPathwayGraduateBanner ? (
         <section className="db" style={{ paddingTop: 0 }}>
           <div className="wrap">
             <div className="cert-zero-banner grad reveal">

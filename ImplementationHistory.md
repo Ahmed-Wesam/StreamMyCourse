@@ -6,6 +6,12 @@
 
 ---
 
+## 2026-10-14 — RS-12 certificate redesign + bundle mastery credential
+
+- **UI** — Student [`CertificatesPage.tsx`](frontend/src/pages/CertificatesPage.tsx) and public verify use redesigned certificate layouts ([`CertificateDocument`](frontend/src/pages/certificates/CertificateDocument.tsx), [`BundleCertificateDocument`](frontend/src/pages/certificates/BundleCertificateDocument.tsx)); PDF export via **html2canvas** + **jspdf** in [`certificatePdf.ts`](frontend/src/pages/certificates/certificatePdf.ts) (lazy chunk). Self-hosted display fonts (`@fontsource/playfair-display`, `great-vibes`, `cormorant-garamond`) in certificate CSS; **knip** ignores those deps (CSS `@import`).
+- **Bundle credential** — Migration [`025_bundle_certificates.sql`](infrastructure/database/migrations/025_bundle_certificates.sql): one **Research Mastery Bundle** row per user when all four pathway **course** certificates are valid on distinct courses; `GET /me/certificates` returns `kind: bundle`; public verify resolves `bundle_certificates`. Credential ID format unchanged (`RS-{6 hex}-{year}-{10 hex}` with code `B00001` for bundle). Revoking a pathway course certificate revokes the student’s bundle row ([`services/certificates/service.py`](infrastructure/lambda/catalog/services/certificates/service.py)).
+- **Tests** — Python: [`tests/unit/services/certificates/`](tests/unit/services/certificates/), [`tests/unit/catalog/test_migration_025_bundle_certificates.py`](tests/unit/catalog/test_migration_025_bundle_certificates.py); frontend Vitest for certificates page, PDF helpers, and API mapping.
+
 ## 2026-10-12 — WS4: billing UI restored (payment rebuild)
 
 - **Student checkout** — Restored [`CheckoutPage.tsx`](frontend/src/pages/CheckoutPage.tsx) + HyperPay COPYandPAY [`HyperPayWidget.tsx`](frontend/src/components/billing/HyperPayWidget.tsx) (no `wpwlOptions.paymentTarget`); billing address on-site; **`POST /billing/checkout-session`** only; pending context in [`checkoutPendingPurchase.ts`](frontend/src/lib/checkoutPendingPurchase.ts).

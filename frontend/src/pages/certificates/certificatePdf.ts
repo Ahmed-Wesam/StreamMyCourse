@@ -1,6 +1,15 @@
+import html2canvas from 'html2canvas'
 import { jsPDF } from 'jspdf'
+import { createElement, type ReactNode } from 'react'
+import { flushSync } from 'react-dom'
+import { createRoot } from 'react-dom/client'
 
-const INSTRUCTOR_NAME = 'Dr. Bahaa Aburayya'
+import type { BundleCertificateFixture, CertificateFixture } from './certificateFixture'
+import { BundleCertificateDocument } from './BundleCertificateDocument'
+import { CertificateDocument } from './CertificateDocument'
+
+const DEFAULT_INSTRUCTOR_NAME = 'Dr. Bahaa Aburayya'
+const DEFAULT_INSTRUCTOR_TITLE = 'Founder & Instructor, Research Spectrum'
 
 type CertificatePdfData = {
   name: string
@@ -9,78 +18,76 @@ type CertificatePdfData = {
   date: string
 }
 
-/**
- * Generates a downloadable landscape A4 PDF certificate (ported from the Research Spectrum prototype).
- */
-export function generateCertificatePDF(data: CertificatePdfData): void {
-  const doc = new jsPDF({ orientation: 'landscape', unit: 'pt', format: 'a4' })
-  const W = doc.internal.pageSize.getWidth()
-  const H = doc.internal.pageSize.getHeight()
-  const navy: [number, number, number] = [10, 23, 51]
-  const blue: [number, number, number] = [30, 94, 255]
-  const muted: [number, number, number] = [113, 128, 160]
-  const ink: [number, number, number] = [11, 23, 51]
+type BundleCertificatePdfData = {
+  name: string
+  cred: string
+  date: string
+}
 
-  doc.setDrawColor(blue[0], blue[1], blue[2])
-  doc.setLineWidth(2.5)
-  doc.rect(24, 24, W - 48, H - 48)
-  doc.setDrawColor(navy[0], navy[1], navy[2])
-  doc.setLineWidth(0.75)
-  doc.rect(34, 34, W - 68, H - 68)
+function mountOffScreenHost(): HTMLDivElement {
+  const host = document.createElement('div')
+  host.setAttribute('data-certificate-pdf-host', 'true')
+  host.style.position = 'fixed'
+  host.style.left = '-10000px'
+  host.style.top = '0'
+  host.style.pointerEvents = 'none'
+  host.style.opacity = '0'
+  document.body.appendChild(host)
+  return host
+}
 
-  doc.setFont('helvetica', 'bold')
-  doc.setFontSize(22)
-  doc.setTextColor(navy[0], navy[1], navy[2])
-  doc.text('RESEARCH SPECTRUM', W / 2, 90, { align: 'center' })
-
-  doc.setFont('helvetica', 'normal')
-  doc.setFontSize(13)
-  doc.setTextColor(muted[0], muted[1], muted[2])
-  doc.text('CERTIFICATE OF COMPLETION', W / 2, 122, { align: 'center' })
-
-  doc.setFontSize(12)
-  doc.text('This certificate is proudly presented to', W / 2, 165, { align: 'center' })
-
-  doc.setFont('helvetica', 'bold')
-  doc.setFontSize(34)
-  doc.setTextColor(blue[0], blue[1], blue[2])
-  doc.text(data.name, W / 2, 205, { align: 'center' })
-
-  doc.setFont('helvetica', 'normal')
-  doc.setFontSize(13)
-  doc.setTextColor(ink[0], ink[1], ink[2])
-  doc.text('for successfully completing the course', W / 2, 238, { align: 'center' })
-
-  doc.setFont('helvetica', 'bold')
-  doc.setFontSize(20)
-  doc.text(data.title, W / 2, 266, { align: 'center' })
-
-  const fy = H - 90
-  doc.setFont('helvetica', 'bold')
-  doc.setFontSize(12)
-  doc.setTextColor(ink[0], ink[1], ink[2])
-  doc.text(data.date, 120, fy, { align: 'center' })
-  doc.text(INSTRUCTOR_NAME, W / 2, fy, { align: 'center' })
-  doc.text(data.cred, W - 120, fy, { align: 'center' })
-
-  doc.setFont('helvetica', 'normal')
-  doc.setFontSize(9)
-  doc.setTextColor(muted[0], muted[1], muted[2])
-  doc.text('Issue Date', 120, fy + 16, { align: 'center' })
-  doc.text('Founder & Instructor, Research Spectrum', W / 2, fy + 16, { align: 'center' })
-  doc.text('Credential ID', W - 120, fy + 16, { align: 'center' })
-
-  doc.setDrawColor(225, 229, 242)
-  doc.setLineWidth(0.75)
-  doc.line(70, fy - 22, 170, fy - 22)
-  doc.line(W / 2 - 90, fy - 22, W / 2 + 90, fy - 22)
-  doc.line(W - 170, fy - 22, W - 70, fy - 22)
-
-  doc.setFontSize(9)
-  doc.setTextColor(muted[0], muted[1], muted[2])
-  doc.text(`Verify this certificate at researchspectrum.org/verify/${data.cred}`, W / 2, H - 40, {
-    align: 'center',
+async function renderCertificatePdf(node: ReactNode, filename: string): Promise<void> {
+  const host = mountOffScreenHost()
+  const root = createRoot(host)
+  flushSync(() => {
+    root.render(node)
   })
+  try {
+    if (document.fonts?.ready) {
+      await document.fonts.ready
+    }
+    const canvas = await html2canvas(host, { scale: 2 })
+    const doc = new jsPDF({ orientation: 'landscape', unit: 'pt', format: 'a4' })
+    const pageW = doc.internal.pageSize.getWidth()
+    const pageH = doc.internal.pageSize.getHeight()
+    const imgData = canvas.toDataURL('image/png')
+    doc.addImage(imgData, 'PNG', 0, 0, pageW, pageH)
+    doc.save(filename)
+  } finally {
+    root.unmount()
+    host.remove()
+  }
+}
 
-  doc.save(`Research-Spectrum-Certificate-${data.cred}.pdf`)
+export async function generateCertificatePDF(data: CertificatePdfData): Promise<void> {
+  const certificate: CertificateFixture = {
+    studentName: data.name,
+    courseTitle: data.title,
+    credentialId: data.cred,
+    issueLabel: data.date,
+    instructorName: DEFAULT_INSTRUCTOR_NAME,
+    instructorTitle: DEFAULT_INSTRUCTOR_TITLE,
+    status: 'valid',
+    verifyPath: `/verify/${data.cred}`,
+  }
+
+  await renderCertificatePdf(
+    createElement(CertificateDocument, { certificate }),
+    `Research-Spectrum-Certificate-${data.cred}.pdf`,
+  )
+}
+
+export async function generateBundleCertificatePDF(data: BundleCertificatePdfData): Promise<void> {
+  const certificate: BundleCertificateFixture = {
+    studentName: data.name,
+    credentialId: data.cred,
+    issueLabel: data.date,
+    instructorName: DEFAULT_INSTRUCTOR_NAME,
+    instructorTitle: DEFAULT_INSTRUCTOR_TITLE,
+  }
+
+  await renderCertificatePdf(
+    createElement(BundleCertificateDocument, { certificate }),
+    `Research-Spectrum-Mastery-Certificate-${data.cred}.pdf`,
+  )
 }

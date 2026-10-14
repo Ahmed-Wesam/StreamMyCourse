@@ -33,3 +33,38 @@ export function sealKeyForTitle(title: string): CourseSealKey | null {
   }
   return null
 }
+
+type BundlePathwayRow = {
+  title: (typeof PATHWAY_COURSE_TITLES)[number]
+  hours: number
+  hoursLine: string
+}
+
+const HOURS_ASSESSMENT_SUFFIX = ' · Competency-Based Assessment'
+
+/** Map pathway title → "N Hours · Competency-Based Assessment". */
+export function durationLine(title: string): string | null {
+  if (!(PATHWAY_COURSE_TITLES as readonly string[]).includes(title)) {
+    return null
+  }
+  const hours = CERT_LEARNING_HOURS[title as (typeof PATHWAY_COURSE_TITLES)[number]]
+  return `${hours} Hours${HOURS_ASSESSMENT_SUFFIX}`
+}
+
+/** Sum of CERT_LEARNING_HOURS (140). */
+export function bundleTotalHours(): number {
+  return PATHWAY_COURSE_TITLES.reduce((sum, title) => sum + CERT_LEARNING_HOURS[title], 0)
+}
+
+/** Pathway rows with hours and display lines from CERT_LEARNING_HOURS. */
+export function bundlePathwayRows(): BundlePathwayRow[] {
+  return PATHWAY_COURSE_TITLES.map((title) => {
+    const hours = CERT_LEARNING_HOURS[title]
+    const hoursLine = durationLine(title)
+    return {
+      title,
+      hours,
+      hoursLine: hoursLine ?? `${hours} Hours${HOURS_ASSESSMENT_SUFFIX}`,
+    }
+  })
+}

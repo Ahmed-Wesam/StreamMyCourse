@@ -1,5 +1,7 @@
 type CertificateStatus = 'valid' | 'revoked'
 
+type CertificateKind = 'course' | 'bundle'
+
 export type CertificateFixture = {
   studentName: string
   courseTitle: string
@@ -9,6 +11,7 @@ export type CertificateFixture = {
   instructorTitle: string
   status: CertificateStatus
   verifyPath: string
+  kind?: CertificateKind
 }
 
 export type CertificateNotFoundFixture = {
@@ -75,4 +78,20 @@ export const profileIncompleteCertificate: CertificateProfileIncompleteFixture =
   requirementsMet: true,
   message: 'Add your profile name to issue this certificate.',
   href: '/account/profile',
+}
+
+export type BundleCertificateFixture = {
+  studentName: string
+  credentialId: string
+  issueLabel: string
+  instructorName: string
+  instructorTitle: string
+}
+
+export const validBundleCertificate: BundleCertificateFixture = {
+  studentName: validCertificate.studentName,
+  credentialId: CREDENTIAL_ID,
+  issueLabel: baseCertificate.issueLabel,
+  instructorName: baseCertificate.instructorName,
+  instructorTitle: baseCertificate.instructorTitle,
 }

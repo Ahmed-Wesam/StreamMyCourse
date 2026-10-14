@@ -9,7 +9,9 @@ import { httpGet, httpPost } from './client'
 
 type CertificateStatus = 'valid' | 'revoked'
 
-type MyCertificate = {
+type CertificateKind = 'course' | 'bundle'
+
+export type MyCertificate = {
   id: string
   credentialId: string
   status: CertificateStatus
@@ -20,6 +22,7 @@ type MyCertificate = {
   instructorName: string
   instructorTitle: string
   courseId: string
+  kind: CertificateKind
 }
 
 /** Course-scoped certificate row for instructors (owner/admin). */
@@ -65,6 +68,8 @@ function normalizeMineItem(row: unknown): MyCertificate | null {
   const credentialId = typeof record.credentialId === 'string' ? record.credentialId.trim() : ''
   if (!id || !credentialId) return null
 
+  const kind: CertificateKind = record.kind === 'bundle' ? 'bundle' : 'course'
+
   return {
     id,
     credentialId,
@@ -75,6 +80,7 @@ function normalizeMineItem(row: unknown): MyCertificate | null {
     instructorName: typeof record.instructorName === 'string' ? record.instructorName : '',
     instructorTitle: typeof record.instructorTitle === 'string' ? record.instructorTitle : '',
     courseId: typeof record.courseId === 'string' ? record.courseId : '',
+    kind,
   }
 }
 

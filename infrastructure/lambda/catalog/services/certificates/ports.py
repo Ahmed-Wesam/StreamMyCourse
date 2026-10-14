@@ -26,6 +26,20 @@ class CertificateRow:
 
 
 @dataclass(frozen=True)
+class BundleCertificateRow:
+    id: str
+    user_sub: str
+    credential_id: str
+    student_name: str
+    issue_date: date
+    instructor_name: str
+    instructor_title: str
+    status: str
+    revoked_at: Optional[datetime] = None
+    revoked_by: Optional[str] = None
+
+
+@dataclass(frozen=True)
 class CourseInfo:
     id: str
     title: str
@@ -60,6 +74,27 @@ class CertificatesRepositoryPort(Protocol):
         revoked_by: str,
         revoked_at: datetime,
     ) -> CertificateRow:
+        ...
+
+    def get_bundle_by_user(self, user_sub: str) -> Optional[BundleCertificateRow]:
+        ...
+
+    def insert_bundle_certificate(self, row: BundleCertificateRow) -> BundleCertificateRow:
+        """Insert or, on unique user_sub, return the existing row."""
+        ...
+
+    def get_bundle_by_credential_id(
+        self, credential_id: str
+    ) -> Optional[BundleCertificateRow]:
+        ...
+
+    def revoke_bundle_for_user(
+        self,
+        user_sub: str,
+        *,
+        revoked_by: str,
+        revoked_at: datetime,
+    ) -> Optional[BundleCertificateRow]:
         ...
 
 

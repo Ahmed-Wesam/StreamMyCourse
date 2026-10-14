@@ -115,6 +115,7 @@ Student playback contract (`GET /playback/{courseId}/{lessonId}`):
 | **020** | `assignments`, criteria, submissions, submission files, grades (RS-13) |
 | **021** | `courses.certificate_code`; `certificates` (RS-12) |
 | **022** | `research_team_required_courses`, `research_team_applications` (RS-14) |
+| **025** | `bundle_certificates` — Research Mastery Bundle credential (RS-12) |
 
 Prod apply of **015–022** (and matching API stage) landed via RS-15 remote Deploy on **2026-09-29** (Actions schema applier + backend).
 
@@ -244,18 +245,20 @@ POST   .../submissions/{submissionId}/grade              // Teacher. scores[{cri
 
 An entitled student receives **one** certificate per course when every **visible** module quiz is passed (published question bank, `served_count_n >= 1`, any attempt at that module’s pass mark) and every **published** assignment with `countsTowardCertificate` is passed. Lesson watch progress does not count. A course with no visible quiz and no published flagged assignment does not issue. Draft flagged assignments do not count. Entitlement is a paid course purchase at any course status, or a paid bundle of a **published** course. A bundle also covers an unpublished course when that student already has a quiz attempt or assignment submission on it, so unpublishing does not strand someone who already started. Untouched drafts are not listed. Teacher or admin ownership is not an entitlement. Unpublishing does not revoke a certificate already issued.
 
+**Research Mastery Bundle credential:** When a student holds **valid** course certificates for all four pathway courses (Research Methodology, Statistics & SPSS, Scientific Writing, Systematic Reviews & Meta-Analysis) on **distinct** courses, the API mints **one** additional row in `bundle_certificates` titled **Research Mastery Bundle** (`kind: bundle` on `GET /me/certificates`). Issue date is the latest course-certificate issue date; student name follows the same profile rules as course certs (fallback to the newest pathway cert name when the profile is incomplete). Bundle credential IDs use the fixed code `B00001` in the same `RS-{6 hex}-{year}-{10 hex}` shape as course certs. Revoking any pathway **course** certificate for that student also revokes their bundle row. Teacher course revoke UI remains course-scoped only.
+
 The row snapshots `givenName` + `familyName`, the course title, and the instructor line **Dr. Bahaa Aburayya** / **Founder & Instructor, Research Spectrum**. Later profile edits do not change it. A blank name blocks insert until both names exist. Revoke keeps the row (`revoked`) and does not mint a replacement.
 
-Credential ID: `RS-{course 6 hex}-{UTC year}-{10 hex}` (example `RS-A1B7F3-2026-9C2E10B4D8`). `courses.certificate_code` is assigned at course create. Lookup is case-insensitive.
+Credential ID: `RS-{course 6 hex}-{UTC year}-{10 hex}` (example `RS-A1B7F3-2026-9C2E10B4D8`; bundle uses `RS-B00001-…`). `courses.certificate_code` is assigned at course create. Lookup is case-insensitive for both `certificates` and `bundle_certificates`.
 
 ```
-GET  /me/certificates                                      // Cognito. Issues when eligible, then { certificates, inProgress, profileIncomplete }. No email or userSub.
-GET  /certificates/{credentialId}                          // Public. Valid/revoked: credentialId, status, studentName, courseTitle, issueDate (Month YYYY). Unknown: 404 { status: not_found } with no name. Malformed: 400, no DB read.
+GET  /me/certificates                                      // Cognito. Issues when eligible (including bundle when pathway complete), then { certificates, inProgress, profileIncomplete }. Each item includes kind course|bundle. No email or userSub.
+GET  /certificates/{credentialId}                          // Public. Valid/revoked: credentialId, status, studentName, courseTitle, issueDate (Month YYYY) for course or bundle rows. Unknown: 404 { status: not_found } with no name. Malformed: 400, no DB read.
 GET  /courses/{courseId}/certificates                      // Course owner or admin.
 POST /courses/{courseId}/certificates/{certificateId}/revoke  // Owner or admin. Certificate must belong to the course.
 ```
 
-Public verify is rate-limited: `certificate.verify.ip` 20 / 10 min per IP, `certificate.verify.global` 200 / hour. PDF download is client-side (`jspdf`, dynamic import on the student certificates page). There is no server PDF and no NAT path. Migration **021**. API deployment advanced with later stages through **CatalogApiDeploymentV44**. Prod apply of **021** landed with RS-15 remote Deploy (**2026-09-29**).
+Public verify is rate-limited: `certificate.verify.ip` 20 / 10 min per IP, `certificate.verify.global` 200 / hour. PDF download is **client-side**: [`certificatePdf.ts`](frontend/src/pages/certificates/certificatePdf.ts) renders [`CertificateDocument`](frontend/src/pages/certificates/CertificateDocument.tsx) or [`BundleCertificateDocument`](frontend/src/pages/certificates/BundleCertificateDocument.tsx) off-screen, rasterizes with **html2canvas**, and writes a single-page PDF via **jspdf** (dynamic import from `/certificates`). There is no server PDF and no NAT path. Migrations **021** (course certs) and **025** (`bundle_certificates`). API deployment advanced with later stages through **CatalogApiDeploymentV44**. Prod apply of **021** landed with RS-15 remote Deploy (**2026-09-29**).
 
 ### Research Team application (RS-14)
 

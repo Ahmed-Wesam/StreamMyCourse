@@ -1,0 +1,305 @@
+@import '@fontsource/playfair-display/600.css';
+@import '@fontsource/playfair-display/700.css';
+@import '@fontsource/playfair-display/800.css';
+@import '@fontsource/great-vibes/400.css';
+@import '@fontsource/cormorant-garamond/500-italic.css';
+
+.certificate-document {
+  --cert-navy: #0a1733;
+  --cert-blue: #1e5eff;
+  --cert-muted: #6b7a99;
+  --cert-gold: #b8923a;
+  --cert-line: #dfe6f5;
+  position: relative;
+  width: 1123px;
+  height: 794px;
+  background: #fff;
+  overflow: hidden;
+  text-align: center;
+  font-family: 'Plus Jakarta Sans', system-ui, sans-serif;
+  color: var(--cert-navy);
+  box-sizing: border-box;
+}
+
+.certificate-document *,
+.certificate-document *::before,
+.certificate-document *::after {
+  box-sizing: border-box;
+}
+
+.certificate-document__layer {
+  position: absolute;
+  inset: 0;
+}
+
+.certificate-document__glow {
+  background:
+    radial-gradient(ellipse at 50% 0, #eef4ff 0, transparent 55%),
+    radial-gradient(ellipse at 50% 100%, #f3f7ff 0, transparent 50%);
+}
+
+.certificate-document__wm {
+  left: 281px;
+  top: 145px;
+  width: 560px;
+  opacity: 0.045;
+  pointer-events: none;
+}
+
+.certificate-document__frame {
+  inset: 0;
+  width: 1123px;
+  height: 794px;
+  pointer-events: none;
+}
+
+.certificate-document__head {
+  top: 54px;
+  left: 0;
+  right: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+}
+
+.certificate-document__brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.certificate-document__brand img {
+  height: 50px;
+  width: auto;
+}
+
+.certificate-document__brand-name {
+  font-size: 25px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  color: var(--cert-navy);
+}
+
+.certificate-document__brand-name span {
+  color: var(--cert-blue);
+}
+
+.certificate-document__tag {
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 0.34em;
+  text-transform: uppercase;
+  color: var(--cert-muted);
+}
+
+.certificate-document__t1 {
+  top: 128px;
+  left: 0;
+  right: 0;
+  font:
+    800 60px/1 'Playfair Display',
+    Georgia,
+    serif;
+  letter-spacing: 0.14em;
+  color: var(--cert-navy);
+  padding-left: 0.14em;
+}
+
+.certificate-document__t2 {
+  top: 200px;
+  left: 0;
+  right: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 18px;
+  font-size: 14px;
+  font-weight: 800;
+  letter-spacing: 0.5em;
+  color: var(--cert-blue);
+  padding-left: 0.5em;
+}
+
+.certificate-document__t2::before,
+.certificate-document__t2::after {
+  content: '';
+  width: 90px;
+  height: 1.5px;
+  background: linear-gradient(90deg, transparent, var(--cert-gold));
+}
+
+.certificate-document__t2::after {
+  transform: scaleX(-1);
+}
+
+.certificate-document__pre {
+  top: 246px;
+  left: 0;
+  right: 0;
+  font:
+    italic 500 23px 'Cormorant Garamond',
+    Georgia,
+    serif;
+  color: var(--cert-muted);
+}
+
+.certificate-document__name {
+  top: 272px;
+  left: 100px;
+  right: 100px;
+  font:
+    400 76px/1.2 'Great Vibes',
+    'Brush Script MT',
+    cursive;
+  color: var(--cert-blue);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.certificate-document__rule {
+  top: 370px;
+  left: 281px;
+  width: 560px;
+  height: 2px;
+  background: linear-gradient(90deg, transparent, var(--cert-navy) 20%, var(--cert-blue) 80%, transparent);
+}
+
+.certificate-document__mid {
+  top: 392px;
+  left: 0;
+  right: 0;
+}
+
+.certificate-document__mid p {
+  font-size: 15px;
+  font-weight: 500;
+  color: var(--cert-muted);
+  margin: 0;
+}
+
+.certificate-document__course {
+  font:
+    700 33px/1.2 'Playfair Display',
+    Georgia,
+    serif;
+  color: var(--cert-navy);
+  margin: 8px 0 10px;
+  padding: 0 90px;
+}
+
+.certificate-document__hours {
+  display: block;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--cert-blue);
+}
+
+.certificate-document__foot {
+  left: 100px;
+  right: 100px;
+  bottom: 66px;
+  height: 150px;
+}
+
+.certificate-document__foot > * {
+  position: absolute;
+  bottom: 0;
+}
+
+.certificate-document__sig {
+  left: 0;
+  width: 290px;
+  text-align: center;
+}
+
+.certificate-document__sig-script {
+  font:
+    400 40px/1 'Great Vibes',
+    cursive;
+  color: var(--cert-navy);
+  height: 50px;
+}
+
+.certificate-document__sig-line {
+  border-top: 1.5px solid var(--cert-navy);
+  padding-top: 8px;
+}
+
+.certificate-document__sig-line b {
+  display: block;
+  font-size: 13.5px;
+  font-weight: 800;
+  color: var(--cert-navy);
+}
+
+.certificate-document__sig-line span {
+  display: block;
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  color: var(--cert-muted);
+  text-transform: uppercase;
+  margin-top: 2px;
+}
+
+.certificate-document__seal {
+  left: 50%;
+  margin-left: -70px;
+  bottom: -12px;
+  width: 140px;
+  height: 156px;
+}
+
+.certificate-document__ver {
+  right: 0;
+  width: 310px;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  text-align: left;
+  justify-content: flex-end;
+}
+
+.certificate-document__meta b {
+  display: block;
+  font-size: 13px;
+  font-weight: 800;
+  color: var(--cert-navy);
+  margin-bottom: 9px;
+}
+
+.certificate-document__meta code {
+  display: block;
+  font:
+    800 12.5px ui-monospace,
+    Menlo,
+    Consolas,
+    monospace;
+  color: var(--cert-blue);
+  letter-spacing: 0.03em;
+  margin-bottom: 9px;
+}
+
+.certificate-document__meta span {
+  display: block;
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  color: var(--cert-muted);
+  text-transform: uppercase;
+  margin-top: 2px;
+}
+
+.certificate-document__meta em {
+  display: block;
+  font:
+    normal 600 9.5px inherit;
+    font-family: inherit;
+  color: var(--cert-muted);
+  margin-top: -2px;
+  font-style: normal;
+}
