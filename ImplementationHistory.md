@@ -6,6 +6,12 @@
 
 ---
 
+## 2026-10-14 — Certificate PDF layout (baseline probe + semantic tags)
+
+- **Text baseline** — [`certificatePdf.ts`](frontend/src/pages/certificates/certificatePdf.ts) injects a short-lived document style so html2canvas’s 1×1 font-metrics `img` stays `display: inline`. With Tailwind preflight’s `img { display: block }`, the probe dropped to the next line and rasterized text (name, sidebar numbers, footer) painted about one line too low.
+- **DOM** — Course and bundle printable documents use `div` instead of `header` / `footer` / `aside` so global site CSS (e.g. `footer { background: #fff; … }`) does not add white bands behind the signature, seal, and QR on download.
+- **Bundle CSS** — Sidebar path labels stay centered like the shared HTML; only course rows are left-aligned. Student name clipping removed to match the prototype.
+
 ## 2026-10-14 — Certificate PDF matches the shared HTML footer
 
 - **Capture** — [`certificatePdf.ts`](frontend/src/pages/certificates/certificatePdf.ts) rasterizes the 1123×794 article in a fixed host at the viewport origin. A host at `left: -10000px` made html2canvas paint white footer blocks and drop the seal. Page size is landscape px `[1123, 794]`, not stretched A4.
