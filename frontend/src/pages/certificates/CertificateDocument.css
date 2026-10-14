@@ -29,10 +29,10 @@
 
 .certificate-document__layer {
   position: absolute;
-  inset: 0;
 }
 
 .certificate-document__glow {
+  inset: 0;
   background:
     radial-gradient(ellipse at 50% 0, #eef4ff 0, transparent 55%),
     radial-gradient(ellipse at 50% 100%, #f3f7ff 0, transparent 50%);
@@ -57,9 +57,11 @@
   top: 54px;
   left: 0;
   right: 0;
+  height: 72px;
   display: flex;
   flex-direction: column;
   align-items: center;
+  justify-content: flex-start;
   gap: 6px;
 }
 
@@ -97,6 +99,7 @@
   top: 128px;
   left: 0;
   right: 0;
+  height: 64px;
   font:
     800 60px/1 'Playfair Display',
     Georgia,
@@ -107,9 +110,10 @@
 }
 
 .certificate-document__t2 {
-  top: 200px;
+  top: 196px;
   left: 0;
   right: 0;
+  height: 22px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -137,6 +141,8 @@
   top: 246px;
   left: 0;
   right: 0;
+  height: 28px;
+  margin: 0;
   font:
     italic 500 23px 'Cormorant Garamond',
     Georgia,
@@ -148,6 +154,8 @@
   top: 272px;
   left: 100px;
   right: 100px;
+  height: 92px;
+  margin: 0;
   font:
     400 76px/1.2 'Great Vibes',
     'Brush Script MT',
@@ -170,6 +178,7 @@
   top: 392px;
   left: 0;
   right: 0;
+  height: 130px;
 }
 
 .certificate-document__mid p {
@@ -199,15 +208,15 @@
 }
 
 .certificate-document__foot {
+  top: 560px;
   left: 100px;
   right: 100px;
-  bottom: 66px;
-  height: 150px;
+  height: 168px;
 }
 
 .certificate-document__foot > * {
   position: absolute;
-  bottom: 0;
+  top: 0;
 }
 
 .certificate-document__sig {
@@ -249,7 +258,7 @@
 .certificate-document__seal {
   left: 50%;
   margin-left: -70px;
-  bottom: -12px;
+  top: 0;
   width: 140px;
   height: 156px;
 }
