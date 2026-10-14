@@ -37,10 +37,8 @@
   top: 0;
   width: 833px;
   height: 794px;
-  background:
-    radial-gradient(ellipse at 50% 0, #fbf6e6 0, transparent 55%),
-    radial-gradient(ellipse at 50% 100%, #eef4ff 0, transparent 55%),
-    #fff;
+  object-fit: fill;
+  pointer-events: none;
 }
 
 .bundle-certificate-document__wm {

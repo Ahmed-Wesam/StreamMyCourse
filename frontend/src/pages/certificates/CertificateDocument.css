@@ -33,9 +33,10 @@
 
 .certificate-document__glow {
   inset: 0;
-  background:
-    radial-gradient(ellipse at 50% 0, #eef4ff 0, transparent 55%),
-    radial-gradient(ellipse at 50% 100%, #f3f7ff 0, transparent 50%);
+  width: 1123px;
+  height: 794px;
+  object-fit: fill;
+  pointer-events: none;
 }
 
 .certificate-document__wm {

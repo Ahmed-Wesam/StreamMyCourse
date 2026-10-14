@@ -1,4 +1,5 @@
 import brandMark from '../../assets/brand/research-spectrum-mark.webp'
+import bundleWash from './bundle-certificate-wash.png'
 import type { BundleCertificateFixture } from './certificateFixture'
 import { bundlePathwayRows, bundleTotalHours } from './courseCertificateMeta'
 import './BundleCertificateDocument.css'
@@ -24,7 +25,12 @@ export function BundleCertificateDocument({ certificate, qrSrc }: BundleCertific
 
   return (
     <article className="bundle-certificate-document" data-testid="bundle-certificate-document">
-      <div className="bundle-certificate-document__layer bundle-certificate-document__glow" aria-hidden="true" />
+      <img
+        className="bundle-certificate-document__layer bundle-certificate-document__glow"
+        src={bundleWash}
+        alt=""
+        aria-hidden="true"
+      />
       <img
         className="bundle-certificate-document__layer bundle-certificate-document__wm"
         src={brandMark}

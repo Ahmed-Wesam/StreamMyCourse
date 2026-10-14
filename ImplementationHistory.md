@@ -10,6 +10,7 @@
 
 - **Capture** — [`certificatePdf.ts`](frontend/src/pages/certificates/certificatePdf.ts) rasterizes the 1123×794 article in a fixed host at the viewport origin. A host at `left: -10000px` made html2canvas paint white footer blocks and drop the seal. Page size is landscape px `[1123, 794]`, not stretched A4.
 - **Footer** — Course and bundle PDFs use the HTML signature (**Dr. Bahaa Aburayya, MD** / **Founder & Course Instructor**), an HTML `<img>` for the seal mark (SVG `<image href>` webp did not paint), and a QR (`qrcode`) for `https://researchspectrum.org/verify/{credentialId}` instead of a wrapped URL. Stored instructor snapshot and public verify copy are unchanged.
+- **Wash** — The cream/blue page wash is [`certificate-wash.png`](frontend/src/pages/certificates/certificate-wash.png) / [`bundle-certificate-wash.png`](frontend/src/pages/certificates/bundle-certificate-wash.png). html2canvas turned the CSS `radial-gradient` into opaque white clouds on the left and right of the PDF.
 
 ## 2026-10-14 — RS-12 certificate redesign + bundle mastery credential
 

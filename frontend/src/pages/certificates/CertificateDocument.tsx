@@ -1,4 +1,5 @@
 import brandMark from '../../assets/brand/research-spectrum-mark.webp'
+import certificateWash from './certificate-wash.png'
 import type { CertificateFixture } from './certificateFixture'
 import { durationLine } from './courseCertificateMeta'
 import './CertificateDocument.css'
@@ -19,7 +20,12 @@ export function CertificateDocument({ certificate, qrSrc }: CertificateDocumentP
 
   return (
     <article className="certificate-document" data-testid="certificate-document">
-      <div className="certificate-document__layer certificate-document__glow" aria-hidden="true" />
+      <img
+        className="certificate-document__layer certificate-document__glow"
+        src={certificateWash}
+        alt=""
+        aria-hidden="true"
+      />
       <img
         className="certificate-document__layer certificate-document__wm"
         src={brandMark}
