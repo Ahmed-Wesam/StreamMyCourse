@@ -31,9 +31,29 @@ function mountOffScreenHost(): HTMLDivElement {
   host.style.left = '-10000px'
   host.style.top = '0'
   host.style.pointerEvents = 'none'
-  host.style.opacity = '0'
+  host.style.zIndex = '-1'
+  // Do not set opacity to 0 — html2canvas captures a blank/white page when the subtree is fully transparent.
   document.body.appendChild(host)
   return host
+}
+
+async function waitForHostImages(host: HTMLElement): Promise<void> {
+  const images = Array.from(host.querySelectorAll('img'))
+  await Promise.all(
+    images.map(
+      (img) =>
+        new Promise<void>((resolve) => {
+          if (img.complete) {
+            resolve()
+            return
+          }
+          const finish = () => resolve()
+          img.addEventListener('load', finish, { once: true })
+          img.addEventListener('error', finish, { once: true })
+          window.setTimeout(finish, 100)
+        }),
+    ),
+  )
 }
 
 async function renderCertificatePdf(node: ReactNode, filename: string): Promise<void> {
@@ -46,7 +66,15 @@ async function renderCertificatePdf(node: ReactNode, filename: string): Promise<
     if (document.fonts?.ready) {
       await document.fonts.ready
     }
-    const canvas = await html2canvas(host, { scale: 2 })
+    await waitForHostImages(host)
+    await new Promise<void>((resolve) => {
+      requestAnimationFrame(() => requestAnimationFrame(() => resolve()))
+    })
+    const canvas = await html2canvas(host, {
+      scale: 2,
+      backgroundColor: '#ffffff',
+      useCORS: true,
+    })
     const doc = new jsPDF({ orientation: 'landscape', unit: 'pt', format: 'a4' })
     const pageW = doc.internal.pageSize.getWidth()
     const pageH = doc.internal.pageSize.getHeight()
