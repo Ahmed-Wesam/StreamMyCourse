@@ -167,6 +167,26 @@ def test_db_without_merchant_transaction_id_raises() -> None:
         _parse(note)
 
 
+def test_purchase_uuid_merchant_transaction_id_maps_to_paid() -> None:
+    events = _parse(_payment_notification(merchant_transaction_id=_PURCHASE_ID))
+    assert len(events) == 1
+    event = events[0]
+    assert event.event_type == "purchase.paid"
+    assert event.purchase_id == _PURCHASE_ID
+    assert event.user_sub == ""
+    assert event.environment == "dev"
+    assert event.product_type == ""
+
+
+def test_pipe_merchant_transaction_id_is_rejected() -> None:
+    with pytest.raises(InvalidCartMetadataError):
+        _parse(
+            _payment_notification(
+                merchant_transaction_id="order|with|pipes-and-this-is-too-long-for-the-bank"
+            )
+        )
+
+
 def test_hyperpay_adapter_parse_webhook_delegates() -> None:
     adapter = HyperPayAdapter(
         access_token="t",

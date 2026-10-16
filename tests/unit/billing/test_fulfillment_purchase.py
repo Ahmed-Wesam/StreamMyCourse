@@ -64,3 +64,17 @@ def test_purchase_paid_ipn_error_mentions_jod_not_usd() -> None:
     target = purchase_fulfillment_for_event(event)
     with pytest.raises(ValueError, match="JOD amount and currency"):
         _apply_purchase_update(cur, event=event, target=target)
+
+
+def test_purchase_uuid_webhook_locks_row_without_user_sub() -> None:
+    cur = MagicMock()
+    cur.fetchone.return_value = (50_000, "JOD", "pending")
+    cur.rowcount = 1
+    event = _purchase_event(user_sub="")
+    target = purchase_fulfillment_for_event(event)
+    updated = _apply_purchase_update(cur, event=event, target=target)
+    assert updated is True
+    select_sql = cur.execute.call_args_list[0].args[0]
+    select_params = cur.execute.call_args_list[0].args[1]
+    assert "user_sub" not in select_sql
+    assert select_params == (target.purchase_id, "dev")

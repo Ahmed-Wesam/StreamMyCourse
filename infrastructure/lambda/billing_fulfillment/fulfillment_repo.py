@@ -99,8 +99,15 @@ def _insert_webhook_event(cur: Any, event: BillingDomainEvent) -> Optional[str]:
     return str(row[0])
 
 
-def _apply_purchase_update(cur: Any, *, event: BillingDomainEvent, target: PurchaseFulfillmentTarget) -> bool:
-    if event.event_type in ("purchase.paid", "purchase.failed"):
+def _select_purchase_for_update(
+    cur: Any,
+    *,
+    event: BillingDomainEvent,
+    purchase_id: str,
+) -> None:
+    """Lock the purchase row. Live webhooks identify it by id; v2 carts also bind user_sub."""
+    bound_user = (event.user_sub or "").strip()
+    if bound_user:
         cur.execute(
             """
             SELECT amount_minor, currency, status
@@ -110,8 +117,24 @@ def _apply_purchase_update(cur: Any, *, event: BillingDomainEvent, target: Purch
               AND environment = %s
             FOR UPDATE
             """,
-            (target.purchase_id, event.user_sub, event.environment),
+            (purchase_id, bound_user, event.environment),
         )
+        return
+    cur.execute(
+        """
+        SELECT amount_minor, currency, status
+        FROM purchases
+        WHERE id = %s::uuid
+          AND environment = %s
+        FOR UPDATE
+        """,
+        (purchase_id, event.environment),
+    )
+
+
+def _apply_purchase_update(cur: Any, *, event: BillingDomainEvent, target: PurchaseFulfillmentTarget) -> bool:
+    if event.event_type in ("purchase.paid", "purchase.failed"):
+        _select_purchase_for_update(cur, event=event, purchase_id=target.purchase_id)
         row = cur.fetchone()
         if row is None:
             raise ValueError(f"purchase not found: {target.purchase_id}")
@@ -138,6 +161,20 @@ def _apply_purchase_update(cur: Any, *, event: BillingDomainEvent, target: Purch
         return cur.rowcount > 0
 
     if event.event_type == "purchase.revoked":
+        bound_user = (event.user_sub or "").strip()
+        if not bound_user:
+            cur.execute(
+                """
+                UPDATE purchases
+                SET status = 'revoked',
+                    updated_at = NOW()
+                WHERE id = %s::uuid
+                  AND environment = %s
+                  AND status = 'paid'
+                """,
+                (target.purchase_id, event.environment),
+            )
+            return cur.rowcount > 0
         tran_ref = (target.provider_tran_ref or "").strip()
         if not tran_ref:
             raise ValueError("provider_tran_ref is required for purchase.revoked")

@@ -136,7 +136,12 @@ def test_checkout_session_hyperpay_post_body_excludes_shopper_result_url(
     assert "shopperresulturl" not in encoded.lower()
     # Sanity: required OPPWA fields are present.
     assert "entityId=" in encoded
-    assert unquote_plus(encoded).find("merchantTransactionId=") >= 0
+    decoded = unquote_plus(encoded)
+    merchant_tx = decoded.split("merchantTransactionId=", 1)[1].split("&", 1)[0]
+    assert merchant_tx == _PURCHASE_ID
+    assert len(merchant_tx) <= 41
+    assert "|" not in merchant_tx
+    assert "v2|" not in decoded
 
 
 def test_checkout_session_ignores_client_amount_minor(

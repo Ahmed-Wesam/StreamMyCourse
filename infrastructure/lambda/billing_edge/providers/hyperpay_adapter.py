@@ -17,9 +17,12 @@ from domain.amounts import fils_to_hyperpay_amount, validate_whole_jod_fils
 from domain.checkout_billing import CheckoutBillingContact
 from domain.events import BillingDomainEvent
 from domain.metadata import (
+    BillingMetadata,
     EnvironmentMismatchError,
     InvalidCartMetadataError,
+    bank_safe_merchant_transaction_id,
     parse_cart_metadata,
+    purchase_reference_metadata,
 )
 from domain.result_codes import classify_result_code
 from providers.port import CheckoutProduct, HyperPayCheckoutResult
@@ -75,20 +78,15 @@ class InvalidWidgetHostError(Exception):
     """Widget base host is outside the allowed OPPWA set."""
 
 
-def _build_purchase_cart_id(
-    *,
-    deployment_environment: str,
-    user_sub: str,
-    product_type: str,
-    course_id: str | None,
-    purchase_id: str,
-) -> str:
-    env = deployment_environment.strip().lower()
-    if product_type == "course":
-        if not course_id:
-            raise ValueError("course_id is required for course sale cart_id")
-        return f"v2|{env}|{user_sub}|course|{course_id}|{purchase_id}"
-    return f"v2|{env}|{user_sub}|bundle|{purchase_id}"
+def _resolve_cart_metadata(merchant_tx: str, deployment_environment: str) -> BillingMetadata:
+    """Parse a v2 cart string or a live purchase-UUID merchantTransactionId."""
+    raw = (merchant_tx or "").strip()
+    if raw.startswith("v2|"):
+        return parse_cart_metadata(raw, deployment_environment)
+    try:
+        return purchase_reference_metadata(raw, deployment_environment)
+    except ValueError as exc:
+        raise ValueError("invalid merchantTransactionId") from exc
 
 
 def _normalize_api_host(api_host: str) -> str:
@@ -265,7 +263,7 @@ def parse_checkout_payment_poll(
         )
 
     try:
-        metadata = parse_cart_metadata(merchant_tx, deployment_environment)
+        metadata = _resolve_cart_metadata(merchant_tx, deployment_environment)
     except EnvironmentMismatchError:
         raise
     except ValueError as exc:
@@ -360,7 +358,7 @@ def parse_hyperpay_webhook(
         )
 
     try:
-        metadata = parse_cart_metadata(merchant_tx, deployment_environment)
+        metadata = _resolve_cart_metadata(merchant_tx, deployment_environment)
     except EnvironmentMismatchError:
         raise
     except ValueError as exc:
@@ -473,16 +471,18 @@ class HyperPayAdapter:
         normalized_type = (product_type or "").strip().lower()
         if normalized_type not in ("course", "bundle"):
             raise BillingUnconfiguredError()
+        if not (user_sub or "").strip():
+            raise BillingUnconfiguredError()
 
         validate_whole_jod_fils(product.amount_minor)
-
-        cart_id = _build_purchase_cart_id(
-            deployment_environment=self._deployment_environment,
-            user_sub=user_sub,
-            product_type=normalized_type,
-            course_id=course_id,
-            purchase_id=purchase_id,
-        )
+        if normalized_type == "course" and not (course_id or "").strip():
+            raise BillingUnconfiguredError()
+        try:
+            # Acquirer rejects '|', other punctuation, and values longer than 41.
+            # The purchase row already stores user_sub; this id is only the purchase UUID.
+            merchant_tx = bank_safe_merchant_transaction_id(purchase_id)
+        except ValueError as exc:
+            raise BillingUnconfiguredError() from exc
 
         email = (customer_email or "").strip()
         if not email:
@@ -494,7 +494,7 @@ class HyperPayAdapter:
             ("currency", "JOD"),
             ("paymentType", "DB"),
             ("integrity", "true"),
-            ("merchantTransactionId", cart_id),
+            ("merchantTransactionId", merchant_tx),
             ("customer.email", email),
             ("customer.givenName", billing.given_name),
             ("customer.surname", billing.surname),
@@ -503,7 +503,7 @@ class HyperPayAdapter:
             ("billing.state", billing.state),
             ("billing.country", billing.country),
             ("billing.postcode", billing.postcode),
-            ("customParameters[SHOPPER_cart]", cart_id),
+            ("customParameters[SHOPPER_cart]", merchant_tx),
         ]
         if self._api_host == _TEST_API_HOST:
             form_fields.append(("testMode", "EXTERNAL"))

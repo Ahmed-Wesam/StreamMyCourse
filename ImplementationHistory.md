@@ -6,6 +6,12 @@
 
 ---
 
+## 2026-10-15 — HyperPay merchantTransactionId is the purchase UUID
+
+- Live acquirer rejects the previous `v2|env|user|...` cart string: `|` is not allowed, and the value is longer than **41** characters. Checkout now sends the purchase UUID (`[A-Za-z0-9_-]`, 36 characters) as `merchantTransactionId` and `customParameters[SHOPPER_cart]`.
+- Webhooks still accept a legacy `v2|...` id. A purchase UUID is fulfilled by locking `purchases` on id + environment; `user_sub` comes from that row.
+- Tests: [`test_metadata_contract.py`](tests/unit/billing/test_metadata_contract.py), [`test_checkout_session_hyperpay_post.py`](tests/unit/billing/test_checkout_session_hyperpay_post.py), [`test_hyperpay_webhook.py`](tests/unit/billing/test_hyperpay_webhook.py), [`test_fulfillment_purchase.py`](tests/unit/billing/test_fulfillment_purchase.py).
+
 ## 2026-10-14 — Certificate PDF layout (baseline probe + semantic tags)
 
 - **Text baseline** — [`certificatePdf.ts`](frontend/src/pages/certificates/certificatePdf.ts) injects a short-lived document style so html2canvas’s 1×1 font-metrics `img` stays `display: inline`. With Tailwind preflight’s `img { display: block }`, the probe dropped to the next line and rasterized text (name, sidebar numbers, footer) painted about one line too low.

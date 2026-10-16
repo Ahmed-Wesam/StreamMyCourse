@@ -46,3 +46,23 @@ def test_parse_v2_bundle_purchase_metadata() -> None:
     meta = parse_cart_metadata(cart_id, "dev")
     assert meta.product_type == "bundle"
     assert meta.purchase_id == purchase_id
+
+
+def test_bank_safe_merchant_transaction_id_is_purchase_uuid() -> None:
+    from domain.metadata import bank_safe_merchant_transaction_id
+
+    purchase_id = "C0000000-0000-4000-8000-000000000001"
+    merchant_tx = bank_safe_merchant_transaction_id(purchase_id)
+    assert merchant_tx == "c0000000-0000-4000-8000-000000000001"
+    assert len(merchant_tx) <= 41
+    assert "|" not in merchant_tx
+
+
+def test_bank_safe_merchant_transaction_id_rejects_cart_string() -> None:
+    from domain.metadata import bank_safe_merchant_transaction_id
+
+    with pytest.raises(ValueError):
+        bank_safe_merchant_transaction_id(
+            "v2|prod|cognito-sub|course|b0000000-0000-4000-8000-000000000001|"
+            "c0000000-0000-4000-8000-000000000001"
+        )
