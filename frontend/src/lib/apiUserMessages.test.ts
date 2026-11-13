@@ -68,6 +68,16 @@ describe('catalogApiUserMessage', () => {
     )
   })
 
+  it('shows API message for question bank question limit', () => {
+    const apiText = 'Question bank cannot exceed 1499 questions'
+    expect(
+      catalogApiUserMessage(
+        new ApiError(apiText, 400, 'question_bank_question_limit'),
+        'saveQuestionBankQuestion',
+      ),
+    ).toBe(apiText)
+  })
+
   it('maps module quiz API messages', () => {
     expect(
       catalogApiUserMessage(

@@ -20,6 +20,7 @@ from services.auth.rds_repo import UserProfileRdsRepository  # noqa: E402
 from services.lesson_notes.rds_repo import LessonNotesRdsRepository  # noqa: E402
 from services.progress.rds_repo import LessonProgressRdsRepository  # noqa: E402
 from services.purchases.repo import PurchaseRdsRepository  # noqa: E402
+from services.question_banks.rds_repo import QuestionBankRdsRepository  # noqa: E402
 from services.user_deletion import (  # noqa: E402
     UserDeletionBlocked,
     UserDeletionRegistry,
@@ -82,6 +83,7 @@ def _build_service(endpoint: str) -> UserDeletionService:
     notes_repo = LessonNotesRdsRepository(factory)
     deploy_env = (os.environ.get("DEPLOYMENT_ENVIRONMENT") or "prod").strip().lower()
     purchase_repo = PurchaseRdsRepository(factory, deployment_environment=deploy_env)
+    quiz_repo = QuestionBankRdsRepository(factory)
     registry = UserDeletionRegistry()
     register_operator_user_steps(
         registry,
@@ -89,6 +91,7 @@ def _build_service(endpoint: str) -> UserDeletionService:
         progress_repo,
         notes_repo,
         purchase_repo,
+        quiz_repo,
     )
     return UserDeletionService(registry)
 

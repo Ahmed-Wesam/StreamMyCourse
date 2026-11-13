@@ -104,7 +104,11 @@ def test_insert_attempt_with_shuffle_stores_and_get_open_attempt_loads() -> None
     store: dict[str, Any] = {}
 
     def on_execute(cur: FakeCursor, sql: str, params: Tuple[Any, ...]) -> None:
-        if "INSERT INTO module_quiz_attempts" in sql:
+        if "FOR UPDATE" in sql:
+            cur.rows_to_return = [("binding-1",)]
+        elif "status = 'in_progress'" in sql and "module_quiz_attempts" in sql:
+            cur.rows_to_return = []
+        elif "INSERT INTO module_quiz_attempts" in sql:
             attempt_id = "attempt-uuid-1"
             store["attempt"] = {
                 "id": attempt_id,
@@ -190,7 +194,11 @@ def test_insert_attempt_uses_incremented_attempt_number() -> None:
     store: dict[str, Any] = {}
 
     def on_execute(cur: FakeCursor, sql: str, params: Tuple[Any, ...]) -> None:
-        if "INSERT INTO module_quiz_attempts" in sql:
+        if "FOR UPDATE" in sql:
+            cur.rows_to_return = [("binding-1",)]
+        elif "status = 'in_progress'" in sql and "module_quiz_attempts" in sql:
+            cur.rows_to_return = []
+        elif "INSERT INTO module_quiz_attempts" in sql:
             store["attempt_number"] = params[1]
             cur.rows_to_return = [
                 _attempt_row(
@@ -231,7 +239,32 @@ def test_mark_attempt_submitted_updates_status() -> None:
     assert "submitted_at" in sql
     assert params[0] == submitted_at
     assert params[1] == "attempt-1"
-    assert fake.committed >= 1
+    assert fake.committed == 1
+    assert fake.rolled_back == 0
+
+
+def test_mark_attempt_submitted_retries_40001() -> None:
+    fake = FakeConn()
+    fake.cursor_obj.rowcount = 1
+    execute_calls = {"n": 0}
+    original_execute = fake.cursor_obj.execute
+
+    def execute(sql: str, params: Tuple[Any, ...] = ()) -> None:
+        execute_calls["n"] += 1
+        if execute_calls["n"] == 1:
+            err = Exception("serialization failure")
+            err.pgcode = "40001"  # type: ignore[attr-defined]
+            raise err
+        original_execute(sql, params)
+
+    fake.cursor_obj.execute = execute  # type: ignore[method-assign]
+    repo = QuestionBankRdsRepository(lambda: fake)
+
+    repo.mark_attempt_submitted(attempt_id="attempt-1")
+
+    assert execute_calls["n"] == 2
+    assert fake.rolled_back == 1
+    assert fake.committed == 1
 
 
 def test_attempt_unique_violation_messages() -> None:
@@ -254,7 +287,11 @@ def test_insert_attempt_maps_unique_violation_to_conflict() -> None:
     """Slice 3 will re-read open attempt on Conflict; repo must map UniqueViolation."""
 
     def boom(cur: FakeCursor, sql: str, params: Tuple[Any, ...]) -> None:
-        if "INSERT INTO module_quiz_attempts" in sql:
+        if "FOR UPDATE" in sql:
+            cur.rows_to_return = [("binding-1",)]
+        elif "status = 'in_progress'" in sql and "module_quiz_attempts" in sql:
+            cur.rows_to_return = []
+        elif "INSERT INTO module_quiz_attempts" in sql:
             raise pg_errors.UniqueViolation("duplicate attempt")
 
     fake = FakeConn()
@@ -327,3 +364,196 @@ def test_insert_binding_with_questions_and_initial_attempt_single_transaction() 
     assert fake.rolled_back == 0
     assert any("student_module_quiz_bindings" in s for s in sql_log)
     assert any("module_quiz_attempts" in s for s in sql_log)
+    binding_sql = next(s for s in sql_log if "student_module_quiz_bindings" in s)
+    assert "ON CONFLICT (module_quiz_id, user_sub) DO NOTHING" in binding_sql
+
+
+def test_first_start_on_conflict_returns_existing_without_attempt() -> None:
+    sql_log: list[str] = []
+
+    def on_execute(cur: FakeCursor, sql: str, params: Tuple[Any, ...]) -> None:
+        sql_log.append(sql)
+        if "INSERT INTO student_module_quiz_bindings" in sql:
+            cur.rows_to_return = []
+        elif "SELECT id FROM student_module_quiz_bindings" in sql:
+            cur.rows_to_return = [("binding-winner",)]
+
+    fake = FakeConn()
+    fake.cursor_obj._execute_impl = on_execute
+    repo = QuestionBankRdsRepository(lambda: fake)
+
+    binding_id = repo.insert_binding_with_questions_and_initial_attempt(
+        module_quiz_id="mq1",
+        course_id="c1",
+        user_sub="student-sub",
+        question_ids=["q1", "q2"],
+        shuffled_question_order=["q2", "q1"],
+        shuffled_choice_orders={"q1": ["B", "A"], "q2": ["A", "B"]},
+    )
+
+    assert binding_id == "binding-winner"
+    assert not any("INSERT INTO module_quiz_attempts" in s for s in sql_log)
+    assert not any(
+        "INSERT INTO student_module_quiz_binding_questions" in s for s in sql_log
+    )
+
+
+def test_insert_attempt_with_shuffle_locks_binding_and_checks_in_progress() -> None:
+    sql_log: list[str] = []
+
+    def on_execute(cur: FakeCursor, sql: str, params: Tuple[Any, ...]) -> None:
+        sql_log.append(sql)
+        if "FOR UPDATE" in sql:
+            cur.rows_to_return = [("binding-1",)]
+        elif "status = 'in_progress'" in sql and "module_quiz_attempts" in sql:
+            cur.rows_to_return = []
+        elif "INSERT INTO module_quiz_attempts" in sql:
+            cur.rows_to_return = [
+                _attempt_row(
+                    attempt_id="attempt-uuid-1",
+                    binding_id="binding-1",
+                    attempt_number=2,
+                ),
+            ]
+
+    fake = FakeConn()
+    fake.cursor_obj._execute_impl = on_execute
+    repo = QuestionBankRdsRepository(lambda: fake)
+
+    inserted = repo.insert_attempt_with_shuffle(
+        binding_id="binding-1",
+        attempt_number=2,
+        shuffled_question_order=["q1"],
+        shuffled_choice_orders={"q1": ["A"]},
+    )
+
+    assert inserted.attemptNumber == 2
+    assert any("FOR UPDATE" in s for s in sql_log)
+    lock_idx = next(i for i, s in enumerate(sql_log) if "FOR UPDATE" in s)
+    insert_idx = next(
+        i for i, s in enumerate(sql_log) if "INSERT INTO module_quiz_attempts" in s
+    )
+    assert lock_idx < insert_idx
+
+
+def test_insert_attempt_raises_conflict_when_in_progress_exists() -> None:
+    def on_execute(cur: FakeCursor, sql: str, params: Tuple[Any, ...]) -> None:
+        if "FOR UPDATE" in sql:
+            cur.rows_to_return = [("binding-1",)]
+        elif "status = 'in_progress'" in sql:
+            cur.rows_to_return = [("open-attempt",)]
+
+    fake = FakeConn()
+    fake.cursor_obj._execute_impl = on_execute
+    repo = QuestionBankRdsRepository(lambda: fake)
+
+    with pytest.raises(Conflict, match="in progress"):
+        repo.insert_attempt_with_shuffle(
+            binding_id="binding-1",
+            attempt_number=2,
+            shuffled_question_order=["q1"],
+            shuffled_choice_orders={"q1": ["A"]},
+        )
+
+    assert not any(
+        "INSERT INTO module_quiz_attempts" in e[0]
+        for e in fake.cursor_obj.executions
+    )
+
+
+def test_redraw_binding_raises_conflict_when_in_progress_exists() -> None:
+    def on_execute(cur: FakeCursor, sql: str, params: Tuple[Any, ...]) -> None:
+        if "FOR UPDATE" in sql:
+            cur.rows_to_return = [("binding-1",)]
+        elif "status = 'in_progress'" in sql:
+            cur.rows_to_return = [("open-attempt",)]
+
+    fake = FakeConn()
+    fake.cursor_obj._execute_impl = on_execute
+    repo = QuestionBankRdsRepository(lambda: fake)
+
+    with pytest.raises(Conflict, match="in progress"):
+        repo.redraw_binding_and_insert_attempt(
+            binding_id="binding-1",
+            question_ids=["q1", "q2"],
+            attempt_number=2,
+            shuffled_question_order=["q2", "q1"],
+            shuffled_choice_orders={"q1": ["A", "B"], "q2": ["B", "A"]},
+        )
+
+    assert not any(
+        "DELETE FROM student_module_quiz_binding_questions" in e[0]
+        for e in fake.cursor_obj.executions
+    )
+
+
+def test_redraw_binding_replace_and_insert_same_transaction() -> None:
+    sql_log: list[str] = []
+
+    def on_execute(cur: FakeCursor, sql: str, params: Tuple[Any, ...]) -> None:
+        sql_log.append(sql)
+        if "FOR UPDATE" in sql:
+            cur.rows_to_return = [("binding-1",)]
+        elif "status = 'in_progress'" in sql and "module_quiz_attempts" in sql:
+            cur.rows_to_return = []
+        elif "INSERT INTO module_quiz_attempts" in sql:
+            cur.rows_to_return = [
+                _attempt_row(
+                    attempt_id="attempt-uuid-2",
+                    binding_id="binding-1",
+                    attempt_number=2,
+                ),
+            ]
+
+    fake = FakeConn()
+    fake.cursor_obj._execute_impl = on_execute
+    repo = QuestionBankRdsRepository(lambda: fake)
+
+    attempt = repo.redraw_binding_and_insert_attempt(
+        binding_id="binding-1",
+        question_ids=["q-new-1", "q-new-2"],
+        attempt_number=2,
+        shuffled_question_order=["q-new-2", "q-new-1"],
+        shuffled_choice_orders={
+            "q-new-1": ["B", "A"],
+            "q-new-2": ["A", "B"],
+        },
+    )
+
+    assert attempt.attemptNumber == 2
+    assert fake.committed == 1
+    assert any("DELETE FROM student_module_quiz_binding_questions" in s for s in sql_log)
+    assert any("INSERT INTO module_quiz_attempts" in s for s in sql_log)
+
+
+def test_first_start_retries_40001_and_commits_once() -> None:
+    attempts = {"n": 0}
+
+    def on_execute(cur: FakeCursor, sql: str, params: Tuple[Any, ...]) -> None:
+        if "INSERT INTO student_module_quiz_bindings" in sql:
+            attempts["n"] += 1
+            if attempts["n"] == 1:
+                err = Exception("serialization failure")
+                err.pgcode = "40001"  # type: ignore[attr-defined]
+                raise err
+            cur.rows_to_return = [("binding-uuid-1",)]
+        elif "INSERT INTO module_quiz_attempts" in sql:
+            cur.rows_to_return = [("attempt-row",)]
+
+    fake = FakeConn()
+    fake.cursor_obj._execute_impl = on_execute
+    repo = QuestionBankRdsRepository(lambda: fake)
+
+    binding_id = repo.insert_binding_with_questions_and_initial_attempt(
+        module_quiz_id="mq1",
+        course_id="c1",
+        user_sub="student-sub",
+        question_ids=["q1"],
+        shuffled_question_order=["q1"],
+        shuffled_choice_orders={"q1": ["A"]},
+    )
+
+    assert binding_id == "binding-uuid-1"
+    assert attempts["n"] == 2
+    assert fake.committed == 1
+    assert fake.rolled_back == 1

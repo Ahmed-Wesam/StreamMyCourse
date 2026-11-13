@@ -221,15 +221,121 @@ def test_replace_binding_questions_deletes_old_rows_and_inserts_new() -> None:
     ]
 
 
-def test_insert_binding_maps_unique_violation_to_conflict() -> None:
-    """Slice 3 will re-read binding on Conflict; repo must map UniqueViolation."""
+def test_insert_binding_sql_uses_on_conflict_do_nothing() -> None:
+    fake = FakeConn()
+    fake.cursor_obj.rows_to_return = [("binding-uuid-1",)]
+    repo = QuestionBankRdsRepository(lambda: fake)
+
+    repo.insert_binding_with_questions(
+        module_quiz_id="mq1",
+        course_id="c1",
+        user_sub="student-sub",
+        question_ids=["q1"],
+    )
+
+    binding_sql, _ = fake.cursor_obj.executions[0]
+    compact = " ".join(binding_sql.split())
+    assert "ON CONFLICT (module_quiz_id, user_sub) DO NOTHING" in compact
+    assert "RETURNING id" in binding_sql
+
+
+def test_insert_binding_on_conflict_returns_existing_id_without_question_rows() -> None:
+    """Concurrent first start: no child rows when the binding row already exists."""
+    call = {"binding_inserts": 0}
+
+    def on_execute(cur: FakeCursor, sql: str, params: Tuple[Any, ...]) -> None:
+        if "INSERT INTO student_module_quiz_bindings" in sql:
+            call["binding_inserts"] += 1
+            cur.rows_to_return = []
+        elif "SELECT id FROM student_module_quiz_bindings" in sql:
+            cur.rows_to_return = [("binding-winner",)]
+
+    fake = FakeConn()
+    fake.cursor_obj._execute_impl = on_execute
+    repo = QuestionBankRdsRepository(lambda: fake)
+
+    binding_id = repo.insert_binding_with_questions(
+        module_quiz_id="mq1",
+        course_id="c1",
+        user_sub="student-sub",
+        question_ids=["q1", "q2"],
+    )
+
+    assert binding_id == "binding-winner"
+    question_inserts = [
+        e for e in fake.cursor_obj.executions
+        if "INSERT INTO student_module_quiz_binding_questions" in e[0]
+    ]
+    assert question_inserts == []
+
+
+def test_insert_binding_retries_40001_and_commits_once() -> None:
+    attempts = {"n": 0}
+
+    def on_execute(cur: FakeCursor, sql: str, params: Tuple[Any, ...]) -> None:
+        if "INSERT INTO student_module_quiz_bindings" in sql:
+            attempts["n"] += 1
+            if attempts["n"] == 1:
+                err = Exception("serialization failure")
+                err.pgcode = "40001"  # type: ignore[attr-defined]
+                raise err
+            cur.rows_to_return = [("binding-uuid-1",)]
+
+    fake = FakeConn()
+    fake.cursor_obj._execute_impl = on_execute
+    repo = QuestionBankRdsRepository(lambda: fake)
+
+    binding_id = repo.insert_binding_with_questions(
+        module_quiz_id="mq1",
+        course_id="c1",
+        user_sub="student-sub",
+        question_ids=["q1"],
+    )
+
+    assert binding_id == "binding-uuid-1"
+    assert attempts["n"] == 2
+    assert fake.committed == 1
+    assert fake.rolled_back == 1
+
+
+def test_insert_binding_body_does_not_commit_during_execute() -> None:
+    fake = FakeConn()
+    fake.cursor_obj.rows_to_return = [("binding-uuid-1",)]
+
+    def on_execute(cur: FakeCursor, sql: str, params: Tuple[Any, ...]) -> None:
+        if fake.committed > 0:
+            raise AssertionError("body must not call conn.commit()")
+        if "INSERT INTO student_module_quiz_bindings" in sql:
+            cur.rows_to_return = [("binding-uuid-1",)]
+
+    fake.cursor_obj._execute_impl = on_execute
+    repo = QuestionBankRdsRepository(lambda: fake)
+
+    repo.insert_binding_with_questions(
+        module_quiz_id="mq1",
+        course_id="c1",
+        user_sub="student-sub",
+        question_ids=["q1"],
+    )
+
+    assert fake.committed == 1
+
+
+def test_insert_binding_maps_binding_questions_unique_violation_to_conflict() -> None:
     fake = FakeConn()
 
     def boom(cur: FakeCursor, sql: str, params: Tuple[Any, ...]) -> None:
-        if "INSERT INTO student_module_quiz_bindings" in sql:
-            raise pg_errors.UniqueViolation("duplicate binding")
+        if "INSERT INTO student_module_quiz_binding_questions" in sql:
+            raise pg_errors.UniqueViolation("duplicate binding question")
 
     fake.cursor_obj._execute_impl = boom
+
+    def bind_insert(cur: FakeCursor, sql: str, params: Tuple[Any, ...]) -> None:
+        if "INSERT INTO student_module_quiz_bindings" in sql:
+            cur.rows_to_return = [("binding-uuid-1",)]
+        boom(cur, sql, params)
+
+    fake.cursor_obj._execute_impl = bind_insert
     repo = QuestionBankRdsRepository(lambda: fake)
 
     with pytest.raises(Conflict, match="binding"):

@@ -5,6 +5,9 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Optional
 
+# Redraw transaction is ``2N+1`` writes; DSQL cap is 3000 (``2*1499+1 = 2999``).
+MAX_QUESTIONS_PER_BANK = 1499
+
 
 @dataclass(frozen=True)
 class QuestionBank:

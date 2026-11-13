@@ -23,6 +23,7 @@ from services.question_banks.mcq_validation import (
     validate_mcq_options_json,
 )
 from services.question_banks.models import (
+    MAX_QUESTIONS_PER_BANK,
     BoundQuestion,
     ModuleQuiz,
     ModuleQuizAttempt,
@@ -47,6 +48,9 @@ from services.question_banks.ports import (
 from services.question_banks.rds_repo import QuestionBankRdsRepository
 
 _QUESTION_BANK_NAME_MAX_LENGTH = 80
+_BANK_QUESTION_LIMIT_MESSAGE = (
+    f"Question bank cannot exceed {MAX_QUESTIONS_PER_BANK} questions"
+)
 
 logger = logging.getLogger(__name__)
 
@@ -791,6 +795,14 @@ class QuestionBankService:
         validate_correct_option_key(
             correct_option_key, options_json=options_json
         )
+        existing = self._repo.list_questions_for_course_bank(
+            course_id=course_id, bank_id=bank_id
+        )
+        if len(existing) >= MAX_QUESTIONS_PER_BANK:
+            raise BadRequest(
+                _BANK_QUESTION_LIMIT_MESSAGE,
+                code="question_bank_question_limit",
+            )
         return self._repo.insert_draft_question(
             course_id=course_id,
             bank_id=bank_id,
@@ -822,6 +834,11 @@ class QuestionBankService:
         drafts = self._repo.list_draft_questions(bank_id=bank_id)
         if len(drafts) == 0:
             raise BadRequest("Cannot publish: question bank has no draft questions")
+        if len(drafts) > MAX_QUESTIONS_PER_BANK:
+            raise BadRequest(
+                _BANK_QUESTION_LIMIT_MESSAGE,
+                code="question_bank_question_limit",
+            )
         if n > len(drafts):
             raise BadRequest(
                 "Cannot publish: N is greater than the number of draft questions"
@@ -867,6 +884,14 @@ class QuestionBankService:
         if not key:
             raise BadRequest("correctOptionKey must not be empty")
         validate_correct_option_key(key, options_json=options_json)
+        existing = self._repo.list_questions_for_course_bank(
+            course_id=course_id, bank_id=bank_id
+        )
+        if len(existing) >= MAX_QUESTIONS_PER_BANK:
+            raise BadRequest(
+                _BANK_QUESTION_LIMIT_MESSAGE,
+                code="question_bank_question_limit",
+            )
         return self._repo.insert_published_question(
             course_id=course_id,
             bank_id=bank_id,

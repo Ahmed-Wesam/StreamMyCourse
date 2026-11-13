@@ -129,7 +129,6 @@ def informational_sql_statements() -> list[str]:
             WHERE status = 'pending'
               AND updated_at > (NOW() AT TIME ZONE 'UTC') - (INTERVAL '1 minute' * %s)
             """.strip(),
-        f"SELECT id FROM {p('scratch_occ')} WHERE id = %s FOR UPDATE",
         f"DELETE FROM {p('cascade_child')} WHERE parent_id = %s",
         f"""CREATE TABLE {p("jsonb_probe")} (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -320,8 +319,6 @@ def _run_informational_probes(conn: Any, host: str) -> None:
                 _execute_ddl(conn, sql, (json.dumps(["alpha", "beta"]),))
             elif "make_interval" in sql or "INTERVAL '1 minute'" in sql:
                 _execute_ddl(conn, sql, (60,))
-            elif "FOR UPDATE" in sql:
-                continue
             elif sql.startswith("DELETE FROM"):
                 continue
             else:

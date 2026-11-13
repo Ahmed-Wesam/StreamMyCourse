@@ -94,6 +94,79 @@ def _sql_purchase_count(conn, user_sub: str) -> int:
     )
 
 
+def _sql_quiz_student_counts(conn, user_sub: str) -> tuple[int, int, int]:
+    bindings = int(
+        execute_scalar(
+            conn,
+            "SELECT COUNT(*) FROM app.student_module_quiz_bindings WHERE user_sub = %s",
+            (user_sub,),
+        )
+        or 0
+    )
+    attempts = int(
+        execute_scalar(
+            conn,
+            """
+            SELECT COUNT(*)
+            FROM app.module_quiz_attempts a
+            JOIN app.student_module_quiz_bindings b ON b.id = a.binding_id
+            WHERE b.user_sub = %s
+            """,
+            (user_sub,),
+        )
+        or 0
+    )
+    submissions = int(
+        execute_scalar(
+            conn,
+            """
+            SELECT COUNT(*)
+            FROM app.module_quiz_attempt_submissions s
+            JOIN app.module_quiz_attempts a ON a.id = s.attempt_id
+            JOIN app.student_module_quiz_bindings b ON b.id = a.binding_id
+            WHERE b.user_sub = %s
+            """,
+            (user_sub,),
+        )
+        or 0
+    )
+    return bindings, attempts, submissions
+
+
+def _mcq_options() -> list[dict[str, str]]:
+    return [{"key": "A", "text": "First"}, {"key": "B", "text": "Second"}]
+
+
+def _setup_published_quiz_on_first_module(
+    teacher_api: ApiClient,
+    course_id: str,
+    *,
+    served_n: int = 2,
+) -> tuple[str, str]:
+    mods = teacher_api.list_course_modules(course_id)
+    assert mods.status_code == 200, mods.text
+    module_id = str(min(mods.json(), key=lambda m: int(m["order"]))["id"])
+    br = teacher_api.create_question_bank(course_id)
+    assert br.status_code == 201, br.text
+    bank_id = str(br.json()["questionBankId"])
+    assert (
+        teacher_api.create_module_quiz(course_id, module_id, question_bank_id=bank_id).status_code
+        == 201
+    )
+    for i in range(served_n):
+        dr = teacher_api.create_draft_question(
+            course_id,
+            bank_id,
+            prompt_text=f"User del Q{i + 1}?",
+            options_json=_mcq_options(),
+            correct_option_key="A",
+        )
+        assert dr.status_code == 201, dr.text
+    pub = teacher_api.publish_question_bank(course_id, bank_id, n=served_n, module_id=module_id)
+    assert pub.status_code == 200, pub.text
+    return module_id, bank_id
+
+
 def _sql_user_learning_counts(conn, user_sub: str) -> tuple[int, int, int, int]:
     users = int(execute_scalar(conn, "SELECT COUNT(*) FROM users WHERE user_sub = %s", (user_sub,)) or 0)
     progress = int(
@@ -222,6 +295,180 @@ def test_operator_delete_user_clears_progress_notes_and_activity_days(
         for course_id in course_ids:
             try:
                 teacher_api.delete_course(course_id)
+            except Exception:
+                pass
+        if email_for_cleanup:
+            admin_delete_cognito_user(cfg=pool, username=email_for_cleanup)
+
+
+def test_operator_delete_user_clears_quiz_bindings_attempts_submissions(
+    api_base_url: str,
+    teacher_api: ApiClient,
+) -> None:
+    """Throwaway native user with a started module quiz — operator delete clears quiz rows."""
+    pool = resolve_student_pool_config_or_skip()
+    email = _email()
+    password = _password()
+    email_for_cleanup = email
+    purchase_id = ""
+    course_ids: list[str] = []
+    course_factory = build_course_factory(teacher_api, course_ids.append)
+    lesson_factory = build_lesson_factory(teacher_api)
+    served_n = 2
+    bank_id = ""
+
+    try:
+        tokens = mint_native_signup_tokens(cfg=pool, email=email, password=password)
+        headers = {"Authorization": f"Bearer {tokens.id_token}"}
+        with httpx.Client(
+            base_url=api_base_url, timeout=30.0, headers=headers
+        ) as disposable_client:
+            disposable = ApiClient(disposable_client)
+
+            me = disposable.get_users_me()
+            assert me.status_code == 200, me.text
+            user_sub = str(me.json().get("userId") or me.json().get("cognitoSub") or "")
+            assert user_sub
+
+            course = course_factory(label="user-del-quiz")
+            course_id = course.course_id
+            module_id, bank_id = _setup_published_quiz_on_first_module(
+                teacher_api, course_id, served_n=served_n
+            )
+            lesson = lesson_factory(course_id, label="user-del-quiz-lesson")
+            assert (
+                teacher_api.get_upload_url(course_id=course_id, lesson_id=lesson.lesson_id).status_code
+                == 200
+            )
+            assert teacher_api.mark_video_ready(course_id, lesson.lesson_id).status_code == 200
+            assert teacher_api.publish_course(course_id).status_code == 200
+
+            purchase_id = insert_paid_bundle_purchase(user_sub)
+
+            start = disposable.start_module_quiz(course_id, module_id)
+            assert start.status_code == 200, start.text
+
+            with admin_connect() as conn:
+                before = _sql_quiz_student_counts(conn, user_sub)
+            assert before[0] >= 1 and before[1] >= 1
+
+            mod = _load_delete_user()
+            rc = mod.run(
+                ["--user-sub", user_sub, "--execute"],
+                cognito=mod._BotoCognito(),
+                service_factory=mod._build_service,
+                endpoint_resolver=mod._resolve_dsql_endpoint,
+                pool_resolver=mod._resolve_user_pool_id,
+            )
+            assert rc == 0, "delete-user.py should exit 0"
+            email_for_cleanup = ""
+            purchase_id = ""
+
+            with admin_connect() as conn:
+                quiz_left = _sql_quiz_student_counts(conn, user_sub)
+                bank_n = int(
+                    execute_scalar(
+                        conn,
+                        "SELECT COUNT(*) FROM app.question_banks WHERE course_id = %s AND id = %s",
+                        (course_id, bank_id),
+                    )
+                    or 0
+                )
+            assert quiz_left == (0, 0, 0)
+            assert bank_n == 1
+    finally:
+        if purchase_id:
+            delete_purchase_by_id(purchase_id)
+        for cid in course_ids:
+            try:
+                teacher_api.delete_course(cid)
+            except Exception:
+                pass
+        if email_for_cleanup:
+            admin_delete_cognito_user(cfg=pool, username=email_for_cleanup)
+
+
+def test_operator_delete_user_clears_quiz_bindings_attempts_submissions(
+    api_base_url: str,
+    teacher_api: ApiClient,
+) -> None:
+    """Throwaway native user with a started module quiz — operator delete clears quiz rows."""
+    pool = resolve_student_pool_config_or_skip()
+    email = _email()
+    password = _password()
+    email_for_cleanup = email
+    purchase_id = ""
+    course_ids: list[str] = []
+    course_factory = build_course_factory(teacher_api, course_ids.append)
+    lesson_factory = build_lesson_factory(teacher_api)
+    served_n = 2
+    bank_id = ""
+
+    try:
+        tokens = mint_native_signup_tokens(cfg=pool, email=email, password=password)
+        headers = {"Authorization": f"Bearer {tokens.id_token}"}
+        with httpx.Client(
+            base_url=api_base_url, timeout=30.0, headers=headers
+        ) as disposable_client:
+            disposable = ApiClient(disposable_client)
+
+            me = disposable.get_users_me()
+            assert me.status_code == 200, me.text
+            user_sub = str(me.json().get("userId") or me.json().get("cognitoSub") or "")
+            assert user_sub
+
+            course = course_factory(label="user-del-quiz")
+            course_id = course.course_id
+            module_id, bank_id = _setup_published_quiz_on_first_module(
+                teacher_api, course_id, served_n=served_n
+            )
+            lesson = lesson_factory(course_id, label="user-del-quiz-lesson")
+            assert (
+                teacher_api.get_upload_url(course_id=course_id, lesson_id=lesson.lesson_id).status_code
+                == 200
+            )
+            assert teacher_api.mark_video_ready(course_id, lesson.lesson_id).status_code == 200
+            assert teacher_api.publish_course(course_id).status_code == 200
+
+            purchase_id = insert_paid_bundle_purchase(user_sub)
+
+            start = disposable.start_module_quiz(course_id, module_id)
+            assert start.status_code == 200, start.text
+
+            with admin_connect() as conn:
+                before = _sql_quiz_student_counts(conn, user_sub)
+            assert before[0] >= 1 and before[1] >= 1
+
+            mod = _load_delete_user()
+            rc = mod.run(
+                ["--user-sub", user_sub, "--execute"],
+                cognito=mod._BotoCognito(),
+                service_factory=mod._build_service,
+                endpoint_resolver=mod._resolve_dsql_endpoint,
+                pool_resolver=mod._resolve_user_pool_id,
+            )
+            assert rc == 0, "delete-user.py should exit 0"
+            email_for_cleanup = ""
+            purchase_id = ""
+
+            with admin_connect() as conn:
+                quiz_left = _sql_quiz_student_counts(conn, user_sub)
+                bank_n = int(
+                    execute_scalar(
+                        conn,
+                        "SELECT COUNT(*) FROM app.question_banks WHERE course_id = %s AND id = %s",
+                        (course_id, bank_id),
+                    )
+                    or 0
+                )
+            assert quiz_left == (0, 0, 0)
+            assert bank_n == 1
+    finally:
+        if purchase_id:
+            delete_purchase_by_id(purchase_id)
+        for cid in course_ids:
+            try:
+                teacher_api.delete_course(cid)
             except Exception:
                 pass
         if email_for_cleanup:

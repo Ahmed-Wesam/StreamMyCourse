@@ -92,12 +92,14 @@ class TestPurchaseDeletionRegistration:
         progress = MagicMock()
         notes = MagicMock()
         purchases = MagicMock()
+        quiz = MagicMock()
         register_operator_user_steps(
             registry,
             _FakeDeleter(),
             progress,
             notes,
             purchases,
+            quiz,
         )
         steps = registry.ordered_steps()
         purchase_steps = [s for s in steps if s.name == "purchases"]
@@ -113,6 +115,7 @@ class TestPurchaseDeletionRegistration:
         notes.delete_lesson_notes_for_user.side_effect = lambda _: log.append("notes")
         purchases = MagicMock()
         purchases.delete_purchases_for_user.side_effect = lambda _: log.append("purchases")
+        quiz = MagicMock()
         registry = UserDeletionRegistry()
         register_operator_user_steps(
             registry,
@@ -120,6 +123,12 @@ class TestPurchaseDeletionRegistration:
             progress,
             notes,
             purchases,
+            quiz,
         )
         UserDeletionService(registry).delete_user(_SUB)
-        assert log == ["progress", "notes", "days", "purchases"]
+        assert log == [
+            "progress",
+            "notes",
+            "days",
+            "purchases",
+        ]

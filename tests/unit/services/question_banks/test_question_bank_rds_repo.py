@@ -503,6 +503,179 @@ def test_list_module_quiz_pass_percent_for_course_maps_rows() -> None:
     assert params == ("c1", "c1")
 
 
+def _sql_compact(sql: str) -> str:
+    return " ".join(sql.lower().split())
+
+
+class TestPublishOccAndQuestionCap:
+    def test_publish_runs_for_update_then_draft_count_without_body_commit(self) -> None:
+        fake = FakeConn(cursor_obj=_publish_cursor_success(draft_total=2))
+        commits_during_execute: List[int] = []
+        original_execute = fake.cursor_obj.execute
+
+        def execute(sql: str, params: Sequence[Any] = ()) -> None:
+            commits_during_execute.append(fake.committed)
+            original_execute(sql, params)
+
+        fake.cursor_obj.execute = execute  # type: ignore[method-assign]
+        repo = QuestionBankRdsRepository(lambda: fake)
+
+        repo.publish_bank_transaction(
+            course_id="c1", bank_id="b1", module_id="m1", n=2
+        )
+
+        assert commits_during_execute == [0] * len(commits_during_execute)
+        assert fake.committed == 1
+        kinds: List[str] = []
+        for sql, _ in fake.cursor_obj.executions:
+            compact = _sql_compact(sql)
+            if "for update" in compact and "question_banks" in compact:
+                kinds.append("for_update")
+            elif "count" in compact and "status = 'draft'" in compact:
+                kinds.append("draft_count")
+        assert kinds[0] == "for_update"
+        assert "draft_count" in kinds
+
+    def test_publish_retries_40001_then_updates_questions_once(self) -> None:
+        cur = _publish_cursor_success(draft_total=1)
+        cur.rows_to_return = [
+            ("bank-1", "DRAFT"),
+            (1,),
+            (0,),
+            ("bank-1", "DRAFT"),
+            (1,),
+            (0,),
+        ]
+        cur.fetchall_batches = [
+            [("A", [{"key": "A", "text": "a"}])],
+            [("A", [{"key": "A", "text": "a"}])],
+        ]
+        fake = FakeConn(cursor_obj=cur)
+        execute_calls = {"n": 0}
+        question_updates = {"n": 0}
+        original_execute = cur.execute
+
+        def execute(sql: str, params: Sequence[Any] = ()) -> None:
+            execute_calls["n"] += 1
+            original_execute(sql, params)
+            compact = _sql_compact(sql)
+            if "update questions" in compact and "published" in compact:
+                question_updates["n"] += 1
+                if question_updates["n"] == 1:
+                    err = Exception("serialization failure")
+                    err.pgcode = "40001"  # type: ignore[attr-defined]
+                    raise err
+                cur.rowcount = 1
+
+        cur.execute = execute  # type: ignore[method-assign]
+        repo = QuestionBankRdsRepository(lambda: fake)
+
+        repo.publish_bank_transaction(
+            course_id="c1", bank_id="b1", module_id="m1", n=1
+        )
+
+        assert question_updates["n"] == 2
+        assert fake.rolled_back == 1
+        assert fake.committed == 1
+        update_sqls = [
+            e[0]
+            for e in fake.cursor_obj.executions
+            if "UPDATE questions" in e[0] and "PUBLISHED" in e[0]
+        ]
+        assert len(update_sqls) == 2
+        assert update_sqls[-1] == update_sqls[0]
+
+    def test_publish_rejects_1500_drafts_without_update(self) -> None:
+        cur = FakeCursor()
+        cur.rows_to_return = [("bank-1", "DRAFT"), (1500,)]
+        fake = FakeConn(cursor_obj=cur)
+        repo = QuestionBankRdsRepository(lambda: fake)
+
+        with pytest.raises(BadRequest, match="cannot exceed 1499"):
+            repo.publish_bank_transaction(
+                course_id="c1", bank_id="b1", module_id="m1", n=1
+            )
+
+        assert not any(
+            "UPDATE questions" in sql for sql, _ in fake.cursor_obj.executions
+        )
+        assert fake.committed == 0
+        assert fake.rolled_back == 1
+
+    def test_insert_draft_question_at_cap_locks_bank_without_insert(self) -> None:
+        cur = FakeCursor()
+        cur.rows_to_return = [("bank-1",), (1499,)]
+        fake = FakeConn(cursor_obj=cur)
+        repo = QuestionBankRdsRepository(lambda: fake)
+
+        with pytest.raises(BadRequest, match="cannot exceed 1499"):
+            repo.insert_draft_question(
+                course_id="c1",
+                bank_id="b1",
+                prompt_text="Q?",
+                options_json=[{"key": "A", "text": "a"}],
+            )
+
+        sqls = [e[0] for e in fake.cursor_obj.executions]
+        assert any("FOR UPDATE" in s for s in sqls)
+        assert not any("INSERT INTO questions" in s for s in sqls)
+        assert fake.committed == 0
+
+
+class TestSingleStatementWriteOccRetry:
+    def test_insert_question_bank_retries_40001(self) -> None:
+        fake = FakeConn()
+        fake.cursor_obj.rows_to_return = [("bank-row-id",), ("bank-row-id",)]
+        execute_calls = {"n": 0}
+        original_execute = fake.cursor_obj.execute
+
+        def execute(sql: str, params: Sequence[Any] = ()) -> None:
+            execute_calls["n"] += 1
+            original_execute(sql, params)
+            if "INSERT INTO question_banks" in sql and execute_calls["n"] == 1:
+                err = Exception("serialization failure")
+                err.pgcode = "40001"  # type: ignore[attr-defined]
+                raise err
+
+        fake.cursor_obj.execute = execute  # type: ignore[method-assign]
+        repo = QuestionBankRdsRepository(lambda: fake)
+
+        bank_id = repo.insert_question_bank(course_id="c1", name="Bank")
+
+        assert bank_id == "bank-row-id"
+        assert execute_calls["n"] == 2
+        assert fake.rolled_back == 1
+        assert fake.committed == 1
+
+    def test_update_question_bank_name_retries_40001(self) -> None:
+        fake = FakeConn()
+        fake.cursor_obj.rowcount = 1
+        execute_calls = {"n": 0}
+        original_execute = fake.cursor_obj.execute
+
+        def execute(sql: str, params: Sequence[Any] = ()) -> None:
+            execute_calls["n"] += 1
+            if execute_calls["n"] == 1:
+                err = Exception("serialization failure")
+                err.pgcode = "40001"  # type: ignore[attr-defined]
+                raise err
+            original_execute(sql, params)
+
+        fake.cursor_obj.execute = execute  # type: ignore[method-assign]
+        repo = QuestionBankRdsRepository(lambda: fake)
+
+        repo.update_question_bank_name(
+            course_id="c1", bank_id="bank-row-id", name="Renamed"
+        )
+
+        assert execute_calls["n"] == 2
+        assert fake.rolled_back == 1
+        assert fake.committed == 1
+        sql, params = fake.cursor_obj.executions[-1]
+        assert "UPDATE question_banks" in sql
+        assert params == ("Renamed", "bank-row-id", "c1")
+
+
 def test_list_submitted_attempt_scores_by_module_groups_all_attempts() -> None:
     repo, fake = _visibility_repo(
         [

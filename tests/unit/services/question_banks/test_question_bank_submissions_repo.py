@@ -60,8 +60,13 @@ class FakeConn:
         self.rolled_back += 1
 
 
+def _sql_compact(sql: str) -> str:
+    return " ".join(sql.lower().split())
+
+
 def test_insert_submission_and_mark_submitted_runs_insert_then_update() -> None:
-    fake = FakeConn()
+    fake = FakeConn(cursor_obj=FakeCursor())
+    fake.cursor_obj.rows_to_return = [("in_progress",)]
     repo = QuestionBankRdsRepository(lambda: fake)
 
     submitted_at = datetime(2026, 5, 15, 15, 30, tzinfo=timezone.utc)
@@ -73,9 +78,13 @@ def test_insert_submission_and_mark_submitted_runs_insert_then_update() -> None:
         submitted_at=submitted_at,
     )
 
-    assert len(fake.cursor_obj.executions) == 2
-    sql_ins, params_ins = fake.cursor_obj.executions[0]
-    sql_upd, params_upd = fake.cursor_obj.executions[1]
+    assert len(fake.cursor_obj.executions) == 3
+    sql_lock, params_lock = fake.cursor_obj.executions[0]
+    sql_ins, params_ins = fake.cursor_obj.executions[1]
+    sql_upd, params_upd = fake.cursor_obj.executions[2]
+    assert "module_quiz_attempts" in sql_lock
+    assert "for update" in _sql_compact(sql_lock)
+    assert params_lock == ("attempt-1",)
     assert "INSERT INTO module_quiz_attempt_submissions" in sql_ins
     assert params_ins[0] == "attempt-1"
     assert params_ins[2] == 1
@@ -90,12 +99,8 @@ def test_insert_submission_and_mark_submitted_runs_insert_then_update() -> None:
 
 
 def test_insert_submission_and_mark_submitted_raises_not_found_when_attempt_missing() -> None:
-    def on_execute(cur: FakeCursor, sql: str, params: Tuple[Any, ...]) -> None:
-        if "UPDATE module_quiz_attempts" in sql:
-            cur.rowcount = 0
-
     fake = FakeConn()
-    fake.cursor_obj._execute_impl = on_execute
+    fake.cursor_obj.rows_to_return = []
     repo = QuestionBankRdsRepository(lambda: fake)
 
     with pytest.raises(NotFound, match="attempt"):
@@ -108,6 +113,84 @@ def test_insert_submission_and_mark_submitted_raises_not_found_when_attempt_miss
 
     assert fake.rolled_back >= 1
     assert fake.committed == 0
+    assert not any(
+        "INSERT INTO module_quiz_attempt_submissions" in sql
+        for sql, _ in fake.cursor_obj.executions
+    )
+
+
+class TestSubmitOcc:
+    def test_submitted_attempt_raises_conflict_without_insert(self) -> None:
+        fake = FakeConn()
+        fake.cursor_obj.rows_to_return = [("submitted",)]
+        repo = QuestionBankRdsRepository(lambda: fake)
+
+        with pytest.raises(Conflict, match="already submitted"):
+            repo.insert_submission_and_mark_submitted(
+                attempt_id="attempt-1",
+                answers_json={"q1": "A"},
+                correct_count=1,
+                total_count=1,
+            )
+
+        assert not any(
+            "INSERT INTO module_quiz_attempt_submissions" in sql
+            for sql, _ in fake.cursor_obj.executions
+        )
+        assert fake.committed == 0
+        assert fake.rolled_back == 1
+
+    def test_insert_submission_retries_40001_then_commits_once(self) -> None:
+        fake = FakeConn()
+        fake.cursor_obj.rows_to_return = [("in_progress",), ("in_progress",)]
+        insert_calls = {"n": 0}
+        original_execute = fake.cursor_obj.execute
+
+        def execute(sql: str, params: Tuple[Any, ...] = ()) -> None:
+            original_execute(sql, params)
+            if "INSERT INTO module_quiz_attempt_submissions" in sql:
+                insert_calls["n"] += 1
+                if insert_calls["n"] == 1:
+                    err = Exception("serialization failure")
+                    err.pgcode = "40001"  # type: ignore[attr-defined]
+                    raise err
+
+        fake.cursor_obj.execute = execute  # type: ignore[method-assign]
+        repo = QuestionBankRdsRepository(lambda: fake)
+
+        repo.insert_submission_and_mark_submitted(
+            attempt_id="attempt-1",
+            answers_json={"q1": "A"},
+            correct_count=1,
+            total_count=1,
+        )
+
+        assert insert_calls["n"] == 2
+        assert fake.rolled_back == 1
+        assert fake.committed == 1
+
+    def test_insert_submission_body_does_not_commit_during_execute(self) -> None:
+        fake = FakeConn()
+        fake.cursor_obj.rows_to_return = [("in_progress",)]
+        commits_during_execute: list[int] = []
+        original_execute = fake.cursor_obj.execute
+
+        def execute(sql: str, params: Tuple[Any, ...] = ()) -> None:
+            commits_during_execute.append(fake.committed)
+            original_execute(sql, params)
+
+        fake.cursor_obj.execute = execute  # type: ignore[method-assign]
+        repo = QuestionBankRdsRepository(lambda: fake)
+
+        repo.insert_submission_and_mark_submitted(
+            attempt_id="attempt-1",
+            answers_json={"q1": "A"},
+            correct_count=1,
+            total_count=1,
+        )
+
+        assert commits_during_execute == [0, 0, 0]
+        assert fake.committed == 1
 
 
 def test_get_latest_submission_for_binding_orders_by_submitted_at() -> None:
@@ -206,6 +289,7 @@ def test_insert_submission_duplicate_maps_to_conflict() -> None:
             raise pg_errors.UniqueViolation("duplicate submission")
 
     fake = FakeConn()
+    fake.cursor_obj.rows_to_return = [("in_progress",)]
     fake.cursor_obj._execute_impl = boom
     repo = QuestionBankRdsRepository(lambda: fake)
 

@@ -8,7 +8,12 @@ from unittest.mock import MagicMock
 import pytest
 
 from services.common.errors import BadRequest, Conflict, Forbidden, NotFound
-from services.question_banks.models import ModuleQuiz, Question, QuestionBank
+from services.question_banks.models import (
+    MAX_QUESTIONS_PER_BANK,
+    ModuleQuiz,
+    Question,
+    QuestionBank,
+)
 from services.question_banks.service import QuestionBankService
 
 _COURSE_ID = "course-11111111-1111-1111-1111-111111111111"
@@ -819,10 +824,59 @@ def test_create_draft_question_rejects_blank_prompt() -> None:
     repo.insert_draft_question.assert_not_called()
 
 
+def test_max_questions_per_bank_is_1499() -> None:
+    assert MAX_QUESTIONS_PER_BANK == 1499
+
+
+def test_create_draft_question_rejects_at_bank_question_cap() -> None:
+    authorizer = MagicMock()
+    repo = MagicMock()
+    repo.get_bank_for_course.return_value = _draft_bank()
+    repo.list_questions_for_course_bank.return_value = [
+        _draft_q(qid=f"q{i}") for i in range(MAX_QUESTIONS_PER_BANK)
+    ]
+    svc = _make_service(authorizer, repo)
+    with pytest.raises(BadRequest) as exc_info:
+        svc.create_draft_question(
+            _COURSE_ID,
+            _BANK_ID,
+            prompt_text="One too many?",
+            options_json=_MCQ_A,
+            correct_option_key="A",
+            cognito_sub=_COGNITO_SUB,
+            role=_ROLE,
+        )
+    assert exc_info.value.code == "question_bank_question_limit"
+    assert "1499" in exc_info.value.message
+    repo.insert_draft_question.assert_not_called()
+
+
+def test_publish_rejects_when_drafts_exceed_bank_cap() -> None:
+    authorizer = MagicMock()
+    repo = MagicMock()
+    repo.get_bank_for_course.return_value = _draft_bank()
+    repo.list_draft_questions.return_value = [
+        _draft_q(qid=f"q{i}") for i in range(MAX_QUESTIONS_PER_BANK + 1)
+    ]
+    svc = _make_service(authorizer, repo)
+    with pytest.raises(BadRequest) as exc_info:
+        svc.publish_question_bank(
+            _COURSE_ID,
+            _BANK_ID,
+            _MODULE_ID,
+            1,
+            cognito_sub=_COGNITO_SUB,
+            role=_ROLE,
+        )
+    assert exc_info.value.code == "question_bank_question_limit"
+    repo.publish_bank_transaction.assert_not_called()
+
+
 def test_create_draft_question_inserts_when_bank_draft() -> None:
     authorizer = MagicMock()
     repo = MagicMock()
     repo.get_bank_for_course.return_value = _draft_bank()
+    repo.list_questions_for_course_bank.return_value = []
     repo.insert_draft_question.return_value = "new-q-id"
     svc = _make_service(authorizer, repo)
     out = svc.create_draft_question(

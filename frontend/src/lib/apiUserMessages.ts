@@ -366,6 +366,10 @@ function mapByApiErrorCode(err: ApiError): string | null {
   if (isMediaCleanupUnavailableError(err)) {
     return "Media cleanup is not configured for this environment, so modules with uploaded videos can't be deleted right now. Contact an admin."
   }
+  if (err.code === 'question_bank_question_limit') {
+    const trimmed = err.message.trim()
+    if (trimmed) return trimmed
+  }
   return null
 }
 

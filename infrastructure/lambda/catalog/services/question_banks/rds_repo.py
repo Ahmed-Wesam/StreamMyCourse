@@ -16,10 +16,12 @@ except Exception:  # pragma: no cover - surface at first DB call instead
     pg_errors = None  # type: ignore[assignment]
     PgJson = None  # type: ignore[assignment]
 
+from services.common.db_tx import delete_in_batches, run_transaction
 from services.common.errors import BadRequest, Conflict, NotFound
 from services.question_banks.mcq_validation import validate_draft_question_for_publish
 from services.question_banks.visibility import module_quiz_score_percent
 from services.question_banks.models import (
+    MAX_QUESTIONS_PER_BANK,
     BoundQuestion,
     ModuleQuiz,
     ModuleQuizAttempt,
@@ -34,6 +36,172 @@ from services.question_banks.models import (
 logger = logging.getLogger(__name__)
 
 ConnectionFactory = Callable[[], Any]
+
+_DELETE_QUIZ_SUBMISSIONS_FOR_USER_SQL = """
+DELETE FROM module_quiz_attempt_submissions AS t
+USING (
+    SELECT s.attempt_id
+    FROM module_quiz_attempt_submissions s
+    INNER JOIN module_quiz_attempts a ON a.id = s.attempt_id
+    INNER JOIN student_module_quiz_bindings b ON b.id = a.binding_id
+    WHERE b.user_sub = %s
+    LIMIT 1000
+) AS batch
+WHERE t.attempt_id = batch.attempt_id
+"""
+_DELETE_QUIZ_ATTEMPTS_FOR_USER_SQL = """
+DELETE FROM module_quiz_attempts AS t
+USING (
+    SELECT a.id
+    FROM module_quiz_attempts a
+    INNER JOIN student_module_quiz_bindings b ON b.id = a.binding_id
+    WHERE b.user_sub = %s
+    LIMIT 1000
+) AS batch
+WHERE t.id = batch.id
+"""
+_DELETE_BINDING_QUESTIONS_FOR_USER_SQL = """
+DELETE FROM student_module_quiz_binding_questions AS t
+USING (
+    SELECT bq.binding_id, bq.position
+    FROM student_module_quiz_binding_questions bq
+    INNER JOIN student_module_quiz_bindings b ON b.id = bq.binding_id
+    WHERE b.user_sub = %s
+    LIMIT 1000
+) AS batch
+WHERE t.binding_id = batch.binding_id AND t.position = batch.position
+"""
+_DELETE_BINDINGS_FOR_USER_SQL = """
+DELETE FROM student_module_quiz_bindings AS t
+USING (
+    SELECT id FROM student_module_quiz_bindings
+    WHERE user_sub = %s
+    LIMIT 1000
+) AS batch
+WHERE t.id = batch.id
+"""
+_DELETE_QUIZ_SUBMISSIONS_FOR_COURSE_SQL = """
+DELETE FROM module_quiz_attempt_submissions AS t
+USING (
+    SELECT s.attempt_id
+    FROM module_quiz_attempt_submissions s
+    INNER JOIN module_quiz_attempts a ON a.id = s.attempt_id
+    INNER JOIN student_module_quiz_bindings b ON b.id = a.binding_id
+    WHERE b.course_id = %s
+    LIMIT 1000
+) AS batch
+WHERE t.attempt_id = batch.attempt_id
+"""
+_DELETE_QUIZ_ATTEMPTS_FOR_COURSE_SQL = """
+DELETE FROM module_quiz_attempts AS t
+USING (
+    SELECT a.id
+    FROM module_quiz_attempts a
+    INNER JOIN student_module_quiz_bindings b ON b.id = a.binding_id
+    WHERE b.course_id = %s
+    LIMIT 1000
+) AS batch
+WHERE t.id = batch.id
+"""
+_DELETE_BINDING_QUESTIONS_FOR_COURSE_SQL = """
+DELETE FROM student_module_quiz_binding_questions AS t
+USING (
+    SELECT bq.binding_id, bq.position
+    FROM student_module_quiz_binding_questions bq
+    INNER JOIN student_module_quiz_bindings b ON b.id = bq.binding_id
+    WHERE b.course_id = %s
+    LIMIT 1000
+) AS batch
+WHERE t.binding_id = batch.binding_id AND t.position = batch.position
+"""
+_DELETE_BINDINGS_FOR_COURSE_SQL = """
+DELETE FROM student_module_quiz_bindings AS t
+USING (
+    SELECT id FROM student_module_quiz_bindings
+    WHERE course_id = %s
+    LIMIT 1000
+) AS batch
+WHERE t.id = batch.id
+"""
+_DELETE_MODULE_QUIZZES_FOR_COURSE_SQL = """
+DELETE FROM module_quizzes AS t
+USING (
+    SELECT id FROM module_quizzes
+    WHERE course_id = %s
+    LIMIT 1000
+) AS batch
+WHERE t.id = batch.id
+"""
+_DELETE_QUESTIONS_FOR_COURSE_SQL = """
+DELETE FROM questions AS t
+USING (
+    SELECT id FROM questions
+    WHERE course_id = %s
+    LIMIT 1000
+) AS batch
+WHERE t.id = batch.id
+"""
+_DELETE_QUESTION_BANKS_FOR_COURSE_SQL = """
+DELETE FROM question_banks AS t
+USING (
+    SELECT id FROM question_banks
+    WHERE course_id = %s
+    LIMIT 1000
+) AS batch
+WHERE t.id = batch.id
+"""
+_DELETE_QUIZ_SUBMISSIONS_FOR_MODULE_SQL = """
+DELETE FROM module_quiz_attempt_submissions AS t
+USING (
+    SELECT s.attempt_id
+    FROM module_quiz_attempt_submissions s
+    INNER JOIN module_quiz_attempts a ON a.id = s.attempt_id
+    INNER JOIN student_module_quiz_bindings b ON b.id = a.binding_id
+    INNER JOIN module_quizzes mq ON mq.id = b.module_quiz_id
+    WHERE mq.course_id = %s AND mq.module_id = %s
+    LIMIT 1000
+) AS batch
+WHERE t.attempt_id = batch.attempt_id
+"""
+_DELETE_QUIZ_ATTEMPTS_FOR_MODULE_SQL = """
+DELETE FROM module_quiz_attempts AS t
+USING (
+    SELECT a.id
+    FROM module_quiz_attempts a
+    INNER JOIN student_module_quiz_bindings b ON b.id = a.binding_id
+    INNER JOIN module_quizzes mq ON mq.id = b.module_quiz_id
+    WHERE mq.course_id = %s AND mq.module_id = %s
+    LIMIT 1000
+) AS batch
+WHERE t.id = batch.id
+"""
+_DELETE_BINDING_QUESTIONS_FOR_MODULE_SQL = """
+DELETE FROM student_module_quiz_binding_questions AS t
+USING (
+    SELECT bq.binding_id, bq.position
+    FROM student_module_quiz_binding_questions bq
+    INNER JOIN student_module_quiz_bindings b ON b.id = bq.binding_id
+    INNER JOIN module_quizzes mq ON mq.id = b.module_quiz_id
+    WHERE mq.course_id = %s AND mq.module_id = %s
+    LIMIT 1000
+) AS batch
+WHERE t.binding_id = batch.binding_id AND t.position = batch.position
+"""
+_DELETE_BINDINGS_FOR_MODULE_SQL = """
+DELETE FROM student_module_quiz_bindings AS t
+USING (
+    SELECT b.id
+    FROM student_module_quiz_bindings b
+    INNER JOIN module_quizzes mq ON mq.id = b.module_quiz_id
+    WHERE mq.course_id = %s AND mq.module_id = %s
+    LIMIT 1000
+) AS batch
+WHERE t.id = batch.id
+"""
+
+_BANK_QUESTION_LIMIT_MESSAGE = (
+    f"Question bank cannot exceed {MAX_QUESTIONS_PER_BANK} questions"
+)
 
 
 def _to_iso(value: Any) -> str:
@@ -334,22 +502,26 @@ class QuestionBankRdsRepository:
         self, *, course_id: str, name: str, status: str = "DRAFT"
     ) -> str:
         """Create a course-scoped bank; returns new bank id."""
-        try:
-            cur = self._execute(
-                """
-                INSERT INTO question_banks (course_id, name, status)
-                VALUES (%s, %s, %s)
-                RETURNING id
-                """,
-                (course_id, name, status),
-                commit=True,
-            )
-        except Exception as exc:
-            self._raise_integrity(exc, for_module_quiz=False)
-        row = cur.fetchone()
-        if not row:
-            raise RuntimeError("INSERT question_banks returned no row")
-        return str(row[0])
+        conn = self._connection()
+        sql = """
+            INSERT INTO question_banks (course_id, name, status)
+            VALUES (%s, %s, %s)
+            RETURNING id
+            """
+        params = (course_id, name, status)
+
+        def body() -> str:
+            cur = conn.cursor()
+            try:
+                cur.execute(sql, params)
+            except Exception as exc:
+                self._raise_integrity(exc, for_module_quiz=False)
+            row = cur.fetchone()
+            if not row:
+                raise RuntimeError("INSERT question_banks returned no row")
+            return str(row[0])
+
+        return run_transaction(conn, body)
 
     def insert_module_quiz(
         self,
@@ -361,24 +533,34 @@ class QuestionBankRdsRepository:
         pass_percent: int = 70,
     ) -> str:
         """Create at most one quiz row per module (enforced by UNIQUE(module_id))."""
-        try:
-            cur = self._execute(
-                """
-                INSERT INTO module_quizzes (
-                    course_id, module_id, question_bank_id, served_count_n, pass_percent
-                )
-                VALUES (%s, %s, %s, %s, %s)
-                RETURNING id
-                """,
-                (course_id, module_id, question_bank_id, served_count_n, pass_percent),
-                commit=True,
+        conn = self._connection()
+        sql = """
+            INSERT INTO module_quizzes (
+                course_id, module_id, question_bank_id, served_count_n, pass_percent
             )
-        except Exception as exc:
-            self._raise_integrity(exc, for_module_quiz=True)
-        row = cur.fetchone()
-        if not row:
-            raise RuntimeError("INSERT module_quizzes returned no row")
-        return str(row[0])
+            VALUES (%s, %s, %s, %s, %s)
+            RETURNING id
+            """
+        params = (
+            course_id,
+            module_id,
+            question_bank_id,
+            served_count_n,
+            pass_percent,
+        )
+
+        def body() -> str:
+            cur = conn.cursor()
+            try:
+                cur.execute(sql, params)
+            except Exception as exc:
+                self._raise_integrity(exc, for_module_quiz=True)
+            row = cur.fetchone()
+            if not row:
+                raise RuntimeError("INSERT module_quizzes returned no row")
+            return str(row[0])
+
+        return run_transaction(conn, body)
 
     def get_question_bank_by_id(self, *, bank_id: str) -> Optional[QuestionBank]:
         cur = self._execute(
@@ -455,20 +637,24 @@ class QuestionBankRdsRepository:
     def update_question_bank_name(
         self, *, course_id: str, bank_id: str, name: str
     ) -> None:
-        try:
-            cur = self._execute(
-                """
-                UPDATE question_banks
-                SET name = %s, updated_at = NOW()
-                WHERE id = %s AND course_id = %s
-                """,
-                (name, bank_id, course_id),
-                commit=True,
-            )
-        except Exception as exc:
-            self._raise_integrity(exc, for_module_quiz=False)
-        if cur.rowcount != 1:
-            raise NotFound("Question bank not found for this course")
+        conn = self._connection()
+        sql = """
+            UPDATE question_banks
+            SET name = %s, updated_at = NOW()
+            WHERE id = %s AND course_id = %s
+            """
+        params = (name, bank_id, course_id)
+
+        def body() -> None:
+            cur = conn.cursor()
+            try:
+                cur.execute(sql, params)
+            except Exception as exc:
+                self._raise_integrity(exc, for_module_quiz=False)
+            if cur.rowcount != 1:
+                raise NotFound("Question bank not found for this course")
+
+        run_transaction(conn, body)
 
     def list_module_quizzes_for_course(self, *, course_id: str) -> list[ModuleQuiz]:
         cur = self._execute(
@@ -488,20 +674,24 @@ class QuestionBankRdsRepository:
     def update_module_quiz_pass_percent(
         self, *, course_id: str, module_id: str, pass_percent: int
     ) -> None:
-        try:
-            cur = self._execute(
-                """
-                UPDATE module_quizzes
-                SET pass_percent = %s, updated_at = NOW()
-                WHERE course_id = %s AND module_id = %s
-                """,
-                (pass_percent, course_id, module_id),
-                commit=True,
-            )
-        except Exception as exc:
-            self._raise_integrity(exc, for_module_quiz=True)
-        if cur.rowcount != 1:
-            raise NotFound("Module quiz not found for this course")
+        conn = self._connection()
+        sql = """
+            UPDATE module_quizzes
+            SET pass_percent = %s, updated_at = NOW()
+            WHERE course_id = %s AND module_id = %s
+            """
+        params = (pass_percent, course_id, module_id)
+
+        def body() -> None:
+            cur = conn.cursor()
+            try:
+                cur.execute(sql, params)
+            except Exception as exc:
+                self._raise_integrity(exc, for_module_quiz=True)
+            if cur.rowcount != 1:
+                raise NotFound("Module quiz not found for this course")
+
+        run_transaction(conn, body)
 
     def list_questions_for_course_bank(
         self, *, course_id: str, bank_id: str
@@ -531,6 +721,32 @@ class QuestionBankRdsRepository:
         )
         return [self._question_from_row(row) for row in cur.fetchall()]
 
+    @staticmethod
+    def _lock_bank_and_count_questions(
+        cur: Any, *, course_id: str, bank_id: str
+    ) -> int:
+        cur.execute(
+            """
+            SELECT id
+            FROM question_banks
+            WHERE id = %s AND course_id = %s
+            FOR UPDATE
+            """,
+            (bank_id, course_id),
+        )
+        if cur.fetchone() is None:
+            raise NotFound("Question bank not found for this course")
+        cur.execute(
+            """
+            SELECT COUNT(*)::int
+            FROM questions
+            WHERE course_id = %s AND question_bank_id = %s
+            """,
+            (course_id, bank_id),
+        )
+        row = cur.fetchone()
+        return int(row[0]) if row else 0
+
     def publish_bank_transaction(
         self,
         *,
@@ -540,10 +756,9 @@ class QuestionBankRdsRepository:
         n: int,
     ) -> None:
         conn = self._connection()
-        prev_autocommit = getattr(conn, "autocommit", False)
-        conn.autocommit = False
-        cur = conn.cursor()
-        try:
+
+        def body() -> None:
+            cur = conn.cursor()
             cur.execute(
                 """
                 SELECT id, status
@@ -571,6 +786,11 @@ class QuestionBankRdsRepository:
             draft_total = int(cur.fetchone()[0])
             if draft_total == 0:
                 raise BadRequest("Cannot publish: question bank has no draft questions")
+            if draft_total > MAX_QUESTIONS_PER_BANK:
+                raise BadRequest(
+                    _BANK_QUESTION_LIMIT_MESSAGE,
+                    code="question_bank_question_limit",
+                )
             if n > draft_total:
                 raise BadRequest(
                     "Cannot publish: N is greater than the number of draft questions"
@@ -647,12 +867,7 @@ class QuestionBankRdsRepository:
                     "No module quiz row for this module linked to this question bank"
                 )
 
-            conn.commit()
-        except Exception:
-            conn.rollback()
-            raise
-        finally:
-            conn.autocommit = prev_autocommit
+        run_transaction(conn, body)
 
     def get_question_by_id(
         self, *, bank_id: str, question_id: str
@@ -680,31 +895,27 @@ class QuestionBankRdsRepository:
         options_json: Any,
         correct_option_key: Optional[str] = None,
     ) -> str:
-        try:
-            cur = self._execute(
-                """
-                INSERT INTO questions (
-                    course_id, question_bank_id, status,
-                    prompt_text, options_json, correct_option_key
-                )
-                VALUES (%s, %s, 'DRAFT', %s, %s, %s)
-                RETURNING id
-                """,
-                (
-                    course_id,
-                    bank_id,
-                    prompt_text,
-                    _pg_json(options_json),
-                    (correct_option_key or "").strip() or None,
-                ),
-                commit=True,
+        insert_sql = """
+            INSERT INTO questions (
+                course_id, question_bank_id, status,
+                prompt_text, options_json, correct_option_key
             )
-        except Exception as exc:
-            self._raise_question_integrity(exc)
-        row = cur.fetchone()
-        if not row:
-            raise RuntimeError("INSERT questions returned no row")
-        return str(row[0])
+            VALUES (%s, %s, 'DRAFT', %s, %s, %s)
+            RETURNING id
+            """
+        insert_params = (
+            course_id,
+            bank_id,
+            prompt_text,
+            _pg_json(options_json),
+            (correct_option_key or "").strip() or None,
+        )
+        return self._insert_question_after_cap_check(
+            course_id=course_id,
+            bank_id=bank_id,
+            insert_sql=insert_sql,
+            insert_params=insert_params,
+        )
 
     def insert_published_question(
         self,
@@ -716,31 +927,58 @@ class QuestionBankRdsRepository:
         correct_option_key: str,
     ) -> str:
         key = (correct_option_key or "").strip()
-        try:
-            cur = self._execute(
-                """
-                INSERT INTO questions (
-                    course_id, question_bank_id, status,
-                    prompt_text, options_json, correct_option_key
-                )
-                VALUES (%s, %s, 'PUBLISHED', %s, %s, %s)
-                RETURNING id
-                """,
-                (
-                    course_id,
-                    bank_id,
-                    (prompt_text or "").strip(),
-                    _pg_json(options_json),
-                    key or None,
-                ),
-                commit=True,
+        insert_sql = """
+            INSERT INTO questions (
+                course_id, question_bank_id, status,
+                prompt_text, options_json, correct_option_key
             )
-        except Exception as exc:
-            self._raise_question_integrity(exc)
-        row = cur.fetchone()
-        if not row:
-            raise RuntimeError("INSERT questions returned no row")
-        return str(row[0])
+            VALUES (%s, %s, 'PUBLISHED', %s, %s, %s)
+            RETURNING id
+            """
+        insert_params = (
+            course_id,
+            bank_id,
+            (prompt_text or "").strip(),
+            _pg_json(options_json),
+            key or None,
+        )
+        return self._insert_question_after_cap_check(
+            course_id=course_id,
+            bank_id=bank_id,
+            insert_sql=insert_sql,
+            insert_params=insert_params,
+        )
+
+    def _insert_question_after_cap_check(
+        self,
+        *,
+        course_id: str,
+        bank_id: str,
+        insert_sql: str,
+        insert_params: tuple[Any, ...],
+    ) -> str:
+        conn = self._connection()
+
+        def body() -> str:
+            cur = conn.cursor()
+            total = self._lock_bank_and_count_questions(
+                cur, course_id=course_id, bank_id=bank_id
+            )
+            if total >= MAX_QUESTIONS_PER_BANK:
+                raise BadRequest(
+                    _BANK_QUESTION_LIMIT_MESSAGE,
+                    code="question_bank_question_limit",
+                )
+            try:
+                cur.execute(insert_sql, insert_params)
+            except Exception as exc:
+                self._raise_question_integrity(exc)
+            row = cur.fetchone()
+            if not row:
+                raise RuntimeError("INSERT questions returned no row")
+            return str(row[0])
+
+        return run_transaction(conn, body)
 
     def update_question(
         self,
@@ -772,30 +1010,41 @@ class QuestionBankRdsRepository:
             WHERE id = %s AND course_id = %s AND question_bank_id = %s
               AND status = 'DRAFT'
         """
-        try:
-            cur = self._execute(sql, tuple(args), commit=True)
-        except Exception as exc:
-            self._raise_question_integrity(exc)
-        if cur.rowcount != 1:
-            raise NotFound("Question not found for this bank")
+        conn = self._connection()
+        params = tuple(args)
+
+        def body() -> None:
+            cur = conn.cursor()
+            try:
+                cur.execute(sql, params)
+            except Exception as exc:
+                self._raise_question_integrity(exc)
+            if cur.rowcount != 1:
+                raise NotFound("Question not found for this bank")
+
+        run_transaction(conn, body)
 
     def delete_question(
         self, *, course_id: str, bank_id: str, question_id: str
     ) -> None:
-        try:
-            cur = self._execute(
-                """
-                DELETE FROM questions
-                WHERE id = %s AND course_id = %s AND question_bank_id = %s
-                  AND status = 'DRAFT'
-                """,
-                (question_id, course_id, bank_id),
-                commit=True,
-            )
-        except Exception as exc:
-            self._raise_question_integrity(exc)
-        if cur.rowcount != 1:
-            raise NotFound("Question not found for this bank")
+        conn = self._connection()
+        sql = """
+            DELETE FROM questions
+            WHERE id = %s AND course_id = %s AND question_bank_id = %s
+              AND status = 'DRAFT'
+            """
+        params = (question_id, course_id, bank_id)
+
+        def body() -> None:
+            cur = conn.cursor()
+            try:
+                cur.execute(sql, params)
+            except Exception as exc:
+                self._raise_question_integrity(exc)
+            if cur.rowcount != 1:
+                raise NotFound("Question not found for this bank")
+
+        run_transaction(conn, body)
 
     def list_module_quiz_visibility_for_course(
         self, *, course_id: str
@@ -1058,6 +1307,88 @@ class QuestionBankRdsRepository:
             questionIds=question_ids,
         )
 
+    _BINDING_INSERT_ON_CONFLICT = """
+            INSERT INTO student_module_quiz_bindings (
+                module_quiz_id, course_id, user_sub
+            )
+            VALUES (%s, %s, %s)
+            ON CONFLICT (module_quiz_id, user_sub) DO NOTHING
+            RETURNING id
+            """
+
+    @staticmethod
+    def _insert_binding_id_or_existing(
+        cur: Any,
+        *,
+        module_quiz_id: str,
+        course_id: str,
+        user_sub: str,
+    ) -> tuple[str, bool]:
+        """Return ``(binding_id, inserted_new)`` after an idempotent binding insert."""
+        cur.execute(
+            QuestionBankRdsRepository._BINDING_INSERT_ON_CONFLICT,
+            (module_quiz_id, course_id, user_sub),
+        )
+        row = cur.fetchone()
+        if row:
+            return str(row[0]), True
+        cur.execute(
+            """
+            SELECT id FROM student_module_quiz_bindings
+            WHERE module_quiz_id = %s AND user_sub = %s
+            """,
+            (module_quiz_id, user_sub),
+        )
+        existing = cur.fetchone()
+        if existing is None:
+            raise Conflict(
+                "Student module quiz binding already exists for this quiz"
+            )
+        return str(existing[0]), False
+
+    @staticmethod
+    def _insert_binding_questions_on_cursor(
+        cur: Any, *, binding_id: str, question_ids: list[str]
+    ) -> None:
+        for position, question_id in enumerate(question_ids):
+            cur.execute(
+                """
+                INSERT INTO student_module_quiz_binding_questions (
+                    binding_id, position, question_id
+                )
+                VALUES (%s, %s, %s)
+                """,
+                (binding_id, position, question_id),
+            )
+
+    @staticmethod
+    def _lock_binding_for_update(cur: Any, *, binding_id: str) -> None:
+        cur.execute(
+            """
+            SELECT id FROM student_module_quiz_bindings
+            WHERE id = %s
+            FOR UPDATE
+            """,
+            (binding_id,),
+        )
+        if cur.fetchone() is None:
+            raise NotFound("Student module quiz binding not found")
+
+    @staticmethod
+    def _raise_if_open_attempt(cur: Any, *, binding_id: str) -> None:
+        cur.execute(
+            """
+            SELECT id FROM module_quiz_attempts
+            WHERE binding_id = %s AND status = 'in_progress'
+            LIMIT 1
+            """,
+            (binding_id,),
+        )
+        if cur.fetchone() is not None:
+            raise Conflict(
+                "Module quiz attempt already in progress for this binding"
+            )
+
     def insert_binding_with_questions(
         self,
         *,
@@ -1067,43 +1398,28 @@ class QuestionBankRdsRepository:
         question_ids: list[str],
     ) -> str:
         conn = self._connection()
-        prev_autocommit = getattr(conn, "autocommit", False)
-        conn.autocommit = False
-        cur = conn.cursor()
-        try:
-            cur.execute(
-                """
-                INSERT INTO student_module_quiz_bindings (
-                    module_quiz_id, course_id, user_sub
+
+        def body() -> str:
+            cur = conn.cursor()
+            try:
+                binding_id, inserted = self._insert_binding_id_or_existing(
+                    cur,
+                    module_quiz_id=module_quiz_id,
+                    course_id=course_id,
+                    user_sub=user_sub,
                 )
-                VALUES (%s, %s, %s)
-                RETURNING id
-                """,
-                (module_quiz_id, course_id, user_sub),
-            )
-            row = cur.fetchone()
-            if not row:
-                raise RuntimeError(
-                    "INSERT student_module_quiz_bindings returned no row"
-                )
-            binding_id = str(row[0])
-            for position, question_id in enumerate(question_ids):
-                cur.execute(
-                    """
-                    INSERT INTO student_module_quiz_binding_questions (
-                        binding_id, position, question_id
+                if inserted:
+                    self._insert_binding_questions_on_cursor(
+                        cur, binding_id=binding_id, question_ids=question_ids
                     )
-                    VALUES (%s, %s, %s)
-                    """,
-                    (binding_id, position, question_id),
-                )
-            conn.commit()
-            return binding_id
-        except Exception as exc:
-            conn.rollback()
-            self._raise_binding_integrity(exc)
-        finally:
-            conn.autocommit = prev_autocommit
+                return binding_id
+            except Conflict:
+                raise
+            except Exception as exc:
+                self._raise_binding_integrity(exc)
+            raise RuntimeError("unreachable")
+
+        return run_transaction(conn, body)
 
     @staticmethod
     def _replace_binding_questions_on_cursor(
@@ -1131,20 +1447,19 @@ class QuestionBankRdsRepository:
         self, *, binding_id: str, question_ids: list[str]
     ) -> None:
         """Replace all binding question rows for a binding (single transaction)."""
+
         conn = self._connection()
-        prev_autocommit = getattr(conn, "autocommit", False)
-        conn.autocommit = False
-        cur = conn.cursor()
-        try:
+
+        def body() -> None:
+            cur = conn.cursor()
             self._replace_binding_questions_on_cursor(
                 cur, binding_id=binding_id, question_ids=question_ids
             )
-            conn.commit()
+
+        try:
+            run_transaction(conn, body)
         except Exception as exc:
-            conn.rollback()
             self._raise_binding_integrity(exc)
-        finally:
-            conn.autocommit = prev_autocommit
 
     def insert_binding_with_questions_and_initial_attempt(
         self,
@@ -1158,73 +1473,55 @@ class QuestionBankRdsRepository:
     ) -> str:
         """Insert binding, binding questions, and attempt 1 in one transaction."""
         conn = self._connection()
-        prev_autocommit = getattr(conn, "autocommit", False)
-        conn.autocommit = False
-        cur = conn.cursor()
-        try:
-            cur.execute(
-                """
-                INSERT INTO student_module_quiz_bindings (
-                    module_quiz_id, course_id, user_sub
+
+        def body() -> str:
+            cur = conn.cursor()
+            try:
+                binding_id, inserted = self._insert_binding_id_or_existing(
+                    cur,
+                    module_quiz_id=module_quiz_id,
+                    course_id=course_id,
+                    user_sub=user_sub,
                 )
-                VALUES (%s, %s, %s)
-                RETURNING id
-                """,
-                (module_quiz_id, course_id, user_sub),
-            )
-            row = cur.fetchone()
-            if not row:
-                raise RuntimeError(
-                    "INSERT student_module_quiz_bindings returned no row"
+                if not inserted:
+                    return binding_id
+                self._insert_binding_questions_on_cursor(
+                    cur, binding_id=binding_id, question_ids=question_ids
                 )
-            binding_id = str(row[0])
-            for position, question_id in enumerate(question_ids):
                 cur.execute(
                     """
-                    INSERT INTO student_module_quiz_binding_questions (
-                        binding_id, position, question_id
+                    INSERT INTO module_quiz_attempts (
+                        binding_id,
+                        attempt_number,
+                        status,
+                        shuffled_question_order,
+                        shuffled_choice_orders
                     )
-                    VALUES (%s, %s, %s)
+                    VALUES (%s, 1, 'in_progress', %s, %s)
+                    RETURNING id
                     """,
-                    (binding_id, position, question_id),
+                    (
+                        binding_id,
+                        _pg_json(shuffled_question_order),
+                        _pg_json(shuffled_choice_orders),
+                    ),
                 )
-            cur.execute(
-                """
-                INSERT INTO module_quiz_attempts (
-                    binding_id,
-                    attempt_number,
-                    status,
-                    shuffled_question_order,
-                    shuffled_choice_orders
-                )
-                VALUES (%s, 1, 'in_progress', %s, %s)
-                RETURNING id
-                """,
-                (
-                    binding_id,
-                    _pg_json(shuffled_question_order),
-                    _pg_json(shuffled_choice_orders),
-                ),
-            )
-            if not cur.fetchone():
-                raise RuntimeError("INSERT module_quiz_attempts returned no row")
-            conn.commit()
-            return binding_id
-        except Exception as exc:
-            conn.rollback()
-            if isinstance(exc, pg_errors.UniqueViolation):
-                constraint = ""
-                diag = getattr(exc, "diag", None)
-                if diag is not None:
-                    name = getattr(diag, "constraint_name", None)
-                    if name:
-                        constraint = str(name)
-                if "student_module_quiz_bindings" in constraint:
-                    self._raise_binding_integrity(exc)
-                self._raise_attempt_integrity(exc)
-            self._raise_binding_integrity(exc)
-        finally:
-            conn.autocommit = prev_autocommit
+                if not cur.fetchone():
+                    raise RuntimeError(
+                        "INSERT module_quiz_attempts returned no row"
+                    )
+                return binding_id
+            except Conflict:
+                raise
+            except Exception as exc:
+                if pg_errors is not None and isinstance(
+                    exc, pg_errors.UniqueViolation
+                ):
+                    self._raise_attempt_integrity(exc)
+                self._raise_binding_integrity(exc)
+            raise RuntimeError("unreachable")
+
+        return run_transaction(conn, body)
 
     _ATTEMPT_SELECT = """
             SELECT id, binding_id, attempt_number, status,
@@ -1270,41 +1567,46 @@ class QuestionBankRdsRepository:
         shuffled_choice_orders: dict[str, list[str]],
     ) -> ModuleQuizAttempt:
         conn = self._connection()
-        prev_autocommit = getattr(conn, "autocommit", False)
-        conn.autocommit = False
-        cur = conn.cursor()
-        try:
-            cur.execute(
-                """
-                INSERT INTO module_quiz_attempts (
-                    binding_id,
-                    attempt_number,
-                    status,
-                    shuffled_question_order,
-                    shuffled_choice_orders
+
+        def body() -> ModuleQuizAttempt:
+            cur = conn.cursor()
+            try:
+                self._lock_binding_for_update(cur, binding_id=binding_id)
+                self._raise_if_open_attempt(cur, binding_id=binding_id)
+                cur.execute(
+                    """
+                    INSERT INTO module_quiz_attempts (
+                        binding_id,
+                        attempt_number,
+                        status,
+                        shuffled_question_order,
+                        shuffled_choice_orders
+                    )
+                    VALUES (%s, %s, 'in_progress', %s, %s)
+                    RETURNING id, binding_id, attempt_number, status,
+                              shuffled_question_order, shuffled_choice_orders,
+                              started_at, submitted_at
+                    """,
+                    (
+                        binding_id,
+                        attempt_number,
+                        _pg_json(shuffled_question_order),
+                        _pg_json(shuffled_choice_orders),
+                    ),
                 )
-                VALUES (%s, %s, 'in_progress', %s, %s)
-                RETURNING id, binding_id, attempt_number, status,
-                          shuffled_question_order, shuffled_choice_orders,
-                          started_at, submitted_at
-                """,
-                (
-                    binding_id,
-                    attempt_number,
-                    _pg_json(shuffled_question_order),
-                    _pg_json(shuffled_choice_orders),
-                ),
-            )
-            row = cur.fetchone()
-            if not row:
-                raise RuntimeError("INSERT module_quiz_attempts returned no row")
-            conn.commit()
-            return self._row_to_attempt(row)
-        except Exception as exc:
-            conn.rollback()
-            self._raise_attempt_integrity(exc)
-        finally:
-            conn.autocommit = prev_autocommit
+                row = cur.fetchone()
+                if not row:
+                    raise RuntimeError(
+                        "INSERT module_quiz_attempts returned no row"
+                    )
+                return self._row_to_attempt(row)
+            except Conflict:
+                raise
+            except Exception as exc:
+                self._raise_attempt_integrity(exc)
+            raise RuntimeError("unreachable")
+
+        return run_transaction(conn, body)
 
     def redraw_binding_and_insert_attempt(
         self,
@@ -1317,46 +1619,70 @@ class QuestionBankRdsRepository:
     ) -> ModuleQuizAttempt:
         """Redraw binding questions and insert a new attempt in one transaction."""
         conn = self._connection()
-        prev_autocommit = getattr(conn, "autocommit", False)
-        conn.autocommit = False
-        cur = conn.cursor()
-        try:
-            self._replace_binding_questions_on_cursor(
-                cur, binding_id=binding_id, question_ids=question_ids
-            )
-            cur.execute(
-                """
-                INSERT INTO module_quiz_attempts (
-                    binding_id,
-                    attempt_number,
-                    status,
-                    shuffled_question_order,
-                    shuffled_choice_orders
+
+        def body() -> ModuleQuizAttempt:
+            cur = conn.cursor()
+            try:
+                self._lock_binding_for_update(cur, binding_id=binding_id)
+                self._raise_if_open_attempt(cur, binding_id=binding_id)
+                self._replace_binding_questions_on_cursor(
+                    cur, binding_id=binding_id, question_ids=question_ids
                 )
-                VALUES (%s, %s, 'in_progress', %s, %s)
-                RETURNING id, binding_id, attempt_number, status,
-                          shuffled_question_order, shuffled_choice_orders,
-                          started_at, submitted_at
-                """,
-                (
-                    binding_id,
-                    attempt_number,
-                    _pg_json(shuffled_question_order),
-                    _pg_json(shuffled_choice_orders),
-                ),
-            )
-            row = cur.fetchone()
-            if not row:
-                raise RuntimeError("INSERT module_quiz_attempts returned no row")
-            conn.commit()
-            return self._row_to_attempt(row)
-        except Exception as exc:
-            conn.rollback()
-            if isinstance(exc, pg_errors.UniqueViolation):
-                self._raise_attempt_integrity(exc)
-            self._raise_binding_integrity(exc)
-        finally:
-            conn.autocommit = prev_autocommit
+                cur.execute(
+                    """
+                    INSERT INTO module_quiz_attempts (
+                        binding_id,
+                        attempt_number,
+                        status,
+                        shuffled_question_order,
+                        shuffled_choice_orders
+                    )
+                    VALUES (%s, %s, 'in_progress', %s, %s)
+                    RETURNING id, binding_id, attempt_number, status,
+                              shuffled_question_order, shuffled_choice_orders,
+                              started_at, submitted_at
+                    """,
+                    (
+                        binding_id,
+                        attempt_number,
+                        _pg_json(shuffled_question_order),
+                        _pg_json(shuffled_choice_orders),
+                    ),
+                )
+                row = cur.fetchone()
+                if not row:
+                    raise RuntimeError(
+                        "INSERT module_quiz_attempts returned no row"
+                    )
+                return self._row_to_attempt(row)
+            except Conflict:
+                raise
+            except Exception as exc:
+                if pg_errors is not None and isinstance(
+                    exc, pg_errors.UniqueViolation
+                ):
+                    self._raise_attempt_integrity(exc)
+                self._raise_binding_integrity(exc)
+            raise RuntimeError("unreachable")
+
+        return run_transaction(conn, body)
+
+    @staticmethod
+    def _lock_attempt_for_submit(cur: Any, *, attempt_id: str) -> None:
+        cur.execute(
+            """
+            SELECT status
+            FROM module_quiz_attempts
+            WHERE id = %s
+            FOR UPDATE
+            """,
+            (attempt_id,),
+        )
+        row = cur.fetchone()
+        if row is None:
+            raise NotFound("Module quiz attempt not found")
+        if str(row[0]) != "in_progress":
+            raise Conflict("Quiz attempt already submitted")
 
     def mark_attempt_submitted(
         self,
@@ -1365,17 +1691,21 @@ class QuestionBankRdsRepository:
         submitted_at: Optional[datetime] = None,
     ) -> None:
         when = submitted_at if submitted_at is not None else datetime.now(timezone.utc)
-        cur = self._execute(
-            """
+        conn = self._connection()
+        sql = """
             UPDATE module_quiz_attempts
             SET status = 'submitted', submitted_at = %s
             WHERE id = %s
-            """,
-            (when, attempt_id),
-            commit=True,
-        )
-        if cur.rowcount < 1:
-            raise NotFound("Module quiz attempt not found")
+            """
+        params = (when, attempt_id)
+
+        def body() -> None:
+            cur = conn.cursor()
+            cur.execute(sql, params)
+            if cur.rowcount < 1:
+                raise NotFound("Module quiz attempt not found")
+
+        run_transaction(conn, body)
 
     def insert_submission_and_mark_submitted(
         self,
@@ -1389,44 +1719,42 @@ class QuestionBankRdsRepository:
         """Insert ``module_quiz_attempt_submissions`` and mark the attempt submitted (one transaction)."""
         when = submitted_at if submitted_at is not None else datetime.now(timezone.utc)
         conn = self._connection()
-        prev_autocommit = getattr(conn, "autocommit", False)
-        conn.autocommit = False
-        cur = conn.cursor()
-        try:
-            cur.execute(
-                """
-                INSERT INTO module_quiz_attempt_submissions (
-                    attempt_id, answers_json, correct_count, total_count, submitted_at
+
+        def body() -> None:
+            cur = conn.cursor()
+            try:
+                self._lock_attempt_for_submit(cur, attempt_id=attempt_id)
+                cur.execute(
+                    """
+                    INSERT INTO module_quiz_attempt_submissions (
+                        attempt_id, answers_json, correct_count, total_count, submitted_at
+                    )
+                    VALUES (%s, %s, %s, %s, %s)
+                    """,
+                    (
+                        attempt_id,
+                        _pg_json(answers_json),
+                        correct_count,
+                        total_count,
+                        when,
+                    ),
                 )
-                VALUES (%s, %s, %s, %s, %s)
-                """,
-                (
-                    attempt_id,
-                    _pg_json(answers_json),
-                    correct_count,
-                    total_count,
-                    when,
-                ),
-            )
-            cur.execute(
-                """
-                UPDATE module_quiz_attempts
-                SET status = 'submitted', submitted_at = %s
-                WHERE id = %s
-                """,
-                (when, attempt_id),
-            )
-            if cur.rowcount < 1:
-                conn.rollback()
-                raise NotFound("Module quiz attempt not found")
-            conn.commit()
-        except NotFound:
-            raise
-        except Exception as exc:
-            conn.rollback()
-            self._raise_submission_integrity(exc)
-        finally:
-            conn.autocommit = prev_autocommit
+                cur.execute(
+                    """
+                    UPDATE module_quiz_attempts
+                    SET status = 'submitted', submitted_at = %s
+                    WHERE id = %s
+                    """,
+                    (when, attempt_id),
+                )
+                if cur.rowcount < 1:
+                    raise NotFound("Module quiz attempt not found")
+            except (Conflict, NotFound):
+                raise
+            except Exception as exc:
+                self._raise_submission_integrity(exc)
+
+        run_transaction(conn, body)
 
     def get_latest_submission_for_binding(
         self, *, binding_id: str
@@ -1548,3 +1876,65 @@ class QuestionBankRdsRepository:
         if not row:
             return None
         return _module_quiz_from_row(row)
+
+    def _batched_delete(self, sql: str, params: tuple) -> int:
+        return delete_in_batches(self._connection(), sql, params)
+
+    def delete_module_quiz_attempt_submissions_for_user(self, user_sub: str) -> int:
+        return self._batched_delete(_DELETE_QUIZ_SUBMISSIONS_FOR_USER_SQL, (user_sub,))
+
+    def delete_module_quiz_attempts_for_user(self, user_sub: str) -> int:
+        return self._batched_delete(_DELETE_QUIZ_ATTEMPTS_FOR_USER_SQL, (user_sub,))
+
+    def delete_binding_questions_for_user(self, user_sub: str) -> int:
+        return self._batched_delete(_DELETE_BINDING_QUESTIONS_FOR_USER_SQL, (user_sub,))
+
+    def delete_bindings_for_user(self, user_sub: str) -> int:
+        return self._batched_delete(_DELETE_BINDINGS_FOR_USER_SQL, (user_sub,))
+
+    def delete_module_quiz_attempt_submissions_for_course(self, course_id: str) -> int:
+        return self._batched_delete(_DELETE_QUIZ_SUBMISSIONS_FOR_COURSE_SQL, (course_id,))
+
+    def delete_module_quiz_attempts_for_course(self, course_id: str) -> int:
+        return self._batched_delete(_DELETE_QUIZ_ATTEMPTS_FOR_COURSE_SQL, (course_id,))
+
+    def delete_binding_questions_for_course(self, course_id: str) -> int:
+        return self._batched_delete(_DELETE_BINDING_QUESTIONS_FOR_COURSE_SQL, (course_id,))
+
+    def delete_bindings_for_course(self, course_id: str) -> int:
+        return self._batched_delete(_DELETE_BINDINGS_FOR_COURSE_SQL, (course_id,))
+
+    def delete_module_quizzes_for_course(self, course_id: str) -> int:
+        return self._batched_delete(_DELETE_MODULE_QUIZZES_FOR_COURSE_SQL, (course_id,))
+
+    def delete_questions_for_course(self, course_id: str) -> int:
+        return self._batched_delete(_DELETE_QUESTIONS_FOR_COURSE_SQL, (course_id,))
+
+    def delete_question_banks_for_course(self, course_id: str) -> int:
+        return self._batched_delete(_DELETE_QUESTION_BANKS_FOR_COURSE_SQL, (course_id,))
+
+    def delete_module_quiz_attempt_submissions_for_module(
+        self, course_id: str, module_id: str
+    ) -> int:
+        return self._batched_delete(
+            _DELETE_QUIZ_SUBMISSIONS_FOR_MODULE_SQL,
+            (course_id, module_id),
+        )
+
+    def delete_module_quiz_attempts_for_module(self, course_id: str, module_id: str) -> int:
+        return self._batched_delete(
+            _DELETE_QUIZ_ATTEMPTS_FOR_MODULE_SQL,
+            (course_id, module_id),
+        )
+
+    def delete_binding_questions_for_module(self, course_id: str, module_id: str) -> int:
+        return self._batched_delete(
+            _DELETE_BINDING_QUESTIONS_FOR_MODULE_SQL,
+            (course_id, module_id),
+        )
+
+    def delete_bindings_for_module(self, course_id: str, module_id: str) -> int:
+        return self._batched_delete(
+            _DELETE_BINDINGS_FOR_MODULE_SQL,
+            (course_id, module_id),
+        )

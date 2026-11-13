@@ -35,7 +35,6 @@ INFORMATIONAL_MARKERS: tuple[str, ...] = (
     "ANY(%s::uuid[])",
     "make_interval(secs =>",
     "(NOW() AT TIME ZONE 'UTC') - (INTERVAL '1 minute' *",
-    "FOR UPDATE",
     "JSONB",
 )
 
@@ -93,6 +92,9 @@ def test_informational_statements_cover_section_nine() -> None:
     for marker in INFORMATIONAL_MARKERS:
         assert marker in joined, f"informational spike SQL missing {marker!r}"
     assert "ORDER BY" in joined and "DISTINCT ON" in joined
+    assert "FOR UPDATE" not in joined, (
+        "informational_sql_statements must not list FOR UPDATE (DSQL-6 D8)"
+    )
 
 
 def test_distinct_on_shape_matches_question_banks_repo() -> None:

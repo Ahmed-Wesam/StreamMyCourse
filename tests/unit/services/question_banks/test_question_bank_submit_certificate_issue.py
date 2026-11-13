@@ -7,6 +7,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
+from services.common.errors import Conflict
 from services.question_banks.models import (
     ModuleQuiz,
     ModuleQuizAttempt,
@@ -189,6 +190,29 @@ def test_failing_quiz_submit_does_not_call_try_issue() -> None:
     )
 
     assert out["passed"] is False
+    assert issuer.calls == []
+
+
+def test_submit_repo_conflict_does_not_call_try_issue() -> None:
+    repo = MagicMock()
+    _wire_gate(repo)
+    _wire_submit(repo)
+    repo.insert_submission_and_mark_submitted.side_effect = Conflict(
+        "Quiz attempt already submitted"
+    )
+    issuer = _FakeIssuer()
+    svc = _make_service(repo, issuer=issuer)
+
+    with pytest.raises(Conflict, match="already submitted"):
+        svc.submit_module_quiz(
+            _COURSE_ID,
+            _MODULE_ID,
+            cognito_sub=_STUDENT_A,
+            role=_ROLE,
+            attempt_id=_ATTEMPT_ID,
+            answers={"q1": "A", "q2": "B"},
+        )
+
     assert issuer.calls == []
 
 
