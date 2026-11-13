@@ -10,6 +10,7 @@ import sys
 import uuid
 from pathlib import Path
 import boto3
+import httpx
 import pytest
 
 from helpers.api import ApiClient
