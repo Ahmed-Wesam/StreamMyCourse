@@ -409,8 +409,22 @@ if [[ -z "${COGNITO_CLIENT_IDS}" ]]; then
   fi
 fi
 
+if [[ -z "${COGNITO_USER_POOL_ARN:-}" || "${COGNITO_USER_POOL_ARN}" == "None" ]]; then
+  if aws cloudformation describe-stacks --stack-name "$AUTH_STACK_NAME" --region "$REGION" &>/dev/null; then
+    COGNITO_USER_POOL_ARN="$(aws cloudformation describe-stacks \
+      --stack-name "$AUTH_STACK_NAME" \
+      --region "$REGION" \
+      --query "Stacks[0].Outputs[?OutputKey=='UserPoolArn'].OutputValue" \
+      --output text)"
+  fi
+fi
+if $IS_DSQL_PREVIEW && [[ -z "${COGNITO_USER_POOL_ARN:-}" || "${COGNITO_USER_POOL_ARN}" == "None" ]]; then
+  echo "Error: DSQL preview deploy requires CognitoUserPoolArn (set COGNITO_USER_POOL_ARN or deploy ${AUTH_STACK_NAME})." >&2
+  exit 1
+fi
+
 COGNITO_OVERRIDE=()
-if [[ -n "${COGNITO_USER_POOL_ARN:-}" ]]; then
+if [[ -n "${COGNITO_USER_POOL_ARN:-}" && "${COGNITO_USER_POOL_ARN}" != "None" ]]; then
   COGNITO_OVERRIDE+=("CognitoUserPoolArn=${COGNITO_USER_POOL_ARN}")
 fi
 if [[ -n "${COGNITO_CLIENT_IDS}" ]]; then
