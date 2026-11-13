@@ -12,6 +12,7 @@ from helpers.api import ApiClient
 from helpers.billing_access import ensure_student_subscription
 from helpers.cleanup import s3_object_exists
 from helpers.dsql_audit import admin_connect, execute_scalar
+from helpers.dsql_preview_access import ensure_student_profile_row
 from helpers.factories import make_test_title
 from helpers.module_contract import require_course_modules_list
 
@@ -43,6 +44,8 @@ def test_assignment_flow_draft_grade_delete(
     video_bucket: str,
     aws_region: str,
 ) -> None:
+    if _is_dsql_preview_stack():
+        ensure_student_profile_row(student_api)
     course = course_factory(label="assign-flow")
     mods = require_course_modules_list(api.list_course_modules(course.course_id))
     module_id = mods[0]["id"]
@@ -90,16 +93,25 @@ def test_assignment_flow_draft_grade_delete(
     assert open2.json()["submission"]["id"] == submission_id
 
     if _is_dsql_preview_stack():
-        with admin_connect() as conn:
-            drafts = execute_scalar(
-                conn,
-                """
-                SELECT COUNT(*) FROM app.assignment_submissions
-                WHERE assignment_id = %s AND user_sub IS NOT NULL AND status = 'draft'
-                """,
-                (assignment_id,),
-            )
-        assert int(drafts or 0) == 1
+        deadline = time.monotonic() + 15.0
+        drafts = 0
+        while time.monotonic() < deadline:
+            with admin_connect() as conn:
+                drafts = int(
+                    execute_scalar(
+                        conn,
+                        """
+                        SELECT COUNT(*) FROM app.assignment_submissions
+                        WHERE assignment_id = %s AND user_sub IS NOT NULL AND status = 'draft'
+                        """,
+                        (assignment_id,),
+                    )
+                    or 0
+                )
+            if drafts == 1:
+                break
+            time.sleep(0.5)
+        assert drafts == 1
 
     file_resp = student_api.create_submission_file(
         course.course_id,

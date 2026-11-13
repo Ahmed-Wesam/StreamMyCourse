@@ -20,6 +20,7 @@ from helpers.cognito_auth import (
 from helpers.dsql_audit import admin_connect, execute_scalar
 from helpers.factories import make_test_title
 from helpers.module_contract import require_course_modules_list
+from helpers.profile_patch import valid_profile_patch_body
 
 _PDF_BYTES = b"%PDF-1.4 minimal\n"
 _PDF_SIZE = len(_PDF_BYTES)
@@ -99,6 +100,8 @@ def _grade_passing_assignment(
         user_sub = str(me.json().get("userId") or me.json().get("cognitoSub") or "")
         assert user_sub
         insert_paid_bundle_purchase(user_sub)
+        playback = student.get_playback(course_id, lesson_id)
+        assert playback.status_code == 200, playback.text
     else:
         ensure_student_subscription(_api_base(), student, course_id, lesson_id)
     open_sub = student.open_assignment_submission(course_id, assignment_id)
@@ -147,9 +150,10 @@ def test_certificate_issue_verify_and_revoke(
 ) -> None:
     throwaway, pool, email = _throwaway_student_api()
     try:
-        throwaway.patch_users_me(
-            body={"givenName": "Cert", "familyName": "Student", "country": "Jordan"}
+        patched = throwaway.patch_users_me(
+            body=valid_profile_patch_body(givenName="Cert", familyName="Student")
         )
+        assert patched.status_code == 200, patched.text
         course = course_factory(label="cert-issue")
         lesson = lesson_factory(course.course_id, label="cert-issue-lesson")
         assert api.get_upload_url(course_id=course.course_id, lesson_id=lesson.lesson_id).status_code == 200
@@ -201,7 +205,10 @@ def test_course_delete_removes_certificates_preview_only(
     throwaway, pool, email = _throwaway_student_api()
     course = None
     try:
-        throwaway.patch_users_me(body={"givenName": "Cert", "familyName": "Del"})
+        patched = throwaway.patch_users_me(
+            body=valid_profile_patch_body(givenName="Cert", familyName="Del")
+        )
+        assert patched.status_code == 200, patched.text
         course = course_factory(label="cert-course-del")
         lesson = lesson_factory(course.course_id, label="cert-del-lesson")
         assert api.get_upload_url(course_id=course.course_id, lesson_id=lesson.lesson_id).status_code == 200

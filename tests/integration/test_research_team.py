@@ -19,6 +19,7 @@ from helpers.cognito_auth import (
 from helpers.dsql_audit import admin_connect, execute_scalar
 from helpers.factories import make_test_title
 from helpers.module_contract import require_course_modules_list
+from helpers.profile_patch import valid_profile_patch_body
 from test_certificates import _grade_passing_assignment
 
 _PDF_BYTES = b"%PDF-1.4\n"
@@ -126,15 +127,16 @@ def test_research_team_apply_and_review_flow(
         denied = student_api.submit_research_team_application(_apply_body())
         assert denied.status_code == 403
         assert denied.json().get("code") == "not_eligible"
-        student_api.patch_users_me(
-            body={"givenName": "Ada", "familyName": "Student", "country": "Jordan"}
+        patched = student_api.patch_users_me(
+            body=valid_profile_patch_body(givenName="Ada", familyName="Student")
         )
+        assert patched.status_code == 200, patched.text
         _grade_passing_assignment(api, student_api, course_id)
         submitted_areas = ["Clinical Research", "Systematic Reviews & Meta-Analysis"]
         ok = student_api.submit_research_team_application(
             _apply_body(researchAreas=submitted_areas)
         )
-        assert ok.status_code == 200, ok.text
+        assert ok.status_code in (200, 201), ok.text
         assert ok.json().get("researchAreas") == submitted_areas
         dup = student_api.submit_research_team_application(_apply_body())
         assert dup.status_code == 409

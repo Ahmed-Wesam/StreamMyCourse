@@ -21,7 +21,11 @@ from helpers.cognito_auth import (
     resolve_student_pool_config_or_skip,
 )
 from helpers.dsql_audit import admin_connect, execute_scalar
-from helpers.dsql_preview_access import delete_purchase_by_id, insert_paid_bundle_purchase
+from helpers.dsql_preview_access import (
+    delete_purchase_by_id,
+    ensure_student_profile_row,
+    insert_paid_bundle_purchase,
+)
 from helpers.factories import build_course_factory, build_lesson_factory
 
 _REPO = Path(__file__).resolve().parents[2]
@@ -462,6 +466,7 @@ def test_operator_delete_user_clears_assignment_submission_children(
             assert me.status_code == 200, me.text
             user_sub = str(me.json().get("userId") or me.json().get("cognitoSub") or "")
             assert user_sub
+            ensure_student_profile_row(disposable)
 
             course = course_factory(label="user-del-assign")
             course_id = course.course_id
