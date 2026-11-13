@@ -234,7 +234,7 @@ def test_fulfillment_paid_grants_course_access(api: ApiClient, course_factory, l
     finally:
         delete_webhook_events("hyperpay", [provider_event_id])
         delete_purchase_by_id(purchase_id)
-        admin_delete_cognito_user(pool["user_pool_id"], email)
+        admin_delete_cognito_user(cfg=pool, username=email)
 
 
 def _purchase_status(purchase_id: str) -> str | None:
