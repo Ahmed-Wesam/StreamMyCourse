@@ -24,6 +24,7 @@ $CFN_LINT --config-file .cfnlintrc infrastructure/templates/edge-hosting-stack.y
 $CFN_LINT --config-file .cfnlintrc infrastructure/templates/github-deploy-role-stack.yaml
 $CFN_LINT --config-file .cfnlintrc infrastructure/templates/billing-alarm.yaml
 $CFN_LINT --config-file .cfnlintrc infrastructure/templates/rds-stack.yaml
+$CFN_LINT --config-file .cfnlintrc infrastructure/templates/dsql-stack.yaml
 $CFN_LINT --config-file .cfnlintrc infrastructure/templates/media-cleanup-stack.yaml
 $CFN_LINT --config-file .cfnlintrc infrastructure/templates/transactional-mail-stack.yaml
 $CFN_LINT --config-file .cfnlintrc infrastructure/templates/video-provider-edge-stack.yaml

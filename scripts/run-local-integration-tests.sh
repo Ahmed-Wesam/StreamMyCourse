@@ -53,8 +53,8 @@ PASSWORD_ALT="${LOCAL_COGNITO_PASSWORD_ALT:-}"
 USERNAME_STUDENT="${LOCAL_COGNITO_USERNAME_STUDENT:-ci-student@noreply.local}"
 PASSWORD_STUDENT="${LOCAL_COGNITO_PASSWORD_STUDENT:-}"
 
-# Stack names (prod defaults)
-API_STACK="StreamMyCourse-Api-prod"
+# Stack names (prod defaults; override API stack for DSQL preview gate)
+API_STACK="${INTEGRATION_API_STACK:-StreamMyCourse-Api-prod}"
 VIDEO_STACK="StreamMyCourse-Video-prod"
 AUTH_STACK="StreamMyCourse-Auth-prod"
 

@@ -1,6 +1,6 @@
-# After CI succeeds on a push to main: CI gate → prod edge + prod RDS (parallel) → apply-schema-prod →
-# deploy-backend-prod → integration-http-tests (pytest against prod API + Cognito JWT from prod Environment) →
-# verify-prod-rds → prod SPAs.
+# After CI succeeds on a push to main: CI gate → prod edge + prod RDS + DSQL cluster (parallel) →
+# apply-schema-prod / dsql-compat-spike → apply-dsql-schema → deploy-backend-prod → deploy-api-dsql →
+# integration-http-tests (prod API only; no needs on DSQL lane) → verify-prod-rds → prod SPAs.
 # verify-prod-rds calls verify-rds-reusable.yml with prod CloudFormation inputs + GitHub Environment secrets.
 # Manual dispatch: runs full pipeline without waiting for upstream CI (operator responsibility).
 #
@@ -313,6 +313,165 @@ jobs:
           echo "## PostgreSQL schema (prod)" >> "$GITHUB_STEP_SUMMARY"
           echo "Invoked **StreamMyCourse-RdsSchemaApplier-prod** (bundled \`001_initial_schema.sql\` → schema.sql, includes \`lesson_progress\`, via VPC Lambda)." >> "$GITHUB_STEP_SUMMARY"
 
+  # --- Aurora DSQL side lane (prod cluster + preview API); failures fail the workflow run.
+
+  deploy-dsql-prod:
+    name: DSQL cluster (prod)
+    runs-on: ubuntu-latest
+    environment: prod
+    needs: [gate]
+    permissions:
+      id-token: write
+      contents: read
+    if: |
+      always() && needs.gate.outputs.should_deploy == 'true' &&
+      (github.event_name == 'workflow_run' || github.event_name == 'workflow_dispatch')
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ needs.gate.outputs.checkout_sha }}
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v6
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Deploy DSQL stack (prod)
+        run: |
+          set -euo pipefail
+          STACK="StreamMyCourse-Dsql-prod"
+          REGION="${{ env.AWS_REGION }}"
+          aws cloudformation validate-template \
+            --template-body "file://${{ github.workspace }}/infrastructure/templates/dsql-stack.yaml" \
+            --region "$REGION"
+          aws cloudformation deploy \
+            --template-file "${{ github.workspace }}/infrastructure/templates/dsql-stack.yaml" \
+            --stack-name "$STACK" \
+            --capabilities CAPABILITY_IAM \
+            --region "$REGION" \
+            --no-fail-on-empty-changeset
+
+      - name: Summary
+        if: success()
+        run: |
+          echo "## DSQL cluster (prod)" >> "$GITHUB_STEP_SUMMARY"
+          echo "**StreamMyCourse-Dsql-prod** deployed (deletion protection + Retain)." >> "$GITHUB_STEP_SUMMARY"
+
+  dsql-compat-spike:
+    name: DSQL compatibility spike
+    runs-on: ubuntu-latest
+    environment: prod
+    needs: [gate, deploy-dsql-prod]
+    permissions:
+      id-token: write
+      contents: read
+    if: |
+      always() && needs.gate.outputs.should_deploy == 'true' &&
+      needs.deploy-dsql-prod.result == 'success' &&
+      (github.event_name == 'workflow_run' || github.event_name == 'workflow_dispatch')
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ needs.gate.outputs.checkout_sha }}
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v6
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+
+      - name: Install spike dependencies
+        run: |
+          pip install --quiet psycopg2-binary==2.9.9 aurora-dsql-python-connector
+
+      - name: Run DSQL compatibility spike (live)
+        run: |
+          set -euo pipefail
+          STACK="StreamMyCourse-Dsql-prod"
+          REGION="${{ env.AWS_REGION }}"
+          ENDPOINT="$(aws cloudformation describe-stacks \
+            --stack-name "$STACK" \
+            --region "$REGION" \
+            --query "Stacks[0].Outputs[?OutputKey=='Endpoint'].OutputValue" \
+            --output text)"
+          if [[ -z "$ENDPOINT" || "$ENDPOINT" == "None" ]]; then
+            echo "Missing DSQL Endpoint output on $STACK" >&2
+            exit 1
+          fi
+          export DSQL_ENDPOINT="$ENDPOINT"
+          export PYTHONPATH="${{ github.workspace }}/infrastructure/lambda/catalog:${PYTHONPATH:-}"
+          python "${{ github.workspace }}/scripts/dsql_compat_spike.py" --host "$ENDPOINT"
+
+      - name: Summary
+        if: success()
+        run: |
+          echo "## DSQL compatibility spike" >> "$GITHUB_STEP_SUMMARY"
+          echo "Critical checks passed against **StreamMyCourse-Dsql-prod** (see job log for informational rows)." >> "$GITHUB_STEP_SUMMARY"
+
+  apply-dsql-schema:
+    name: Apply DSQL schema (prod)
+    runs-on: ubuntu-latest
+    environment: prod
+    needs: [gate, dsql-compat-spike]
+    permissions:
+      id-token: write
+      contents: read
+    if: |
+      always() && needs.gate.outputs.should_deploy == 'true' &&
+      needs.dsql-compat-spike.result == 'success' &&
+      (github.event_name == 'workflow_run' || github.event_name == 'workflow_dispatch')
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ needs.gate.outputs.checkout_sha }}
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v6
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+
+      - name: Install schema applier dependencies
+        run: |
+          pip install --quiet psycopg2-binary==2.9.9 aurora-dsql-python-connector
+
+      - name: Apply DSQL schema and grant prod Lambda roles
+        run: |
+          set -euo pipefail
+          STACK="StreamMyCourse-Dsql-prod"
+          REGION="${{ env.AWS_REGION }}"
+          ACCOUNT="$(aws sts get-caller-identity --query Account --output text --region "$REGION")"
+          ENDPOINT="$(aws cloudformation describe-stacks \
+            --stack-name "$STACK" \
+            --region "$REGION" \
+            --query "Stacks[0].Outputs[?OutputKey=='Endpoint'].OutputValue" \
+            --output text)"
+          if [[ -z "$ENDPOINT" || "$ENDPOINT" == "None" ]]; then
+            echo "Missing DSQL Endpoint output on $STACK" >&2
+            exit 1
+          fi
+          export PYTHONPATH="${{ github.workspace }}/infrastructure/lambda/catalog:${PYTHONPATH:-}"
+          python "${{ github.workspace }}/scripts/apply-dsql-schema.py" \
+            --host "$ENDPOINT" \
+            --iam-role-arn "arn:aws:iam::${ACCOUNT}:role/StreamMyCourse-CatalogLambdaRole-prod" \
+            --iam-role-arn "arn:aws:iam::${ACCOUNT}:role/StreamMyCourse-Auth-prod-UserProfileSyncLambdaRole" \
+            --iam-role-arn "arn:aws:iam::${ACCOUNT}:role/StreamMyCourse-BillingFulfillmentRole-prod"
+
+      - name: Summary
+        if: success()
+        run: |
+          echo "## DSQL schema (prod)" >> "$GITHUB_STEP_SUMMARY"
+          echo "Applied \`0001_schema.sql\` via admin IAM; granted three prod Lambda roles." >> "$GITHUB_STEP_SUMMARY"
+
   deploy-backend-prod:
     name: Backend (prod) — Video + API
     runs-on: ubuntu-latest
@@ -391,6 +550,7 @@ jobs:
           cp "$WS/infrastructure/lambda/cognito_user_profile_sync/session_sync.py" "$PKG/"
           cp "$WS/infrastructure/lambda/cognito_user_profile_sync/sync_config.py" "$PKG/"
           cp "$WS/infrastructure/lambda/cognito_user_profile_sync/repo.py" "$PKG/"
+          cp "$WS/infrastructure/lambda/catalog/dsql_connect.py" "$PKG/"
           pip install psycopg2-binary==2.9.9 \
             --quiet \
             --platform manylinux2014_x86_64 \
@@ -452,6 +612,23 @@ jobs:
           echo "key=${KEY}" >> "$GITHUB_OUTPUT"
           echo "Uploaded Cognito custom email sender s3://${BUCKET}/${KEY}"
 
+      - name: Resolve optional DSQL cluster ResourceArn (prod)
+        id: dsql_cluster_arn_prod
+        run: |
+          set -euo pipefail
+          STACK="StreamMyCourse-Dsql-prod"
+          REGION="${{ env.AWS_REGION }}"
+          if aws cloudformation describe-stacks --stack-name "$STACK" --region "$REGION" >/dev/null 2>&1; then
+            ARN="$(aws cloudformation describe-stacks \
+              --stack-name "$STACK" \
+              --region "$REGION" \
+              --query "Stacks[0].Outputs[?OutputKey=='ResourceArn'].OutputValue" \
+              --output text)"
+            if [[ -n "$ARN" && "$ARN" != "None" ]]; then
+              echo "arn=${ARN}" >> "$GITHUB_OUTPUT"
+            fi
+          fi
+
       - name: Ensure Zoho SMTP secret (prod)
         id: zoho_smtp_secret_prod
         env:
@@ -466,6 +643,10 @@ jobs:
         run: |
           set -euo pipefail
           STACK="StreamMyCourse-Auth-prod"
+          DSQL_AUTH_OVERRIDES=()
+          if [[ -n "${{ steps.dsql_cluster_arn_prod.outputs.arn }}" ]]; then
+            DSQL_AUTH_OVERRIDES+=("DsqlClusterArn=${{ steps.dsql_cluster_arn_prod.outputs.arn }}")
+          fi
           aws cloudformation validate-template \
             --template-body "file://${{ github.workspace }}/infrastructure/templates/auth-stack.yaml" \
             --region "${{ env.AWS_REGION }}"
@@ -492,7 +673,8 @@ jobs:
               "CognitoPreSignUpCodeS3Key=${{ steps.cognito_pre_signup_pkg_prod.outputs.key }}" \
               "CognitoCustomEmailSenderCodeS3Bucket=${{ steps.cognito_custom_email_pkg_prod.outputs.bucket }}" \
               "CognitoCustomEmailSenderCodeS3Key=${{ steps.cognito_custom_email_pkg_prod.outputs.key }}" \
-              "ZohoSmtpSecretArn=${{ steps.zoho_smtp_secret_prod.outputs.arn }}"
+              "ZohoSmtpSecretArn=${{ steps.zoho_smtp_secret_prod.outputs.arn }}" \
+              "${DSQL_AUTH_OVERRIDES[@]}"
 
           student_client_id="$(aws cloudformation describe-stacks \
             --stack-name "$STACK" \
@@ -530,7 +712,8 @@ jobs:
                 "CognitoCustomEmailSenderCodeS3Key=${{ steps.cognito_custom_email_pkg_prod.outputs.key }}" \
                 "ZohoSmtpSecretArn=${{ steps.zoho_smtp_secret_prod.outputs.arn }}" \
                 "StudentCognitoClientId=${student_client_id}" \
-                "TeacherCognitoClientId=${teacher_client_id}"
+                "TeacherCognitoClientId=${teacher_client_id}" \
+                "${DSQL_AUTH_OVERRIDES[@]}"
           fi
 
           USER_POOL_ARN="$(aws cloudformation describe-stacks \
@@ -590,11 +773,105 @@ jobs:
           chmod +x scripts/deploy-backend.sh
           ./scripts/deploy-backend.sh prod
 
+      - name: Update payments stack — DsqlClusterArn (optional)
+        if: steps.dsql_cluster_arn_prod.outputs.arn != ''
+        run: |
+          set -euo pipefail
+          STACK="StreamMyCourse-Payments-prod"
+          REGION="${{ env.AWS_REGION }}"
+          if ! aws cloudformation describe-stacks --stack-name "$STACK" --region "$REGION" >/dev/null 2>&1; then
+            echo "Payments stack missing; skipping DsqlClusterArn patch"
+            exit 0
+          fi
+          aws cloudformation validate-template \
+            --template-body "file://${{ github.workspace }}/infrastructure/templates/payments-stack.yaml" \
+            --region "$REGION"
+          aws cloudformation deploy \
+            --template-file "${{ github.workspace }}/infrastructure/templates/payments-stack.yaml" \
+            --stack-name "$STACK" \
+            --capabilities CAPABILITY_IAM CAPABILITY_NAMED_IAM \
+            --region "$REGION" \
+            --no-fail-on-empty-changeset \
+            --parameter-overrides \
+              "DsqlClusterArn=${{ steps.dsql_cluster_arn_prod.outputs.arn }}"
+
       - name: Summary
         if: success()
         run: |
           echo "## Backend prod" >> "$GITHUB_STEP_SUMMARY"
           echo "Video stack + API stack for **prod** deployed (or no-op changeset)." >> "$GITHUB_STEP_SUMMARY"
+
+  deploy-api-dsql:
+    name: Backend preview — Api-dsql (DSQL)
+    runs-on: ubuntu-latest
+    environment: prod
+    needs:
+      - gate
+      - deploy-backend-prod
+      - apply-dsql-schema
+    permissions:
+      id-token: write
+      contents: read
+    if: |
+      always() &&
+      needs.gate.outputs.should_deploy == 'true' &&
+      needs.deploy-backend-prod.result == 'success' &&
+      needs.apply-dsql-schema.result == 'success' &&
+      (github.event_name == 'workflow_run' || github.event_name == 'workflow_dispatch')
+    env:
+      GITHUB_SHA: ${{ needs.gate.outputs.checkout_sha }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ needs.gate.outputs.checkout_sha }}
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v6
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Deploy Api-dsql preview stack
+        env:
+          VIDEO_PROVIDER: s3
+        run: |
+          set -euo pipefail
+          chmod +x scripts/deploy-backend.sh
+          DSQL_PREVIEW=1 ./scripts/deploy-backend.sh prod
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+
+      - name: Install schema applier dependencies
+        run: |
+          pip install --quiet psycopg2-binary==2.9.9 aurora-dsql-python-connector
+
+      - name: Grant preview catalog role on DSQL cluster
+        run: |
+          set -euo pipefail
+          STACK="StreamMyCourse-Dsql-prod"
+          REGION="${{ env.AWS_REGION }}"
+          ACCOUNT="$(aws sts get-caller-identity --query Account --output text --region "$REGION")"
+          ENDPOINT="$(aws cloudformation describe-stacks \
+            --stack-name "$STACK" \
+            --region "$REGION" \
+            --query "Stacks[0].Outputs[?OutputKey=='Endpoint'].OutputValue" \
+            --output text)"
+          if [[ -z "$ENDPOINT" || "$ENDPOINT" == "None" ]]; then
+            echo "Missing DSQL Endpoint output on $STACK" >&2
+            exit 1
+          fi
+          export PYTHONPATH="${{ github.workspace }}/infrastructure/lambda/catalog:${PYTHONPATH:-}"
+          python "${{ github.workspace }}/scripts/apply-dsql-schema.py" \
+            --host "$ENDPOINT" \
+            --iam-role-arn "arn:aws:iam::${ACCOUNT}:role/StreamMyCourse-CatalogLambdaRole-dsql"
+
+      - name: Summary
+        if: success()
+        run: |
+          echo "## Api-dsql preview" >> "$GITHUB_STEP_SUMMARY"
+          echo "**StreamMyCourse-Api-dsql** deployed; preview catalog role granted on DSQL." >> "$GITHUB_STEP_SUMMARY"
 
   integration-http-tests:
     name: Integration HTTP tests — pytest against deployed prod API

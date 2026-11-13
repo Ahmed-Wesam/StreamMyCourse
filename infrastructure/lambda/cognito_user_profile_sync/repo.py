@@ -63,7 +63,19 @@ def _psycopg2_connect(**kwargs: Any) -> Any:
     return pg.connect(**kwargs)
 
 
-def build_connection_factory(*, db_secret_arn: str, db_host: str, db_name: str, db_port: int) -> ConnectionFactory:
+def build_connection_factory(
+    *,
+    db_secret_arn: str,
+    db_host: str,
+    db_name: str,
+    db_port: int,
+    dsql_endpoint: str = "",
+) -> ConnectionFactory:
+    endpoint = (dsql_endpoint or "").strip()
+    if endpoint:
+        from dsql_connect import build_connection_factory as dsql_factory
+
+        return dsql_factory(endpoint)
     if not db_secret_arn:
         raise RuntimeError("DB_SECRET_ARN is required")
     if not db_host:
@@ -213,5 +225,6 @@ def get_cached_connection_factory(cfg: Any) -> ConnectionFactory:
             db_host=cfg.db_host,
             db_name=cfg.db_name,
             db_port=cfg.db_port,
+            dsql_endpoint=cfg.dsql_endpoint,
         )
     return _cached_factory

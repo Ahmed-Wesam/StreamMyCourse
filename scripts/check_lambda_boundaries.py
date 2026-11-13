@@ -44,6 +44,12 @@ _CATALOG_BOTO3_ALLOWED = frozenset(
     }
 )
 
+_AURORA_DSQL_ALLOWED = frozenset(
+    {
+        _p("infrastructure/lambda/catalog/dsql_connect.py"),
+    }
+)
+
 _CATALOG_PSYCOPG2_ALLOWED = frozenset(
     {
         _p("infrastructure/lambda/catalog/bootstrap.py"),
@@ -199,6 +205,19 @@ def _check_psycopg2(rel: str, norm: str, roots: Set[str], allowed: frozenset[str
     ]
 
 
+def _check_aurora_dsql(
+    rel: str, norm: str, roots: Set[str], allowed: frozenset[str], label: str
+) -> List[Violation]:
+    if "aurora_dsql_psycopg2" not in roots or norm in allowed:
+        return []
+    return [
+        Violation(
+            rel,
+            f"aurora_dsql_psycopg2 may only be imported in {label} allowlisted files",
+        )
+    ]
+
+
 def _check_billing_edge_http(rel: str, norm: str, roots: Set[str]) -> List[Violation]:
     bad = sorted(_HTTP_CLIENT_ROOTS & roots)
     if not bad or norm in _BILLING_EDGE_HTTP_ALLOWED:
@@ -267,6 +286,9 @@ def check_file(path: str) -> List[Violation]:
         violations.extend(
             _check_psycopg2(rel, norm, roots, _CATALOG_PSYCOPG2_ALLOWED, "catalog/cognito")
         )
+        violations.extend(
+            _check_aurora_dsql(rel, norm, roots, _AURORA_DSQL_ALLOWED, "catalog/cognito")
+        )
         violations.extend(_check_catalog_http(rel, norm, roots))
         if package == "catalog":
             violations.extend(
@@ -287,6 +309,11 @@ def check_file(path: str) -> List[Violation]:
         violations.extend(
             _check_psycopg2(
                 rel, norm, roots, _BILLING_FULFILLMENT_PSYCOPG2_ALLOWED, "billing_fulfillment"
+            )
+        )
+        violations.extend(
+            _check_aurora_dsql(
+                rel, norm, roots, _AURORA_DSQL_ALLOWED, "billing_fulfillment"
             )
         )
     elif package == "video_provider_edge":

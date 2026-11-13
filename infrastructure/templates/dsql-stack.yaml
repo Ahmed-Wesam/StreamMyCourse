@@ -1,0 +1,29 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: >-
+  StreamMyCourse - Aurora DSQL cluster (prod, eu-west-1). Deletion protection enabled;
+  DeletionPolicy and UpdateReplacePolicy Retain. Single-Region; AWS-owned encryption;
+  no cluster resource policy (ADR-0016 / DSQL-1). No backups (DSQL-9).
+
+Resources:
+  Cluster:
+    Type: AWS::DSQL::Cluster
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      DeletionProtectionEnabled: true
+      Tags:
+        - Key: Project
+          Value: StreamMyCourse
+        - Key: Name
+          Value: streammycourse-prod
+
+Outputs:
+  Endpoint:
+    Description: DSQL cluster endpoint hostname (!GetAtt) for IAM database authentication.
+    Value: !GetAtt Cluster.Endpoint
+  Identifier:
+    Description: DSQL cluster identifier (CloudFormation primary id for the resource).
+    Value: !GetAtt Cluster.Identifier
+  ResourceArn:
+    Description: DSQL cluster ARN for DbConnect / DbConnectAdmin IAM policies.
+    Value: !GetAtt Cluster.ResourceArn

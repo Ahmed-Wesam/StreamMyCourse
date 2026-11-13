@@ -40,7 +40,13 @@ def build_connection_factory(
     db_host: str,
     db_name: str,
     db_port: int,
+    dsql_endpoint: str = "",
 ) -> ConnectionFactory:
+    endpoint = (dsql_endpoint or "").strip()
+    if endpoint:
+        from dsql_connect import build_connection_factory as dsql_factory
+
+        return dsql_factory(endpoint)
     if not db_secret_arn:
         raise RuntimeError("DB_SECRET_ARN is required")
     if not db_host:
@@ -276,6 +282,7 @@ def get_cached_repository(cfg: FulfillmentConfig) -> RdsFulfillmentRepository:
             db_host=cfg.db_host,
             db_name=cfg.db_name,
             db_port=cfg.db_port,
+            dsql_endpoint=cfg.dsql_endpoint,
         )
         _cached_repo = RdsFulfillmentRepository(_cached_factory)
     return _cached_repo

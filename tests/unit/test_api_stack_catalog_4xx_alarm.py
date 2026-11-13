@@ -23,7 +23,7 @@ def test_api_stack_catalog_4xx_alarm_parameter_and_resource() -> None:
     assert "Type: AWS::CloudWatch::Alarm" in text
     assert "MetricName: 4XXError" in text
     assert "Namespace: AWS/ApiGateway" in text
-    assert "StreamMyCourse-Catalog-${Environment}" in text
+    assert "StreamMyCourse-Catalog-${NameToken}" in text
     assert "Threshold: !Ref CatalogApi4xxAlarmThreshold" in text
 
 

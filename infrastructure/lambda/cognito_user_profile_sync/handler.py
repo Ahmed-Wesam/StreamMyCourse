@@ -44,9 +44,9 @@ def sync_post_authentication(event: Dict[str, Any], cfg: SyncConfig) -> Dict[str
         logger.warning("%s missing sub in userAttributes; passing event through", _LOG_PREFIX)
         return event
 
-    if not cfg.db_secret_arn or not cfg.db_host:
+    if not cfg.dsql_endpoint and (not cfg.db_secret_arn or not cfg.db_host):
         logger.warning(
-            "%s misconfigured (DB_SECRET_ARN / DB_HOST); passing event through",
+            "%s misconfigured (DB_SECRET_ARN / DB_HOST or DSQL_ENDPOINT); passing event through",
             _LOG_PREFIX,
         )
         return event

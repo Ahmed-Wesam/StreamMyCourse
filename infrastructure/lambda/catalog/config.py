@@ -17,6 +17,7 @@ class AppConfig:
     db_name: str = ""
     db_port: int = 5432
     db_secret_arn: str = ""
+    dsql_endpoint: str = ""
     # Logging configuration
     log_level: str = "INFO"
     # Optional SQS queue URL for async S3 cleanup after course delete (empty = legacy sync delete)
@@ -141,6 +142,7 @@ def load_config() -> AppConfig:
     db_name = os.environ.get("DB_NAME", "").strip()
     db_port = _parse_db_port(os.environ.get("DB_PORT", ""))
     db_secret_arn = os.environ.get("DB_SECRET_ARN", "").strip()
+    dsql_endpoint = os.environ.get("DSQL_ENDPOINT", "").strip()
 
     log_level = os.environ.get("LOG_LEVEL", "INFO").strip().upper()
     if log_level not in ("DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"):
@@ -176,6 +178,7 @@ def load_config() -> AppConfig:
         db_name=db_name,
         db_port=db_port,
         db_secret_arn=db_secret_arn,
+        dsql_endpoint=dsql_endpoint,
         log_level=log_level,
         media_cleanup_queue_url=media_cleanup_queue_url,
         transactional_mail_queue_url=transactional_mail_queue_url,

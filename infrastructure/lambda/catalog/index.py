@@ -69,13 +69,25 @@ def _rds_config_complete(cfg: AppConfig) -> bool:
     return bool(cfg.db_host and cfg.db_name and cfg.db_secret_arn)
 
 
+def _dsql_config_complete(cfg: AppConfig) -> bool:
+    return bool((cfg.dsql_endpoint or "").strip())
+
+
+def _db_config_complete(cfg: AppConfig) -> bool:
+    return _rds_config_complete(cfg) or _dsql_config_complete(cfg)
+
+
+CATALOG_UNCONFIGURED_MESSAGE = (
+    "Catalog is not configured: set DB_HOST, DB_NAME, and DB_SECRET_ARN for RDS, "
+    "or DSQL_ENDPOINT for Aurora DSQL (deploy the api stack with the matching database wiring)."
+)
+
+
 def _handle_internal_billing_event(event: Dict[str, Any]) -> Dict[str, Any]:
     """Direct invoke only — not routed via API Gateway."""
     cfg = load_config()
-    if not _rds_config_complete(cfg):
-        raise RuntimeError(
-            "Catalog is not configured: set DB_HOST, DB_NAME, and DB_SECRET_ARN"
-        )
+    if not _db_config_complete(cfg):
+        raise RuntimeError(CATALOG_UNCONFIGURED_MESSAGE)
     warm_aws_deps_if_needed(cfg)
     deps = get_cached_aws_deps()
     if deps is None:
@@ -113,10 +125,8 @@ def _handle_internal_video_event(event: Dict[str, Any]) -> Dict[str, Any]:
     )
 
     cfg = load_config()
-    if not _rds_config_complete(cfg):
-        raise RuntimeError(
-            "Catalog is not configured: set DB_HOST, DB_NAME, and DB_SECRET_ARN"
-        )
+    if not _db_config_complete(cfg):
+        raise RuntimeError(CATALOG_UNCONFIGURED_MESSAGE)
     warm_aws_deps_if_needed(cfg)
     deps = get_cached_aws_deps()
     if deps is None or deps.service is None:
@@ -239,11 +249,7 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                     response = json_response(
                         503,
                         {
-                            "message": (
-                                "Catalog is not configured: set DB_HOST, DB_NAME, and "
-                                "DB_SECRET_ARN (deploy the api stack with RdsStackName "
-                                "wired to the RDS stack)."
-                            ),
+                            "message": CATALOG_UNCONFIGURED_MESSAGE,
                             "code": "catalog_unconfigured",
                         },
                         origin,
@@ -293,11 +299,7 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                         contact_resp = json_response(
                             503,
                             {
-                                "message": (
-                                    "Catalog is not configured: set DB_HOST, DB_NAME, and "
-                                    "DB_SECRET_ARN (deploy the api stack with RdsStackName "
-                                    "wired to the RDS stack)."
-                                ),
+                                "message": CATALOG_UNCONFIGURED_MESSAGE,
                                 "code": "catalog_unconfigured",
                             },
                             origin,
@@ -458,11 +460,7 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                                 route_response = json_response(
                                     503,
                                     {
-                                        "message": (
-                                            "Catalog is not configured: set DB_HOST, DB_NAME, and "
-                                            "DB_SECRET_ARN (deploy the api stack with RdsStackName "
-                                            "wired to the RDS stack)."
-                                        ),
+                                        "message": CATALOG_UNCONFIGURED_MESSAGE,
                                         "code": "catalog_unconfigured",
                                     },
                                     origin,
@@ -490,11 +488,7 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                                 route_response = json_response(
                                     503,
                                     {
-                                        "message": (
-                                            "Catalog is not configured: set DB_HOST, DB_NAME, and "
-                                            "DB_SECRET_ARN (deploy the api stack with RdsStackName "
-                                            "wired to the RDS stack)."
-                                        ),
+                                        "message": CATALOG_UNCONFIGURED_MESSAGE,
                                         "code": "catalog_unconfigured",
                                     },
                                     origin,
@@ -528,11 +522,7 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                                 route_response = json_response(
                                     503,
                                     {
-                                        "message": (
-                                            "Catalog is not configured: set DB_HOST, DB_NAME, and "
-                                            "DB_SECRET_ARN (deploy the api stack with RdsStackName "
-                                            "wired to the RDS stack)."
-                                        ),
+                                        "message": CATALOG_UNCONFIGURED_MESSAGE,
                                         "code": "catalog_unconfigured",
                                     },
                                     origin,
@@ -566,11 +556,7 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                                 route_response = json_response(
                                     503,
                                     {
-                                        "message": (
-                                            "Catalog is not configured: set DB_HOST, DB_NAME, and "
-                                            "DB_SECRET_ARN (deploy the api stack with RdsStackName "
-                                            "wired to the RDS stack)."
-                                        ),
+                                        "message": CATALOG_UNCONFIGURED_MESSAGE,
                                         "code": "catalog_unconfigured",
                                     },
                                     origin,

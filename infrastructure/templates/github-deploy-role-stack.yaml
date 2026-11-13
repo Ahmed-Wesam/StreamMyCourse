@@ -217,6 +217,32 @@ Resources:
             Condition:
               StringEquals:
                 iam:AWSServiceName: rds.amazonaws.com
+          # First Aurora DSQL cluster in the account creates the DSQL service-linked role.
+          - Sid: IamDsqlServiceLinkedRole
+            Effect: Allow
+            Action:
+              - iam:CreateServiceLinkedRole
+            Resource: "*"
+            Condition:
+              StringEquals:
+                iam:AWSServiceName: dsql.amazonaws.com
+          - Sid: DsqlClusterStackManage
+            Effect: Allow
+            Action:
+              - dsql:CreateCluster
+              - dsql:GetCluster
+              - dsql:UpdateCluster
+              - dsql:DeleteCluster
+              - dsql:ListClusters
+              - dsql:TagResource
+              - dsql:UntagResource
+              - dsql:ListTagsForResource
+              - dsql:DbConnectAdmin
+              - dsql:DbConnect
+            Resource: !Sub "arn:aws:dsql:eu-west-1:${AWS::AccountId}:cluster/*"
+            Condition:
+              StringEquals:
+                aws:RequestedRegion: eu-west-1
           # RDS + VPC + Secrets Manager for the rds-stack (ADR 0008)
           # Permission set chosen to cover the full CloudFormation
           # AWS::RDS::DBInstance + AWS::RDS::DBParameterGroup provider

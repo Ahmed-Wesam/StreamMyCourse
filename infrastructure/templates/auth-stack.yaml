@@ -112,7 +112,14 @@ Parameters:
       Secrets Manager ARN for Zoho SMTP JSON (smtp_username, smtp_password, optional host/port/from/reply_to).
       Example secret id streammycourse/zoho-smtp/prod.
 
+  DsqlClusterArn:
+    Type: String
+    Default: ''
+    Description: >-
+      Aurora DSQL cluster ARN for dsql:DbConnect on the user profile sync Lambda (optional until cluster exists).
+
 Conditions:
+  HasDsqlClusterArn: !Not [!Equals [!Ref DsqlClusterArn, '']]
   HasRdsStackName: !Not [!Equals [!Ref RdsStackName, '']]
   HasSyncLambdaCode: !And
     - !Not [!Equals [!Ref CognitoUserProfileSyncCodeS3Bucket, '']]
@@ -192,6 +199,17 @@ Resources:
                 Action:
                   - cognito-idp:AdminUpdateUserAttributes
                 Resource: !Sub 'arn:aws:cognito-idp:${AWS::Region}:${AWS::AccountId}:userpool/*'
+        - !If
+          - HasDsqlClusterArn
+          - PolicyName: DsqlDbConnect
+            PolicyDocument:
+              Version: '2012-10-17'
+              Statement:
+                - Effect: Allow
+                  Action:
+                    - dsql:DbConnect
+                  Resource: !Ref DsqlClusterArn
+          - !Ref AWS::NoValue
       Tags:
         - Key: Project
           Value: StreamMyCourse

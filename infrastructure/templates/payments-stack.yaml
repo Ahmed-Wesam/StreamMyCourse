@@ -94,7 +94,14 @@ Parameters:
       Comma-separated browser origins for billing manage routes (checkout-session,
       checkout-status). Must match api-stack CorsAllowOrigin.
 
+  DsqlClusterArn:
+    Type: String
+    Default: ''
+    Description: >-
+      Aurora DSQL cluster ARN for dsql:DbConnect on the fulfillment worker (optional until cluster exists).
+
 Conditions:
+  HasDsqlClusterArn: !Not [!Equals [!Ref DsqlClusterArn, '']]
   HasBillingFulfillmentAlertEmail: !Not [!Equals [!Ref BillingFulfillmentAlertEmail, '']]
   HasCatalogLambdaArn: !Not [!Equals [!Ref CatalogLambdaArn, '']]
 
@@ -291,6 +298,17 @@ Resources:
                   - ec2:AssignPrivateIpAddresses
                   - ec2:UnassignPrivateIpAddresses
                 Resource: '*'
+        - !If
+          - HasDsqlClusterArn
+          - PolicyName: DsqlDbConnect
+            PolicyDocument:
+              Version: '2012-10-17'
+              Statement:
+                - Effect: Allow
+                  Action:
+                    - dsql:DbConnect
+                  Resource: !Ref DsqlClusterArn
+          - !Ref AWS::NoValue
       Tags:
         - Key: Project
           Value: StreamMyCourse

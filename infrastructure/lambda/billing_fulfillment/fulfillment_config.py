@@ -15,6 +15,7 @@ class FulfillmentConfig:
     db_host: str
     db_name: str
     db_port: int
+    dsql_endpoint: str = ""
 
 
 def _parse_db_port(raw: str) -> int:
@@ -34,4 +35,5 @@ def load_fulfillment_config() -> FulfillmentConfig:
         db_host=os.environ.get("DB_HOST", "").strip(),
         db_name=os.environ.get("DB_NAME", "postgres").strip() or "postgres",
         db_port=_parse_db_port(os.environ.get("DB_PORT", "")),
+        dsql_endpoint=os.environ.get("DSQL_ENDPOINT", "").strip(),
     )

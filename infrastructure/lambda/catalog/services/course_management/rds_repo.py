@@ -49,15 +49,10 @@ def _atomic_transaction(conn: Any) -> Iterator[None]:
     flips ``autocommit`` off for the duration, commits on success, rolls
     back on exception, and always restores ``autocommit=True`` afterward.
     """
-    conn.autocommit = False
-    try:
+    from services.common.db_tx import transactional_context
+
+    with transactional_context(conn):
         yield
-        conn.commit()
-    except Exception:
-        conn.rollback()
-        raise
-    finally:
-        conn.autocommit = True
 
 
 logger = logging.getLogger(__name__)

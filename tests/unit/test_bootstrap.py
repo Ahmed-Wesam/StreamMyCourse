@@ -160,7 +160,7 @@ class TestBuildAwsDeps:
             video_url="",
             allowed_origins=["*"],
         )
-        with pytest.raises(RuntimeError, match="RDS catalog requires"):
+        with pytest.raises(RuntimeError, match="DSQL_ENDPOINT"):
             bootstrap_mod.build_aws_deps(empty_cfg)
 
     def test_constructs_aws_deps_with_rds(self, mocked_storage, _mocked_rds) -> None:

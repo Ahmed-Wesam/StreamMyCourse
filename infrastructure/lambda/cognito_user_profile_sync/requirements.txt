@@ -1,3 +1,4 @@
 # Packaged into the deployment zip under _vendor/ by CI (same pattern as catalog).
 # boto3 ships with the Lambda runtime.
 psycopg2-binary==2.9.9
+aurora-dsql-python-connector==0.2.7

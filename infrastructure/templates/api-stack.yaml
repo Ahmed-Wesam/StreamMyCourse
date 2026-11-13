@@ -206,6 +206,23 @@ Parameters:
       Shared secret for POST /webhooks/kinescope (query ?token= or header
       X-Kinescope-Webhook-Secret). Empty disables secret check.
 
+  DsqlEndpoint:
+    Type: String
+    Default: ''
+    Description: Aurora DSQL cluster endpoint hostname when the catalog uses DSQL instead of RDS.
+
+  DsqlClusterArn:
+    Type: String
+    Default: ''
+    Description: Aurora DSQL cluster ARN for dsql:DbConnect on the catalog Lambda role.
+
+  ResourceNameSuffix:
+    Type: String
+    Default: ''
+    Description: >-
+      Physical name suffix for a second API stack that shares Environment=prod (e.g. dsql).
+      Empty keeps legacy prod physical names (NameToken equals Environment). Stage and DEPLOYMENT_ENVIRONMENT stay prod.
+
 Conditions:
   HasVideoBucket: !Not [!Equals [!Ref VideoBucketName, '']]
   HasMediaCleanupQueueArn: !Not [!Equals [!Ref MediaCleanupQueueArn, '']]
@@ -216,13 +233,21 @@ Conditions:
   UseKinescopeVideoEdge: !And
     - !Condition IsKinescopeProvider
     - !Condition HasVideoProviderEdgeLambdaArn
+  UseDsql: !Not [!Equals [!Ref DsqlEndpoint, '']]
+  UseRds: !Not [!Condition UseDsql]
+  HasResourceNameSuffix: !Not [!Equals [!Ref ResourceNameSuffix, '']]
 
 Resources:
   # Lambda Execution Role
   CatalogLambdaRole:
     Type: AWS::IAM::Role
     Properties:
-      RoleName: !Sub 'StreamMyCourse-CatalogLambdaRole-${Environment}'
+      RoleName: !Sub
+        - 'StreamMyCourse-CatalogLambdaRole-${NameToken}'
+        - NameToken: !If
+            - HasResourceNameSuffix
+            - !Ref ResourceNameSuffix
+            - !Ref Environment
       AssumeRolePolicyDocument:
         Version: '2012-10-17'
         Statement:
@@ -240,7 +265,12 @@ Resources:
                   - logs:CreateLogGroup
                   - logs:CreateLogStream
                   - logs:PutLogEvents
-                Resource: !Sub 'arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/StreamMyCourse-Catalog-${Environment}:*'
+                Resource: !Sub
+                  - 'arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/StreamMyCourse-Catalog-${NameToken}:*'
+                  - NameToken: !If
+                      - HasResourceNameSuffix
+                      - !Ref ResourceNameSuffix
+                      - !Ref Environment
         - PolicyName: S3PresignedUrl
           PolicyDocument:
             Version: '2012-10-17'
@@ -291,28 +321,45 @@ Resources:
         # VPC ENI lifecycle for Lambda-in-VPC. These actions are resource-less by
         # AWS design (they return IDs from the global EC2 API) — standard for the
         # Lambda-in-VPC pattern.
-        - PolicyName: LambdaVpcEni
-          PolicyDocument:
-            Version: '2012-10-17'
-            Statement:
-              - Effect: Allow
-                Action:
-                  - ec2:CreateNetworkInterface
-                  - ec2:DescribeNetworkInterfaces
-                  - ec2:DeleteNetworkInterface
-                  - ec2:AssignPrivateIpAddresses
-                  - ec2:UnassignPrivateIpAddresses
-                Resource: '*'
+        - !If
+          - UseRds
+          - PolicyName: LambdaVpcEni
+            PolicyDocument:
+              Version: '2012-10-17'
+              Statement:
+                - Effect: Allow
+                  Action:
+                    - ec2:CreateNetworkInterface
+                    - ec2:DescribeNetworkInterfaces
+                    - ec2:DeleteNetworkInterface
+                    - ec2:AssignPrivateIpAddresses
+                    - ec2:UnassignPrivateIpAddresses
+                  Resource: '*'
+          - !Ref AWS::NoValue
         # Scoped to the specific RDS credentials secret exported by the RDS stack.
-        - PolicyName: SecretsManagerRdsCreds
-          PolicyDocument:
-            Version: '2012-10-17'
-            Statement:
-              - Effect: Allow
-                Action:
-                  - secretsmanager:GetSecretValue
-                Resource: !ImportValue
-                  'Fn::Sub': '${RdsStackName}-DbSecretArn'
+        - !If
+          - UseRds
+          - PolicyName: SecretsManagerRdsCreds
+            PolicyDocument:
+              Version: '2012-10-17'
+              Statement:
+                - Effect: Allow
+                  Action:
+                    - secretsmanager:GetSecretValue
+                  Resource: !ImportValue
+                    'Fn::Sub': '${RdsStackName}-DbSecretArn'
+          - !Ref AWS::NoValue
+        - !If
+          - UseDsql
+          - PolicyName: DsqlDbConnect
+            PolicyDocument:
+              Version: '2012-10-17'
+              Statement:
+                - Effect: Allow
+                  Action:
+                    - dsql:DbConnect
+                  Resource: !Ref DsqlClusterArn
+          - !Ref AWS::NoValue
       Tags:
         - Key: Project
           Value: StreamMyCourse
@@ -323,7 +370,12 @@ Resources:
   CatalogLambda:
     Type: AWS::Lambda::Function
     Properties:
-      FunctionName: !Sub 'StreamMyCourse-Catalog-${Environment}'
+      FunctionName: !Sub
+        - 'StreamMyCourse-Catalog-${NameToken}'
+        - NameToken: !If
+            - HasResourceNameSuffix
+            - !Ref ResourceNameSuffix
+            - !Ref Environment
       Runtime: python3.11
       Handler: index.lambda_handler
       # Bumped from 15s to 30s to absorb VPC cold-start (~1-2s ENI attach) and
@@ -334,13 +386,15 @@ Resources:
       Code:
         S3Bucket: !Ref LambdaCodeS3Bucket
         S3Key: !Ref LambdaCodeS3Key
-      VpcConfig:
-        SubnetIds:
-          - !ImportValue
-            'Fn::Sub': '${RdsStackName}-PrivateSubnetId'
-        SecurityGroupIds:
-          - !ImportValue
-            'Fn::Sub': '${RdsStackName}-LambdaSecurityGroupId'
+      VpcConfig: !If
+        - UseRds
+        - SubnetIds:
+            - !ImportValue
+              'Fn::Sub': '${RdsStackName}-PrivateSubnetId'
+          SecurityGroupIds:
+            - !ImportValue
+              'Fn::Sub': '${RdsStackName}-LambdaSecurityGroupId'
+        - !Ref AWS::NoValue
       Environment:
         Variables:
           DEFAULT_MP4_URL: !Ref DefaultMp4Url
@@ -348,14 +402,34 @@ Resources:
           VIDEO_BUCKET: !Ref VideoBucketName
           ALLOWED_ORIGINS: !Ref CorsAllowOrigin
           LOG_LEVEL: !Ref LogLevel
-          DB_HOST: !ImportValue
-            'Fn::Sub': '${RdsStackName}-DbHost'
-          DB_PORT: !ImportValue
-            'Fn::Sub': '${RdsStackName}-DbPort'
-          DB_NAME: !ImportValue
-            'Fn::Sub': '${RdsStackName}-DbName'
-          DB_SECRET_ARN: !ImportValue
-            'Fn::Sub': '${RdsStackName}-DbSecretArn'
+          DB_HOST: !If
+            - UseRds
+            - !ImportValue
+              'Fn::Sub': '${RdsStackName}-DbHost'
+            - !Ref AWS::NoValue
+          DB_PORT: !If
+            - UseRds
+            - !ImportValue
+              'Fn::Sub': '${RdsStackName}-DbPort'
+            - !Ref AWS::NoValue
+          DB_NAME: !If
+            - UseRds
+            - !ImportValue
+              'Fn::Sub': '${RdsStackName}-DbName'
+            - !Ref AWS::NoValue
+          DB_SECRET_ARN: !If
+            - UseRds
+            - !ImportValue
+              'Fn::Sub': '${RdsStackName}-DbSecretArn'
+            - !Ref AWS::NoValue
+          DSQL_ENDPOINT: !If
+            - UseDsql
+            - !Ref DsqlEndpoint
+            - !Ref AWS::NoValue
+          DSQL_USER: !If
+            - UseDsql
+            - smc_app
+            - !Ref AWS::NoValue
           MEDIA_CLEANUP_QUEUE_URL: !Ref MediaCleanupQueueUrl
           TRANSACTIONAL_MAIL_QUEUE_URL: !Ref TransactionalMailQueueUrl
           BILLING_TEACHER_SUB: !Ref BillingTeacherSub
@@ -389,7 +463,12 @@ Resources:
   TokenAuthorizerLambdaRole:
     Type: AWS::IAM::Role
     Properties:
-      RoleName: !Sub 'StreamMyCourse-CatalogTokenAuthorizerRole-${Environment}'
+      RoleName: !Sub
+        - 'StreamMyCourse-CatalogTokenAuthorizerRole-${NameToken}'
+        - NameToken: !If
+            - HasResourceNameSuffix
+            - !Ref ResourceNameSuffix
+            - !Ref Environment
       AssumeRolePolicyDocument:
         Version: '2012-10-17'
         Statement:
@@ -407,7 +486,12 @@ Resources:
                   - logs:CreateLogGroup
                   - logs:CreateLogStream
                   - logs:PutLogEvents
-                Resource: !Sub 'arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/StreamMyCourse-CatalogTokenAuthorizer-${Environment}:*'
+                Resource: !Sub
+                  - 'arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/StreamMyCourse-CatalogTokenAuthorizer-${NameToken}:*'
+                  - NameToken: !If
+                      - HasResourceNameSuffix
+                      - !Ref ResourceNameSuffix
+                      - !Ref Environment
       Tags:
         - Key: Project
           Value: StreamMyCourse
@@ -417,7 +501,12 @@ Resources:
   TokenAuthorizerLambda:
     Type: AWS::Lambda::Function
     Properties:
-      FunctionName: !Sub 'StreamMyCourse-CatalogTokenAuthorizer-${Environment}'
+      FunctionName: !Sub
+        - 'StreamMyCourse-CatalogTokenAuthorizer-${NameToken}'
+        - NameToken: !If
+            - HasResourceNameSuffix
+            - !Ref ResourceNameSuffix
+            - !Ref Environment
       Runtime: python3.11
       Handler: index.lambda_handler
       Timeout: 10
@@ -441,7 +530,12 @@ Resources:
   CatalogApi:
     Type: AWS::ApiGateway::RestApi
     Properties:
-      Name: !Sub 'StreamMyCourse-Catalog-${Environment}'
+      Name: !Sub
+        - 'StreamMyCourse-Catalog-${NameToken}'
+        - NameToken: !If
+            - HasResourceNameSuffix
+            - !Ref ResourceNameSuffix
+            - !Ref Environment
       Description: MVP Catalog API
       EndpointConfiguration:
         Types:
@@ -463,7 +557,12 @@ Resources:
   CatalogApiTokenAuthorizer:
     Type: AWS::ApiGateway::Authorizer
     Properties:
-      Name: !Sub 'StreamMyCourse-CognitoAuthorizer-${Environment}'
+      Name: !Sub
+        - 'StreamMyCourse-CognitoAuthorizer-${NameToken}'
+        - NameToken: !If
+            - HasResourceNameSuffix
+            - !Ref ResourceNameSuffix
+            - !Ref Environment
       Type: COGNITO_USER_POOLS
       RestApiId: !Ref CatalogApi
       IdentitySource: method.request.header.Authorization
@@ -484,7 +583,12 @@ Resources:
   CatalogApiPublicReadAuthorizer:
     Type: AWS::ApiGateway::Authorizer
     Properties:
-      Name: !Sub 'StreamMyCourse-PublicCatalogRead-${Environment}'
+      Name: !Sub
+        - 'StreamMyCourse-PublicCatalogRead-${NameToken}'
+        - NameToken: !If
+            - HasResourceNameSuffix
+            - !Ref ResourceNameSuffix
+            - !Ref Environment
       Type: REQUEST
       RestApiId: !Ref CatalogApi
       AuthorizerUri: !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${TokenAuthorizerLambda.Arn}/invocations'
@@ -3806,7 +3910,12 @@ Resources:
   CatalogApi4xxAlarm:
     Type: AWS::CloudWatch::Alarm
     Properties:
-      AlarmName: !Sub 'StreamMyCourse-CatalogApi-${Environment}-4XX'
+      AlarmName: !Sub
+        - 'StreamMyCourse-CatalogApi-${NameToken}-4XX'
+        - NameToken: !If
+            - HasResourceNameSuffix
+            - !Ref ResourceNameSuffix
+            - !Ref Environment
       AlarmDescription: >-
         Catalog API stage 4XX spike (client errors, gateway throttles).
         Lambda rate-limit denials log rate_limit_denied; filter CloudWatch Logs on that key.
@@ -3814,7 +3923,12 @@ Resources:
       MetricName: 4XXError
       Dimensions:
         - Name: ApiName
-          Value: !Sub 'StreamMyCourse-Catalog-${Environment}'
+          Value: !Sub
+            - 'StreamMyCourse-Catalog-${NameToken}'
+            - NameToken: !If
+                - HasResourceNameSuffix
+                - !Ref ResourceNameSuffix
+                - !Ref Environment
         - Name: Stage
           Value: !Ref Environment
       Statistic: Sum

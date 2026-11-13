@@ -1082,6 +1082,36 @@ def _rds_config_complete(cfg: AppConfig) -> bool:
 
 
 
+def _dsql_config_complete(cfg: AppConfig) -> bool:
+
+    return bool((cfg.dsql_endpoint or "").strip())
+
+
+
+
+
+def _db_config_complete(cfg: AppConfig) -> bool:
+
+    return _rds_config_complete(cfg) or _dsql_config_complete(cfg)
+
+
+
+
+
+def _assert_single_db_dependency(cfg: AppConfig) -> None:
+
+    if _dsql_config_complete(cfg) and cfg.db_host:
+
+        raise RuntimeError(
+
+            "Cannot set both DSQL_ENDPOINT and DB_HOST; configure exactly one database dependency"
+
+        )
+
+
+
+
+
 def _build_rds_connection_factory(cfg: AppConfig) -> ConnectionFactory:
 
     """Return a ``() -> connection`` callable that lazily opens a PostgreSQL
@@ -1174,6 +1204,36 @@ def _build_rds_connection_factory(cfg: AppConfig) -> ConnectionFactory:
 
 
 
+def _build_dsql_connection_factory(cfg: AppConfig) -> ConnectionFactory:
+
+    from dsql_connect import build_connection_factory as build_dsql_factory
+
+    endpoint = (cfg.dsql_endpoint or "").strip()
+
+    if not endpoint:
+
+        raise RuntimeError("DSQL_ENDPOINT is required for the DSQL catalog")
+
+    return build_dsql_factory(endpoint)
+
+
+
+
+
+def _build_connection_factory(cfg: AppConfig) -> ConnectionFactory:
+
+    _assert_single_db_dependency(cfg)
+
+    if _dsql_config_complete(cfg):
+
+        return _build_dsql_connection_factory(cfg)
+
+    return _build_rds_connection_factory(cfg)
+
+
+
+
+
 def _build_video_provider(cfg: AppConfig, video_storage: CourseMediaStorage) -> VideoProviderPort:
 
     provider = (cfg.video_provider or "kinescope").strip().lower()
@@ -1214,17 +1274,19 @@ def get_cached_aws_deps() -> Optional[AwsDeps]:
 
 def build_aws_deps(cfg: AppConfig) -> AwsDeps:
 
-    if not _rds_config_complete(cfg):
+    _assert_single_db_dependency(cfg)
+
+    if not _db_config_complete(cfg):
 
         raise RuntimeError(
 
-            "RDS catalog requires DB_HOST, DB_NAME, and DB_SECRET_ARN to be set"
+            "Catalog requires either RDS (DB_HOST, DB_NAME, DB_SECRET_ARN) or DSQL (DSQL_ENDPOINT)"
 
         )
 
 
 
-    conn_factory = _build_rds_connection_factory(cfg)
+    conn_factory = _build_connection_factory(cfg)
 
     course_repo = CourseCatalogRdsRepository(conn_factory)
 
@@ -1510,7 +1572,15 @@ def build_aws_deps(cfg: AppConfig) -> AwsDeps:
 
 def warm_aws_deps_if_needed(cfg: AppConfig) -> None:
 
-    if not _rds_config_complete(cfg):
+    if not _db_config_complete(cfg):
+
+        return
+
+    try:
+
+        _assert_single_db_dependency(cfg)
+
+    except RuntimeError:
 
         return
 
@@ -1556,7 +1626,15 @@ def lambda_bootstrap() -> Tuple[
 
     cfg = load_config()
 
-    if not _rds_config_complete(cfg):
+    if not _db_config_complete(cfg):
+
+        return cfg, None, None, None, None, None, None, None
+
+    try:
+
+        _assert_single_db_dependency(cfg)
+
+    except RuntimeError:
 
         return cfg, None, None, None, None, None, None, None
 

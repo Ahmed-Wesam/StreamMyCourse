@@ -49,7 +49,11 @@ try {
         if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
     }
 
-    $apiStack = 'StreamMyCourse-Api-prod'
+    if ($env:INTEGRATION_API_STACK) {
+        $apiStack = $env:INTEGRATION_API_STACK.Trim()
+    } else {
+        $apiStack = 'StreamMyCourse-Api-prod'
+    }
     $videoStack = 'StreamMyCourse-Video-prod'
 
     Write-Host '=== Discover stack outputs ===' -ForegroundColor Cyan
