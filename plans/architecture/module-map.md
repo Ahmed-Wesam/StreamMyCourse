@@ -98,7 +98,10 @@ Related ADRs: [0011 video provider / Kinescope](./adr-0011-video-provider-port-k
 | `controller.py` | HTTP adapter | Publisher + student quiz routes (`quiz/submit` before `quiz/start` before bare `quiz`) |
 | `contracts.py` | API DTOs | Start/submit discriminated payloads; student-safe question DTOs |
 | `binding_draw.py` / `presentation_shuffle.py` / `grading.py` / `visibility.py` / `gating.py` | Domain (pure) | Draw, shuffle, grade, visibility, module lock helpers |
-| `rds_repo.py` | Persistence adapter | Banks, quizzes, questions, bindings, attempts, submissions |
+| `rds_repo.py` | Persistence adapter | Banks, quizzes, questions, bindings, attempts, submissions; writes use **`run_transaction`** (`FOR UPDATE` / `ON CONFLICT` on hot paths; cap **1,499** questions per bank) |
+| `deletion.py` | Deletion registry | Course/module order **300** (`quiz_rows_course` / `quiz_rows_module`); batched deletes leaf-first via repo + `delete_in_batches` |
+
+**User deletion:** operator registry step **`quiz_student_rows`** at order **300** (after **`purchases`** **200**) clears bindings, attempts, and submissions for that `user_sub`.
 
 **Cross-context rule:** `question_banks` must not import `course_management` or `auth`.
 
