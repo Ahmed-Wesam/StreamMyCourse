@@ -66,6 +66,16 @@ class FakeConn:
     committed: int = 0
     rolled_back: int = 0
     closed: bool = False
+    autocommit: bool = True
+    autocommit_history: List[bool] = field(default_factory=list)
+
+    def __post_init__(self) -> None:
+        self.autocommit_history.append(self.autocommit)
+
+    def __setattr__(self, name: str, value: Any) -> None:
+        super().__setattr__(name, value)
+        if name == "autocommit" and getattr(self, "autocommit_history", None) is not None:
+            self.autocommit_history.append(value)
 
     def cursor(self) -> FakeCursor:
         return self.cursor_obj
@@ -323,3 +333,92 @@ class TestLessonProgressRdsRepository:
         assert "do nothing" in compact
         assert params[0] == "user-a"
         assert str(params[1]) == "2026-10-04"
+        assert fake_conn.committed == 1
+        assert False in fake_conn.autocommit_history
+        assert fake_conn.autocommit is True
+
+    def test_upsert_progress_retries_on_40001(self) -> None:
+        from services.progress.rds_repo import LessonProgressRdsRepository
+
+        now = datetime(2026, 5, 5, 12, 0, 0, tzinfo=timezone.utc)
+        conn = FakeConn()
+        conn.cursor_obj.rows_to_return = [
+            ("user-1", "lesson-1", "course-1", True, now.isoformat(), 100, now.isoformat())
+        ]
+        calls = {"n": 0}
+
+        def execute(sql: str, params: Sequence[Any] = ()) -> None:
+            calls["n"] += 1
+            if calls["n"] == 1:
+                err = Exception("serialization failure")
+                err.pgcode = "40001"  # type: ignore[attr-defined]
+                raise err
+            conn.cursor_obj.executions.append((sql, tuple(params)))
+
+        conn.cursor_obj.execute = execute  # type: ignore[method-assign]
+        repo = LessonProgressRdsRepository(lambda: conn)
+        result = repo.upsert_progress(
+            user_sub="user-1",
+            lesson_id="lesson-1",
+            course_id="course-1",
+            completed=True,
+            last_position_sec=100,
+        )
+
+        assert result.completed is True
+        assert calls["n"] == 2
+        assert conn.committed == 1
+        assert conn.rolled_back == 1
+        assert conn.autocommit is True
+        sql = conn.cursor_obj.executions[-1][0]
+        assert "ON CONFLICT" in sql.upper()
+        assert "completed_at" in sql.lower()
+        assert "CASE" in sql.upper()
+
+    def test_upsert_progress_body_does_not_commit_before_run_transaction(
+        self, repo, fake_conn: FakeConn
+    ) -> None:
+        """Transaction body must not call conn.commit(); only db_tx.run_transaction may."""
+        now = datetime(2026, 5, 5, 12, 0, 0, tzinfo=timezone.utc)
+        fake_conn.cursor_obj.rows_to_return.append(
+            ("user-1", "lesson-1", "course-1", True, now.isoformat(), 100, now.isoformat())
+        )
+        commits_during_execute: List[int] = []
+        original_execute = fake_conn.cursor_obj.execute
+
+        def execute(sql: str, params: Sequence[Any] = ()) -> None:
+            commits_during_execute.append(fake_conn.committed)
+            original_execute(sql, params)
+
+        fake_conn.cursor_obj.execute = execute  # type: ignore[method-assign]
+
+        repo.upsert_progress(
+            user_sub="user-1",
+            lesson_id="lesson-1",
+            course_id="course-1",
+            completed=True,
+            last_position_sec=100,
+        )
+
+        assert commits_during_execute == [0]
+        assert fake_conn.committed == 1
+
+    def test_record_activity_day_body_does_not_commit_before_run_transaction(
+        self, repo, fake_conn: FakeConn
+    ) -> None:
+        commits_during_execute: List[int] = []
+        original_execute = fake_conn.cursor_obj.execute
+
+        def execute(sql: str, params: Sequence[Any] = ()) -> None:
+            commits_during_execute.append(fake_conn.committed)
+            original_execute(sql, params)
+
+        fake_conn.cursor_obj.execute = execute  # type: ignore[method-assign]
+
+        repo.record_activity_day(
+            user_sub="user-a",
+            day=datetime(2026, 10, 4, tzinfo=timezone.utc).date(),
+        )
+
+        assert commits_during_execute == [0]
+        assert fake_conn.committed == 1

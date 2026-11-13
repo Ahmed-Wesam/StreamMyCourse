@@ -337,6 +337,55 @@ class ApiClient:
         """
         return self._client.get(f"/courses/{course_id}/progress")
 
+    def get_my_activity(self, *, headers: Optional[Dict[str, str]] = None) -> httpx.Response:
+        return self._client.get("/me/activity", headers=headers or {})
+
+    def list_lesson_notes(self, course_id: str, lesson_id: str) -> httpx.Response:
+        return self._client.get(f"/courses/{course_id}/lessons/{lesson_id}/notes")
+
+    def create_lesson_note(
+        self,
+        course_id: str,
+        lesson_id: str,
+        *,
+        body: str,
+        timestamp_sec: int | None = None,
+    ) -> httpx.Response:
+        payload: Dict[str, Any] = {"body": body}
+        if timestamp_sec is not None:
+            payload["timestampSec"] = timestamp_sec
+        return self._client.post(
+            f"/courses/{course_id}/lessons/{lesson_id}/notes",
+            json=payload,
+        )
+
+    def update_lesson_note(
+        self,
+        course_id: str,
+        lesson_id: str,
+        note_id: str,
+        *,
+        body: str | None = None,
+        timestamp_sec: int | None = None,
+        clear_timestamp: bool = False,
+    ) -> httpx.Response:
+        payload: Dict[str, Any] = {}
+        if body is not None:
+            payload["body"] = body
+        if clear_timestamp:
+            payload["timestampSec"] = None
+        elif timestamp_sec is not None:
+            payload["timestampSec"] = timestamp_sec
+        return self._client.patch(
+            f"/courses/{course_id}/lessons/{lesson_id}/notes/{note_id}",
+            json=payload,
+        )
+
+    def delete_lesson_note(self, course_id: str, lesson_id: str, note_id: str) -> httpx.Response:
+        return self._client.delete(
+            f"/courses/{course_id}/lessons/{lesson_id}/notes/{note_id}"
+        )
+
     def update_lesson_progress(
         self,
         course_id: str,

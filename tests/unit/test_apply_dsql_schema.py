@@ -194,3 +194,41 @@ def test_connection_error_host_only(applier) -> None:
     assert "token" not in str(err)
     assert "secret" not in str(err).lower()
 
+
+_DSQL_DIR = _ROOT / "infrastructure" / "database" / "dsql"
+
+
+def test_ordered_migration_sql_files_yields_0001_0002_0003(applier) -> None:
+    paths = applier.ordered_migration_sql_files(_DSQL_DIR)
+    versions = [applier.migration_version_from_path(p) for p in paths]
+    assert versions == ["0001", "0002", "0003"]
+
+
+def test_apply_migration_file_0003_does_not_drop_schema(applier) -> None:
+    conn = FakeConn()
+    executed_sql: list[str] = []
+
+    def cursor_factory() -> FakeCursor:
+        c = FakeCursor()
+        c.fetchone = lambda: None
+
+        def execute(sql: str, params: tuple[Any, ...] | None = None) -> None:
+            executed_sql.append(sql)
+            c.executed.append((sql, params))
+
+        c.execute = execute  # type: ignore[method-assign]
+        conn._cursors.append(c)
+        return c
+
+    conn.cursor = cursor_factory  # type: ignore[method-assign]
+    applier.apply_migration_file(
+        conn,
+        sql_text=(
+            "DROP TABLE IF EXISTS app.enrollments;"
+            "INSERT INTO app.schema_migrations (version) VALUES ('0003') "
+            "ON CONFLICT (version) DO NOTHING;"
+        ),
+        version="0003",
+    )
+    assert not any("DROP SCHEMA" in sql.upper() for sql in executed_sql)
+

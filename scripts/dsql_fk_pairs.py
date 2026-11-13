@@ -233,20 +233,6 @@ DSQL_FOREIGN_KEY_EDGES: tuple[ForeignKeyEdge, ...] = (
         ("id",),
     ),
     ForeignKeyEdge(
-        "enrollments.user_sub→users",
-        "enrollments",
-        "users",
-        ("user_sub",),
-        ("user_sub",),
-    ),
-    ForeignKeyEdge(
-        "enrollments.course_id→courses",
-        "enrollments",
-        "courses",
-        ("course_id",),
-        ("id",),
-    ),
-    ForeignKeyEdge(
         "lesson_progress.user_sub→users",
         "lesson_progress",
         "users",

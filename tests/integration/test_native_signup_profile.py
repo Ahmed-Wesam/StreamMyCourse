@@ -58,19 +58,23 @@ def _delete_dsql_users_row_only(user_sub: str) -> None:
 
     from dsql_connect import connect  # noqa: E402
     from services.auth.rds_repo import UserProfileRdsRepository  # noqa: E402
+    from services.lesson_notes.rds_repo import LessonNotesRdsRepository  # noqa: E402
+    from services.progress.rds_repo import LessonProgressRdsRepository  # noqa: E402
     from services.user_deletion import (  # noqa: E402
         UserDeletionRegistry,
         UserDeletionService,
-        register_identity_steps,
+        register_operator_user_steps,
     )
 
     host = resolve_dsql_endpoint()
     if not host or not user_sub:
         return
     factory = lambda: connect("admin", host)
-    repo = UserProfileRdsRepository(factory, tags_as_jsonb=True)
+    profile_repo = UserProfileRdsRepository(factory, tags_as_jsonb=True)
+    progress_repo = LessonProgressRdsRepository(factory)
+    notes_repo = LessonNotesRdsRepository(factory)
     registry = UserDeletionRegistry()
-    register_identity_steps(registry, repo)
+    register_operator_user_steps(registry, profile_repo, progress_repo, notes_repo)
     UserDeletionService(registry).delete_user(user_sub)
 
 

@@ -53,8 +53,6 @@ PAIRS_6_1_IN_SCHEMA = frozenset(
         ("assignment_grades", "assignments"),
         ("assignment_grade_scores", "assignment_grades"),
         ("assignment_grade_scores", "assignment_criteria"),
-        ("enrollments", "users"),
-        ("enrollments", "courses"),
         ("lesson_progress", "users"),
         ("lesson_progress", "lessons"),
         ("lesson_progress", "courses"),
@@ -76,7 +74,9 @@ def test_fk_list_matches_6_1_schema_pairs() -> None:
 def test_fk_list_count_matches_references_clause_count_in_schema() -> None:
     sql = _SCHEMA.read_text(encoding="utf-8")
     ref_clauses = len(re.findall(r"REFERENCES\s+app\.\w+", sql, flags=re.IGNORECASE))
-    assert len(DSQL_FOREIGN_KEY_EDGES) == ref_clauses
+    # `app.enrollments` is dropped by DSQL migration 0003; 0001 still declares its FKs.
+    enrollments_refs = 2
+    assert len(DSQL_FOREIGN_KEY_EDGES) == ref_clauses - enrollments_refs
 
 
 @pytest.mark.parametrize("edge", DSQL_FOREIGN_KEY_EDGES, ids=lambda e: e.label)

@@ -39,7 +39,7 @@ def lesson_deletion_parent_id(course_id: str, lesson_id: str) -> str:
     return f"{course_id.strip()}{_PARENT_SEP}{lesson_id.strip()}"
 
 
-def _split_parent(parent_id: str) -> tuple[str, str]:
+def split_deletion_parent_id(parent_id: str) -> tuple[str, str]:
     if _PARENT_SEP not in parent_id:
         raise ValueError("invalid composite parent_id")
     course_id, child_id = parent_id.split(_PARENT_SEP, 1)
@@ -48,6 +48,10 @@ def _split_parent(parent_id: str) -> tuple[str, str]:
     if not cid or not child:
         raise ValueError("invalid composite parent_id")
     return cid, child
+
+
+def _split_parent(parent_id: str) -> tuple[str, str]:
+    return split_deletion_parent_id(parent_id)
 
 
 def register_catalog_steps(registry: CourseDeletionRegistry, repo: CatalogDeletionRepo) -> None:

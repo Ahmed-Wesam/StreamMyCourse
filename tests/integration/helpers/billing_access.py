@@ -21,6 +21,11 @@ import pytest
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
 from helpers.api import ApiClient
+from helpers.dsql_preview_access import (
+    ensure_student_profile_row,
+    grant_preview_bundle_access,
+    is_dsql_preview_api_stack,
+)
 
 _JOD_FILS_PER_MAJOR = 1000
 _DEFAULT_BUNDLE_FILS = 150_000
@@ -518,6 +523,12 @@ def ensure_student_subscription(
 
     resp = student_api.get_playback(course_id, lesson_id)
     if resp.status_code == 200:
+        return user_sub
+
+    if is_dsql_preview_api_stack():
+        ensure_student_profile_row(student_api)
+        grant_preview_bundle_access(student_api, user_sub)
+        wait_for_subscription_access(student_api, course_id, lesson_id)
         return user_sub
 
     _checkout_bundle_and_mock_webhook(

@@ -516,7 +516,7 @@ class CourseCatalogRdsRepository:
         )
 
     def delete_course_and_lessons(self, course_id: str) -> None:
-        # enrollments, course_modules, and lessons CASCADE from courses.
+        # course_modules and lessons CASCADE from courses.
         self._execute(
             "DELETE FROM courses WHERE id = %s",
             (course_id,),

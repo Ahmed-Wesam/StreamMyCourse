@@ -22,6 +22,8 @@ DSQL_ROLE_APP = "smc_app"
 DSQL_SCHEMA_DIR = _REPO_ROOT / "infrastructure" / "database" / "dsql"
 DEFAULT_SCHEMA_FILE = DSQL_SCHEMA_DIR / "0001_schema.sql"
 MIGRATION_VERSION = "0001"
+INITIAL_MIGRATION_VERSION = "0001"
+INDEX_0002_NAME = "idx_lessons_video_key"
 
 
 def migration_version_from_path(path: Path) -> str:
@@ -135,9 +137,27 @@ def migration_already_applied(conn: Any, version: str) -> bool:
         raise
 
 
-def apply_migration_file(conn: Any, sql_text: str, version: str) -> bool:
-    if migration_already_applied(conn, version):
-        return False
+def index_exists(conn: Any, index_name: str) -> bool:
+    conn.autocommit = False
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT 1
+                FROM pg_indexes
+                WHERE schemaname = 'app' AND indexname = %s
+                """,
+                (index_name,),
+            )
+            found = cur.fetchone() is not None
+        conn.commit()
+        return found
+    except Exception:
+        conn.rollback()
+        raise
+
+
+def apply_initial_migration(conn: Any, sql_text: str) -> None:
     conn.autocommit = False
     try:
         with conn.cursor() as cur:
@@ -147,7 +167,46 @@ def apply_migration_file(conn: Any, sql_text: str, version: str) -> bool:
         conn.rollback()
         raise
     apply_statements(conn, split_sql_statements(sql_text))
+
+
+def apply_incremental_migration(conn: Any, sql_text: str) -> None:
+    apply_statements(conn, split_sql_statements(sql_text))
+
+
+def apply_0002_migration(conn: Any, sql_text: str) -> None:
+    statements = split_sql_statements(sql_text)
+    if index_exists(conn, INDEX_0002_NAME):
+        statements = [s for s in statements if not _ASYNC_INDEX.search(s)]
+    apply_statements(conn, statements)
+
+
+def apply_migration_file(conn: Any, sql_text: str, version: str) -> bool:
+    if migration_already_applied(conn, version):
+        return False
+    if version == INITIAL_MIGRATION_VERSION:
+        apply_initial_migration(conn, sql_text)
+    elif version == "0002":
+        apply_0002_migration(conn, sql_text)
+    else:
+        apply_incremental_migration(conn, sql_text)
     return True
+
+
+def apply_ordered_migrations(
+    conn: Any,
+    *,
+    dsql_dir: Path | None = None,
+    iam_role_arns: Sequence[str],
+) -> None:
+    for path in ordered_migration_sql_files(dsql_dir):
+        version = migration_version_from_path(path)
+        sql_text = path.read_text(encoding="utf-8")
+        apply_migration_file(conn, sql_text, version)
+    apply_d3_grants(conn)
+    for arn in iam_role_arns:
+        arn = arn.strip()
+        if arn:
+            apply_iam_grant(conn, arn)
 
 
 def iam_mapping_exists(conn: Any, role_arn: str) -> bool:
@@ -197,22 +256,6 @@ def apply_d3_grants(conn: Any) -> None:
             raise
 
 
-def apply_schema(
-    conn: Any,
-    schema_path: Path,
-    *,
-    version: str,
-    iam_role_arns: Sequence[str],
-) -> None:
-    sql_text = schema_path.read_text(encoding="utf-8")
-    apply_migration_file(conn, sql_text, version)
-    apply_d3_grants(conn)
-    for arn in iam_role_arns:
-        arn = arn.strip()
-        if arn:
-            apply_iam_grant(conn, arn)
-
-
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Apply DSQL schema (admin IAM)")
     parser.add_argument(
@@ -244,8 +287,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     if not host:
         print("DSQL endpoint host required (DSQL_ENDPOINT or --host)", file=sys.stderr)
         return 2
-    if not args.schema_file.is_file():
-        print(f"schema file missing: {args.schema_file}", file=sys.stderr)
+    migrations = ordered_migration_sql_files(DSQL_SCHEMA_DIR)
+    if not migrations:
+        print(f"no migration SQL files in {DSQL_SCHEMA_DIR}", file=sys.stderr)
         return 2
 
     try:
@@ -255,10 +299,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         return 1
 
     try:
-        apply_schema(
+        apply_ordered_migrations(
             conn,
-            args.schema_file,
-            version=args.version,
+            dsql_dir=DSQL_SCHEMA_DIR,
             iam_role_arns=args.iam_role_arns,
         )
     finally:

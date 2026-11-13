@@ -13,6 +13,7 @@ import logging
 from datetime import date, datetime, timezone
 from typing import Any, Callable, List, Optional
 
+from services.common.db_tx import delete_in_batches, run_transaction
 from services.progress.ports import ActivityEvent, LessonProgressRepositoryPort, LessonProgressRow
 
 try:  # pragma: no cover - optional dependency path
@@ -26,6 +27,54 @@ except Exception:  # pragma: no cover - surface at first DB call instead
 logger = logging.getLogger(__name__)
 
 ConnectionFactory = Callable[[], Any]
+
+_DELETE_LESSON_PROGRESS_FOR_USER_SQL = """
+DELETE FROM lesson_progress AS t
+USING (
+    SELECT user_sub, lesson_id FROM lesson_progress
+    WHERE user_sub = %s
+    LIMIT 1000
+) AS batch
+WHERE t.user_sub = batch.user_sub AND t.lesson_id = batch.lesson_id
+"""
+_DELETE_LESSON_PROGRESS_FOR_COURSE_SQL = """
+DELETE FROM lesson_progress AS t
+USING (
+    SELECT user_sub, lesson_id FROM lesson_progress
+    WHERE course_id = %s
+    LIMIT 1000
+) AS batch
+WHERE t.user_sub = batch.user_sub AND t.lesson_id = batch.lesson_id
+"""
+_DELETE_LESSON_PROGRESS_FOR_MODULE_SQL = """
+DELETE FROM lesson_progress AS t
+USING (
+    SELECT lp.user_sub, lp.lesson_id
+    FROM lesson_progress lp
+    INNER JOIN lessons l ON l.id = lp.lesson_id AND l.course_id = lp.course_id
+    WHERE lp.course_id = %s AND l.module_id = %s
+    LIMIT 1000
+) AS batch
+WHERE t.user_sub = batch.user_sub AND t.lesson_id = batch.lesson_id
+"""
+_DELETE_LESSON_PROGRESS_FOR_LESSON_SQL = """
+DELETE FROM lesson_progress AS t
+USING (
+    SELECT user_sub, lesson_id FROM lesson_progress
+    WHERE course_id = %s AND lesson_id = %s
+    LIMIT 1000
+) AS batch
+WHERE t.user_sub = batch.user_sub AND t.lesson_id = batch.lesson_id
+"""
+_DELETE_LEARNING_ACTIVITY_DAYS_FOR_USER_SQL = """
+DELETE FROM learning_activity_days AS t
+USING (
+    SELECT user_sub, day FROM learning_activity_days
+    WHERE user_sub = %s
+    LIMIT 1000
+) AS batch
+WHERE t.user_sub = batch.user_sub AND t.day = batch.day
+"""
 
 
 class LessonProgressRdsRepository(LessonProgressRepositoryPort):
@@ -185,8 +234,7 @@ class LessonProgressRdsRepository(LessonProgressRepositoryPort):
         Returns:
             LessonProgressRow with the resulting state
         """
-        cur = self._execute(
-            """
+        sql = """
             INSERT INTO lesson_progress (
                 user_sub, lesson_id, course_id, completed, completed_at,
                 last_position_sec, updated_at
@@ -204,32 +252,42 @@ class LessonProgressRdsRepository(LessonProgressRepositoryPort):
                 updated_at = NOW()
             RETURNING user_sub, lesson_id, course_id, completed, completed_at,
                       last_position_sec, updated_at
-            """,
-            (user_sub, lesson_id, course_id, completed, completed, last_position_sec),
-            commit=True,
-        )
+            """
+        params = (user_sub, lesson_id, course_id, completed, completed, last_position_sec)
 
-        row = cur.fetchone()
-        return LessonProgressRow(
-            user_sub=row[0],
-            lesson_id=row[1],
-            course_id=row[2],
-            completed=row[3],
-            completed_at=row[4],
-            last_position_sec=row[5],
-            updated_at=row[6],
-        )
+        def body() -> LessonProgressRow:
+            conn = self._connection()
+            cur = conn.cursor()
+            cur.execute(sql, params)
+            row = cur.fetchone()
+            if row is None:
+                raise RuntimeError("lesson_progress upsert returned no row")
+            return LessonProgressRow(
+                user_sub=row[0],
+                lesson_id=row[1],
+                course_id=row[2],
+                completed=row[3],
+                completed_at=row[4],
+                last_position_sec=row[5],
+                updated_at=row[6],
+            )
+
+        return run_transaction(self._connection(), body)
 
     def record_activity_day(self, *, user_sub: str, day: date) -> None:
-        self._execute(
-            """
+        sql = """
             INSERT INTO learning_activity_days (user_sub, day)
             VALUES (%s, %s)
             ON CONFLICT DO NOTHING
-            """,
-            (user_sub, day),
-            commit=True,
-        )
+            """
+        params = (user_sub, day)
+
+        def body() -> None:
+            conn = self._connection()
+            cur = conn.cursor()
+            cur.execute(sql, params)
+
+        run_transaction(self._connection(), body)
 
     def list_activity_days(self, *, user_sub: str) -> list[date]:
         cur = self._execute(
@@ -299,6 +357,30 @@ class LessonProgressRdsRepository(LessonProgressRepositoryPort):
             )
             for row in cur.fetchall()
         ]
+
+    def _batched_delete(self, sql: str, params: tuple) -> int:
+        return delete_in_batches(self._connection(), sql, params)
+
+    def delete_lesson_progress_for_user(self, user_sub: str) -> int:
+        return self._batched_delete(_DELETE_LESSON_PROGRESS_FOR_USER_SQL, (user_sub,))
+
+    def delete_learning_activity_days_for_user(self, user_sub: str) -> int:
+        return self._batched_delete(_DELETE_LEARNING_ACTIVITY_DAYS_FOR_USER_SQL, (user_sub,))
+
+    def delete_lesson_progress_for_course(self, course_id: str) -> int:
+        return self._batched_delete(_DELETE_LESSON_PROGRESS_FOR_COURSE_SQL, (course_id,))
+
+    def delete_lesson_progress_for_module(self, course_id: str, module_id: str) -> int:
+        return self._batched_delete(
+            _DELETE_LESSON_PROGRESS_FOR_MODULE_SQL,
+            (course_id, module_id),
+        )
+
+    def delete_lesson_progress_for_lesson(self, course_id: str, lesson_id: str) -> int:
+        return self._batched_delete(
+            _DELETE_LESSON_PROGRESS_FOR_LESSON_SQL,
+            (course_id, lesson_id),
+        )
 
     def list_certificates(self, *, user_sub: str) -> list[ActivityEvent]:
         cur = self._execute(

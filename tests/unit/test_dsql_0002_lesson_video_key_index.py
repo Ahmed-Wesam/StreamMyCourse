@@ -41,4 +41,4 @@ def test_applier_discovers_0002_after_0001() -> None:
     assert versions == sorted(versions)
     assert "0001" in versions and "0002" in versions
     assert versions.index("0001") < versions.index("0002")
-    assert paths[-1].name == "0002_lesson_video_key_index.sql"
+    assert paths[-1].name == "0003_drop_enrollments.sql"

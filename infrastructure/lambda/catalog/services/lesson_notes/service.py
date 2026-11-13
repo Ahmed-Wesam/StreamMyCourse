@@ -12,6 +12,7 @@ from services.lesson_notes.contracts import (
     LessonNoteResponse,
     ListLessonNotesResponse,
 )
+from services.lesson_notes.errors import NoteLimitExceeded
 from services.lesson_notes.models import MAX_NOTES_PER_USER_LESSON
 from services.lesson_notes.ports import LessonNoteRow, LessonNotesRepositoryPort
 from services.lesson_notes.validation import validate_note_body, validate_timestamp_sec
@@ -142,23 +143,19 @@ class LessonNotesService:
         normalized_body = validate_note_body(body)
         ts = validate_timestamp_sec(timestamp_sec)
 
-        count = self._notes_repo.count_notes_for_user_lesson(
-            user_sub=user_sub,
-            lesson_id=lesson_id,
-        )
-        if count >= MAX_NOTES_PER_USER_LESSON:
+        try:
+            row = self._notes_repo.insert_note(
+                user_sub=user_sub,
+                course_id=course_id,
+                lesson_id=lesson_id,
+                body=normalized_body,
+                timestamp_sec=ts,
+            )
+        except NoteLimitExceeded:
             raise Conflict(
                 f"Maximum of {MAX_NOTES_PER_USER_LESSON} notes per lesson",
                 code="note_limit_exceeded",
             )
-
-        row = self._notes_repo.insert_note(
-            user_sub=user_sub,
-            course_id=course_id,
-            lesson_id=lesson_id,
-            body=normalized_body,
-            timestamp_sec=ts,
-        )
         return {"note": _note_to_item(row)}
 
     def update_note(

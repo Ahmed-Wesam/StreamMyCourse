@@ -117,6 +117,8 @@ from services.contact.service import ContactService
 from services.course_deletion.catalog import register_catalog_steps
 from services.course_deletion.registry import CourseDeletionRegistry
 from services.course_deletion.runner import CourseDeletionRunner
+from services.lesson_notes.deletion import register_lesson_note_deletion_steps
+from services.progress.deletion import register_progress_deletion_steps
 
 from services.common.sqs_client import send_media_cleanup_job, send_transactional_mail_job
 
@@ -1428,6 +1430,9 @@ def build_aws_deps(cfg: AppConfig) -> AwsDeps:
     )
 
     notes_repo = LessonNotesRdsRepository(conn_factory)
+
+    register_progress_deletion_steps(course_deletion_registry, progress_repo)
+    register_lesson_note_deletion_steps(course_deletion_registry, notes_repo)
 
     lesson_notes_service = LessonNotesService(
 

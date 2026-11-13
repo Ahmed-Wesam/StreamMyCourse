@@ -152,7 +152,6 @@ class TestCreateNote:
         service: LessonNotesService,
         notes_repo: MagicMock,
     ) -> None:
-        notes_repo.count_notes_for_user_lesson.return_value = 0
         row = _note_row(body="New note", timestamp_sec=10)
         notes_repo.insert_note.return_value = row
 
@@ -222,7 +221,9 @@ class TestCreateNote:
         service: LessonNotesService,
         notes_repo: MagicMock,
     ) -> None:
-        notes_repo.count_notes_for_user_lesson.return_value = 50
+        from services.lesson_notes.errors import NoteLimitExceeded
+
+        notes_repo.insert_note.side_effect = NoteLimitExceeded()
         with pytest.raises(Conflict) as exc:
             service.create_note(
                 _USER,
@@ -233,7 +234,8 @@ class TestCreateNote:
                 role="student",
             )
         assert exc.value.code == "note_limit_exceeded"
-        notes_repo.insert_note.assert_not_called()
+        notes_repo.insert_note.assert_called_once()
+        notes_repo.count_notes_for_user_lesson.assert_not_called()
 
 
 class TestUpdateNote:

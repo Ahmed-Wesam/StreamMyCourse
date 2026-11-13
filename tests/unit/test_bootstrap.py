@@ -196,7 +196,11 @@ class TestBuildAwsDeps:
         runner = getattr(deps.service, "_deletion_runner", None)
         assert runner is not None
         course_steps = runner._registry.ordered_steps("course")
-        assert [s.order for s in course_steps] == [900, 900, 900, 1000]
+        assert [s.order for s in course_steps] == [100, 100, 900, 900, 900, 1000]
+        assert [s.name for s in course_steps[:2]] == [
+            "lesson_progress_course",
+            "lesson_notes_course",
+        ]
         assert course_steps[-1].name == "course_row"
 
 

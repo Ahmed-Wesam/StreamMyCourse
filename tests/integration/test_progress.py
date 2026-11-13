@@ -7,6 +7,10 @@ These tests verify the progress service behavior including:
 - Position slack handling (30 seconds beyond duration)
 - Course-level progress aggregation
 - Auto-completion at 92% ratio threshold
+
+On preview (``INTEGRATION_API_STACK`` ending with ``Api-dsql``), subscribed
+courses use D9 admin bundle purchase via ``ensure_student_subscription`` instead
+of the HyperPay webhook path.
 """
 
 from __future__ import annotations

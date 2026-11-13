@@ -55,7 +55,6 @@ _CATALOG_PSYCOPG2_ALLOWED = frozenset(
         _p("infrastructure/lambda/catalog/bootstrap.py"),
         _p("infrastructure/lambda/catalog/services/course_management/rds_repo.py"),
         _p("infrastructure/lambda/catalog/services/auth/rds_repo.py"),
-        _p("infrastructure/lambda/catalog/services/enrollment/rds_repo.py"),
         _p("infrastructure/lambda/catalog/services/progress/rds_repo.py"),
         _p("infrastructure/lambda/catalog/services/lesson_notes/rds_repo.py"),
         _p("infrastructure/lambda/catalog/services/assignments/rds_repo.py"),
@@ -382,7 +381,6 @@ def check_file(path: str) -> List[Violation]:
         or rel.endswith("/services/course_management/image_storage.py")
         or rel.endswith("/services/course_management/rds_repo.py")
         or rel.endswith("/services/auth/rds_repo.py")
-        or rel.endswith("/services/enrollment/rds_repo.py")
         or rel.endswith("/services/progress/rds_repo.py")
         or rel.endswith("/services/lesson_notes/rds_repo.py")
         or rel.endswith("/services/assignments/rds_repo.py")
