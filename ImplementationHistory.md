@@ -6,6 +6,15 @@
 
 ---
 
+## 2026-11-13 — DSQL-7: Assignments, certificates, research team (shipped)
+
+- **Assignments (7a):** `assignments/rds_repo.py` — `run_transaction` for criteria replace (`FOR UPDATE`), grade txn, draft `ON CONFLICT DO NOTHING`; batched deletes at course/module registry order **400**; user delete step **`assignment_certificate_research_rows`** at order **400** (`delete_assignment_children_for_user` + user certificates + bundle certs + research applications); `delete-user.py` enqueues submission S3 keys before DSQL delete.
+- **Certificates (7b):** idempotent `INSERT … ON CONFLICT (user_sub, course_id) DO NOTHING`; expression indexes `certificates_credential_id_upper` (`0001`) + `bundle_certificates_credential_id_upper` ([`0004_bundle_credential_upper.sql`](infrastructure/database/dsql/0004_bundle_credential_upper.sql)); course delete removes certificates at order **400**.
+- **Research team (7c):** `research_areas` as **JSONB** (`areas_as_jsonb` transitional branch until DSQL-9); apply/review integration on preview; deletion with user step **400**.
+- **Known limit:** criteria replace on assignments with very large graded cohorts can hit Aurora DSQL’s **3,000-row** transaction cap (cascaded score deletes); documented in [`design.md`](design.md) RS-13 — no runtime guard in this workstream.
+- **Gates:** Preview DSQL-7 slice **20/20** passed (`test_assignments.py`, `test_dsql_certificate_sql.py`, `test_certificates.py`, `test_research_team.py`, `test_catalog_deletion.py`, `test_user_deletion.py`); `schema_migrations` **0004** + both upper credential indexes verified live; `dsql_orphan_audit` **0 findings**; prod Deploy [**43500232042**](https://github.com/Ahmed-Wesam/StreamMyCourse/actions/runs/43500232042) integration **success** on **`6092bc0`**; CI [**43499822116**](https://github.com/Ahmed-Wesam/StreamMyCourse/actions/runs/43499822116) **success**.
+- **DSQL-8 handoff:** transitional branches **`tags_as_jsonb`** and **`areas_as_jsonb`** removed at DSQL-9; registry orders **100** / **200** / **300** / **400** / **900** / **1000**; fulfillment still **`DB_HOST`** (RDS); preview has no payments edge; Cognito sync still writes RDS until cutover.
+
 ## 2026-11-13 — DSQL-6: Question banks (OCC, 1,499 cap, batched deletes)
 
 - **OCC / shared SQL:** `question_banks/rds_repo.py` — publish, insert, start (`ON CONFLICT (module_quiz_id, user_sub) DO NOTHING`), retake/redraw, and submit (`FOR UPDATE` attempt) inside **`run_transaction`**; same statements on **RDS 16** and **DSQL** preview (no `if dsql` branch).

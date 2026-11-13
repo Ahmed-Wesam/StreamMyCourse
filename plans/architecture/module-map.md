@@ -60,7 +60,7 @@ Related ADRs: [0011 video provider / Kinescope](./adr-0011-video-provider-port-k
 
 **Operator entry:** [`scripts/delete-user.py`](../../../scripts/delete-user.py) — Cognito admin APIs + DSQL admin connection; not wired in `bootstrap.py`.
 
-**DSQL-4 (shipped):** `learning_activity_days` delete step at order **100** (user registry only). **DSQL-5 (shipped):** **`purchases`** at order **200** on user delete (not course delete). **Later:** DSQL-6/7 at **300** / **400**.
+**DSQL-4 (shipped):** `learning_activity_days` delete step at order **100** (user registry only). **DSQL-5 (shipped):** **`purchases`** at order **200** on user delete (not course delete). **DSQL-6/7 (shipped):** **`quiz_student_rows`** at **300**; **`assignment_certificate_research_rows`** at **400** on user delete.
 
 ### `services/course_deletion/` (DSQL-3)
 
@@ -71,7 +71,7 @@ Related ADRs: [0011 video provider / Kinescope](./adr-0011-video-provider-port-k
 | `catalog.py` | Wiring | `register_catalog_steps(registry, repo)` — catalog batches **900**, parent row **1000** |
 | `__init__.py` | Exports | `CourseDeletionRegistry`, `CourseDeletionRunner`, `register_catalog_steps` |
 
-**Bootstrap:** `CourseDeletionRegistry` + `register_catalog_steps` → `CourseDeletionRunner` → `CourseManagementService`. **DSQL-4:** `register_progress_deletion_steps` and `register_lesson_note_deletion_steps` at order **100** (lesson/module/course scopes). Quizzes and assignments register at **300** / **400** (DSQL-6/7). **No** purchase-delete step on course delete (409 guard in service).
+**Bootstrap:** `CourseDeletionRegistry` + `register_catalog_steps` → `CourseDeletionRunner` → `CourseManagementService`. **DSQL-4:** `register_progress_deletion_steps` and `register_lesson_note_deletion_steps` at order **100** (lesson/module/course scopes). **DSQL-6:** `register_question_bank_deletion_steps` at **300**; **DSQL-7:** `register_assignment_deletion_steps` at **400** (includes course certificates on course delete). **No** purchase-delete step on course delete (409 guard in service).
 
 **Enrollment adapter:** Removed in DSQL-4 (`services/enrollment/` was unwired). `POST /courses/{id}/enroll` returns **403** `purchase_required`; legacy `enrollments` table on **RDS only** until DSQL-9. See [adr-enrollment-course-access.md](./adr-enrollment-course-access.md) and ADR 0013.
 

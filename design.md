@@ -136,7 +136,7 @@ GET    /courses/{id}                     // Full details for catalog; may includ
 PUT    /courses/{id}                     // Update title + description; optional body key **`page`** (JSON object) replaces stored marketing document when present (publisher only). Omitting `page` leaves `page_content` unchanged.
 PUT    /courses/{id}/publish             // Publish (requires ≥1 ready lesson)
 PUT    /courses/{id}/thumbnail-ready     // Body { thumbnailKey }; persist cover image after S3 PUT (see upload-url)
-DELETE /courses/{id}                     // Sync catalog delete via course-deletion registry (tombstone `deleting`, batched SQL). **409** `conflict` if any `purchases` row exists for the course (no purchase delete from this path). **DSQL-4:** `lesson_progress` and `lesson_notes` delete at registry order **100**. **DSQL-6:** question-bank tables (student rows, `module_quizzes`, `questions`, `question_banks`) batched at registry order **300** before catalog steps **900**/**1000**; assignments still need step **400** when not yet wired. No `DELETE …/question-banks/{bid}` route — linked banks rely on `ON DELETE RESTRICT` and course delete ordering.
+DELETE /courses/{id}                     // Sync catalog delete via course-deletion registry (tombstone `deleting`, batched SQL). **409** `conflict` if any `purchases` row exists for the course (no purchase delete from this path). **DSQL-4:** `lesson_progress` and `lesson_notes` delete at registry order **100**. **DSQL-6:** question-bank tables (student rows, `module_quizzes`, `questions`, `question_banks`) batched at registry order **300**. **DSQL-7:** assignment rows, grades, submissions, files, and course certificates at registry order **400** before catalog steps **900**/**1000**. No `DELETE …/question-banks/{bid}` route — linked banks rely on `ON DELETE RESTRICT` and course delete ordering.
 POST   /courses/{id}/enroll              // Compatibility route (PUBLISHED only); Cognito when enforced. Always **403** `purchase_required` — does not write `enrollments` or grant playback access.
 ```
 
@@ -238,6 +238,8 @@ POST   .../submissions/{submissionId}/grade              // Teacher. scores[{cri
 ```
 
 **Rules:** Pass percent default **70** (instructor **1–100**). Score is integer half-up `(100 * awarded + maxTotal // 2) // maxTotal`. A passing grade closes further attempts. A failing grade allows a new draft. Grades are immutable. Instructions and the optional rubric narrative are plain text, sanitized rich text (`p`, `br`, `strong`, `em`, `ul`, `ol`, `li`, `https` links), or one picture. Scoring uses plain-text criterion labels and points (1–12 criteria). Caps: **20** assignments per course, **10** files per submission. Unknown JSON keys **400**.
+
+**Aurora DSQL limit (known, no guard shipped):** Replacing assignment criteria can cascade-delete many `assignment_grade_scores` rows in one transaction. On DSQL, a single transaction may modify at most **3,000** rows including cascades; a heavily graded assignment can exceed that cap and fail the `PATCH`. RDS PostgreSQL 16 does not share this cap; operators should avoid large criteria churn on preview until DSQL-8 or a batched-delete follow-up.
 
 **Storage:** `{courseId}/assignments/{assignmentId}/images/{slot}.{ext}` and `{courseId}/assignments/{assignmentId}/submissions/{submissionId}/{fileId}.{ext}`. Catalog **`s3:GetObject`** includes `*/assignments/*`. Course delete collects those keys before the row delete. Migration **020**. API stage deployment **CatalogApiDeploymentV43** (RS-12).
 
