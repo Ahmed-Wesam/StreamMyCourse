@@ -70,6 +70,19 @@ def admin_connect() -> Iterator[Any]:
             pass
 
 
+__all__ = [
+    "DSQL_STACK_OUTPUT",
+    "DSQL_USER_ADMIN",
+    "admin_connect",
+    "admin_connection",
+    "execute_scalar",
+    "fk_orphan_counts",
+    "resolve_dsql_endpoint",
+    "run_orphan_audit_script",
+    "run_transaction",
+]
+
+
 def execute_scalar(conn: Any, sql: str, params: tuple[Any, ...] = ()) -> Any:
     with conn.cursor() as cur:
         cur.execute(sql, params)

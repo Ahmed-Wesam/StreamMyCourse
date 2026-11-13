@@ -28,8 +28,8 @@ Adopt **Amazon Aurora DSQL** (PostgreSQL-compatible, public endpoint, IAM auth, 
 | Id | Decision |
 |----|----------|
 | **D1 — Clusters** | One single-Region DSQL cluster in `eu-west-1` (`infrastructure/templates/dsql-stack.yaml`), deletion protection on, `DeletionPolicy: Retain`. |
-| **D2 — Schema** | Application objects in schema **`app`** (admin manages `public`; runtime role owns `app`). |
-| **D3 — DB roles** | CI schema job only uses admin connect; runtime Lambdas use non-admin **`smc_app`** with `AWS IAM GRANT` + `dsql:DbConnect` on the cluster ARN. |
+| **D2 — Schema** | Application objects in schema **`app`** (admin manages `public` and owns all objects in **`app`**). |
+| **D3 — DB roles** | CI schema/admin jobs use **admin** IAM connect only. Runtime Lambdas use **`smc_app`**: `AWS IAM GRANT smc_app TO '<deploy-role-arn>'`, cluster IAM **`dsql:DbConnect`**, and **`USAGE` on schema `app`** plus **`SELECT, INSERT, UPDATE, DELETE` on all tables in `app`** (no `CREATE`/`DROP`/`TRUNCATE`). Spike + applier grant that shape; ownership stays on admin. |
 | **D4 — Network** | Public endpoint, TLS, IAM auth; optional resource policy limiting to account roles. |
 | **D5 — Backups** | None on DSQL pre-launch (no AWS Backup plan for DSQL). |
 | **D6 — Transitional preview API** | **`StreamMyCourse-Api-dsql`**: same catalog code, **no VPC**, env **`DSQL_ENDPOINT`** instead of **`DB_HOST`/`DB_*`**, own API stage—created DSQL-1, deleted DSQL-9. Sanctioned, time-bounded exception to [no-feature-flags-by-default](../../.cursor/rules/no-feature-flags-by-default.mdc): `bootstrap.py` picks the connection factory by **which dependency is configured**, not an on/off flag. |

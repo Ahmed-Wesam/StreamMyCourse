@@ -9,8 +9,9 @@ Related ADRs: [0011 video provider / Kinescope](./adr-0011-video-provider-port-k
 | Module | Responsibility | Public API |
 |--------|----------------|------------|
 | `index.py` | Lambda entrypoint | `lambda_handler`; rate-limit + session middleware; routes HTTP and **internal** invoke events (video edge, billing fulfillment hooks) |
-| `bootstrap.py` | Dependency wiring (composition root) | `lambda_bootstrap()` — wires RDS repos/services when DB config is complete; adapters for cross-context ports (quiz visibility, course access, certificate entitlement, etc.) |
+| `bootstrap.py` | Dependency wiring (composition root) | `lambda_bootstrap()` — wires RDS repos/services when `DB_*` is complete, or DSQL factory when **`DSQL_ENDPOINT`** is set (preview **`StreamMyCourse-Api-dsql`**); adapters for cross-context ports (quiz visibility, course access, certificate entitlement, etc.) |
 | `config.py` | Environment configuration | `load_config()`; `pick_origin` helpers live in `services/common/http.py` |
+| `dsql_connect.py` | DSQL adapter (package root) | IAM connect via `aurora-dsql-python-connector`; `connect()` / `build_connection_factory()`; `search_path=app` |
 
 ## Bounded contexts
 
@@ -172,6 +173,7 @@ Wired as middleware from `index.py`. Optional `RATE_LIMIT_MAX_OVERRIDES` in `con
 Cross-cutting utilities shared by multiple contexts:
 
 - `errors.py` — typed HTTP errors (`HttpError` hierarchy)
+- `db_tx.py` — `run_transaction` (OCC retry on SQLSTATE `40001`), `delete_in_batches`, `transactional_context` (DSQL row-mod caps)
 - `http.py` — CORS + JSON response helpers; authorizer claim extraction
 - `validation.py` — strict JSON parsing + simple validators
 - `sqs_client.py` — enqueue async jobs (media cleanup, transactional mail, billing) via boto3 SQS

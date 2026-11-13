@@ -17,6 +17,7 @@ import pytest
 from helpers.api import ApiClient
 from helpers.dsql_audit import (
     admin_connect,
+    admin_connection,
     execute_scalar,
     fk_orphan_counts,
     run_orphan_audit_script,
@@ -92,8 +93,12 @@ def test_concurrent_run_transaction_retries_40001() -> None:
     """Two writers on one scratch row: one 40001, helper retry commits both bodies."""
     row_id = uuid.uuid4()
     bodies: List[str] = []
-    lock = threading.Barrier(2)
+    sync = threading.Event()
+    arrived = {"n": 0}
+    arrive_lock = threading.Lock()
     inject = {"left": False}
+    a_done = threading.Event()
+    first_pass = {"a": True, "b": True}
 
     with admin_connect() as conn:
         conn.autocommit = True
@@ -101,26 +106,36 @@ def test_concurrent_run_transaction_retries_40001() -> None:
             cur.execute(_SCRATCH_DDL)
             cur.execute(
                 "INSERT INTO app.dsql_foundation_occ_scratch (id, version) VALUES (%s, 0)",
-                (row_id,),
+                (str(row_id),),
             )
 
     def worker(tag: str, connection: Any) -> None:
         def body() -> None:
             bodies.append(tag)
-            lock.wait(timeout=5.0)
+            if first_pass[tag]:
+                first_pass[tag] = False
+                with arrive_lock:
+                    arrived["n"] += 1
+                    if arrived["n"] == 2:
+                        sync.set()
+                assert sync.wait(timeout=5.0)
             if tag == "b" and not inject["left"]:
                 inject["left"] = True
                 raise _PgOccConflict()
+            if tag == "b":
+                assert a_done.wait(timeout=5.0)
             with connection.cursor() as cur:
                 cur.execute(
                     "UPDATE app.dsql_foundation_occ_scratch SET version = version + 1 WHERE id = %s",
-                    (row_id,),
+                    (str(row_id),),
                 )
+            if tag == "a":
+                a_done.set()
 
         run_transaction(connection, body, sleep=lambda _s: None)
 
-    conn_a = admin_connect().__enter__()
-    conn_b = admin_connect().__enter__()
+    conn_a = admin_connection()
+    conn_b = admin_connection()
     try:
         t1 = threading.Thread(target=worker, args=("a", conn_a))
         t2 = threading.Thread(target=worker, args=("b", conn_b))
@@ -143,11 +158,14 @@ def test_concurrent_run_transaction_retries_40001() -> None:
         version = execute_scalar(
             conn,
             "SELECT version FROM app.dsql_foundation_occ_scratch WHERE id = %s",
-            (row_id,),
+            (str(row_id),),
         )
         assert int(version) == 2
         with conn.cursor() as cur:
-            cur.execute("DELETE FROM app.dsql_foundation_occ_scratch WHERE id = %s", (row_id,))
+            cur.execute(
+                "DELETE FROM app.dsql_foundation_occ_scratch WHERE id = %s",
+                (str(row_id),),
+            )
 
 
 def test_orphan_audit_zero_findings() -> None:

@@ -6,6 +6,16 @@
 
 ---
 
+## 2026-11-13 — DSQL-1: Aurora DSQL foundation (cluster, schema, preview API)
+
+- **Infrastructure:** [`dsql-stack.yaml`](infrastructure/templates/dsql-stack.yaml) → **`StreamMyCourse-Dsql-prod`** (`cfuhjrrzy65ngud25rdqqso5t4`, endpoint `cfuhjrrzy65ngud25rdqqso5t4.dsql.eu-west-1.on.aws`); GitHub deploy role extended (`dsql:*`, cluster policy + VPC endpoint read per CI learnings). Preview **`StreamMyCourse-Api-dsql`** (HTTPS `r420heimp2.execute-api.eu-west-1.amazonaws.com/prod`) — **no VPC**, **`DSQL_ENDPOINT`**; prod **`StreamMyCourse-Api-prod`** unchanged (RDS).
+- **Schema / tooling:** [`infrastructure/database/dsql/0001_schema.sql`](infrastructure/database/dsql/0001_schema.sql), [`scripts/apply-dsql-schema.py`](scripts/apply-dsql-schema.py), [`scripts/dsql_compat_spike.py`](scripts/dsql_compat_spike.py) (Deploy **43393019885** critical pass), [`scripts/dsql_orphan_audit.py`](scripts/dsql_orphan_audit.py) + [`dsql_fk_pairs.py`](scripts/dsql_fk_pairs.py).
+- **Lambda:** [`dsql_connect.py`](infrastructure/lambda/catalog/dsql_connect.py), [`services/common/db_tx.py`](infrastructure/lambda/catalog/services/common/db_tx.py) (OCC + batched delete); `bootstrap.py` / `config.py` dependency-gated DSQL path; connector pin `aurora-dsql-python-connector==0.2.7` in catalog requirements.
+- **CI/CD:** [`.github/workflows/deploy-backend.yml`](.github/workflows/deploy-backend.yml) DSQL lane (`deploy-dsql-prod`, spike, apply schema, `deploy-api-dsql`); [`deploy-backend.sh`](scripts/deploy-backend.sh) `DSQL_PREVIEW=1`; runners honor **`INTEGRATION_API_STACK`**.
+- **Tests / gates:** DSQL unit suite (`tests/unit/test_dsql_*`, `test_db_tx.py`, stack contracts); preview gate **14 passed** (`test_bootstrap_edges.py` + `test_dsql_foundation.py` with `INTEGRATION_API_STACK=StreamMyCourse-Api-dsql`); prod suite **187 passed**, 17 skipped; orphan audit **0 findings**.
+- **Docs:** ADR-0016 **D3** grant wording; [`module-map.md`](plans/architecture/module-map.md) DSQL surfaces; `design.md` §10 DSQL foundation bullets.
+- **DSQL-2+ handoff:** add DDL under `infrastructure/database/dsql/` (numbered migrations); preview tests via `INTEGRATION_API_STACK=StreamMyCourse-Api-dsql`; admin SQL via [`tests/integration/helpers/dsql_audit.py`](tests/integration/helpers/dsql_audit.py); runtime OCC via `db_tx.run_transaction`.
+
 ## 2026-11-12 — DSQL-0: Aurora DSQL decision, cost cleanups, legacy deletes
 
 - **ADR-0016** ([`adr-0016-rds-postgresql-to-aurora-dsql.md`](plans/architecture/adr-0016-rds-postgresql-to-aurora-dsql.md), **Proposed**): chosen next store is **Aurora DSQL**; **RDS PostgreSQL stays production until DSQL-8**. ADR-0008 marked **Superseded by ADR-0016**; ADR-0010/0012/0013 carry amendment notes.
