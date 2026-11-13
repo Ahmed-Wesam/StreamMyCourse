@@ -6,12 +6,20 @@
 
 ---
 
+## 2026-11-13 — VPC Lambda S3 egress (lesson-file complete 504)
+
+- **Root cause:** `LambdaSecurityGroup` in [`rds-stack.yaml`](infrastructure/templates/rds-stack.yaml) allowed HTTPS egress only to `10.0.0.0/16`. S3 **gateway** endpoint traffic uses regional prefix-list-CIDRs (`pl-6da54004` in `eu-west-1`), so `LessonFileStorage.head_object` hung until API Gateway returned **504**.
+- **Fix:** `LambdaEgressS3Gateway` (`AWS::EC2::SecurityGroupEgress`) with `DestinationPrefixListId` from `Mappings.RegionPrefixLists` (avoids in-place SG replacement on export `LambdaSecurityGroupId`).
+- **Tests:** `tests/unit/test_rds_stack_lambda_sg_s3_egress.py`; restored `complete` in `test_lesson_files.py` / `test_catalog_deletion.py` (removed `complete_lesson_file_with_retry`).
+- **Prod SG (post-deploy):** egress `tcp/443 → pl-6da54004` plus existing `10.0.0.0/16` rules. **No DynamoDB client** in VPC catalog Lambda today — DDB prefix egress not added.
+- **Gates:** CI **43429044240**, Deploy **43429059866** green; prod integration **5 passed** (2 skipped), preview **7 passed** on targeted slice.
+
 ## 2026-11-13 — DSQL-3: Course catalog core (registry delete, OCC, preview gate)
 
 - **Course deletion:** `services/course_deletion/` — scoped registry (`lesson` \| `module` \| `course`), sync runner, `register_catalog_steps` (batched `lesson_files` / `lessons` / `course_modules` @ **900**, parent `DELETE` @ **1000**). `courses.status='deleting'` tombstone; public reads hide `deleting`; `include_deleting=True` only on `DELETE /courses/{id}` authz. **409** `conflict` when any `purchases` row exists (guard before tombstone).
 - **Adapter:** `CourseCatalogRdsRepository` — `run_transaction` / `delete_in_batches` for writes and catalog deletes; two-phase `set_lesson_orders`; `get_course(..., include_deleting=False)` default.
 - **Schema:** [`0002_lesson_video_key_index.sql`](infrastructure/database/dsql/0002_lesson_video_key_index.sql) (async partial index on `lessons.video_key`).
-- **Tests:** unit (`test_course_deletion_registry`, `test_rds_repo_dsql`, `test_dsql_delete`); integration `test_lesson_files.py`, `test_catalog_deletion.py` (purchase **409** on preview; prod uses pending file rows—**complete**+S3 HEAD still times out in VPC; follow-up).
+- **Tests:** unit (`test_course_deletion_registry`, `test_rds_repo_dsql`, `test_dsql_delete`); integration `test_lesson_files.py`, `test_catalog_deletion.py` (purchase **409** on preview; **complete**+S3 HEAD on prod fixed via Lambda SG S3 prefix egress — see entry above).
 - **Gates:** CI/Deploy green **`c4e82de`**; prod integration **193 passed**, 21 skipped; preview catalog slice **23 passed** (full plan gate **73 passed**, 3 billing-dependent failures on preview—payments edge absent); `dsql_orphan_audit` **0 findings**; purchase-block preview test **1 passed**.
 - **DSQL-4..7 handoff:** register steps at **100** / **300** / **400** on same registry; use `delete_in_batches`; never delete `purchases` from course delete. **DSQL-9:** keep `0002` with schema (no catalog SQL branch to delete).
 
