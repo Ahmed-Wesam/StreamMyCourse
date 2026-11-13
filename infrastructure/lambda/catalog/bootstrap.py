@@ -1300,7 +1300,10 @@ def build_aws_deps(cfg: AppConfig) -> AwsDeps:
 
     course_access = CourseAccessService(purchase_repo, course_repo)
 
-    auth_repo = UserProfileRdsRepository(conn_factory)
+    auth_repo = UserProfileRdsRepository(
+        conn_factory,
+        tags_as_jsonb=_dsql_config_complete(cfg),
+    )
 
     progress_repo = LessonProgressRdsRepository(conn_factory)
 

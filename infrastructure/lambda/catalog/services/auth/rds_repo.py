@@ -12,9 +12,13 @@ while preserving the original ``created_at`` and any extended profile columns.
 
 from __future__ import annotations
 
+import json
 import logging
 from datetime import datetime
 from typing import Any, Callable, Dict, Optional, Tuple
+
+from services.auth.learning_preferences import DEFAULT_RESEARCH_INTEREST_TAGS
+from services.common.db_tx import run_transaction
 
 try:  # pragma: no cover - optional dependency path
     import psycopg2
@@ -58,6 +62,14 @@ def _bool_column(value: Any) -> bool:
 def _tags_column(value: Any) -> list[str]:
     if isinstance(value, (list, tuple)):
         return [str(item) for item in value]
+    if isinstance(value, str):
+        try:
+            parsed = json.loads(value)
+        except (json.JSONDecodeError, TypeError):
+            return []
+        if isinstance(parsed, list):
+            return [str(item) for item in parsed]
+        return []
     return []
 
 
@@ -102,9 +114,22 @@ def _row_to_profile(row: Tuple[Any, ...]) -> Dict[str, Any]:
 
 
 class UserProfileRdsRepository:
-    def __init__(self, conn_factory: ConnectionFactory) -> None:
+    def __init__(
+        self, conn_factory: ConnectionFactory, *, tags_as_jsonb: bool = False
+    ) -> None:
         self._conn_factory = conn_factory
         self._conn: Optional[Any] = None
+        self._tags_as_jsonb = tags_as_jsonb
+
+    def _tags_write_param(self, tags: list[str]) -> Any:
+        if self._tags_as_jsonb:
+            return json.dumps(tags)
+        return tags
+
+    def _tags_assignment_sql(self) -> str:
+        if self._tags_as_jsonb:
+            return "research_interest_tags = %s::jsonb"
+        return "research_interest_tags = %s"
 
     def _connection(self) -> Any:
         if self._conn is None:
@@ -157,8 +182,7 @@ class UserProfileRdsRepository:
     ) -> Dict[str, Any]:
         # ON CONFLICT preserves ``created_at`` and extended profile columns but
         # refreshes identity fields from Cognito sync / JWT promotion.
-        cur = self._execute(
-            f"""
+        sql = f"""
             INSERT INTO users (user_sub, email, role, cognito_sub)
             VALUES (%s, %s, %s, %s)
             ON CONFLICT (user_sub) DO UPDATE
@@ -167,14 +191,16 @@ class UserProfileRdsRepository:
                   cognito_sub = EXCLUDED.cognito_sub,
                   updated_at  = NOW()
             RETURNING {_PROFILE_COLUMNS}
-            """,
-            (user_sub, email, role, user_sub),
-            commit=True,
-        )
-        row = cur.fetchone()
-        if row is None:
-            raise RuntimeError("INSERT users ... RETURNING returned no row")
-        return _row_to_profile(row)
+            """
+
+        def body() -> Dict[str, Any]:
+            cur = self._execute(sql, (user_sub, email, role, user_sub), commit=False)
+            row = cur.fetchone()
+            if row is None:
+                raise RuntimeError("INSERT users ... RETURNING returned no row")
+            return _row_to_profile(row)
+
+        return run_transaction(self._connection(), body)
 
     def update_profile_fields(
         self,
@@ -189,8 +215,7 @@ class UserProfileRdsRepository:
         terms_accepted_at: datetime,
         privacy_accepted_at: datetime,
     ) -> Dict[str, Any]:
-        cur = self._execute(
-            f"""
+        sql = f"""
             UPDATE users
                SET given_name          = %s,
                    family_name         = %s,
@@ -203,24 +228,27 @@ class UserProfileRdsRepository:
                    updated_at          = NOW()
              WHERE user_sub = %s
             RETURNING {_PROFILE_COLUMNS}
-            """,
-            (
-                given_name,
-                family_name,
-                country,
-                profession,
-                institution,
-                research_interests,
-                terms_accepted_at,
-                privacy_accepted_at,
-                user_sub,
-            ),
-            commit=True,
+            """
+        params = (
+            given_name,
+            family_name,
+            country,
+            profession,
+            institution,
+            research_interests,
+            terms_accepted_at,
+            privacy_accepted_at,
+            user_sub,
         )
-        row = cur.fetchone()
-        if row is None:
-            raise RuntimeError("UPDATE users profile ... RETURNING returned no row")
-        return _row_to_profile(row)
+
+        def body() -> Dict[str, Any]:
+            cur = self._execute(sql, params, commit=False)
+            row = cur.fetchone()
+            if row is None:
+                raise RuntimeError("UPDATE users profile ... RETURNING returned no row")
+            return _row_to_profile(row)
+
+        return run_transaction(self._connection(), body)
 
     def update_learning_preferences(
         self,
@@ -231,47 +259,72 @@ class UserProfileRdsRepository:
         progress_celebrations: bool,
         research_interest_tags: list[str],
     ) -> Dict[str, Any]:
-        cur = self._execute(
-            f"""
+        tags_sql = self._tags_assignment_sql()
+        sql = f"""
             UPDATE users
                SET pref_autoplay_next = %s,
                    pref_auto_mark_complete = %s,
                    pref_progress_celebrations = %s,
-                   research_interest_tags = %s,
+                   {tags_sql},
                    updated_at = NOW()
              WHERE user_sub = %s
             RETURNING {_PROFILE_COLUMNS}
-            """,
-            (
-                autoplay_next,
-                auto_mark_complete,
-                progress_celebrations,
-                research_interest_tags,
-                user_sub,
-            ),
-            commit=True,
+            """
+        params = (
+            autoplay_next,
+            auto_mark_complete,
+            progress_celebrations,
+            self._tags_write_param(research_interest_tags),
+            user_sub,
         )
-        row = cur.fetchone()
-        if row is None:
-            raise RuntimeError("UPDATE users learning preferences ... RETURNING returned no row")
-        return _row_to_profile(row)
+
+        def body() -> Dict[str, Any]:
+            cur = self._execute(sql, params, commit=False)
+            row = cur.fetchone()
+            if row is None:
+                raise RuntimeError(
+                    "UPDATE users learning preferences ... RETURNING returned no row"
+                )
+            return _row_to_profile(row)
+
+        return run_transaction(self._connection(), body)
 
     def reset_built_preferences(self, *, user_sub: str) -> Dict[str, Any]:
-        cur = self._execute(
-            f"""
+        if self._tags_as_jsonb:
+            tags_sql = "research_interest_tags = %s::jsonb"
+            tags_param: Any = json.dumps(list(DEFAULT_RESEARCH_INTEREST_TAGS))
+            extra_params: tuple[Any, ...] = (tags_param,)
+        else:
+            tags_sql = (
+                "research_interest_tags = ARRAY['systematic_reviews', 'meta_analysis']::text[]"
+            )
+            extra_params = ()
+        sql = f"""
             UPDATE users
                SET pref_autoplay_next = TRUE,
                    pref_auto_mark_complete = TRUE,
                    pref_progress_celebrations = TRUE,
-                   research_interest_tags = ARRAY['systematic_reviews', 'meta_analysis']::text[],
+                   {tags_sql},
                    updated_at = NOW()
              WHERE user_sub = %s
             RETURNING {_PROFILE_COLUMNS}
-            """,
-            (user_sub,),
-            commit=True,
-        )
-        row = cur.fetchone()
-        if row is None:
-            raise RuntimeError("UPDATE users reset preferences ... RETURNING returned no row")
-        return _row_to_profile(row)
+            """
+        params = (*extra_params, user_sub)
+
+        def body() -> Dict[str, Any]:
+            cur = self._execute(sql, params, commit=False)
+            row = cur.fetchone()
+            if row is None:
+                raise RuntimeError("UPDATE users reset preferences ... RETURNING returned no row")
+            return _row_to_profile(row)
+
+        return run_transaction(self._connection(), body)
+
+    def delete_user_row(self, user_sub: str) -> int:
+        sql = "DELETE FROM users WHERE user_sub = %s"
+
+        def body() -> int:
+            cur = self._execute(sql, (user_sub,), commit=False)
+            return int(cur.rowcount)
+
+        return run_transaction(self._connection(), body)

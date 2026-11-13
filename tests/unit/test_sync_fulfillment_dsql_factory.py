@@ -52,6 +52,31 @@ def test_cognito_sync_build_connection_factory_uses_dsql(fake_dsql_connect: Magi
     fake_dsql_connect.assert_called_once_with(endpoint)
 
 
+def test_cognito_sync_raises_when_both_db_hosts_set(fake_dsql_connect: MagicMock) -> None:
+    sync_repo_mod = _load_module(
+        "cognito_sync_repo_both",
+        ROOT / "infrastructure/lambda/cognito_user_profile_sync/repo.py",
+    )
+    with pytest.raises(RuntimeError, match="not both"):
+        sync_repo_mod.build_connection_factory(
+            db_secret_arn="arn:secret",
+            db_host="rds.host",
+            db_name="app",
+            db_port=5432,
+            dsql_endpoint="cluster.dsql.eu-west-1.on.aws",
+        )
+    fake_dsql_connect.assert_not_called()
+
+
+def test_deploy_backend_sync_package_uses_sync_requirements() -> None:
+    workflow = ROOT / ".github/workflows/deploy-backend.yml"
+    text = workflow.read_text(encoding="utf-8")
+    assert "cognito_user_profile_sync/requirements.txt" in text
+    block_start = text.index("Package and upload Cognito user profile sync Lambda")
+    block = text[block_start : block_start + 2500]
+    assert "dsql_connect.py" in block
+
+
 def test_billing_fulfillment_build_connection_factory_uses_dsql(fake_dsql_connect: MagicMock) -> None:
     fulfill_mod = _load_module(
         "fulfillment_repo",

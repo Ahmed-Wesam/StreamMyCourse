@@ -72,6 +72,11 @@ def build_connection_factory(
     dsql_endpoint: str = "",
 ) -> ConnectionFactory:
     endpoint = (dsql_endpoint or "").strip()
+    host = (db_host or "").strip()
+    if endpoint and host:
+        raise RuntimeError(
+            "Configure either DSQL_ENDPOINT or DB_HOST for user profile sync, not both"
+        )
     if endpoint:
         from dsql_connect import build_connection_factory as dsql_factory
 

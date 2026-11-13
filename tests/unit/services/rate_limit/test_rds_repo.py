@@ -35,6 +35,7 @@ class FakeConn:
     cursor_obj: FakeCursor = field(default_factory=FakeCursor)
     committed: int = 0
     rolled_back: int = 0
+    autocommit: bool = True
 
     def cursor(self) -> FakeCursor:
         return self.cursor_obj
@@ -136,6 +137,36 @@ class TestRateLimitRdsRepositoryConsume:
         )
         with pytest.raises(RuntimeError, match="rate limit consume"):
             repo.consume("rl:test", window_seconds=60, max_count=1)
+
+    def test_consume_retries_on_40001(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        now = datetime(2026, 5, 28, 12, 0, 30, tzinfo=timezone.utc)
+        monkeypatch.setattr("services.rate_limit.rds_repo._utc_now", lambda: now)
+        ws = _window_start(window_seconds=60, now=now)
+        conn = FakeConn()
+        conn.cursor_obj.rows_to_return = [(2, ws)]
+        calls = {"n": 0}
+
+        def execute(sql: str, params: Sequence[Any] = ()) -> None:
+            calls["n"] += 1
+            if calls["n"] == 1:
+                err = Exception("conflict")
+                err.pgcode = "40001"  # type: ignore[attr-defined]
+                raise err
+            conn.cursor_obj.executions.append((sql, tuple(params)))
+
+        conn.cursor_obj.execute = execute  # type: ignore[method-assign]
+        repo = RateLimitRdsRepository(lambda: conn)
+        result = repo.consume("rl:test", window_seconds=60, max_count=6)
+        assert result.allowed is True
+        assert calls["n"] == 2
+        assert conn.autocommit is True
+
+    def test_consume_sql_uses_make_interval_not_both_patterns(self) -> None:
+        from services.rate_limit import rds_repo
+
+        sql = rds_repo._CONSUME_SQL
+        assert "make_interval" in sql
+        assert "INTERVAL '1 second'" not in sql
 
     def test_execute_failure_before_connection_does_not_raise_name_error(
         self, monkeypatch: pytest.MonkeyPatch

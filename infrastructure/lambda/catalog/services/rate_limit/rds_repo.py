@@ -6,6 +6,7 @@ import logging
 from datetime import datetime, timedelta, timezone
 from typing import Any, Callable, Optional
 
+from services.common.db_tx import run_transaction
 from services.rate_limit.models import RateLimitResult
 
 try:  # pragma: no cover - optional dependency path
@@ -110,17 +111,20 @@ class RateLimitRdsRepository:
             window_seconds=window_seconds,
             now=now,
         )
-        cur = self._execute(
-            _CONSUME_SQL,
-            (
-                bucket_key,
-                current_window_start,
-                window_seconds,
-                window_seconds,
-            ),
-            commit=True,
+        params = (
+            bucket_key,
+            current_window_start,
+            window_seconds,
+            window_seconds,
         )
-        row = cur.fetchone()
+
+        def body() -> Any:
+            conn = self._connection()
+            cur = conn.cursor()
+            cur.execute(_CONSUME_SQL, params)
+            return cur.fetchone()
+
+        row = run_transaction(self._connection(), body)
         if row is None:
             raise RuntimeError("rate limit consume returned no row")
 

@@ -353,6 +353,14 @@ class ApiClient:
             },
         )
 
+    def post_contact(
+        self,
+        *,
+        body: Dict[str, Any],
+        headers: Optional[Dict[str, str]] = None,
+    ) -> httpx.Response:
+        return self._client.post("/contact", json=body, headers=headers or {})
+
     def options(self, path: str, *, origin: Optional[str] = None) -> httpx.Response:
         headers: Dict[str, str] = {}
         if origin is not None:
