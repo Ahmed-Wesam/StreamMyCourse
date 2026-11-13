@@ -25,6 +25,17 @@ MIGRATION_VERSION = "0001"
 _ASYNC_INDEX = re.compile(r"CREATE\s+(?:UNIQUE\s+)?INDEX\s+ASYNC", re.IGNORECASE)
 
 
+def wait_for_async_job(conn: Any, job_id: Any) -> None:
+    """``sys.wait_for_job`` must run outside an explicit transaction (autocommit)."""
+    previous = conn.autocommit
+    try:
+        conn.autocommit = True
+        with conn.cursor() as cur:
+            cur.execute("CALL sys.wait_for_job(%s)", (job_id,))
+    finally:
+        conn.autocommit = previous
+
+
 def split_sql_statements(sql: str) -> list[str]:
     """Split on semicolons; respect single-quoted strings and $$ dollar quotes."""
     lines: list[str] = []
@@ -83,9 +94,7 @@ def execute_one_statement(conn: Any, sql: str) -> None:
                     job_id = row[0]
         conn.commit()
         if job_id is not None:
-            with conn.cursor() as cur:
-                cur.execute("CALL sys.wait_for_job(%s)", (job_id,))
-            conn.commit()
+            wait_for_async_job(conn, job_id)
     except Exception:
         conn.rollback()
         raise

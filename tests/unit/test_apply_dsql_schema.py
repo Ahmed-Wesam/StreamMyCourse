@@ -92,7 +92,7 @@ def test_async_index_waits_for_job(applier) -> None:
         conn,
         "CREATE UNIQUE INDEX ASYNC idx_x ON app.foo (id);",
     )
-    assert conn.commits == 2
+    assert conn.commits == 1
     wait_calls = [e for e in cur.executed if e[0].startswith("CALL sys.wait_for_job")]
     assert len(wait_calls) == 1
     assert wait_calls[0][1] == ("job-abc",)

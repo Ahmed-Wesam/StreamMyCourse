@@ -147,6 +147,16 @@ def dry_run_sql_lines() -> list[str]:
     return lines
 
 
+def _wait_for_job(conn: Any, job_id: Any) -> None:
+    previous = conn.autocommit
+    try:
+        conn.autocommit = True
+        with conn.cursor() as cur:
+            cur.execute("CALL sys.wait_for_job(%s)", (job_id,))
+    finally:
+        conn.autocommit = previous
+
+
 def _execute_ddl(conn: Any, sql: str, params: Sequence[Any] | None = None) -> Any:
     conn.autocommit = False
     try:
@@ -225,7 +235,7 @@ def _run_live(host: str, *, test_statement_timeout: bool) -> int:
             row = _execute_ddl(conn, sql)
             if "CREATE UNIQUE INDEX ASYNC" in sql and row:
                 job_id = row[0] if isinstance(row, tuple) else row
-                _execute_ddl(conn, "CALL sys.wait_for_job(%s)", (job_id,))
+                _wait_for_job(conn, job_id)
         _probe_smc_app(host)
         _run_informational_probes(conn, host)
     except Exception:
