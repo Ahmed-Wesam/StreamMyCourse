@@ -1006,10 +1006,12 @@ describe('CourseManagement', () => {
       const m1Row = within(panel).getByText('Section 1').closest('li')
       expect(m1Row).toBeTruthy()
       const passInput = within(m1Row as HTMLElement).getByLabelText(/^Pass score \(%\)$/i)
-      fireEvent.input(passInput, { target: { value: '80' } })
-      fireEvent.click(
-        within(m1Row as HTMLElement).getByRole('button', { name: /Save pass score/i }),
-      )
+      fireEvent.change(passInput, { target: { value: '80' } })
+      const savePassBtn = within(m1Row as HTMLElement).getByRole('button', {
+        name: /Save pass score/i,
+      })
+      await waitFor(() => expect(savePassBtn).not.toBeDisabled())
+      fireEvent.click(savePassBtn)
 
       await waitFor(() => {
         expect(api.patchModuleQuizPassPercent).toHaveBeenCalledWith('c1', 'm1', 80)
