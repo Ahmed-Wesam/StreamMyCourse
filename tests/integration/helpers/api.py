@@ -560,6 +560,9 @@ class ApiClient:
     def get_research_team_requirements(self) -> httpx.Response:
         return self._client.get("/research-team/requirements")
 
+    def get_course_research_team_requirement(self, course_id: str) -> httpx.Response:
+        return self._client.get(f"/courses/{course_id}/research-team-requirement")
+
     def submit_research_team_application(self, body: Dict[str, Any]) -> httpx.Response:
         return self._client.post("/me/research-team/applications", json=body)
 

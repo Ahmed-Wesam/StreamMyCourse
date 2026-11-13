@@ -116,9 +116,13 @@ def test_research_team_apply_and_review_flow(
     assert api.publish_course(course_id).status_code == 200
     try:
         assert admin_api.put_research_team_requirement(course_id, required=True).status_code == 200
+        got = admin_api.get_course_research_team_requirement(course_id)
+        assert got.status_code == 200, got.text
+        assert got.json().get("required") is True
         reqs = admin_api.get_research_team_requirements()
         assert reqs.status_code == 200
-        assert any(r.get("id") == course_id for r in reqs.json().get("courses", []))
+        course_ids = {str(c.get("id")) for c in reqs.json().get("courses", [])}
+        assert str(course_id) in course_ids
         denied = student_api.submit_research_team_application(_apply_body())
         assert denied.status_code == 403
         assert denied.json().get("code") == "not_eligible"

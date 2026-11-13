@@ -87,9 +87,10 @@ def _grade_passing_assignment(
         lesson_id = lesson.lesson_id
     else:
         lesson_id = lesson_list.json()[0]["id"]
-        if teacher.get_lesson(course_id, lesson_id).json().get("videoStatus") != "ready":
-            assert teacher.mark_video_ready(course_id, lesson_id).status_code == 200
-    assert teacher.publish_course(course_id).status_code == 200
+    course_meta = teacher.get_course(course_id)
+    if course_meta.status_code == 200 and course_meta.json().get("status") != "PUBLISHED":
+        assert teacher.mark_video_ready(course_id, lesson_id).status_code == 200
+        assert teacher.publish_course(course_id).status_code == 200
     ensure_student_subscription(_api_base(), student, course_id, lesson_id)
     open_sub = student.open_assignment_submission(course_id, assignment_id)
     assert open_sub.status_code in (200, 201), open_sub.text
