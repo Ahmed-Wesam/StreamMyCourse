@@ -537,6 +537,44 @@ class ApiClient:
             json={"scores": scores, "feedback": feedback},
         )
 
+    def get_my_certificates(self) -> httpx.Response:
+        return self._client.get("/me/certificates")
+
+    def get_certificate_public(self, credential_id: str) -> httpx.Response:
+        return self._client.get(f"/certificates/{credential_id}")
+
+    def revoke_course_certificate(
+        self, course_id: str, certificate_id: str
+    ) -> httpx.Response:
+        return self._client.post(
+            f"/courses/{course_id}/certificates/{certificate_id}/revoke",
+            json={},
+        )
+
+    def put_research_team_requirement(self, course_id: str, *, required: bool) -> httpx.Response:
+        return self._client.put(
+            f"/courses/{course_id}/research-team-requirement",
+            json={"required": required},
+        )
+
+    def get_research_team_requirements(self) -> httpx.Response:
+        return self._client.get("/research-team/requirements")
+
+    def submit_research_team_application(self, body: Dict[str, Any]) -> httpx.Response:
+        return self._client.post("/me/research-team/applications", json=body)
+
+    def patch_research_team_application(self, application_id: str, *, status: str) -> httpx.Response:
+        return self._client.patch(
+            f"/research-team/applications/{application_id}",
+            json={"status": status},
+        )
+
+    def allow_research_team_reapply(self, application_id: str) -> httpx.Response:
+        return self._client.post(
+            f"/research-team/applications/{application_id}/allow-reapply",
+            json={},
+        )
+
     def post_contact(
         self,
         *,

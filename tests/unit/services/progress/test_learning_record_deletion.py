@@ -112,7 +112,15 @@ class TestUserDeletionOrder:
         quiz.delete_bindings_for_user.side_effect = lambda _: log.append("quiz_bindings")
         registry = UserDeletionRegistry()
         register_operator_user_steps(
-            registry, _FakeDeleter(), progress, notes, purchases, quiz, MagicMock()
+            registry,
+            _FakeDeleter(),
+            progress,
+            notes,
+            purchases,
+            quiz,
+            MagicMock(),
+            MagicMock(),
+            MagicMock(),
         )
         UserDeletionService(registry).delete_user(_SUB)
         assert log == [

@@ -138,6 +138,8 @@ class TestUserDeletionAssignmentOrder:
             MagicMock(),
             MagicMock(),
             MagicMock(),
+            MagicMock(),
+            MagicMock(),
         )
         steps = registry.ordered_steps()
         names = [s.name for s in steps if s.order == 400]
@@ -170,6 +172,8 @@ class TestUserDeletionAssignmentOrder:
             MagicMock(),
             quiz,
             assignments,
+            MagicMock(),
+            MagicMock(),
         )
         UserDeletionService(registry).delete_user(_SUB)
         assert log.index("quiz") < log.index("assignments")

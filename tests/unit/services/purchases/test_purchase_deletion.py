@@ -101,6 +101,8 @@ class TestPurchaseDeletionRegistration:
             purchases,
             quiz,
             MagicMock(),
+            MagicMock(),
+            MagicMock(),
         )
         steps = registry.ordered_steps()
         purchase_steps = [s for s in steps if s.name == "purchases"]
@@ -125,6 +127,8 @@ class TestPurchaseDeletionRegistration:
             notes,
             purchases,
             quiz,
+            MagicMock(),
+            MagicMock(),
             MagicMock(),
         )
         UserDeletionService(registry).delete_user(_SUB)

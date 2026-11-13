@@ -12,6 +12,7 @@ from services.certificates.ports import (
     CertificateRow,
     CertificatesRepositoryPort,
 )
+from services.common.db_tx import delete_in_batches, run_transaction
 
 try:  # pragma: no cover
     import psycopg2
@@ -32,6 +33,36 @@ _SELECT_COLS = """
 _BUNDLE_SELECT_COLS = """
     id, user_sub, credential_id, student_name, issue_date,
     instructor_name, instructor_title, status, revoked_at, revoked_by
+"""
+
+_DELETE_CERTIFICATES_FOR_COURSE_SQL = """
+DELETE FROM certificates AS t
+USING (
+    SELECT id FROM certificates
+    WHERE course_id = %s
+    LIMIT 1000
+) AS batch
+WHERE t.id = batch.id
+"""
+
+_DELETE_CERTIFICATES_FOR_USER_SQL = """
+DELETE FROM certificates AS t
+USING (
+    SELECT id FROM certificates
+    WHERE user_sub = %s
+    LIMIT 1000
+) AS batch
+WHERE t.id = batch.id
+"""
+
+_DELETE_BUNDLE_CERTIFICATES_FOR_USER_SQL = """
+DELETE FROM bundle_certificates AS t
+USING (
+    SELECT id FROM bundle_certificates
+    WHERE user_sub = %s
+    LIMIT 1000
+) AS batch
+WHERE t.id = batch.id
 """
 
 
@@ -133,35 +164,51 @@ class CertificatesRdsRepository(CertificatesRepositoryPort):
 
     def insert_certificate(self, row: CertificateRow) -> CertificateRow:
         cert_id = row.id or str(uuid4())
-        try:
-            cur = self._execute(
-                f"""
-                INSERT INTO certificates (
-                    id, user_sub, course_id, credential_id, student_name, course_title,
-                    issue_date, instructor_name, instructor_title, status
-                ) VALUES (
-                    %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
-                )
-                RETURNING {_SELECT_COLS}
-                """,
-                (
-                    cert_id,
-                    row.user_sub,
-                    row.course_id,
-                    row.credential_id,
-                    row.student_name,
-                    row.course_title,
-                    row.issue_date,
-                    row.instructor_name,
-                    row.instructor_title,
-                    row.status,
-                ),
-                commit=True,
+        conn = self._connection()
+        insert_sql = f"""
+            INSERT INTO certificates (
+                id, user_sub, course_id, credential_id, student_name, course_title,
+                issue_date, instructor_name, instructor_title, status
+            ) VALUES (
+                %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
             )
+            ON CONFLICT (user_sub, course_id) DO NOTHING
+            RETURNING {_SELECT_COLS}
+            """
+        insert_params = (
+            cert_id,
+            row.user_sub,
+            row.course_id,
+            row.credential_id,
+            row.student_name,
+            row.course_title,
+            row.issue_date,
+            row.instructor_name,
+            row.instructor_title,
+            row.status,
+        )
+
+        def body() -> CertificateRow:
+            cur = conn.cursor()
+            cur.execute(insert_sql, insert_params)
             fetched = cur.fetchone()
-            if fetched is None:
-                raise RuntimeError("INSERT certificates returned no row")
-            return _row_from_db(fetched)
+            if fetched is not None:
+                return _row_from_db(fetched)
+            cur.execute(
+                f"""
+                SELECT {_SELECT_COLS}
+                FROM certificates
+                WHERE user_sub = %s AND course_id = %s
+                """,
+                (row.user_sub, row.course_id),
+            )
+            existing = cur.fetchone()
+            if existing is None:
+                raise RuntimeError("INSERT certificates conflicted but row missing")
+            return _row_from_db(existing)
+
+        try:
+            return run_transaction(conn, body)
         except Exception as exc:
             if self._is_user_course_unique_violation(exc):
                 existing = self.get_by_user_course(row.user_sub, row.course_id)
@@ -236,22 +283,26 @@ class CertificatesRdsRepository(CertificatesRepositoryPort):
         revoked_by: str,
         revoked_at: datetime,
     ) -> CertificateRow:
-        cur = self._execute(
-            f"""
+        conn = self._connection()
+        sql = f"""
             UPDATE certificates
                SET status = 'revoked',
                    revoked_at = %s,
                    revoked_by = %s
              WHERE id = %s
          RETURNING {_SELECT_COLS}
-            """,
-            (revoked_at, revoked_by, certificate_id),
-            commit=True,
-        )
-        row = cur.fetchone()
-        if row is None:
-            raise RuntimeError(f"revoke target missing: {certificate_id}")
-        return _row_from_db(row)
+            """
+        params = (revoked_at, revoked_by, certificate_id)
+
+        def body() -> CertificateRow:
+            cur = conn.cursor()
+            cur.execute(sql, params)
+            row = cur.fetchone()
+            if row is None:
+                raise RuntimeError(f"revoke target missing: {certificate_id}")
+            return _row_from_db(row)
+
+        return run_transaction(conn, body)
 
     def get_bundle_by_user(self, user_sub: str) -> Optional[BundleCertificateRow]:
         cur = self._execute(
@@ -267,33 +318,49 @@ class CertificatesRdsRepository(CertificatesRepositoryPort):
 
     def insert_bundle_certificate(self, row: BundleCertificateRow) -> BundleCertificateRow:
         cert_id = row.id or str(uuid4())
-        try:
-            cur = self._execute(
-                f"""
-                INSERT INTO bundle_certificates (
-                    id, user_sub, credential_id, student_name, issue_date,
-                    instructor_name, instructor_title, status
-                ) VALUES (
-                    %s, %s, %s, %s, %s, %s, %s, %s
-                )
-                RETURNING {_BUNDLE_SELECT_COLS}
-                """,
-                (
-                    cert_id,
-                    row.user_sub,
-                    row.credential_id,
-                    row.student_name,
-                    row.issue_date,
-                    row.instructor_name,
-                    row.instructor_title,
-                    row.status,
-                ),
-                commit=True,
+        conn = self._connection()
+        insert_sql = f"""
+            INSERT INTO bundle_certificates (
+                id, user_sub, credential_id, student_name, issue_date,
+                instructor_name, instructor_title, status
+            ) VALUES (
+                %s, %s, %s, %s, %s, %s, %s, %s
             )
+            ON CONFLICT (user_sub) DO NOTHING
+            RETURNING {_BUNDLE_SELECT_COLS}
+            """
+        insert_params = (
+            cert_id,
+            row.user_sub,
+            row.credential_id,
+            row.student_name,
+            row.issue_date,
+            row.instructor_name,
+            row.instructor_title,
+            row.status,
+        )
+
+        def body() -> BundleCertificateRow:
+            cur = conn.cursor()
+            cur.execute(insert_sql, insert_params)
             fetched = cur.fetchone()
-            if fetched is None:
-                raise RuntimeError("INSERT bundle_certificates returned no row")
-            return _bundle_row_from_db(fetched)
+            if fetched is not None:
+                return _bundle_row_from_db(fetched)
+            cur.execute(
+                f"""
+                SELECT {_BUNDLE_SELECT_COLS}
+                FROM bundle_certificates
+                WHERE user_sub = %s
+                """,
+                (row.user_sub,),
+            )
+            existing = cur.fetchone()
+            if existing is None:
+                raise RuntimeError("INSERT bundle_certificates conflicted but row missing")
+            return _bundle_row_from_db(existing)
+
+        try:
+            return run_transaction(conn, body)
         except Exception as exc:
             if self._is_bundle_user_unique_violation(exc):
                 existing = self.get_bundle_by_user(row.user_sub)
@@ -322,8 +389,8 @@ class CertificatesRdsRepository(CertificatesRepositoryPort):
         revoked_by: str,
         revoked_at: datetime,
     ) -> Optional[BundleCertificateRow]:
-        cur = self._execute(
-            f"""
+        conn = self._connection()
+        sql = f"""
             UPDATE bundle_certificates
                SET status = 'revoked',
                    revoked_at = %s,
@@ -331,9 +398,25 @@ class CertificatesRdsRepository(CertificatesRepositoryPort):
              WHERE user_sub = %s
                AND status = 'valid'
          RETURNING {_BUNDLE_SELECT_COLS}
-            """,
-            (revoked_at, revoked_by, user_sub),
-            commit=True,
-        )
-        row = cur.fetchone()
-        return _bundle_row_from_db(row) if row else None
+            """
+        params = (revoked_at, revoked_by, user_sub)
+
+        def body() -> Optional[BundleCertificateRow]:
+            cur = conn.cursor()
+            cur.execute(sql, params)
+            row = cur.fetchone()
+            return _bundle_row_from_db(row) if row else None
+
+        return run_transaction(conn, body)
+
+    def _batched_delete(self, sql: str, params: tuple) -> int:
+        return delete_in_batches(self._connection(), sql, params)
+
+    def delete_certificates_for_course(self, course_id: str) -> int:
+        return self._batched_delete(_DELETE_CERTIFICATES_FOR_COURSE_SQL, (course_id,))
+
+    def delete_certificates_for_user(self, user_sub: str) -> int:
+        return self._batched_delete(_DELETE_CERTIFICATES_FOR_USER_SQL, (user_sub,))
+
+    def delete_bundle_certificates_for_user(self, user_sub: str) -> int:
+        return self._batched_delete(_DELETE_BUNDLE_CERTIFICATES_FOR_USER_SQL, (user_sub,))

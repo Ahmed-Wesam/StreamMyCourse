@@ -79,8 +79,12 @@ def _delete_dsql_users_row_only(user_sub: str) -> None:
     quiz_repo = QuestionBankRdsRepository(factory)
     registry = UserDeletionRegistry()
     from services.assignments.rds_repo import AssignmentsRdsRepository
+    from services.certificates.rds_repo import CertificatesRdsRepository
+    from services.research_team.rds_repo import ResearchTeamRdsRepository
 
     assignments_repo = AssignmentsRdsRepository(factory)
+    certificates_repo = CertificatesRdsRepository(factory)
+    research_team_repo = ResearchTeamRdsRepository(factory, areas_as_jsonb=True)
     register_operator_user_steps(
         registry,
         profile_repo,
@@ -89,6 +93,8 @@ def _delete_dsql_users_row_only(user_sub: str) -> None:
         purchase_repo,
         quiz_repo,
         assignments_repo,
+        certificates_repo,
+        research_team_repo,
     )
     UserDeletionService(registry).delete_user(user_sub)
 

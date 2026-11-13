@@ -1436,7 +1436,9 @@ def build_aws_deps(cfg: AppConfig) -> AwsDeps:
     register_progress_deletion_steps(course_deletion_registry, progress_repo)
     register_lesson_note_deletion_steps(course_deletion_registry, notes_repo)
     register_question_bank_deletion_steps(course_deletion_registry, qb_repo)
-    register_assignment_deletion_steps(course_deletion_registry, assignments_repo)
+    register_assignment_deletion_steps(
+        course_deletion_registry, assignments_repo, certificates_repo
+    )
 
     lesson_notes_service = LessonNotesService(
 
@@ -1484,7 +1486,10 @@ def build_aws_deps(cfg: AppConfig) -> AwsDeps:
 
 
 
-    research_team_repo = ResearchTeamRdsRepository(conn_factory)
+    research_team_repo = ResearchTeamRdsRepository(
+        conn_factory,
+        areas_as_jsonb=_dsql_config_complete(cfg),
+    )
 
     research_team_service = ResearchTeamService(
 

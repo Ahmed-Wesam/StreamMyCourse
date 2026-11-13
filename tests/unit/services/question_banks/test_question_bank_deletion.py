@@ -165,6 +165,8 @@ class TestUserDeletionQuizOrder:
             MagicMock(),
             MagicMock(),
             MagicMock(),
+            MagicMock(),
+            MagicMock(),
         )
         steps = registry.ordered_steps()
         quiz_steps = [s for s in steps if s.name == "quiz_student_rows"]
@@ -191,7 +193,15 @@ class TestUserDeletionQuizOrder:
         quiz.delete_bindings_for_user.return_value = 0
         registry = UserDeletionRegistry()
         register_operator_user_steps(
-            registry, _FakeDeleter(), progress, notes, purchases, quiz, MagicMock()
+            registry,
+            _FakeDeleter(),
+            progress,
+            notes,
+            purchases,
+            quiz,
+            MagicMock(),
+            MagicMock(),
+            MagicMock(),
         )
         UserDeletionService(registry).delete_user(_SUB)
         assert log.index("purchases") < log.index("quiz")

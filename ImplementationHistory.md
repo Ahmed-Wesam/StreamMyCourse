@@ -16,6 +16,13 @@
 - **Gates:** Preview E2E **72 passed**, 2 skipped (plan gate incl. concurrency); prod suite **203 passed**, 32 skipped; `dsql_orphan_audit` **0 findings**; CI [**43467451922**](https://github.com/Ahmed-Wesam/StreamMyCourse/actions/runs/43467451922), Deploy [**43467792734**](https://github.com/Ahmed-Wesam/StreamMyCourse/actions/runs/43467792734) green. Commits **`b1d307b`**, **`7f4a5d7`** (+ docs).
 - **DSQL-7..8 handoff:** certificates still separate; prod catalog on RDS until cutover. Course delete **300** = quiz tables; user delete **300** = quiz student rows; module delete does not drop banks. Do not re-add `FOR UPDATE` to deploy spike.
 
+## 2026-11-13 — DSQL-7a assignments (shipped)
+
+- **Assignments on DSQL:** `run_transaction` for criteria replace (`FOR UPDATE`), grade txn (submission lock + `graded`), draft `ON CONFLICT`, single-statement writes; batched deletes at course/module/user order **400**; `delete-user.py` enqueues submission S3 keys.
+- **Gate:** preview `test_dsql_assignment_sql.py` + `test_assignments.py` + catalog/user deletion extensions; prod Deploy integration green after test fixes (`2834a6b`, `1a3ff1c`, `bd9be72`); `dsql_orphan_audit` 0 findings.
+- **Prod catalog:** still RDS PostgreSQL 16; same SQL on both engines until DSQL-8.
+- **Known limit (operator Q&A):** criteria replace on heavily graded assignments can cascade >3,000 score rows — documented in follow-up docs pass.
+
 ## 2026-11-13 — DSQL-5: Commerce (purchases, preview billing routes, fulfillment OCC)
 
 - **Reservation (D4):** `reserve_pending_checkout` runs in one `run_transaction` with **`SELECT … FROM users FOR UPDATE`** before stale pending delete / paid re-check / single pending insert — shared SQL on **RDS 16** and **DSQL** (no new DDL). Interval probe **D6 compatible** (no `make_interval` fallback).

@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import json
 import logging
 from dataclasses import replace
 from typing import Any, Callable, List, Optional
 
+from services.common.db_tx import delete_in_batches, run_transaction
 from services.common.errors import Conflict
 from services.research_team.ports import (
     ApplicationRow,
@@ -34,6 +36,16 @@ _SELECT_COLS = """
 _OPEN_INDEX_HINT = "research_team_applications_one_open"
 _ACCEPTED_INDEX_HINT = "research_team_applications_one_accepted"
 
+_DELETE_RESEARCH_TEAM_APPLICATIONS_FOR_USER_SQL = """
+DELETE FROM research_team_applications AS t
+USING (
+    SELECT id FROM research_team_applications
+    WHERE user_sub = %s
+    LIMIT 1000
+) AS batch
+WHERE t.id = batch.id
+"""
+
 
 def _areas_from_db(value: Any) -> tuple[str, ...]:
     if value is None:
@@ -42,6 +54,17 @@ def _areas_from_db(value: Any) -> tuple[str, ...]:
         return tuple(str(v) for v in value)
     if isinstance(value, tuple):
         return tuple(str(v) for v in value)
+    if isinstance(value, str):
+        text = value.strip()
+        if not text:
+            return ()
+        try:
+            parsed = json.loads(text)
+        except json.JSONDecodeError:
+            return ()
+        if isinstance(parsed, list):
+            return tuple(str(v) for v in parsed)
+        return ()
     return ()
 
 
@@ -70,8 +93,11 @@ def _row_from_db(row: tuple) -> ApplicationRow:
 
 
 class ResearchTeamRdsRepository(ResearchTeamRepositoryPort):
-    def __init__(self, conn_factory: ConnectionFactory) -> None:
+    def __init__(
+        self, conn_factory: ConnectionFactory, *, areas_as_jsonb: bool = False
+    ) -> None:
         self._conn_factory = conn_factory
+        self._areas_as_jsonb = areas_as_jsonb
         self._conn: Optional[Any] = None
 
     def _connection(self) -> Any:
@@ -106,7 +132,8 @@ class ResearchTeamRdsRepository(ResearchTeamRepositoryPort):
             return None
         if not isinstance(exc, psycopg2.IntegrityError):
             return None
-        if getattr(exc, "pgcode", None) != errorcodes.UNIQUE_VIOLATION:
+        pgcode = getattr(exc, "pgcode", None)
+        if pgcode is not None and pgcode != errorcodes.UNIQUE_VIOLATION:
             return None
         diag = getattr(exc, "diag", None)
         constraint = str(getattr(diag, "constraint_name", None) or "")
@@ -155,23 +182,36 @@ class ResearchTeamRdsRepository(ResearchTeamRepositoryPort):
             for r in cur.fetchall()
         ]
 
+    def _bind_research_areas(self, areas: tuple[str, ...] | list[str]) -> Any:
+        values = list(areas)
+        if self._areas_as_jsonb:
+            return json.dumps(values)
+        return values
+
+    def _research_areas_sql_fragment(self) -> str:
+        return "%s::jsonb" if self._areas_as_jsonb else "%s"
+
     def set_requirement(self, course_id: str, *, required: bool) -> None:
-        if required:
-            self._execute(
-                """
-                INSERT INTO research_team_required_courses (course_id)
-                VALUES (%s)
-                ON CONFLICT (course_id) DO NOTHING
-                """,
-                (course_id,),
-                commit=True,
-            )
-        else:
-            self._execute(
-                "DELETE FROM research_team_required_courses WHERE course_id = %s",
-                (course_id,),
-                commit=True,
-            )
+        conn = self._connection()
+
+        def body() -> None:
+            cur = conn.cursor()
+            if required:
+                cur.execute(
+                    """
+                    INSERT INTO research_team_required_courses (course_id)
+                    VALUES (%s)
+                    ON CONFLICT (course_id) DO NOTHING
+                    """,
+                    (course_id,),
+                )
+            else:
+                cur.execute(
+                    "DELETE FROM research_team_required_courses WHERE course_id = %s",
+                    (course_id,),
+                )
+
+        run_transaction(conn, body)
 
     def is_required(self, course_id: str) -> bool:
         cur = self._execute(
@@ -239,50 +279,55 @@ class ResearchTeamRdsRepository(ResearchTeamRepositoryPort):
         return cur.fetchone() is not None
 
     def insert_application(self, row: ApplicationRow) -> ApplicationRow:
-        areas = list(row.research_areas)
-        try:
-            cur = self._execute(
-                f"""
-                INSERT INTO research_team_applications (
-                    id, user_sub, status, reapply_allowed, submitted_at,
-                    full_name, email, country, institution, position,
-                    publication_count, project_count, stats_experience, sys_review_experience,
-                    research_areas, interests, motivation, weekly_hours, acknowledged_at
-                ) VALUES (
-                    %s, %s, %s, %s, %s,
-                    %s, %s, %s, %s, %s,
-                    %s, %s, %s, %s,
-                    %s, %s, %s, %s, %s
-                )
-                RETURNING {_SELECT_COLS}
-                """,
-                (
-                    row.id,
-                    row.user_sub,
-                    row.status,
-                    row.reapply_allowed,
-                    row.submitted_at,
-                    row.full_name,
-                    row.email,
-                    row.country,
-                    row.institution,
-                    row.position,
-                    row.publication_count,
-                    row.project_count,
-                    row.stats_experience,
-                    row.sys_review_experience,
-                    areas,
-                    row.interests,
-                    row.motivation,
-                    row.weekly_hours,
-                    row.acknowledged_at,
-                ),
-                commit=True,
+        areas_param = self._bind_research_areas(row.research_areas)
+        areas_sql = self._research_areas_sql_fragment()
+        conn = self._connection()
+        insert_sql = f"""
+            INSERT INTO research_team_applications (
+                id, user_sub, status, reapply_allowed, submitted_at,
+                full_name, email, country, institution, position,
+                publication_count, project_count, stats_experience, sys_review_experience,
+                research_areas, interests, motivation, weekly_hours, acknowledged_at
+            ) VALUES (
+                %s, %s, %s, %s, %s,
+                %s, %s, %s, %s, %s,
+                %s, %s, %s, %s,
+                {areas_sql}, %s, %s, %s, %s
             )
+            RETURNING {_SELECT_COLS}
+            """
+        insert_params = (
+            row.id,
+            row.user_sub,
+            row.status,
+            row.reapply_allowed,
+            row.submitted_at,
+            row.full_name,
+            row.email,
+            row.country,
+            row.institution,
+            row.position,
+            row.publication_count,
+            row.project_count,
+            row.stats_experience,
+            row.sys_review_experience,
+            areas_param,
+            row.interests,
+            row.motivation,
+            row.weekly_hours,
+            row.acknowledged_at,
+        )
+
+        def body() -> ApplicationRow:
+            cur = conn.cursor()
+            cur.execute(insert_sql, insert_params)
             fetched = cur.fetchone()
             if fetched is None:
                 raise RuntimeError("INSERT research_team_applications returned no row")
             return self._with_tags(_row_from_db(fetched))
+
+        try:
+            return run_transaction(conn, body)
         except Exception as exc:
             conflict = self._unique_user_status_conflict(exc)
             if conflict is not None:
@@ -290,21 +335,25 @@ class ResearchTeamRdsRepository(ResearchTeamRepositoryPort):
             raise
 
     def update_status(self, application_id: str, status: str) -> ApplicationRow:
-        try:
-            cur = self._execute(
-                f"""
-                UPDATE research_team_applications
-                   SET status = %s
-                 WHERE id = %s
-             RETURNING {_SELECT_COLS}
-                """,
-                (status, application_id),
-                commit=True,
-            )
+        conn = self._connection()
+        sql = f"""
+            UPDATE research_team_applications
+               SET status = %s
+             WHERE id = %s
+         RETURNING {_SELECT_COLS}
+            """
+        params = (status, application_id)
+
+        def body() -> ApplicationRow:
+            cur = conn.cursor()
+            cur.execute(sql, params)
             row = cur.fetchone()
             if row is None:
                 raise RuntimeError(f"update_status target missing: {application_id}")
             return self._with_tags(_row_from_db(row))
+
+        try:
+            return run_transaction(conn, body)
         except Exception as exc:
             conflict = self._unique_user_status_conflict(exc)
             if conflict is not None:
@@ -312,17 +361,28 @@ class ResearchTeamRdsRepository(ResearchTeamRepositoryPort):
             raise
 
     def set_reapply_allowed(self, application_id: str, *, allowed: bool) -> ApplicationRow:
-        cur = self._execute(
-            f"""
+        conn = self._connection()
+        sql = f"""
             UPDATE research_team_applications
                SET reapply_allowed = %s
              WHERE id = %s
          RETURNING {_SELECT_COLS}
-            """,
-            (allowed, application_id),
-            commit=True,
+            """
+        params = (allowed, application_id)
+
+        def body() -> ApplicationRow:
+            cur = conn.cursor()
+            cur.execute(sql, params)
+            row = cur.fetchone()
+            if row is None:
+                raise RuntimeError(f"set_reapply_allowed target missing: {application_id}")
+            return self._with_tags(_row_from_db(row))
+
+        return run_transaction(conn, body)
+
+    def delete_research_team_applications_for_user(self, user_sub: str) -> int:
+        return delete_in_batches(
+            self._connection(),
+            _DELETE_RESEARCH_TEAM_APPLICATIONS_FOR_USER_SQL,
+            (user_sub,),
         )
-        row = cur.fetchone()
-        if row is None:
-            raise RuntimeError(f"set_reapply_allowed target missing: {application_id}")
-        return self._with_tags(_row_from_db(row))

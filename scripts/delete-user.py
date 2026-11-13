@@ -17,6 +17,8 @@ if str(_CATALOG) not in sys.path:
 
 from dsql_connect import connect  # noqa: E402
 from services.assignments.rds_repo import AssignmentsRdsRepository  # noqa: E402
+from services.certificates.rds_repo import CertificatesRdsRepository  # noqa: E402
+from services.research_team.rds_repo import ResearchTeamRdsRepository  # noqa: E402
 from services.auth.rds_repo import UserProfileRdsRepository  # noqa: E402
 from services.common.sqs_client import send_media_cleanup_job  # noqa: E402
 from services.lesson_notes.rds_repo import LessonNotesRdsRepository  # noqa: E402
@@ -109,6 +111,8 @@ def _build_service(endpoint: str) -> UserDeletionService:
     purchase_repo = PurchaseRdsRepository(factory, deployment_environment=deploy_env)
     quiz_repo = QuestionBankRdsRepository(factory)
     assignments_repo = AssignmentsRdsRepository(factory)
+    certificates_repo = CertificatesRdsRepository(factory)
+    research_team_repo = ResearchTeamRdsRepository(factory, areas_as_jsonb=True)
     registry = UserDeletionRegistry()
     register_operator_user_steps(
         registry,
@@ -118,6 +122,8 @@ def _build_service(endpoint: str) -> UserDeletionService:
         purchase_repo,
         quiz_repo,
         assignments_repo,
+        certificates_repo,
+        research_team_repo,
     )
     return UserDeletionService(registry), assignments_repo
 

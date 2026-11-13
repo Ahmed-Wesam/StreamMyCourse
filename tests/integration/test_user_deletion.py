@@ -438,7 +438,7 @@ def test_operator_delete_user_clears_assignment_submission_children(
     import time
 
     from helpers.cleanup import s3_object_exists
-    from helpers.dsql_preview_access import ensure_student_subscription
+    from helpers.billing_access import ensure_student_subscription
     from helpers.factories import build_lesson_factory
     from helpers.module_contract import require_course_modules_list
 

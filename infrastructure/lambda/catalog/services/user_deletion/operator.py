@@ -7,7 +7,9 @@ from services.progress.deletion import ProgressDeletionRepo
 from services.purchases.deletion import PurchaseDeletionRepo
 from services.assignments.deletion import (
     AssignmentDeletionRepo,
-    delete_assignment_children_for_user,
+    CertificateDeletionRepo,
+    ResearchTeamDeletionRepo,
+    delete_assignment_certificate_research_rows_for_user,
 )
 from services.question_banks.deletion import (
     QuestionBankDeletionRepo,
@@ -30,6 +32,8 @@ def register_operator_user_steps(
     purchase_repo: PurchaseDeletionRepo,
     quiz_repo: QuestionBankDeletionRepo,
     assignments_repo: AssignmentDeletionRepo,
+    certificates_repo: CertificateDeletionRepo,
+    research_team_repo: ResearchTeamDeletionRepo,
 ) -> None:
     registry.register(
         name="lesson_progress",
@@ -59,8 +63,11 @@ def register_operator_user_steps(
     registry.register(
         name="assignment_certificate_research_rows",
         order=_ASSIGNMENT_CHILDREN_ORDER,
-        run=lambda user_sub: delete_assignment_children_for_user(
-            assignments_repo, user_sub
+        run=lambda user_sub: delete_assignment_certificate_research_rows_for_user(
+            assignments_repo,
+            certificates_repo,
+            research_team_repo,
+            user_sub,
         ),
     )
     register_identity_steps(registry, profile_repo)
