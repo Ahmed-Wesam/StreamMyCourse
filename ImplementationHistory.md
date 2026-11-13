@@ -6,6 +6,15 @@
 
 ---
 
+## 2026-11-12 — DSQL-0: Aurora DSQL decision, cost cleanups, legacy deletes
+
+- **ADR-0016** ([`adr-0016-rds-postgresql-to-aurora-dsql.md`](plans/architecture/adr-0016-rds-postgresql-to-aurora-dsql.md), **Proposed**): chosen next store is **Aurora DSQL**; **RDS PostgreSQL stays production until DSQL-8**. ADR-0008 marked **Superseded by ADR-0016**; ADR-0010/0012/0013 carry amendment notes.
+- **Migrations frozen:** `infrastructure/database/migrations/` allowlist enforced by [`scripts/check_migrations_frozen.py`](scripts/check_migrations_frozen.py) in [`.github/workflows/ci.yml`](.github/workflows/ci.yml) (24 files; new DDL waits for DSQL-1 `infrastructure/database/dsql/`).
+- **RDS stack** ([`rds-stack.yaml`](infrastructure/templates/rds-stack.yaml)): removed CloudWatch **Logs** interface endpoint `vpce-0d64f2a56085a2992`; **BackupRetentionPeriod 1** (operator override); Secrets Manager, SQS, S3, DynamoDB endpoints unchanged. Deploy: [`.github/workflows/deploy-backend.yml`](.github/workflows/deploy-backend.yml) `deploy-rds-prod` on `StreamMyCourse-Rds-prod` (CI+Deploy green for `b8ceabb`).
+- **Verification:** prod HTTPS integration **187 passed**, 12 skipped; log gate **START RequestId** on catalog, `UserProfileSync`, and billing fulfillment after suite start (2026-11-13T03:33:15Z).
+- **Operator deletes (post gate):** DynamoDB tables `CourseHoster-Submissions`, `StreamMyCourse-Catalog-{dev,integ,prod}`; manual RDS snapshots `streammycourse-rds-prod-snapshot-dbinstance-kxjvqox0uji6`, `streammycourse-rds-dev-snapshot-dbinstance-ngw19gk7vi2y`. August snapshot ids are **not** valid `restore-prod.sh` targets anymore.
+- **DSQL-1 handoff:** add DSQL schema dir + preview API stack; sync GitHub deploy role for `dsql:*` before first DSQL-1 push (not touched in DSQL-0).
+
 ## 2026-10-15 — HyperPay merchantTransactionId is the purchase UUID
 
 - Live acquirer rejects the previous `v2|env|user|...` cart string: `|` is not allowed, and the value is longer than **41** characters. Checkout now sends the purchase UUID (`[A-Za-z0-9_-]`, 36 characters) as `merchantTransactionId` and `customParameters[SHOPPER_cart]`.
