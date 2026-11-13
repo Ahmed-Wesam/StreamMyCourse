@@ -104,11 +104,16 @@ def test_teacher_cannot_set_research_requirement(api: ApiClient, course_factory)
 def test_research_team_apply_and_review_flow(
     api: ApiClient,
     course_factory,
+    lesson_factory,
 ) -> None:
     admin_api, admin_pool, admin_email = _throwaway_admin_api()
     student_api, student_pool, student_email = _throwaway_student_api()
     course = course_factory(label="rt-apply")
     course_id = course.course_id
+    lesson = lesson_factory(course_id, label="rt-apply-lesson")
+    assert api.get_upload_url(course_id=course_id, lesson_id=lesson.lesson_id).status_code == 200
+    assert api.mark_video_ready(course_id, lesson.lesson_id).status_code == 200
+    assert api.publish_course(course_id).status_code == 200
     try:
         assert admin_api.put_research_team_requirement(course_id, required=True).status_code == 200
         reqs = admin_api.get_research_team_requirements()
