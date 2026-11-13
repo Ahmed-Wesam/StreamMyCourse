@@ -6,6 +6,8 @@
 
 Accepted (Research Spectrum)
 
+**Amended by [ADR-0016](./adr-0016-rds-postgresql-to-aurora-dsql.md):** Purchase and bundle entitlement rules are unchanged; persistence moves to Aurora DSQL when cut over.
+
 **Supersedes:** subscription access rules in [`plans/billing/access-policy-v1.md`](../billing/access-policy-v1.md) (historical WS5 / pre-migration **015**).
 
 ## Context

@@ -4,6 +4,8 @@
 
 Accepted (MVP)
 
+**Amended by [ADR-0016](./adr-0016-rds-postgresql-to-aurora-dsql.md):** The relational progress model is unchanged; the future store is Aurora DSQL. RDS remains production until DSQL-8.
+
 ## Context
 
 We need per-student lesson progress tracking (completed status, resume position) for the StreamMyCourse platform. The feature must:

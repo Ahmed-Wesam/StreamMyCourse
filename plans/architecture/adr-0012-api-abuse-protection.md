@@ -4,6 +4,8 @@
 
 Accepted (MVP)
 
+**Amended by [ADR-0016](./adr-0016-rds-postgresql-to-aurora-dsql.md):** Rate-limit counter semantics and fail-closed behavior are unchanged; counters move to Aurora DSQL with the rest of the relational store.
+
 ## Context
 
 Public and authenticated catalog routes need product-level request limits (progress bursts, playback, contact spam, certificate verify) without standing up a costly edge WAF for volumetric attack absorption. The catalog Lambda already uses RDS; API Gateway can apply coarse stage throttles.

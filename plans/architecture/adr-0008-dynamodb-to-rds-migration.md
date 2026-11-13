@@ -2,7 +2,9 @@
 
 ## Status
 
-Proposed (code landed, cutover pending)
+Superseded by [ADR-0016](./adr-0016-rds-postgresql-to-aurora-dsql.md)
+
+RDS remains the **production** store until **DSQL-8**; do not start a new DynamoDB or RDS migration initiative outside the DSQL workstreams.
 
 ## Context
 

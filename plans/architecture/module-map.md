@@ -2,7 +2,7 @@
 
 This document is the “public surface” map for the Python Lambda under `infrastructure/lambda/catalog/`.
 
-Related ADRs: [0011 video provider / Kinescope](./adr-0011-video-provider-port-kinescope-cutover.md), [0012 API abuse protection](./adr-0012-api-abuse-protection.md), [0013 purchases / bundle entitlements](./adr-0013-one-time-purchases-bundle-entitlements.md), [0014 student Google + SRP / Zoho](./adr-0014-student-google-cognito-srp-zoho-mail.md).
+Related ADRs: [0011 video provider / Kinescope](./adr-0011-video-provider-port-kinescope-cutover.md), [0012 API abuse protection](./adr-0012-api-abuse-protection.md), [0013 purchases / bundle entitlements](./adr-0013-one-time-purchases-bundle-entitlements.md), [0014 student Google + SRP / Zoho](./adr-0014-student-google-cognito-srp-zoho-mail.md), [0016 RDS → Aurora DSQL](./adr-0016-rds-postgresql-to-aurora-dsql.md) (future store; **RDS PostgreSQL is still the live persistence layer** until DSQL-8).
 
 ## Composition / entry
 
