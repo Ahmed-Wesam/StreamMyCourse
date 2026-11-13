@@ -212,6 +212,44 @@ class ApiClient:
     def delete_lesson(self, course_id: str, lesson_id: str) -> httpx.Response:
         return self._client.delete(f"/courses/{course_id}/lessons/{lesson_id}")
 
+    def list_lesson_files(self, course_id: str, lesson_id: str) -> httpx.Response:
+        return self._client.get(f"/courses/{course_id}/lessons/{lesson_id}/files")
+
+    def create_lesson_file(
+        self,
+        course_id: str,
+        lesson_id: str,
+        *,
+        title: str,
+        kind: str = "resource",
+        file_type: str = "pdf",
+        byte_size: int,
+    ) -> httpx.Response:
+        return self._client.post(
+            f"/courses/{course_id}/lessons/{lesson_id}/files",
+            json={
+                "title": title,
+                "kind": kind,
+                "fileType": file_type,
+                "byteSize": byte_size,
+            },
+        )
+
+    def complete_lesson_file(
+        self, course_id: str, lesson_id: str, file_id: str
+    ) -> httpx.Response:
+        return self._client.put(
+            f"/courses/{course_id}/lessons/{lesson_id}/files/{file_id}/complete",
+            json={},
+        )
+
+    def delete_lesson_file(
+        self, course_id: str, lesson_id: str, file_id: str
+    ) -> httpx.Response:
+        return self._client.delete(
+            f"/courses/{course_id}/lessons/{lesson_id}/files/{file_id}"
+        )
+
     def mark_video_ready(
         self,
         course_id: str,

@@ -292,6 +292,7 @@ def handle(
                 params["courseId"],
                 cognito_sub=_actor_sub(claims),
                 role=_actor_role(claims),
+                include_deleting=True,
             )
             deleted: dto.DeleteCourseResponse = svc.delete_course(params["courseId"])  # type: ignore[assignment]
             _audit_event("course.delete", params["courseId"], claims)

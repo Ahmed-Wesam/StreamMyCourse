@@ -9,6 +9,7 @@ import pytest
 
 from services.common.errors import BadRequest, Forbidden, NotFound, ServiceUnavailable
 from services.course_management.models import Course, Lesson, LessonFile
+from services.course_deletion.runner import CourseDeletionRunner
 from services.course_management.service import CourseManagementService
 
 _CID = "11111111-1111-4111-8111-111111111111"
@@ -71,6 +72,7 @@ def _service(
     queue_url: str = "https://sqs.example/q",
 ) -> tuple[CourseManagementService, MagicMock, MagicMock, MagicMock]:
     repo = MagicMock()
+    repo.course_has_purchase.return_value = False
     repo.get_course.return_value = _course()
     repo.get_lesson_by_id.return_value = _lesson()
     repo.count_lesson_files.return_value = 0
@@ -95,6 +97,7 @@ def _service(
     module_lock = MagicMock()
     module_lock.is_module_locked_for_student.return_value = module_locked
 
+    deletion_runner = MagicMock(spec=CourseDeletionRunner)
     svc = CourseManagementService(
         repo,
         None,
@@ -102,6 +105,7 @@ def _service(
         file_storage=file_storage,
         media_cleanup_queue_url=queue_url,
         module_lock=module_lock,
+        deletion_runner=deletion_runner,
     )
     return svc, repo, file_storage, access
 

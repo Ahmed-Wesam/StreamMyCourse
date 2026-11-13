@@ -34,6 +34,7 @@ except Exception:  # pragma: no cover - surface at first DB call instead
     pg_errors = None  # type: ignore[assignment]
     PgJson = None  # type: ignore[assignment]
 
+from services.common.db_tx import delete_in_batches, run_transaction
 from services.common.errors import Conflict
 from services.course_management.certificate_code import generate_certificate_code
 from services.course_management.models import Course, CourseModule, Lesson, LessonFile
@@ -223,7 +224,50 @@ _COURSE_COLUMNS = (
     "price_amount_minor, page_content, certificate_code"
 )
 _CREATE_COURSE_CERT_CODE_ATTEMPTS = 20
+_ORDER_INSERT_ATTEMPTS = 3
+_COURSE_VISIBLE_SQL = "AND (status IS NULL OR status <> 'deleting')"
 _MODULE_COLUMNS = "id, course_id, title, description, module_order, created_at, updated_at"
+_DELETE_LESSON_FILES_FOR_COURSE_SQL = """
+DELETE FROM lesson_files
+ WHERE id IN (
+       SELECT id FROM lesson_files WHERE course_id = %s LIMIT 1000
+       )
+"""
+_DELETE_LESSONS_FOR_COURSE_SQL = """
+DELETE FROM lessons
+ WHERE id IN (
+       SELECT id FROM lessons WHERE course_id = %s LIMIT 1000
+       )
+"""
+_DELETE_COURSE_MODULES_FOR_COURSE_SQL = """
+DELETE FROM course_modules
+ WHERE id IN (
+       SELECT id FROM course_modules WHERE course_id = %s LIMIT 1000
+       )
+"""
+_DELETE_LESSON_FILES_FOR_MODULE_SQL = """
+DELETE FROM lesson_files
+ WHERE id IN (
+       SELECT id FROM lesson_files
+        WHERE course_id = %s
+          AND lesson_id IN (
+                SELECT id FROM lessons WHERE course_id = %s AND module_id = %s
+                )
+        LIMIT 1000
+       )
+"""
+_DELETE_LESSONS_FOR_MODULE_SQL = """
+DELETE FROM lessons
+ WHERE id IN (
+       SELECT id FROM lessons WHERE course_id = %s AND module_id = %s LIMIT 1000
+       )
+"""
+_DELETE_LESSON_FILES_FOR_LESSON_SQL = """
+DELETE FROM lesson_files
+ WHERE id IN (
+       SELECT id FROM lesson_files WHERE course_id = %s AND lesson_id = %s LIMIT 1000
+       )
+"""
 _LESSON_SELECT = (
     "l.id, l.title, l.lesson_order, l.video_key, l.video_status, l.thumbnail_key, "
     "l.duration, l.module_id, m.module_order, l.transcript"
@@ -290,7 +334,9 @@ class CourseCatalogRdsRepository:
     # Course queries
     # ------------------------------------------------------------------
     def list_courses(self) -> List[Course]:
-        cur = self._execute(f"SELECT {_COURSE_COLUMNS} FROM courses ORDER BY created_at")
+        cur = self._execute(
+            f"SELECT {_COURSE_COLUMNS} FROM courses WHERE 1=1 {_COURSE_VISIBLE_SQL} ORDER BY created_at"
+        )
         return [_row_to_course(row) for row in cur.fetchall()]
 
     def list_courses_by_instructor(self, created_by: str) -> List[Course]:
@@ -298,18 +344,31 @@ class CourseCatalogRdsRepository:
         if not cb:
             return []
         cur = self._execute(
-            f"SELECT {_COURSE_COLUMNS} FROM courses WHERE created_by = %s ORDER BY created_at ASC",
+            f"""
+            SELECT {_COURSE_COLUMNS} FROM courses
+             WHERE created_by = %s {_COURSE_VISIBLE_SQL}
+             ORDER BY created_at ASC
+            """,
             (cb,),
         )
         return [_row_to_course(row) for row in cur.fetchall()]
 
-    def get_course(self, course_id: str) -> Optional[Course]:
+    def get_course(self, course_id: str, *, include_deleting: bool = False) -> Optional[Course]:
+        visible = "" if include_deleting else f" {_COURSE_VISIBLE_SQL}"
         cur = self._execute(
-            f"SELECT {_COURSE_COLUMNS} FROM courses WHERE id = %s",
+            f"SELECT {_COURSE_COLUMNS} FROM courses WHERE id = %s{visible}",
             (course_id,),
         )
         row = cur.fetchone()
         return _row_to_course(row) if row else None
+
+    def course_has_purchase(self, course_id: str) -> bool:
+        cur = self._execute(
+            "SELECT 1 FROM purchases WHERE course_id = %s LIMIT 1",
+            (course_id,),
+            commit=False,
+        )
+        return cur.fetchone() is not None
 
     def create_course(
         self, title: str, description: str, *, created_by: str
@@ -338,7 +397,7 @@ class CourseCatalogRdsRepository:
                     title, description, created_by, code
                 )
             except Exception as exc:
-                if self._is_certificate_code_unique_violation(exc):
+                if self._should_retry_certificate_attempt(exc):
                     last_exc = exc
                     continue
                 raise
@@ -350,7 +409,10 @@ class CourseCatalogRdsRepository:
     @staticmethod
     def _is_certificate_code_unique_violation(exc: BaseException) -> bool:
         if pg_errors is None or not isinstance(exc, pg_errors.UniqueViolation):
-            return False
+            if getattr(exc, "pgcode", None) != "23505":
+                return False
+        else:
+            pass
         diag = getattr(exc, "diag", None)
         constraint = str(getattr(diag, "constraint_name", "") or "")
         column = str(getattr(diag, "column_name", "") or "")
@@ -362,6 +424,18 @@ class CourseCatalogRdsRepository:
             or "courses_certificate_code" in constraint
         )
 
+    @staticmethod
+    def _should_retry_certificate_attempt(exc: BaseException) -> bool:
+        if CourseCatalogRdsRepository._is_certificate_code_unique_violation(exc):
+            return True
+        return getattr(exc, "pgcode", None) == "40001"
+
+    @staticmethod
+    def _is_unique_violation(exc: BaseException) -> bool:
+        if pg_errors is not None and isinstance(exc, pg_errors.UniqueViolation):
+            return True
+        return getattr(exc, "pgcode", None) == "23505"
+
     def _create_course_with_certificate_code(
         self,
         title: str,
@@ -370,7 +444,8 @@ class CourseCatalogRdsRepository:
         certificate_code: str,
     ) -> Course:
         conn = self._connection()
-        with _atomic_transaction(conn):
+
+        def body() -> Course:
             cur = conn.cursor()
             cur.execute(
                 f"""
@@ -397,7 +472,9 @@ class CourseCatalogRdsRepository:
                 """,
                 (course.id, "Overview", "", 0),
             )
-        return course
+            return course
+
+        return run_transaction(conn, body)
 
     def update_course(
         self,
@@ -467,27 +544,41 @@ class CourseCatalogRdsRepository:
     def create_course_module(
         self, course_id: str, title: str, description: str = ""
     ) -> CourseModule:
-        cur = self._execute(
-            "SELECT COALESCE(MAX(module_order), -1) FROM course_modules WHERE course_id = %s",
-            (course_id,),
-        )
-        row = cur.fetchone()
-        # Do NOT use `or -1` here: MAX(module_order) can be 0.
-        next_ord = int(row[0] if row and row[0] is not None else -1) + 1
+        conn = self._connection()
+        last_exc: Exception | None = None
+        for _ in range(_ORDER_INSERT_ATTEMPTS):
+            try:
 
-        cur = self._execute(
-            f"""
-            INSERT INTO course_modules (course_id, title, description, module_order)
-            VALUES (%s, %s, %s, %s)
-            RETURNING {_MODULE_COLUMNS}
-            """,
-            (course_id, title, description or "", next_ord),
-            commit=True,
-        )
-        created = cur.fetchone()
-        if created is None:
-            raise RuntimeError("INSERT course_modules ... RETURNING returned no row")
-        return _row_to_course_module(created)
+                def body() -> CourseModule:
+                    cur = conn.cursor()
+                    cur.execute(
+                        "SELECT COALESCE(MAX(module_order), -1) FROM course_modules WHERE course_id = %s",
+                        (course_id,),
+                    )
+                    row = cur.fetchone()
+                    next_ord = int(row[0] if row and row[0] is not None else -1) + 1
+                    cur.execute(
+                        f"""
+                        INSERT INTO course_modules (course_id, title, description, module_order)
+                        VALUES (%s, %s, %s, %s)
+                        RETURNING {_MODULE_COLUMNS}
+                        """,
+                        (course_id, title, description or "", next_ord),
+                    )
+                    created = cur.fetchone()
+                    if created is None:
+                        raise RuntimeError("INSERT course_modules ... RETURNING returned no row")
+                    return _row_to_course_module(created)
+
+                return run_transaction(conn, body)
+            except Exception as exc:
+                if self._is_unique_violation(exc):
+                    last_exc = exc
+                    continue
+                raise
+        raise RuntimeError(
+            f"exhausted {_ORDER_INSERT_ATTEMPTS} attempts inserting course_modules row"
+        ) from last_exc
 
     def delete_course_module(self, course_id: str, module_id: str) -> None:
         self._execute(
@@ -521,26 +612,50 @@ class CourseCatalogRdsRepository:
         return _row_to_lesson(row) if row else None
 
     def create_lesson(self, course_id: str, module_id: str, title: str) -> Lesson:
-        cur = self._execute(
-            "SELECT COALESCE(MAX(lesson_order), 0) FROM lessons WHERE course_id = %s AND module_id = %s",
-            (course_id, module_id),
-        )
-        row = cur.fetchone()
-        next_order = int((row[0] if row else 0) or 0) + 1
+        conn = self._connection()
+        last_exc: Exception | None = None
+        new_lesson_id: str | None = None
+        for _ in range(_ORDER_INSERT_ATTEMPTS):
+            try:
 
-        cur = self._execute(
-            """
-            INSERT INTO lessons (course_id, module_id, title, lesson_order)
-            VALUES (%s, %s, %s, %s)
-            RETURNING id
-            """,
-            (course_id, module_id, title, next_order),
-            commit=True,
-        )
-        created = cur.fetchone()
-        if created is None:
-            raise RuntimeError("INSERT lessons ... RETURNING returned no row")
-        loaded = self.get_lesson_by_id(course_id, str(created[0]))
+                def body() -> str:
+                    cur = conn.cursor()
+                    cur.execute(
+                        """
+                        SELECT COALESCE(MAX(lesson_order), 0)
+                          FROM lessons WHERE course_id = %s AND module_id = %s
+                        """,
+                        (course_id, module_id),
+                    )
+                    row = cur.fetchone()
+                    next_order = int((row[0] if row else 0) or 0) + 1
+                    cur.execute(
+                        """
+                        INSERT INTO lessons (course_id, module_id, title, lesson_order)
+                        VALUES (%s, %s, %s, %s)
+                        RETURNING id
+                        """,
+                        (course_id, module_id, title, next_order),
+                    )
+                    created = cur.fetchone()
+                    if created is None:
+                        raise RuntimeError("INSERT lessons ... RETURNING returned no row")
+                    return str(created[0])
+
+                new_lesson_id = run_transaction(conn, body)
+                break
+            except Exception as exc:
+                if self._is_unique_violation(exc):
+                    last_exc = exc
+                    continue
+                raise
+        else:
+            raise RuntimeError(
+                f"exhausted {_ORDER_INSERT_ATTEMPTS} attempts inserting lessons row"
+            ) from last_exc
+        if new_lesson_id is None:
+            raise RuntimeError("lesson insert did not return id")
+        loaded = self.get_lesson_by_id(course_id, new_lesson_id)
         if loaded is None:
             raise RuntimeError("Lesson row missing after insert")
         return loaded
@@ -670,22 +785,90 @@ class CourseCatalogRdsRepository:
         )
 
     def set_lesson_orders(self, course_id: str, orders: Dict[str, int]) -> None:
-        """Renumber lessons transactionally.
-
-        A single transaction spans every UPDATE so the on-disk state never
-        contains partial reordering.         ``UNIQUE (course_id, module_id, lesson_order)`` prevents two rows
-        in the same module from colliding during the transaction.
-        """
+        """Renumber lessons in two phases within one transaction."""
         if not orders:
             return
+        if len(orders) > 1000:
+            raise ValueError("lesson order batch exceeds 1000 ids")
         conn = self._connection()
-        with _atomic_transaction(conn):
+
+        def body() -> None:
             cur = conn.cursor()
+            for index, lesson_id in enumerate(orders.keys()):
+                cur.execute(
+                    "UPDATE lessons SET lesson_order = %s WHERE course_id = %s AND id = %s",
+                    (-(index + 1), course_id, lesson_id),
+                )
             for lesson_id, order in orders.items():
                 cur.execute(
                     "UPDATE lessons SET lesson_order = %s WHERE course_id = %s AND id = %s",
                     (int(order), course_id, lesson_id),
                 )
+
+        run_transaction(conn, body)
+
+    def _batched_delete(self, sql: str, params: Tuple[Any, ...]) -> int:
+        return delete_in_batches(self._connection(), sql, params)
+
+    def delete_lesson_files_for_course(self, course_id: str) -> int:
+        return self._batched_delete(_DELETE_LESSON_FILES_FOR_COURSE_SQL, (course_id,))
+
+    def delete_lessons_for_course(self, course_id: str) -> int:
+        return self._batched_delete(_DELETE_LESSONS_FOR_COURSE_SQL, (course_id,))
+
+    def delete_course_modules_for_course(self, course_id: str) -> int:
+        return self._batched_delete(_DELETE_COURSE_MODULES_FOR_COURSE_SQL, (course_id,))
+
+    def delete_lesson_files_for_module(self, course_id: str, module_id: str) -> int:
+        return self._batched_delete(
+            _DELETE_LESSON_FILES_FOR_MODULE_SQL,
+            (course_id, course_id, module_id),
+        )
+
+    def delete_lessons_for_module(self, course_id: str, module_id: str) -> int:
+        return self._batched_delete(_DELETE_LESSONS_FOR_MODULE_SQL, (course_id, module_id))
+
+    def delete_lesson_files_for_lesson(self, course_id: str, lesson_id: str) -> int:
+        return self._batched_delete(
+            _DELETE_LESSON_FILES_FOR_LESSON_SQL,
+            (course_id, lesson_id),
+        )
+
+    def delete_lesson_row(self, course_id: str, lesson_id: str) -> int:
+        conn = self._connection()
+
+        def body() -> int:
+            cur = conn.cursor()
+            cur.execute(
+                "DELETE FROM lessons WHERE course_id = %s AND id = %s",
+                (course_id, lesson_id),
+            )
+            return int(cur.rowcount)
+
+        return run_transaction(conn, body)
+
+    def delete_course_module_row(self, course_id: str, module_id: str) -> int:
+        conn = self._connection()
+
+        def body() -> int:
+            cur = conn.cursor()
+            cur.execute(
+                "DELETE FROM course_modules WHERE course_id = %s AND id = %s",
+                (course_id, module_id),
+            )
+            return int(cur.rowcount)
+
+        return run_transaction(conn, body)
+
+    def delete_course_row(self, course_id: str) -> int:
+        conn = self._connection()
+
+        def body() -> int:
+            cur = conn.cursor()
+            cur.execute("DELETE FROM courses WHERE id = %s", (course_id,))
+            return int(cur.rowcount)
+
+        return run_transaction(conn, body)
 
     def count_lesson_files(self, course_id: str, lesson_id: str) -> int:
         cur = self._execute(

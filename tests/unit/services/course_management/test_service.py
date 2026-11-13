@@ -14,6 +14,7 @@ import pytest
 
 from services.common.errors import BadRequest, Conflict, Forbidden, NotFound, ServiceUnavailable
 from services.course_management.models import Course, CourseModule, Lesson, PresignResult
+from services.course_deletion.runner import CourseDeletionRunner
 from services.course_management.service import CourseManagementService
 from services.course_management.video_providers.port import KinescopePlayback, S3Playback, VideoUploadInit
 
@@ -129,26 +130,40 @@ def course_access() -> MagicMock:
 
 
 @pytest.fixture
+def deletion_runner() -> MagicMock:
+    return MagicMock(spec=CourseDeletionRunner)
+
+
+@pytest.fixture
 def service(
     repo: MagicMock,
     storage: MagicMock,
     video_provider: MagicMock,
     enrollments: MagicMock,
     course_access: MagicMock,
+    deletion_runner: MagicMock,
 ) -> CourseManagementService:
+    repo.course_has_purchase.return_value = False
     return CourseManagementService(
         repo,
         storage,
         course_access=course_access,
         video_provider=video_provider,
+        deletion_runner=deletion_runner,
     )
 
 
 @pytest.fixture
 def service_no_storage(
-    repo: MagicMock, enrollments: MagicMock, course_access: MagicMock
+    repo: MagicMock,
+    enrollments: MagicMock,
+    course_access: MagicMock,
+    deletion_runner: MagicMock,
 ) -> CourseManagementService:
-    return CourseManagementService(repo, None, course_access=course_access)
+    repo.course_has_purchase.return_value = False
+    return CourseManagementService(
+        repo, None, course_access=course_access, deletion_runner=deletion_runner
+    )
 
 
 @pytest.fixture
@@ -158,13 +173,16 @@ def service_with_queue(
     video_provider: MagicMock,
     enrollments: MagicMock,
     course_access: MagicMock,
+    deletion_runner: MagicMock,
 ) -> CourseManagementService:
+    repo.course_has_purchase.return_value = False
     return CourseManagementService(
         repo,
         storage,
         course_access=course_access,
         video_provider=video_provider,
         media_cleanup_queue_url="https://sqs.example/queue",
+        deletion_runner=deletion_runner,
     )
 
 
@@ -363,24 +381,26 @@ class TestCreateLessonService:
 
 class TestDeleteCourse:
     def test_missing_course_raises_not_found(
-        self, service: CourseManagementService, repo: MagicMock
+        self, service: CourseManagementService, repo: MagicMock, deletion_runner: MagicMock
     ) -> None:
         repo.get_course.return_value = None
         with pytest.raises(NotFound, match="Course not found"):
             service.delete_course("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa")
-        repo.delete_course_and_lessons.assert_not_called()
+        deletion_runner.run.assert_not_called()
 
-    def test_delegates_to_repo(
-        self, service: CourseManagementService, repo: MagicMock
+    def test_delegates_to_runner(
+        self, service: CourseManagementService, repo: MagicMock, deletion_runner: MagicMock
     ) -> None:
         repo.get_course.return_value = _course(id_=_VID)
         repo.list_lessons.return_value = []
         out = service.delete_course(_VID)
-        repo.delete_course_and_lessons.assert_called_once_with(_VID)
+        repo.get_course.assert_called_with(_VID, include_deleting=True)
+        deletion_runner.run.assert_called_once_with("course", _VID)
+        repo.set_course_status.assert_called_once_with(_VID, "deleting")
         assert out == {"id": _VID, "deleted": True}
 
     def test_raises_when_queue_missing_but_course_has_media_keys(
-        self, service: CourseManagementService, repo: MagicMock
+        self, service: CourseManagementService, repo: MagicMock, deletion_runner: MagicMock
     ) -> None:
         repo.get_course.return_value = _course(
             id_=_VID, thumbnail_key=_course_thumb_key(_VID, _TH3)
@@ -388,11 +408,15 @@ class TestDeleteCourse:
         repo.list_lessons.return_value = []
         with pytest.raises(ServiceUnavailable, match="MEDIA_CLEANUP_QUEUE_URL"):
             service.delete_course(_VID)
-        repo.delete_course_and_lessons.assert_not_called()
+        deletion_runner.run.assert_not_called()
 
     @patch("services.course_management.service.send_media_cleanup_job")
     def test_enqueue_failure_after_db_delete_propagates(
-        self, send_job: MagicMock, service_with_queue: CourseManagementService, repo: MagicMock
+        self,
+        send_job: MagicMock,
+        service_with_queue: CourseManagementService,
+        repo: MagicMock,
+        deletion_runner: MagicMock,
     ) -> None:
         _L1 = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"
         repo.get_course.return_value = _course(id_=_VID)
@@ -400,17 +424,17 @@ class TestDeleteCourse:
         send_job.side_effect = RuntimeError("sqs down")
         with pytest.raises(RuntimeError, match="sqs down"):
             service_with_queue.delete_course(_VID)
-        repo.delete_course_and_lessons.assert_called_once_with(_VID)
+        deletion_runner.run.assert_called_once_with("course", _VID)
 
     def test_without_storage_raises_when_queue_missing_and_media_keys(
-        self, service_no_storage: CourseManagementService, repo: MagicMock
+        self, service_no_storage: CourseManagementService, repo: MagicMock, deletion_runner: MagicMock
     ) -> None:
         _L1 = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"
         repo.get_course.return_value = _course(id_=_VID)
         repo.list_lessons.return_value = [_lesson(id_=_L1, video_key=_video_key(_VID, _L1))]
         with pytest.raises(ServiceUnavailable, match="MEDIA_CLEANUP_QUEUE_URL"):
             service_no_storage.delete_course(_VID)
-        repo.delete_course_and_lessons.assert_not_called()
+        deletion_runner.run.assert_not_called()
 
     @patch("services.course_management.service.send_media_cleanup_job")
     def test_enqueues_media_cleanup_when_queue_configured(
@@ -419,6 +443,7 @@ class TestDeleteCourse:
         service_with_queue: CourseManagementService,
         repo: MagicMock,
         storage: MagicMock,
+        deletion_runner: MagicMock,
     ) -> None:
         _L1 = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"
         repo.get_course.return_value = _course(id_=_VID, thumbnail_key=_course_thumb_key(_VID, _TH3))
@@ -437,7 +462,7 @@ class TestDeleteCourse:
         def _mark_send(*_a: object, **_k: object) -> None:
             order.append("sqs")
 
-        repo.delete_course_and_lessons.side_effect = _mark_db
+        deletion_runner.run.side_effect = _mark_db
         send_job.side_effect = _mark_send
         service_with_queue.delete_course(_VID)
         assert order == ["db", "sqs"]
@@ -492,13 +517,16 @@ class TestDeleteCourse:
         assignment_key = f"{_VID}/assignments/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa/images/instructions.jpg"
         keys_port = MagicMock()
         keys_port.list_object_keys_for_course.return_value = [assignment_key]
+        deletion_runner = MagicMock(spec=CourseDeletionRunner)
         svc = CourseManagementService(
             repo,
             None,
             course_access=course_access,
             media_cleanup_queue_url="https://sqs.example/queue",
             assignment_media_keys=keys_port,
+            deletion_runner=deletion_runner,
         )
+        repo.course_has_purchase.return_value = False
         repo.get_course.return_value = _course(id_=_VID)
         repo.list_lessons.return_value = []
         repo.list_lesson_file_object_keys_for_course.return_value = []
@@ -506,7 +534,7 @@ class TestDeleteCourse:
         keys_port.list_object_keys_for_course.assert_called_once_with(_VID)
         send_job.assert_called_once()
         assert assignment_key in send_job.call_args[0][2]
-        repo.delete_course_and_lessons.assert_called_once_with(_VID)
+        deletion_runner.run.assert_called_once_with("course", _VID)
 
     def test_delete_course_503_when_assignment_keys_and_queue_empty(
         self, repo: MagicMock, course_access: MagicMock
@@ -515,19 +543,22 @@ class TestDeleteCourse:
         assignment_key = f"{_VID}/assignments/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa/submissions/s1/f1.pdf"
         keys_port = MagicMock()
         keys_port.list_object_keys_for_course.return_value = [assignment_key]
+        deletion_runner = MagicMock(spec=CourseDeletionRunner)
         svc = CourseManagementService(
             repo,
             None,
             course_access=course_access,
             media_cleanup_queue_url="",
             assignment_media_keys=keys_port,
+            deletion_runner=deletion_runner,
         )
+        repo.course_has_purchase.return_value = False
         repo.get_course.return_value = _course(id_=_VID)
         repo.list_lessons.return_value = []
         repo.list_lesson_file_object_keys_for_course.return_value = []
         with pytest.raises(ServiceUnavailable, match="MEDIA_CLEANUP_QUEUE_URL"):
             svc.delete_course(_VID)
-        repo.delete_course_and_lessons.assert_not_called()
+        deletion_runner.run.assert_not_called()
 
     @patch("services.course_management.service.send_media_cleanup_job")
     def test_enqueue_runs_without_storage_when_queue_configured(
@@ -535,12 +566,15 @@ class TestDeleteCourse:
     ) -> None:
         _L1 = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"
         course_access = MagicMock()
+        deletion_runner = MagicMock(spec=CourseDeletionRunner)
         svc = CourseManagementService(
             repo,
             None,
             course_access=course_access,
             media_cleanup_queue_url="https://sqs.example/queue",
+            deletion_runner=deletion_runner,
         )
+        repo.course_has_purchase.return_value = False
         repo.get_course.return_value = _course(id_=_VID)
         repo.list_lessons.return_value = [_lesson(id_=_L1, video_key=_video_key(_VID, _L1))]
         svc.delete_course(_VID)
@@ -585,7 +619,11 @@ class TestDeleteLessonOrderCompaction:
             service.delete_lesson(_VID, "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa")
 
     def test_raises_when_queue_missing_but_lesson_has_media_keys(
-        self, service: CourseManagementService, repo: MagicMock, storage: MagicMock
+        self,
+        service: CourseManagementService,
+        repo: MagicMock,
+        storage: MagicMock,
+        deletion_runner: MagicMock,
     ) -> None:
         repo.get_lesson_by_id.return_value = _lesson(
             id_=self._LID2,
@@ -595,7 +633,7 @@ class TestDeleteLessonOrderCompaction:
         )
         with pytest.raises(ServiceUnavailable, match="MEDIA_CLEANUP_QUEUE_URL"):
             service.delete_lesson(_VID, self._LID2)
-        repo.delete_lesson.assert_not_called()
+        deletion_runner.run.assert_not_called()
         storage.delete_objects.assert_not_called()
 
     @patch("services.course_management.service.send_media_cleanup_job")
@@ -605,6 +643,7 @@ class TestDeleteLessonOrderCompaction:
         service_with_queue: CourseManagementService,
         repo: MagicMock,
         storage: MagicMock,
+        deletion_runner: MagicMock,
     ) -> None:
         repo.get_lesson_by_id.return_value = _lesson(
             id_=self._LID2,
@@ -621,7 +660,7 @@ class TestDeleteLessonOrderCompaction:
         def _mark_send(*_a: object, **_k: object) -> None:
             order.append("sqs")
 
-        repo.delete_lesson.side_effect = _mark_db
+        deletion_runner.run.side_effect = _mark_db
         send_job.side_effect = _mark_send
         service_with_queue.delete_lesson(_VID, self._LID2)
         assert order == ["db", "sqs"]
@@ -662,7 +701,11 @@ class TestDeleteLessonOrderCompaction:
         assert kwargs["s3_keys"] == [_lesson_thumb_key(_VID, self._LID2)]
 
     def test_compacts_remaining_orders_to_one_through_n(
-        self, service: CourseManagementService, repo: MagicMock, storage: MagicMock
+        self,
+        service: CourseManagementService,
+        repo: MagicMock,
+        storage: MagicMock,
+        deletion_runner: MagicMock,
     ) -> None:
         # Starting state: lessons of orders [1,2,3,4] with stable ids.
         # We delete the order=2 lesson, so the remaining (1,3,4) must be
@@ -676,7 +719,8 @@ class TestDeleteLessonOrderCompaction:
         service.delete_lesson(_VID, self._LID2)
 
         storage.delete_objects.assert_not_called()
-        repo.delete_lesson.assert_called_once_with(course_id=_VID, lesson_id=self._LID2)
+        deletion_runner.run.assert_called_once()
+        assert deletion_runner.run.call_args[0][0] == "lesson"
         # First lesson stays at order 1; only mismatched orders are patched.
         repo.set_lesson_orders.assert_called_once_with(
             _VID, {self._LID3: 2, self._LID4: 3}
@@ -722,6 +766,7 @@ class TestPublishCourseGate:
     def test_no_lessons_raises_bad_request(
         self, service: CourseManagementService, repo: MagicMock
     ) -> None:
+        repo.get_course.return_value = _course(id_=_VID)
         repo.list_lessons.return_value = []
         with pytest.raises(BadRequest):
             service.publish_course(_VID)
@@ -730,6 +775,7 @@ class TestPublishCourseGate:
     def test_lessons_exist_but_none_ready_raises(
         self, service: CourseManagementService, repo: MagicMock
     ) -> None:
+        repo.get_course.return_value = _course(id_=_VID)
         repo.list_lessons.return_value = [
             _lesson(id_=self._LID1, order=1, video_status="pending"),
             _lesson(id_=self._LID2, order=2, video_status="pending"),
@@ -741,6 +787,7 @@ class TestPublishCourseGate:
     def test_at_least_one_ready_publishes(
         self, service: CourseManagementService, repo: MagicMock
     ) -> None:
+        repo.get_course.return_value = _course(id_=_VID)
         repo.list_lessons.return_value = [
             _lesson(id_=self._LID1, order=1, video_status="pending"),
             _lesson(id_=self._LID2, order=2, video_status="ready"),

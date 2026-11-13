@@ -114,6 +114,10 @@ from services.rate_limit.service import RateLimitService
 
 from services.contact.service import ContactService
 
+from services.course_deletion.catalog import register_catalog_steps
+from services.course_deletion.registry import CourseDeletionRegistry
+from services.course_deletion.runner import CourseDeletionRunner
+
 from services.common.sqs_client import send_media_cleanup_job, send_transactional_mail_job
 
 from services.question_banks.service import QuestionBankService
@@ -1333,7 +1337,9 @@ def build_aws_deps(cfg: AppConfig) -> AwsDeps:
 
     assignments_repo = AssignmentsRdsRepository(conn_factory)
 
-
+    course_deletion_registry = CourseDeletionRegistry()
+    register_catalog_steps(course_deletion_registry, course_repo)
+    course_deletion_runner = CourseDeletionRunner(course_deletion_registry)
 
     service = CourseManagementService(
 
@@ -1364,6 +1370,8 @@ def build_aws_deps(cfg: AppConfig) -> AwsDeps:
         kinescope_api_token=cfg.kinescope_api_token,
 
         deployment_environment=cfg.deployment_environment,
+
+        deletion_runner=course_deletion_runner,
 
     )
 

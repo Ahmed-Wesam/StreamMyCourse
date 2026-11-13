@@ -19,8 +19,20 @@ from dsql_connect import connect, connection_error  # noqa: E402
 
 DSQL_USER_ADMIN = "admin"
 DSQL_ROLE_APP = "smc_app"
-DEFAULT_SCHEMA_FILE = _REPO_ROOT / "infrastructure" / "database" / "dsql" / "0001_schema.sql"
+DSQL_SCHEMA_DIR = _REPO_ROOT / "infrastructure" / "database" / "dsql"
+DEFAULT_SCHEMA_FILE = DSQL_SCHEMA_DIR / "0001_schema.sql"
 MIGRATION_VERSION = "0001"
+
+
+def migration_version_from_path(path: Path) -> str:
+    """Leading ``NNNN`` from ``0001_schema.sql``-style filenames."""
+    return path.name.split("_", 1)[0]
+
+
+def ordered_migration_sql_files(dsql_dir: Path | None = None) -> list[Path]:
+    """Discovery order for incremental DSQL DDL (lexicographic by filename)."""
+    directory = dsql_dir or DSQL_SCHEMA_DIR
+    return sorted(directory.glob("[0-9][0-9][0-9][0-9]_*.sql"), key=lambda p: p.name)
 
 _ASYNC_INDEX = re.compile(r"CREATE\s+(?:UNIQUE\s+)?INDEX\s+ASYNC", re.IGNORECASE)
 

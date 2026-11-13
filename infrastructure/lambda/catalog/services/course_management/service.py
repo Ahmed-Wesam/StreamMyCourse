@@ -51,9 +51,13 @@ from services.course_management.video_providers.port import (
     VideoPlayback,
     VideoProviderPort,
 )
+from services.course_deletion.catalog import lesson_deletion_parent_id, module_deletion_parent_id
+from services.course_deletion.runner import CourseDeletionRunner
 from services.purchases.ports import CourseAccessPort
 
 logger = logging.getLogger(__name__)
+
+_DELETING_STATUS = "deleting"
 
 MAX_LESSON_FILES_PER_LESSON = 20
 TRANSCRIPT_MAX_CHARS = 20_000
@@ -86,6 +90,7 @@ class CourseManagementService:
         kinescope_drm_jwt_audience: str = "kinescope",
         kinescope_api_token: str = "",
         deployment_environment: str = "dev",
+        deletion_runner: CourseDeletionRunner | None = None,
     ):
         self._repo = repo
         self._image_storage = image_storage
@@ -101,6 +106,12 @@ class CourseManagementService:
         self._kinescope_drm_jwt_audience = (kinescope_drm_jwt_audience or "").strip()
         self._kinescope_api_token = (kinescope_api_token or "").strip()
         self._deployment_environment = (deployment_environment or "dev").strip().lower()
+        self._deletion_runner = deletion_runner
+
+    def _run_deletion(self, scope: str, parent_id: str) -> None:
+        if self._deletion_runner is None:
+            raise RuntimeError("Course deletion runner is not configured")
+        self._deletion_runner.run(scope, parent_id)  # type: ignore[arg-type]
 
     @staticmethod
     def _b64url_encode(data: bytes) -> str:
@@ -474,6 +485,7 @@ class CourseManagementService:
         *,
         cognito_sub: str,
         role: str,
+        include_deleting: bool = False,
     ) -> None:
         """When auth is enforced, only teacher/admin may mutate; admin bypasses ownership."""
         sub = (cognito_sub or "").strip()
@@ -484,7 +496,7 @@ class CourseManagementService:
             return
         if r not in ("teacher", "admin"):
             raise Forbidden("Teacher or admin role required")
-        course = self._repo.get_course(course_id)
+        course = self._repo.get_course(course_id, include_deleting=include_deleting)
         if not course:
             raise NotFound("Course not found")
         owner = (course.createdBy or "").strip()
@@ -521,6 +533,8 @@ class CourseManagementService:
     ) -> Dict[str, Any]:
         if not _is_valid_uuid(course_id):
             raise NotFound("Course not found")
+        if not self._repo.get_course(course_id):
+            raise NotFound("Course not found")
         if page is not None:
             raise BadRequest("Course page content cannot be updated")
         self._repo.update_course(course_id=course_id, title=title, description=description)
@@ -529,9 +543,11 @@ class CourseManagementService:
     def delete_course(self, course_id: str) -> Dict[str, Any]:
         if not _is_valid_uuid(course_id):
             raise NotFound("Course not found")
-        course = self._repo.get_course(course_id)
+        course = self._repo.get_course(course_id, include_deleting=True)
         if not course:
             raise NotFound("Course not found")
+        if self._repo.course_has_purchase(course_id):
+            raise Conflict("Course cannot be deleted while purchases exist")
         keys: List[str] = []
         if course.thumbnailKey.strip():
             keys.append(course.thumbnailKey.strip())
@@ -548,8 +564,9 @@ class CourseManagementService:
             raise ServiceUnavailable(
                 "Media cleanup queue is not configured (MEDIA_CLEANUP_QUEUE_URL is empty)"
             )
-        # Remove DB rows first so catalog reflects the delete even if S3 cleanup lags (async worker).
-        self._repo.delete_course_and_lessons(course_id)
+        if (course.status or "").strip().lower() != _DELETING_STATUS:
+            self._repo.set_course_status(course_id, _DELETING_STATUS)
+        self._run_deletion("course", course_id)
         if deduped:
             s3_keys, kinescope_video_ids = self._split_cleanup_targets(course_id, deduped)
             send_media_cleanup_job(
@@ -718,7 +735,7 @@ class CourseManagementService:
             raise ServiceUnavailable(
                 "Media cleanup queue is not configured (MEDIA_CLEANUP_QUEUE_URL is empty)"
             )
-        self._repo.delete_course_module(course_id, module_id)
+        self._run_deletion("module", module_deletion_parent_id(course_id, module_id))
         if deduped:
             s3_keys, kinescope_video_ids = self._split_cleanup_targets(course_id, deduped)
             send_media_cleanup_job(
@@ -820,7 +837,7 @@ class CourseManagementService:
             raise ServiceUnavailable(
                 "Media cleanup queue is not configured (MEDIA_CLEANUP_QUEUE_URL is empty)"
             )
-        self._repo.delete_lesson(course_id=course_id, lesson_id=lesson_id)
+        self._run_deletion("lesson", lesson_deletion_parent_id(course_id, lesson_id))
         if deduped:
             s3_keys, kinescope_video_ids = self._split_cleanup_targets(course_id, deduped)
             send_media_cleanup_job(
@@ -847,6 +864,8 @@ class CourseManagementService:
 
     def publish_course(self, course_id: str) -> Dict[str, Any]:
         if not _is_valid_uuid(course_id):
+            raise NotFound("Course not found")
+        if not self._repo.get_course(course_id):
             raise NotFound("Course not found")
         lessons = self._repo.list_lessons(course_id)
         if not any(l.videoStatus == "ready" for l in lessons):

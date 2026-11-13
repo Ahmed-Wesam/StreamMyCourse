@@ -470,13 +470,14 @@ class TestCourseCatalogRdsRepository:
         self, repo, fake_conn: FakeConn
     ) -> None:
         repo.set_lesson_orders("course-id", {"l1": 2, "l2": 1, "l3": 3})
-        # One UPDATE per lesson id.
+        # Two-phase reorder: temporary negative order, then final order per lesson.
         update_sqls = [
             (sql, params)
             for sql, params in fake_conn.cursor_obj.executions
             if sql.upper().startswith("UPDATE")
         ]
-        assert len(update_sqls) == 3
+        assert len(update_sqls) == 6
+        assert any(int(params[0]) < 0 for _, params in update_sqls)
         # Transactional: single commit after all updates.
         assert fake_conn.committed >= 1
 

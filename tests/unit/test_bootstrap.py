@@ -189,6 +189,16 @@ class TestBuildAwsDeps:
         # Same object used by AssignmentsService repo (AssignmentsRdsRepository).
         assert lister is deps.assignments_service._repo
 
+    def test_course_management_wires_deletion_runner(self, mocked_storage, _mocked_rds) -> None:
+        """DSQL-3: bootstrap registers catalog steps on the course deletion runner."""
+        cfg = _rds_cfg(video_bucket="b")
+        deps = bootstrap_mod.build_aws_deps(cfg)
+        runner = getattr(deps.service, "_deletion_runner", None)
+        assert runner is not None
+        course_steps = runner._registry.ordered_steps("course")
+        assert [s.order for s in course_steps] == [900, 900, 900, 1000]
+        assert course_steps[-1].name == "course_row"
+
 
 class TestWarmAwsDepsIfNeeded:
     def test_noop_without_rds_config(self) -> None:
