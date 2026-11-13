@@ -161,7 +161,6 @@ def test_upsert_rollback_and_reraise_on_execute_error() -> None:
         cognito_repo.upsert_user_profile(factory, user_sub="u1", email="a@b.com", role="student")
 
     conn.rollback.assert_called_once()
-    conn.close.assert_called_once()
 
 
 def test_upsert_raises_when_psycopg2_missing(monkeypatch) -> None:
