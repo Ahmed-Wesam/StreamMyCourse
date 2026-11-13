@@ -144,7 +144,6 @@ def test_upsert_commits_closes_and_warns_when_no_returning_row(caplog: pytest.Lo
         )
 
     conn.commit.assert_called_once()
-    conn.close.assert_called_once()
     assert "users upsert returned no row" in caplog.text
     assert cur.execute.called
 

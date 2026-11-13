@@ -119,21 +119,15 @@ def get_student_active_session_id(conn_factory: ConnectionFactory, *, user_sub: 
     if psycopg2 is None:
         raise RuntimeError("psycopg2 is not available")
     conn = conn_factory()
-    try:
-        cur = conn.cursor()
-        cur.execute(
-            "SELECT student_active_session_id FROM users WHERE user_sub = %s",
-            (user_sub,),
-        )
-        row = cur.fetchone()
-        if not row:
-            return ""
-        return str(row[0] or "")
-    except Exception:
-        conn.rollback()
-        raise
-    finally:
-        conn.close()
+    cur = conn.cursor()
+    cur.execute(
+        "SELECT student_active_session_id FROM users WHERE user_sub = %s",
+        (user_sub,),
+    )
+    row = cur.fetchone()
+    if not row:
+        return ""
+    return str(row[0] or "")
 
 
 def set_student_active_session_id(
@@ -145,25 +139,22 @@ def set_student_active_session_id(
     from db_tx import run_transaction
 
     conn = conn_factory()
-    try:
 
-        def body() -> None:
-            cur = conn.cursor()
-            cur.execute(
-                """
-                INSERT INTO users (user_sub, email, role, cognito_sub, student_active_session_id, last_login_at)
-                VALUES (%s, '', 'student', %s, %s, NOW())
-                ON CONFLICT (user_sub) DO UPDATE
-                  SET student_active_session_id = EXCLUDED.student_active_session_id,
-                      last_login_at = NOW(),
-                      updated_at = NOW()
-                """,
-                (user_sub, user_sub, session_id),
-            )
+    def body() -> None:
+        cur = conn.cursor()
+        cur.execute(
+            """
+            INSERT INTO users (user_sub, email, role, cognito_sub, student_active_session_id, last_login_at)
+            VALUES (%s, '', 'student', %s, %s, NOW())
+            ON CONFLICT (user_sub) DO UPDATE
+              SET student_active_session_id = EXCLUDED.student_active_session_id,
+                  last_login_at = NOW(),
+                  updated_at = NOW()
+            """,
+            (user_sub, user_sub, session_id),
+        )
 
-        run_transaction(conn, body)
-    finally:
-        conn.close()
+    run_transaction(conn, body)
 
 
 def upsert_user_profile(
@@ -180,9 +171,8 @@ def upsert_user_profile(
     from db_tx import run_transaction
 
     conn = conn_factory()
-    try:
 
-        def body() -> None:
+    def body() -> None:
             cur = conn.cursor()
             if student_active_session_id is not None:
                 cur.execute(
@@ -217,9 +207,7 @@ def upsert_user_profile(
             if row is None:
                 logger.warning("users upsert returned no row for sub_prefix=%s", user_sub[:8])
 
-        run_transaction(conn, body)
-    finally:
-        conn.close()
+    run_transaction(conn, body)
 
 
 _cached_factory: Optional[ConnectionFactory] = None
