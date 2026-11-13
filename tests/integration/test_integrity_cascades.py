@@ -14,7 +14,7 @@ import httpx
 import pytest
 
 from helpers.api import ApiClient
-from helpers.billing_access import billing_environment
+from helpers.billing_access import billing_environment, decode_jwt_sub
 from helpers.cognito_auth import (
     admin_delete_cognito_user,
     mint_native_signup_tokens,
@@ -104,6 +104,8 @@ def test_delete_student_leaves_course_then_course_delete_removes_rows(
 
     tokens = mint_native_signup_tokens(cfg=pool, email=email, password=password)
     headers = {"Authorization": f"Bearer {tokens.id_token}"}
+    import httpx
+
     with httpx.Client(base_url=api_base_url, timeout=30.0, headers=headers) as client:
         student = ApiClient(client)
         me = student.get_users_me()
@@ -150,8 +152,6 @@ def test_course_delete_with_purchase_is_409(api: ApiClient, course_factory) -> N
     course = course_factory(label="integ-purchase-409")
     token = os.environ.get("INTEGRATION_COGNITO_JWT", "").strip()
     assert token
-    from helpers.cognito_auth import decode_jwt_sub
-
     user_sub = decode_jwt_sub(token)
     purchase_id = str(uuid.uuid4())
     env = billing_environment()
@@ -232,7 +232,7 @@ def test_fulfillment_paid_grants_course_access(api: ApiClient, course_factory, l
         )
         assert lesson_get.status_code == 200, lesson_get.text
     finally:
-        delete_webhook_events(provider_event_id)
+        delete_webhook_events("hyperpay", [provider_event_id])
         delete_purchase_by_id(purchase_id)
         admin_delete_cognito_user(pool["user_pool_id"], email)
 
