@@ -215,7 +215,18 @@ def _run_dry_run() -> int:
     return 0
 
 
-def _run_live(host: str, *, test_statement_timeout: bool) -> int:
+def _iam_grant_smc_app(conn: Any, iam_role_arn: str) -> None:
+    with conn.cursor() as cur:
+        cur.execute(f"AWS IAM GRANT {DSQL_USER_APP} TO '{iam_role_arn}'")
+    conn.commit()
+
+
+def _run_live(
+    host: str,
+    *,
+    test_statement_timeout: bool,
+    iam_role_arn: str | None = None,
+) -> int:
     conn = _connect_admin(
         host,
         libpq_options=LIBPQ_STATEMENT_TIMEOUT_OPTIONS if test_statement_timeout else None,
@@ -242,6 +253,12 @@ def _run_live(host: str, *, test_statement_timeout: bool) -> int:
             if "CREATE UNIQUE INDEX ASYNC" in sql and row:
                 job_id = row[0] if isinstance(row, tuple) else row
                 _wait_for_job(conn, job_id)
+        if iam_role_arn:
+            try:
+                _iam_grant_smc_app(conn, iam_role_arn)
+            except Exception as exc:
+                if "already" not in str(exc).lower():
+                    raise
         _probe_smc_app(host)
         _run_informational_probes(conn, host)
     except Exception:
@@ -321,6 +338,11 @@ def main(argv: Sequence[str] | None = None) -> int:
         action="store_true",
         help="Pass libpq statement_timeout options on admin connect",
     )
+    parser.add_argument(
+        "--iam-role-arn",
+        default=os.environ.get("DSQL_SPIKE_IAM_ROLE_ARN", ""),
+        help="IAM role ARN for AWS IAM GRANT smc_app before smc_app connect probe",
+    )
     args = parser.parse_args(list(argv) if argv is not None else None)
 
     if args.dry_run:
@@ -331,7 +353,12 @@ def main(argv: Sequence[str] | None = None) -> int:
         print("DSQL endpoint host required (set DSQL_ENDPOINT or pass --host)", file=sys.stderr)
         return 2
 
-    return _run_live(host, test_statement_timeout=args.test_statement_timeout)
+    iam_arn = (args.iam_role_arn or "").strip() or None
+    return _run_live(
+        host,
+        test_statement_timeout=args.test_statement_timeout,
+        iam_role_arn=iam_arn,
+    )
 
 
 if __name__ == "__main__":
