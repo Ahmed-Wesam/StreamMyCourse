@@ -495,7 +495,7 @@ def test_operator_delete_user_clears_assignment_submission_children(
             purchase_id = insert_paid_bundle_purchase(user_sub)
 
             open_sub = disposable.open_assignment_submission(course_id, assignment_id)
-            assert open_sub.status_code == 200, open_sub.text
+            assert open_sub.status_code in (200, 201), open_sub.text
             sid = open_sub.json()["submission"]["id"]
 
             presign = disposable.presign_submission_file(

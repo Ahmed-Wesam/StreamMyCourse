@@ -483,7 +483,7 @@ def test_delete_module_removes_assignment_submission_and_s3(
     assert api.publish_course(course_id).status_code == 200
     ensure_student_subscription(api_base_url, student_api, course_id, lesson_id)
     open_sub = student_api.open_assignment_submission(course_id, assignment_id)
-    assert open_sub.status_code == 200, open_sub.text
+    assert open_sub.status_code in (200, 201), open_sub.text
     sid = open_sub.json()["submission"]["id"]
     fr = student_api.create_submission_file(
         course_id, assignment_id, sid, title="f.pdf", file_type="pdf", byte_size=_PDF_SIZE

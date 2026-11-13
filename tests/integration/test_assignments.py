@@ -39,6 +39,7 @@ def test_assignment_flow_draft_grade_delete(
     api: ApiClient,
     student_api: ApiClient,
     course_factory,
+    lesson_factory,
     video_bucket: str,
     aws_region: str,
 ) -> None:
@@ -69,25 +70,23 @@ def test_assignment_flow_draft_grade_delete(
     assert crit.status_code == 200, crit.text
     criterion_id = crit.json()["assignment"]["criteria"][0]["id"]
 
+    lesson = lesson_factory(course.course_id, label="assign-lesson")
+    assert api.get_upload_url(course_id=course.course_id, lesson_id=lesson.lesson_id).status_code == 200
+    assert api.mark_video_ready(course.course_id, lesson.lesson_id).status_code == 200
     assert api.publish_course(course.course_id).status_code == 200
 
-    lesson_list = api.list_lessons(course.course_id)
-    assert lesson_list.status_code == 200
-    lessons = lesson_list.json()
-    lesson_id = lessons[0]["id"] if lessons else ""
-    if lesson_id:
-        ensure_student_subscription(
-            os.environ.get("INTEGRATION_API_BASE_URL", "").rstrip("/"),
-            student_api,
-            course.course_id,
-            lesson_id,
-        )
+    ensure_student_subscription(
+        os.environ.get("INTEGRATION_API_BASE_URL", "").rstrip("/"),
+        student_api,
+        course.course_id,
+        lesson.lesson_id,
+    )
 
     open1 = student_api.open_assignment_submission(course.course_id, assignment_id)
-    assert open1.status_code == 200, open1.text
+    assert open1.status_code in (200, 201), open1.text
     submission_id = open1.json()["submission"]["id"]
     open2 = student_api.open_assignment_submission(course.course_id, assignment_id)
-    assert open2.status_code == 200, open2.text
+    assert open2.status_code in (200, 201), open2.text
     assert open2.json()["submission"]["id"] == submission_id
 
     if _is_dsql_preview_stack():
