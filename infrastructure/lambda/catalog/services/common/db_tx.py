@@ -95,5 +95,9 @@ def delete_in_batches(
         affected = run_transaction(conn, body, sleep=sleep)
         if affected <= 0:
             break
+        if affected > batch_size:
+            raise ValueError(
+                f"delete batch affected {affected} rows; expected at most {batch_size}"
+            )
         total += affected
     return total
