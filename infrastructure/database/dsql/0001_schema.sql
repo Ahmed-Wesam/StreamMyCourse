@@ -101,7 +101,8 @@ CREATE TABLE app.question_banks (
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     CONSTRAINT question_banks_status_valid CHECK (status IN ('DRAFT', 'PUBLISHED')),
     CONSTRAINT question_banks_name_non_empty
-        CHECK (name IS NULL OR (length(btrim(name)) BETWEEN 1 AND 80))
+        CHECK (name IS NULL OR (length(btrim(name)) BETWEEN 1 AND 80)),
+    UNIQUE (course_id, id)
 );
 
 CREATE TABLE app.module_quizzes (
@@ -118,6 +119,7 @@ CREATE TABLE app.module_quizzes (
     CONSTRAINT module_quizzes_pass_percent_range
         CHECK (pass_percent >= 1 AND pass_percent <= 100),
     UNIQUE (module_id),
+    UNIQUE (course_id, id),
     FOREIGN KEY (course_id, module_id) REFERENCES app.course_modules (course_id, id) ON DELETE CASCADE,
     FOREIGN KEY (course_id, question_bank_id) REFERENCES app.question_banks (course_id, id) ON DELETE RESTRICT
 );

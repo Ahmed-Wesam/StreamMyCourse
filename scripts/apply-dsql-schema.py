@@ -126,6 +126,14 @@ def migration_already_applied(conn: Any, version: str) -> bool:
 def apply_migration_file(conn: Any, sql_text: str, version: str) -> bool:
     if migration_already_applied(conn, version):
         return False
+    conn.autocommit = False
+    try:
+        with conn.cursor() as cur:
+            cur.execute("DROP SCHEMA IF EXISTS app CASCADE")
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
     apply_statements(conn, split_sql_statements(sql_text))
     return True
 
