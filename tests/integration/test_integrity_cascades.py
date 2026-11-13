@@ -9,10 +9,7 @@ import string
 import sys
 import uuid
 from pathlib import Path
-from typing import Iterator
-
 import boto3
-import httpx
 import pytest
 
 from helpers.api import ApiClient
@@ -88,25 +85,6 @@ def _load_delete_user():
         sys.path.insert(0, str(catalog))
     spec.loader.exec_module(mod)
     return mod
-
-
-@pytest.fixture(scope="session")
-def api_base_url() -> str:
-    value = os.environ.get("INTEGRATION_API_BASE_URL", "").strip()
-    if not value:
-        pytest.skip("INTEGRATION_API_BASE_URL not set")
-    return value.rstrip("/")
-
-
-@pytest.fixture(scope="session")
-def http_client(api_base_url: str) -> Iterator[httpx.Client]:
-    with httpx.Client(base_url=api_base_url, timeout=30.0) as client:
-        yield client
-
-
-@pytest.fixture
-def api(http_client: httpx.Client) -> ApiClient:
-    return ApiClient(http_client)
 
 
 def test_delete_student_leaves_course_then_course_delete_removes_rows(
