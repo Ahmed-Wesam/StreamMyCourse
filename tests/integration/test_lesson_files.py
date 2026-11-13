@@ -43,7 +43,7 @@ def _create_ready_lesson_file(
         timeout=30.0,
     )
     assert put.status_code == 200, put.text
-    completed = api.complete_lesson_file(course_id, lesson_id, file_id)
+    completed = api.complete_lesson_file_with_retry(course_id, lesson_id, file_id)
     assert completed.status_code == 200, completed.text
     assert completed.json().get("status") == "ready"
     return file_id

@@ -42,7 +42,8 @@ def _create_ready_lesson_file(api: ApiClient, course_id: str, lesson_id: str) ->
         timeout=30.0,
     )
     assert put.status_code == 200, put.text
-    assert api.complete_lesson_file(course_id, lesson_id, file_id).status_code == 200
+    completed = api.complete_lesson_file_with_retry(course_id, lesson_id, file_id)
+    assert completed.status_code == 200, completed.text
     return file_id
 
 
