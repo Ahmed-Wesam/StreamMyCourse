@@ -151,7 +151,7 @@ Resources:
   LambdaSecurityGroup:
     Type: AWS::EC2::SecurityGroup
     Properties:
-      GroupDescription: 'Catalog Lambda ENIs (egress to RDS, interface endpoints, S3 gateway)'
+      GroupDescription: 'Catalog Lambda ENIs (egress to RDS and VPC endpoints only)'
       VpcId: !Ref Vpc
       # No inbound rules — Lambda ENIs never accept inbound traffic.
       SecurityGroupEgress:
