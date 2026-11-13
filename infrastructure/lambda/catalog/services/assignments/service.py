@@ -1216,21 +1216,6 @@ class AssignmentsService:
             graded_by=cognito_sub,
             scores=parsed,
         )
-        # Persist submission status
-        updated = SubmissionRow(
-            id=submission.id,
-            assignment_id=submission.assignment_id,
-            course_id=submission.course_id,
-            user_sub=submission.user_sub,
-            status="graded",
-            note=submission.note,
-            created_at=submission.created_at,
-            updated_at=_now(),
-            submitted_at=submission.submitted_at,
-            files=submission.files,
-            grade=grade,
-        )
-        self._repo.update_submission(updated)
 
         self._try_notify_grade(
             course=course,

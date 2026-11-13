@@ -388,11 +388,59 @@ def test_operator_delete_user_clears_quiz_bindings_attempts_submissions(
             admin_delete_cognito_user(cfg=pool, username=email_for_cleanup)
 
 
-def test_operator_delete_user_clears_quiz_bindings_attempts_submissions(
+def _sql_assignment_student_counts(conn, user_sub: str) -> tuple[int, int, int]:
+    subs = int(
+        execute_scalar(
+            conn,
+            "SELECT COUNT(*) FROM app.assignment_submissions WHERE user_sub = %s",
+            (user_sub,),
+        )
+        or 0
+    )
+    files = int(
+        execute_scalar(
+            conn,
+            """
+            SELECT COUNT(*) FROM app.assignment_submission_files f
+            JOIN app.assignment_submissions s ON s.id = f.submission_id
+            WHERE s.user_sub = %s
+            """,
+            (user_sub,),
+        )
+        or 0
+    )
+    grades = int(
+        execute_scalar(
+            conn,
+            """
+            SELECT COUNT(*) FROM app.assignment_grades g
+            JOIN app.assignment_submissions s ON s.id = g.submission_id
+            WHERE s.user_sub = %s
+            """,
+            (user_sub,),
+        )
+        or 0
+    )
+    return subs, files, grades
+
+
+_PDF_BYTES = b"%PDF-1.4 minimal\n"
+_PDF_SIZE = len(_PDF_BYTES)
+
+
+def test_operator_delete_user_clears_assignment_submission_children(
     api_base_url: str,
     teacher_api: ApiClient,
+    video_bucket: str,
+    aws_region: str,
 ) -> None:
-    """Throwaway native user with a started module quiz — operator delete clears quiz rows."""
+    """DSQL-7a: operator delete removes submission children and S3; assignment row stays."""
+    import time
+
+    from helpers.cleanup import s3_object_exists
+    from helpers.dsql_preview_access import ensure_student_subscription
+    from helpers.module_contract import require_course_modules_list
+
     pool = resolve_student_pool_config_or_skip()
     email = _email()
     password = _password()
@@ -400,9 +448,7 @@ def test_operator_delete_user_clears_quiz_bindings_attempts_submissions(
     purchase_id = ""
     course_ids: list[str] = []
     course_factory = build_course_factory(teacher_api, course_ids.append)
-    lesson_factory = build_lesson_factory(teacher_api)
-    served_n = 2
-    bank_id = ""
+    object_key = ""
 
     try:
         tokens = mint_native_signup_tokens(cfg=pool, email=email, password=password)
@@ -417,27 +463,71 @@ def test_operator_delete_user_clears_quiz_bindings_attempts_submissions(
             user_sub = str(me.json().get("userId") or me.json().get("cognitoSub") or "")
             assert user_sub
 
-            course = course_factory(label="user-del-quiz")
+            course = course_factory(label="user-del-assign")
             course_id = course.course_id
-            module_id, bank_id = _setup_published_quiz_on_first_module(
-                teacher_api, course_id, served_n=served_n
+            mods = require_course_modules_list(teacher_api.list_course_modules(course_id))
+            module_id = mods[0]["id"]
+
+            created = teacher_api.create_assignment(
+                course_id,
+                module_id=module_id,
+                title="del-test",
+                pass_percent=70,
             )
-            lesson = lesson_factory(course_id, label="user-del-quiz-lesson")
+            assert created.status_code == 201, created.text
+            assignment_id = created.json()["assignment"]["id"]
             assert (
-                teacher_api.get_upload_url(course_id=course_id, lesson_id=lesson.lesson_id).status_code
+                teacher_api.update_assignment(
+                    course_id,
+                    assignment_id,
+                    body={
+                        "status": "published",
+                        "passPercent": 70,
+                        "criteria": [{"label": "Work", "maxPoints": 100}],
+                    },
+                ).status_code
                 == 200
             )
-            assert teacher_api.mark_video_ready(course_id, lesson.lesson_id).status_code == 200
             assert teacher_api.publish_course(course_id).status_code == 200
+
+            ensure_student_subscription(api_base_url, disposable, course_id, module_id="")
 
             purchase_id = insert_paid_bundle_purchase(user_sub)
 
-            start = disposable.start_module_quiz(course_id, module_id)
-            assert start.status_code == 200, start.text
+            open_sub = disposable.open_assignment_submission(course_id, assignment_id)
+            assert open_sub.status_code == 200, open_sub.text
+            sid = open_sub.json()["submission"]["id"]
+
+            presign = disposable.presign_submission_file(
+                course_id, assignment_id, sid, title="f.pdf", file_type="pdf", byte_size=_PDF_SIZE
+            )
+            assert presign.status_code == 200, presign.text
+            fid = presign.json()["file"]["id"]
+            upload = presign.json()["upload"]
+            put = httpx.put(
+                upload["url"],
+                content=_PDF_BYTES,
+                headers={"Content-Type": "application/pdf"},
+                timeout=60.0,
+            )
+            assert put.status_code in (200, 204), put.text
+            assert (
+                disposable.complete_submission_file(course_id, assignment_id, sid, fid).status_code
+                == 200
+            )
 
             with admin_connect() as conn:
-                before = _sql_quiz_student_counts(conn, user_sub)
+                object_key = str(
+                    execute_scalar(
+                        conn,
+                        "SELECT object_key FROM app.assignment_submission_files WHERE id = %s",
+                        (fid,),
+                    )
+                    or ""
+                )
+                before = _sql_assignment_student_counts(conn, user_sub)
             assert before[0] >= 1 and before[1] >= 1
+            assert object_key
 
             mod = _load_delete_user()
             rc = mod.run(
@@ -452,17 +542,24 @@ def test_operator_delete_user_clears_quiz_bindings_attempts_submissions(
             purchase_id = ""
 
             with admin_connect() as conn:
-                quiz_left = _sql_quiz_student_counts(conn, user_sub)
-                bank_n = int(
+                left = _sql_assignment_student_counts(conn, user_sub)
+                assign_n = int(
                     execute_scalar(
                         conn,
-                        "SELECT COUNT(*) FROM app.question_banks WHERE course_id = %s AND id = %s",
-                        (course_id, bank_id),
+                        "SELECT COUNT(*) FROM app.assignments WHERE id = %s",
+                        (assignment_id,),
                     )
                     or 0
                 )
-            assert quiz_left == (0, 0, 0)
-            assert bank_n == 1
+            assert left == (0, 0, 0)
+            assert assign_n == 1
+
+            deadline = time.monotonic() + 120.0
+            while time.monotonic() < deadline:
+                if not s3_object_exists(video_bucket, object_key, region=aws_region):
+                    break
+                time.sleep(2.0)
+            assert not s3_object_exists(video_bucket, object_key, region=aws_region)
     finally:
         if purchase_id:
             delete_purchase_by_id(purchase_id)

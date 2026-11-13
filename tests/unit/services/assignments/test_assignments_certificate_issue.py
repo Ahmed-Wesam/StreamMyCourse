@@ -4,8 +4,11 @@ from __future__ import annotations
 
 from typing import Any
 
+import pytest
+
 from services.assignments.ports import ObjectHead
 from services.assignments.service import AssignmentsService
+from services.common.errors import Conflict
 
 from tests.unit.services.assignments.test_assignments_service import (
     _COURSE,
@@ -163,6 +166,42 @@ def test_failing_grade_does_not_call_try_issue() -> None:
     )
 
     assert result["passed"] is False
+    assert issuer.calls == []
+
+
+def test_repo_conflict_on_grade_does_not_call_try_issue() -> None:
+    issuer = _FakeIssuer()
+    h = _harness(issuer=issuer)
+    svc: AssignmentsService = h["svc"]
+    aid, sid, cid = _submit_ready(h)
+    svc.grade_submission(
+        _COURSE,
+        aid,
+        sid,
+        scores=[{"criterionId": cid, "points": 80}],
+        feedback="First grade",
+        cognito_sub=_TEACHER,
+        role="teacher",
+        body={
+            "scores": [{"criterionId": cid, "points": 80}],
+            "feedback": "First grade",
+        },
+    )
+    issuer.calls.clear()
+    with pytest.raises(Conflict):
+        svc.grade_submission(
+            _COURSE,
+            aid,
+            sid,
+            scores=[{"criterionId": cid, "points": 90}],
+            feedback="Second",
+            cognito_sub=_TEACHER,
+            role="teacher",
+            body={
+                "scores": [{"criterionId": cid, "points": 90}],
+                "feedback": "Second",
+            },
+        )
     assert issuer.calls == []
 
 

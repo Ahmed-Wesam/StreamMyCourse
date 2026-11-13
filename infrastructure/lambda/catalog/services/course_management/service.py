@@ -730,6 +730,12 @@ class CourseManagementService:
         media_keys.extend(
             self._repo.list_lesson_file_object_keys_for_lessons(course_id, lesson_ids)
         )
+        if self._assignment_media_keys is not None:
+            media_keys.extend(
+                self._assignment_media_keys.list_object_keys_for_module(
+                    course_id, module_id
+                )
+            )
         deduped = list(dict.fromkeys(k.strip() for k in media_keys if k and k.strip()))
         if deduped and not self._media_cleanup_queue_url:
             raise ServiceUnavailable(

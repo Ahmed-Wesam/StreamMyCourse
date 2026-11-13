@@ -16,7 +16,9 @@ if str(_CATALOG) not in sys.path:
     sys.path.insert(0, str(_CATALOG))
 
 from dsql_connect import connect  # noqa: E402
+from services.assignments.rds_repo import AssignmentsRdsRepository  # noqa: E402
 from services.auth.rds_repo import UserProfileRdsRepository  # noqa: E402
+from services.common.sqs_client import send_media_cleanup_job  # noqa: E402
 from services.lesson_notes.rds_repo import LessonNotesRdsRepository  # noqa: E402
 from services.progress.rds_repo import LessonProgressRdsRepository  # noqa: E402
 from services.purchases.repo import PurchaseRdsRepository  # noqa: E402
@@ -30,6 +32,7 @@ from services.user_deletion import (  # noqa: E402
 
 _USER_SUB_RE = re.compile(r"^[A-Za-z0-9-]{1,255}$")
 _DEFAULT_AUTH_STACK = "StreamMyCourse-Auth-prod"
+_DEFAULT_MEDIA_CLEANUP_STACK = "StreamMyCourse-MediaCleanup-prod"
 _DEFAULT_REGION = "eu-west-1"
 DSQL_USER_ADMIN = "admin"
 
@@ -60,6 +63,27 @@ def _resolve_dsql_endpoint() -> str:
     return ""
 
 
+def _resolve_media_cleanup_queue_url() -> str:
+    env = os.environ.get("MEDIA_CLEANUP_QUEUE_URL", "").strip()
+    if env:
+        return env
+    region = os.environ.get("AWS_REGION", _DEFAULT_REGION).strip() or _DEFAULT_REGION
+    stack = os.environ.get(
+        "INTEGRATION_MEDIA_CLEANUP_STACK", _DEFAULT_MEDIA_CLEANUP_STACK
+    ).strip() or _DEFAULT_MEDIA_CLEANUP_STACK
+    try:
+        import boto3
+
+        cf = boto3.client("cloudformation", region_name=region)
+        resp = cf.describe_stacks(StackName=stack)
+        for out in resp["Stacks"][0].get("Outputs", []):
+            if out.get("OutputKey") == "MediaCleanupQueueUrl":
+                return (out.get("OutputValue") or "").strip()
+    except Exception:
+        pass
+    return ""
+
+
 def _resolve_user_pool_id() -> str:
     region = os.environ.get("AWS_REGION", _DEFAULT_REGION).strip() or _DEFAULT_REGION
     stack = os.environ.get("INTEGRATION_AUTH_STACK", _DEFAULT_AUTH_STACK).strip() or _DEFAULT_AUTH_STACK
@@ -84,6 +108,7 @@ def _build_service(endpoint: str) -> UserDeletionService:
     deploy_env = (os.environ.get("DEPLOYMENT_ENVIRONMENT") or "prod").strip().lower()
     purchase_repo = PurchaseRdsRepository(factory, deployment_environment=deploy_env)
     quiz_repo = QuestionBankRdsRepository(factory)
+    assignments_repo = AssignmentsRdsRepository(factory)
     registry = UserDeletionRegistry()
     register_operator_user_steps(
         registry,
@@ -92,8 +117,9 @@ def _build_service(endpoint: str) -> UserDeletionService:
         notes_repo,
         purchase_repo,
         quiz_repo,
+        assignments_repo,
     )
-    return UserDeletionService(registry)
+    return UserDeletionService(registry), assignments_repo
 
 
 class _BotoCognito:
@@ -190,7 +216,26 @@ def run(
         print("multiple Cognito users matched user_sub", file=sys.stderr)
         return 1
 
-    svc = service_factory(endpoint)
+    built = service_factory(endpoint)
+    if isinstance(built, tuple):
+        svc, assignments_repo = built
+    else:
+        svc = built
+        assignments_repo = None
+    file_keys_by_course: dict[str, list[str]] = {}
+    if assignments_repo is not None:
+        for course_id, key in assignments_repo.list_submission_file_keys_for_user(
+            user_sub
+        ):
+            file_keys_by_course.setdefault(course_id, []).append(key)
+    all_keys = [k for keys in file_keys_by_course.values() for k in keys if k]
+    queue_url = _resolve_media_cleanup_queue_url() if all_keys else ""
+    if all_keys and not queue_url:
+        print(
+            "Media cleanup queue URL could not be resolved but submission files exist",
+            file=sys.stderr,
+        )
+        return 1
     if username:
         cognito.disable_user(user_pool_id=pool_id, username=username)
     try:
@@ -203,6 +248,9 @@ def run(
     if username:
         cognito.delete_user(user_pool_id=pool_id, username=username)
     svc.delete_user(user_sub)
+    if all_keys and queue_url:
+        for course_id, keys in file_keys_by_course.items():
+            send_media_cleanup_job(queue_url, course_id, keys, s3_keys=keys)
     return 0
 
 

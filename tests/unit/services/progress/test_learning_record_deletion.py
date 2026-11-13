@@ -111,7 +111,9 @@ class TestUserDeletionOrder:
         quiz.delete_binding_questions_for_user.side_effect = lambda _: log.append("quiz_bq")
         quiz.delete_bindings_for_user.side_effect = lambda _: log.append("quiz_bindings")
         registry = UserDeletionRegistry()
-        register_operator_user_steps(registry, _FakeDeleter(), progress, notes, purchases, quiz)
+        register_operator_user_steps(
+            registry, _FakeDeleter(), progress, notes, purchases, quiz, MagicMock()
+        )
         UserDeletionService(registry).delete_user(_SUB)
         assert log == [
             "progress",
@@ -124,7 +126,7 @@ class TestUserDeletionOrder:
             "quiz_bindings",
         ]
         steps = registry.ordered_steps()
-        assert [s.order for s in steps] == [100, 100, 100, 200, 300, 1000]
+        assert [s.order for s in steps] == [100, 100, 100, 200, 300, 400, 1000]
         assert steps[-1].name == "users"
 
     def test_users_step_alone_at_1000(self) -> None:

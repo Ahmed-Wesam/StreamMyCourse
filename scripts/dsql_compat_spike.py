@@ -107,6 +107,7 @@ def informational_sql_statements() -> list[str]:
             ORDER BY mq.module_id, s.submitted_at DESC, s.attempt_id DESC
             """.strip(),
         f"SELECT id FROM {p('fk_parent')} WHERE id = ANY(%s::uuid[])",
+        "SELECT COUNT(*)::int FROM users WHERE user_sub = ANY(%s)",
         """
             INSERT INTO rate_limit_counters (bucket_key, window_start, count)
             VALUES (%s, %s, 1)
@@ -314,6 +315,8 @@ def _run_informational_probes(conn: Any, host: str) -> None:
             continue
         try:
             if sql.startswith("SELECT") and "ANY(%s::uuid[])" in sql:
+                _execute_ddl(conn, sql, ([],))
+            elif sql.startswith("SELECT") and "user_sub = ANY(%s)" in sql:
                 _execute_ddl(conn, sql, ([],))
             elif sql.startswith("INSERT INTO") and "jsonb" in sql:
                 _execute_ddl(conn, sql, (json.dumps(["alpha", "beta"]),))

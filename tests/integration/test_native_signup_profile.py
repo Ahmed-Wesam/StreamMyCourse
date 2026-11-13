@@ -78,6 +78,9 @@ def _delete_dsql_users_row_only(user_sub: str) -> None:
     purchase_repo = PurchaseRdsRepository(factory, deployment_environment="prod")
     quiz_repo = QuestionBankRdsRepository(factory)
     registry = UserDeletionRegistry()
+    from services.assignments.rds_repo import AssignmentsRdsRepository
+
+    assignments_repo = AssignmentsRdsRepository(factory)
     register_operator_user_steps(
         registry,
         profile_repo,
@@ -85,6 +88,7 @@ def _delete_dsql_users_row_only(user_sub: str) -> None:
         notes_repo,
         purchase_repo,
         quiz_repo,
+        assignments_repo,
     )
     UserDeletionService(registry).delete_user(user_sub)
 

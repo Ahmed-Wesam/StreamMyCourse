@@ -440,6 +440,103 @@ class ApiClient:
             },
         )
 
+    def create_assignment(
+        self,
+        course_id: str,
+        *,
+        module_id: str,
+        title: str,
+        pass_percent: int = 70,
+        counts_toward_certificate: bool = False,
+    ) -> httpx.Response:
+        return self._client.post(
+            f"/courses/{course_id}/assignments",
+            json={
+                "title": title,
+                "moduleId": module_id,
+                "passPercent": pass_percent,
+                "countsTowardCertificate": counts_toward_certificate,
+            },
+        )
+
+    def update_assignment(
+        self, course_id: str, assignment_id: str, *, body: Dict[str, Any]
+    ) -> httpx.Response:
+        return self._client.patch(
+            f"/courses/{course_id}/assignments/{assignment_id}", json=body
+        )
+
+    def delete_assignment(self, course_id: str, assignment_id: str) -> httpx.Response:
+        return self._client.delete(f"/courses/{course_id}/assignments/{assignment_id}")
+
+    def get_assignment(self, course_id: str, assignment_id: str) -> httpx.Response:
+        return self._client.get(f"/courses/{course_id}/assignments/{assignment_id}")
+
+    def open_assignment_submission(
+        self, course_id: str, assignment_id: str
+    ) -> httpx.Response:
+        return self._client.post(
+            f"/courses/{course_id}/assignments/{assignment_id}/submissions",
+            json={},
+        )
+
+    def create_submission_file(
+        self,
+        course_id: str,
+        assignment_id: str,
+        submission_id: str,
+        *,
+        title: str,
+        file_type: str,
+        byte_size: int,
+    ) -> httpx.Response:
+        return self._client.post(
+            f"/courses/{course_id}/assignments/{assignment_id}/submissions/{submission_id}/files",
+            json={"title": title, "fileType": file_type, "byteSize": byte_size},
+        )
+
+    def complete_submission_file(
+        self,
+        course_id: str,
+        assignment_id: str,
+        submission_id: str,
+        file_id: str,
+    ) -> httpx.Response:
+        return self._client.post(
+            f"/courses/{course_id}/assignments/{assignment_id}/submissions/"
+            f"{submission_id}/files/{file_id}/complete",
+            json={},
+        )
+
+    def submit_assignment_submission(
+        self,
+        course_id: str,
+        assignment_id: str,
+        submission_id: str,
+        *,
+        note: str = "",
+    ) -> httpx.Response:
+        return self._client.post(
+            f"/courses/{course_id}/assignments/{assignment_id}/submissions/"
+            f"{submission_id}/submit",
+            json={"note": note},
+        )
+
+    def grade_assignment_submission(
+        self,
+        course_id: str,
+        assignment_id: str,
+        submission_id: str,
+        *,
+        scores: list[Dict[str, Any]],
+        feedback: str = "",
+    ) -> httpx.Response:
+        return self._client.post(
+            f"/courses/{course_id}/assignments/{assignment_id}/submissions/"
+            f"{submission_id}/grade",
+            json={"scores": scores, "feedback": feedback},
+        )
+
     def post_contact(
         self,
         *,

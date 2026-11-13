@@ -119,6 +119,7 @@ from services.course_deletion.registry import CourseDeletionRegistry
 from services.course_deletion.runner import CourseDeletionRunner
 from services.lesson_notes.deletion import register_lesson_note_deletion_steps
 from services.progress.deletion import register_progress_deletion_steps
+from services.assignments.deletion import register_assignment_deletion_steps
 from services.question_banks.deletion import register_question_bank_deletion_steps
 
 from services.common.sqs_client import send_media_cleanup_job, send_transactional_mail_job
@@ -1435,6 +1436,7 @@ def build_aws_deps(cfg: AppConfig) -> AwsDeps:
     register_progress_deletion_steps(course_deletion_registry, progress_repo)
     register_lesson_note_deletion_steps(course_deletion_registry, notes_repo)
     register_question_bank_deletion_steps(course_deletion_registry, qb_repo)
+    register_assignment_deletion_steps(course_deletion_registry, assignments_repo)
 
     lesson_notes_service = LessonNotesService(
 

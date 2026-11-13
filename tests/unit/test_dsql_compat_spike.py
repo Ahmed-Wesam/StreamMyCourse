@@ -33,6 +33,7 @@ SMC_APP_MARKERS: tuple[str, ...] = (
 INFORMATIONAL_MARKERS: tuple[str, ...] = (
     "DISTINCT ON",
     "ANY(%s::uuid[])",
+    "ANY(%s)",
     "make_interval(secs =>",
     "(NOW() AT TIME ZONE 'UTC') - (INTERVAL '1 minute' *",
     "JSONB",

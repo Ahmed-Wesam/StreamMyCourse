@@ -85,6 +85,8 @@ class AssignmentMediaKeysPort(Protocol):
 
     def list_object_keys_for_course(self, course_id: str) -> List[str]: ...
 
+    def list_object_keys_for_module(self, course_id: str, module_id: str) -> List[str]: ...
+
 
 class StudentModuleLockPort(Protocol):
     """Whether a module is quiz-gated locked for a student (owner/admin bypass in adapter)."""

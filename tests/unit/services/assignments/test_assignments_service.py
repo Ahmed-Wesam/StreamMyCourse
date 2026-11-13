@@ -289,14 +289,13 @@ class InMemoryAssignmentsRepo:
         user_sub: str,
         status: str = "draft",
     ) -> SubmissionRow:
-        # enforce one draft
         for s in self.submissions.values():
             if (
                 s.assignment_id == assignment_id
                 and s.user_sub == user_sub
                 and s.status == "draft"
             ):
-                raise Conflict("draft exists")
+                return self._hydrate(s)
         row = SubmissionRow(
             id=str(uuid4()),
             assignment_id=assignment_id,
@@ -377,7 +376,14 @@ class InMemoryAssignmentsRepo:
         scores: Sequence[tuple[str, int]],
     ) -> GradeRow:
         if submission_id in self.grades:
-            raise Conflict("already graded")
+            raise Conflict("Grade is immutable", code="grade_immutable")
+        sub = self.submissions.get(submission_id)
+        if sub is None:
+            raise Conflict("Submission is not awaiting grade", code="not_submitted")
+        if sub.status == "graded":
+            raise Conflict("Grade is immutable", code="grade_immutable")
+        if sub.status != "submitted":
+            raise Conflict("Submission is not awaiting grade", code="not_submitted")
         grade = GradeRow(
             id=str(uuid4()),
             submission_id=submission_id,
@@ -394,6 +400,7 @@ class InMemoryAssignmentsRepo:
             ),
         )
         self.grades[submission_id] = grade
+        self.submissions[submission_id] = replace(sub, status="graded", grade=grade)
         return grade
 
     def get_grade_for_submission(self, submission_id: str) -> Optional[GradeRow]:

@@ -1,0 +1,95 @@
+"""Assignment submission deletion steps (DSQL-7a S5)."""
+
+from __future__ import annotations
+
+from typing import Protocol
+
+from services.course_deletion.catalog import split_deletion_parent_id
+from services.course_deletion.registry import CourseDeletionRegistry
+
+_ASSIGNMENT_DELETION_ORDER = 400
+
+
+class AssignmentDeletionRepo(Protocol):
+    def delete_assignment_grade_scores_for_user(self, user_sub: str) -> int: ...
+
+    def delete_assignment_grades_for_user(self, user_sub: str) -> int: ...
+
+    def delete_assignment_submission_files_for_user(self, user_sub: str) -> int: ...
+
+    def delete_assignment_submissions_for_user(self, user_sub: str) -> int: ...
+
+    def delete_assignment_grade_scores_for_course(self, course_id: str) -> int: ...
+
+    def delete_assignment_grades_for_course(self, course_id: str) -> int: ...
+
+    def delete_assignment_submission_files_for_course(self, course_id: str) -> int: ...
+
+    def delete_assignment_submissions_for_course(self, course_id: str) -> int: ...
+
+    def delete_assignment_grade_scores_for_module(
+        self, course_id: str, module_id: str
+    ) -> int: ...
+
+    def delete_assignment_grades_for_module(self, course_id: str, module_id: str) -> int: ...
+
+    def delete_assignment_submission_files_for_module(
+        self, course_id: str, module_id: str
+    ) -> int: ...
+
+    def delete_assignment_submissions_for_module(
+        self, course_id: str, module_id: str
+    ) -> int: ...
+
+
+def delete_assignment_children_for_user(repo: AssignmentDeletionRepo, user_sub: str) -> None:
+    repo.delete_assignment_grade_scores_for_user(user_sub)
+    repo.delete_assignment_grades_for_user(user_sub)
+    repo.delete_assignment_submission_files_for_user(user_sub)
+    repo.delete_assignment_submissions_for_user(user_sub)
+
+
+def delete_assignment_children_for_course(
+    repo: AssignmentDeletionRepo, course_id: str
+) -> None:
+    repo.delete_assignment_grade_scores_for_course(course_id)
+    repo.delete_assignment_grades_for_course(course_id)
+    repo.delete_assignment_submission_files_for_course(course_id)
+    repo.delete_assignment_submissions_for_course(course_id)
+
+
+def delete_assignment_children_for_module(
+    repo: AssignmentDeletionRepo, course_id: str, module_id: str
+) -> None:
+    repo.delete_assignment_grade_scores_for_module(course_id, module_id)
+    repo.delete_assignment_grades_for_module(course_id, module_id)
+    repo.delete_assignment_submission_files_for_module(course_id, module_id)
+    repo.delete_assignment_submissions_for_module(course_id, module_id)
+
+
+def register_assignment_deletion_steps(
+    registry: CourseDeletionRegistry, repo: AssignmentDeletionRepo
+) -> None:
+    registry.register(
+        name="assignment_rows_course",
+        order=_ASSIGNMENT_DELETION_ORDER,
+        scope="course",
+        run=lambda course_id: delete_assignment_children_for_course(repo, course_id),
+    )
+    registry.register(
+        name="assignment_rows_module",
+        order=_ASSIGNMENT_DELETION_ORDER,
+        scope="module",
+        run=lambda parent_id: delete_assignment_children_for_module(
+            repo, *split_deletion_parent_id(parent_id)
+        ),
+    )
+
+
+__all__ = [
+    "AssignmentDeletionRepo",
+    "delete_assignment_children_for_course",
+    "delete_assignment_children_for_module",
+    "delete_assignment_children_for_user",
+    "register_assignment_deletion_steps",
+]
