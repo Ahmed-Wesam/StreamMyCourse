@@ -438,7 +438,6 @@ def test_operator_delete_user_clears_assignment_submission_children(
     import time
 
     from helpers.cleanup import s3_object_exists
-    from helpers.billing_access import ensure_student_subscription
     from helpers.factories import build_lesson_factory
     from helpers.module_contract import require_course_modules_list
 
@@ -485,6 +484,7 @@ def test_operator_delete_user_clears_assignment_submission_children(
                         "status": "published",
                         "passPercent": 70,
                         "criteria": [{"label": "Work", "maxPoints": 100}],
+                        "instructions": {"mode": "plain", "text": "Submit a PDF"},
                     },
                 ).status_code
                 == 200
@@ -496,8 +496,6 @@ def test_operator_delete_user_clears_assignment_submission_children(
             )
             assert teacher_api.mark_video_ready(course_id, lesson.lesson_id).status_code == 200
             assert teacher_api.publish_course(course_id).status_code == 200
-
-            ensure_student_subscription(api_base_url, disposable, course_id, lesson.lesson_id)
 
             purchase_id = insert_paid_bundle_purchase(user_sub)
 
