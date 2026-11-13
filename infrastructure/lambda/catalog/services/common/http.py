@@ -104,6 +104,27 @@ def _normalize_gateway_path(stage: object, path: str) -> str:
     return _strip_leading_stage_segment(p)
 
 
+def _restore_billing_path_prefix(request_context: Dict[str, Any], normalized: str) -> str:
+    """REST API child resources under ``/billing`` may omit the parent in ``path``."""
+    route_key = request_context.get("routeKey")
+    if not isinstance(route_key, str) or " " not in route_key:
+        return normalized
+    _, template = route_key.split(" ", 1)
+    template = template.strip()
+    if not template.startswith("/billing/"):
+        return normalized
+    template_parts = [p for p in template.split("/") if p]
+    path_parts = [p for p in normalized.split("/") if p]
+    if len(path_parts) + 1 != len(template_parts):
+        return normalized
+    for actual, template_seg in zip(path_parts, template_parts[1:], strict=True):
+        if template_seg.startswith("{") and template_seg.endswith("}"):
+            continue
+        if actual != template_seg:
+            return normalized
+    return "/" + "/".join(template_parts[:1] + path_parts)
+
+
 def apigw_routing_path(event: Dict[str, Any]) -> str:
     """Path for URL routing (literal segments, no ``{…}`` placeholders).
 
@@ -113,22 +134,27 @@ def apigw_routing_path(event: Dict[str, Any]) -> str:
     """
     rc = event.get("requestContext") or {}
     stage = rc.get("stage")
+
+    def _finalize(candidate: str) -> str:
+        normalized = _normalize_gateway_path(stage, candidate)
+        return _restore_billing_path_prefix(rc, normalized)
+
     resource_path = rc.get("resourcePath")
     if (
         isinstance(resource_path, str)
         and resource_path.startswith("/")
         and "{" not in resource_path
     ):
-        return _normalize_gateway_path(stage, resource_path)
+        return _finalize(resource_path)
 
     path = event.get("path")
     raw = event.get("rawPath")
     for candidate in (path, raw):
         if isinstance(candidate, str) and candidate.startswith("/") and "{" not in candidate:
-            return _normalize_gateway_path(stage, candidate)
+            return _finalize(candidate)
     for candidate in (path, raw):
         if isinstance(candidate, str) and candidate.startswith("/"):
-            return _normalize_gateway_path(stage, candidate)
+            return _finalize(candidate)
     return "/"
 
 

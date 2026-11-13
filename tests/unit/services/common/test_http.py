@@ -62,6 +62,18 @@ class TestApigwRoutingPath:
         }
         assert apigw_routing_path(evt) == "/"
 
+    def test_restores_billing_prefix_from_route_key_for_nested_resource(self) -> None:
+        course_id = "a974ea00-614c-434d-8fa1-464a93cd7c6a"
+        evt = {
+            "requestContext": {
+                "stage": "prod",
+                "routeKey": "PATCH /billing/courses/{courseId}/price",
+                "resourcePath": "/billing/courses/{courseId}/price",
+            },
+            "path": f"/courses/{course_id}/price",
+        }
+        assert apigw_routing_path(evt) == f"/billing/courses/{course_id}/price"
+
 
 class TestApigwCognitoClaims:
     def test_reads_nested_claims(self) -> None:
