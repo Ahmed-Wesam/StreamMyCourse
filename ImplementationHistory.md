@@ -12,7 +12,7 @@
 - **Fix:** `LambdaEgressS3Gateway` (`AWS::EC2::SecurityGroupEgress`) with `DestinationPrefixListId` from `Mappings.RegionPrefixLists` (avoids in-place SG replacement on export `LambdaSecurityGroupId`).
 - **Tests:** `tests/unit/test_rds_stack_lambda_sg_s3_egress.py`; restored `complete` in `test_lesson_files.py` / `test_catalog_deletion.py` (removed `complete_lesson_file_with_retry`).
 - **Prod SG (post-deploy):** egress `tcp/443 → pl-6da54004` plus existing `10.0.0.0/16` rules. **No DynamoDB client** in VPC catalog Lambda today — DDB prefix egress not added.
-- **Gates:** CI **43429044240**, Deploy **43429059866** green; prod integration **5 passed** (2 skipped), preview **7 passed** on targeted slice.
+- **Gates:** CI **43428702369**, Deploy **43429059866** green; prod integration **5 passed** (2 skipped), preview **7 passed** on targeted slice.
 
 ## 2026-11-13 — DSQL-3: Course catalog core (registry delete, OCC, preview gate)
 
