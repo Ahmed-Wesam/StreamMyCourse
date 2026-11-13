@@ -488,8 +488,6 @@ CREATE INDEX ASYNC idx_module_quizzes_question_bank_id ON app.module_quizzes (qu
 
 CREATE UNIQUE INDEX ASYNC uq_module_quizzes_course_question_bank ON app.module_quizzes (course_id, question_bank_id) WHERE question_bank_id IS NOT NULL;
 
-CREATE UNIQUE INDEX ASYNC uq_module_quizzes_course_id_id ON app.module_quizzes (course_id, id);
-
 CREATE INDEX ASYNC idx_questions_course_bank ON app.questions (course_id, question_bank_id);
 
 CREATE INDEX ASYNC idx_questions_bank_status ON app.questions (question_bank_id, status);
