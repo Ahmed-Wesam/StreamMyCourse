@@ -474,11 +474,7 @@ CREATE INDEX ASYNC idx_course_modules_course_order ON app.course_modules (course
 
 CREATE INDEX ASYNC idx_lessons_course_module_order ON app.lessons (course_id, module_id, lesson_order);
 
-CREATE UNIQUE INDEX ASYNC lessons_course_id_id_key ON app.lessons (course_id, id);
-
 CREATE INDEX ASYNC idx_lesson_files_lesson ON app.lesson_files (course_id, lesson_id);
-
-CREATE UNIQUE INDEX ASYNC uq_question_banks_course_id_id ON app.question_banks (course_id, id);
 
 CREATE INDEX ASYNC idx_question_banks_course_id ON app.question_banks (course_id);
 
