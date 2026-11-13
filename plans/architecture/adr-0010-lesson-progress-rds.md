@@ -41,6 +41,8 @@ We will implement progress tracking as an RDS-only feature using PostgreSQL.
 
 5. **No Throttling (MVP)**: Rate limiting deferred to future phase. Current implementation accepts all updates.
 
+6. **DSQL / OCC (DSQL-4):** `upsert_progress` wraps the `INSERT … ON CONFLICT` statement (including the atomic `completed_at` **`CASE`** expression) in [`run_transaction`](../../infrastructure/lambda/catalog/services/common/db_tx.py) so Aurora DSQL retries on `SQLSTATE 40001`. The player heartbeat interval stays **15 s** ([`LessonPlayerPage.tsx`](../../frontend/src/pages/LessonPlayerPage.tsx) `PROGRESS_INTERVAL_MS`).
+
 ### Database Schema
 
 Canonical idempotent DDL (`CREATE TABLE IF NOT EXISTS`, indexes, check constraint) lives in [`infrastructure/database/migrations/001_initial_schema.sql`](../../infrastructure/database/migrations/001_initial_schema.sql). The following snippet summarizes shape and relationships.
@@ -61,7 +63,7 @@ CREATE TABLE lesson_progress (
 ### Frontend Integration
 
 - Progress loads after successful playback URL fetch
-- 12-second throttled position updates during playback
+- 15-second heartbeat position updates during playback
 - Video ended event triggers markComplete
 - Visual indicators: course progress bar, "Done" badges, "Mark as not done" button
 

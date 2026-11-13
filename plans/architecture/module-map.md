@@ -60,7 +60,7 @@ Related ADRs: [0011 video provider / Kinescope](./adr-0011-video-provider-port-k
 
 **Operator entry:** [`scripts/delete-user.py`](../../../scripts/delete-user.py) — Cognito admin APIs + DSQL admin connection; not wired in `bootstrap.py`.
 
-**Later workstreams:** DSQL-4..7 add `register_*_steps` in their own packages (orders **100**–**400**); DSQL-5 **`purchases`** at **200** (user delete only—not course delete).
+**DSQL-4 (shipped):** `learning_activity_days` delete step at order **100** (user registry only). **Later workstreams:** DSQL-5..7 add `register_*_steps` at **300** / **400**; DSQL-5 **`purchases`** at **200** (user delete only—not course delete).
 
 ### `services/course_deletion/` (DSQL-3)
 
@@ -71,16 +71,9 @@ Related ADRs: [0011 video provider / Kinescope](./adr-0011-video-provider-port-k
 | `catalog.py` | Wiring | `register_catalog_steps(registry, repo)` — catalog batches **900**, parent row **1000** |
 | `__init__.py` | Exports | `CourseDeletionRegistry`, `CourseDeletionRunner`, `register_catalog_steps` |
 
-**Bootstrap:** `CourseDeletionRegistry` + `register_catalog_steps` → `CourseDeletionRunner` → `CourseManagementService`. Later workstreams call `register_*_steps` at orders **100** / **300** / **400**; **no** purchase-delete step on course delete (409 guard in service).
+**Bootstrap:** `CourseDeletionRegistry` + `register_catalog_steps` → `CourseDeletionRunner` → `CourseManagementService`. **DSQL-4:** `register_progress_deletion_steps` and `register_lesson_note_deletion_steps` at order **100** (lesson/module/course scopes). Quizzes and assignments register at **300** / **400** (DSQL-6/7). **No** purchase-delete step on course delete (409 guard in service).
 
-### `services/enrollment/` (implemented)
-
-| File | Layer | Notes |
-|------|-------|------|
-| `ports.py` | Contracts | `EnrollmentRepositoryPort` |
-| `rds_repo.py` | Persistence adapter (PostgreSQL) | Idempotent upserts via `ON CONFLICT DO NOTHING` |
-
-Enrollment rows do **not** grant lesson access under RS-5 (purchases do); table retained for history/analytics. See [adr-enrollment-course-access.md](./adr-enrollment-course-access.md) and ADR 0013.
+**Enrollment adapter:** Removed in DSQL-4 (`services/enrollment/` was unwired). `POST /courses/{id}/enroll` returns **403** `purchase_required`; legacy `enrollments` table on **RDS only** until DSQL-9. See [adr-enrollment-course-access.md](./adr-enrollment-course-access.md) and ADR 0013.
 
 ### `services/progress/` (implemented)
 
@@ -88,11 +81,12 @@ Enrollment rows do **not** grant lesson access under RS-5 (purchases do); table 
 |------|-------|------|
 | `controller.py` | HTTP adapter | `GET /courses/{id}/progress`, `PUT /courses/{id}/lessons/{id}/progress` |
 | `service.py` | Domain/application | Authorization, auto-complete ratio, position validation |
-| `rds_repo.py` | Persistence adapter (PostgreSQL) | ON CONFLICT UPDATE upserts |
+| `rds_repo.py` | Persistence adapter (PostgreSQL) | ON CONFLICT UPDATE upserts; `completed_at` via SQL `CASE` inside `run_transaction` |
+| `deletion.py` | Wiring | `register_progress_deletion_steps` — course registry order **100** (lesson/module/course) |
 | `ports.py` | Contracts | `LessonProgressRepositoryPort` |
 | `contracts.py` | API DTOs | `CourseProgressResponse`, `LessonProgressItem` |
 
-**Cross-context rule:** `progress` may use enrollment/access ports but must not import `course_management` directly for persistence.
+**Cross-context rule:** `progress` uses purchase/access ports only; must not import `course_management` directly for persistence.
 
 ### `services/question_banks/` (implemented)
 
@@ -147,7 +141,11 @@ Rate limits: `contact.ip` / `contact.global` (ADR 0012). Catalog never calls Zoh
 |------|-------|------|
 | `controller.py` | HTTP adapter | Student/teacher lesson notes CRUD |
 | `service.py` | Domain/application | Access-gated notes |
-| `rds_repo.py` / `ports.py` / `contracts.py` / `models.py` / `validation.py` | Persistence + DTOs | RDS-backed notes |
+| `rds_repo.py` | Persistence | Per-user cap: `SELECT … FROM users FOR UPDATE` before insert |
+| `deletion.py` | Wiring | `register_lesson_note_deletion_steps` — course registry order **100** |
+| `ports.py` / `contracts.py` / `models.py` / `validation.py` | Contracts + DTOs | Typed boundaries |
+
+**User deletion (DSQL-4):** activity-days step at order **100** on the user registry (not course delete).
 
 Lesson **file attachments** (RS-11) live under **`course_management`** (`LessonFile` + `LessonFileStorage`), not this folder.
 

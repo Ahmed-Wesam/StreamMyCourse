@@ -6,6 +6,16 @@
 
 ---
 
+## 2026-11-13 — DSQL-4: Learning records (progress, activity, notes)
+
+- **D1 — `enrollments` on DSQL only:** Removed unwired `services/enrollment/` adapter; **`POST /courses/{id}/enroll`** still returns **403** `purchase_required` (no row writes). DSQL migration [`0003_drop_enrollments.sql`](infrastructure/database/dsql/0003_drop_enrollments.sql) drops `app.enrollments`; **prod RDS** keeps the table until **DSQL-9**. Access remains purchase-based ([`CourseAccessService`](infrastructure/lambda/catalog/services/purchases/service.py)).
+- **Learning adapters:** `lesson_progress`, `learning_activity_days`, `lesson_notes` on shared RDS/DSQL SQL paths; progress **`completed_at`** via atomic SQL **`CASE`** inside [`run_transaction`](infrastructure/lambda/catalog/services/common/db_tx.py) (OCC retry).
+- **D5 — Notes cap:** Per-user note limit enforced with **`SELECT … FROM users FOR UPDATE`** before insert ([`lesson_notes/rds_repo.py`](infrastructure/lambda/catalog/services/lesson_notes/rds_repo.py)).
+- **D8 — Schema applier:** [`scripts/apply-dsql-schema.py`](scripts/apply-dsql-schema.py) applies numbered migrations incrementally (no `DROP SCHEMA` after `0001`); **`0003`** records version in `schema_migrations`.
+- **Deletion registry order 100:** [`services/progress/deletion.py`](infrastructure/lambda/catalog/services/progress/deletion.py), [`services/lesson_notes/deletion.py`](infrastructure/lambda/catalog/services/lesson_notes/deletion.py), activity-days steps on **user** and **course** deletion registries (batched `LIMIT 1000` deletes).
+- **Preview E2E gate:** `INTEGRATION_API_STACK=StreamMyCourse-Api-dsql ./scripts/run-local-integration-tests.sh tests/integration/test_progress.py tests/integration/test_enrollment.py tests/integration/test_lesson_notes.py tests/integration/test_learning_activity.py tests/integration/test_learning_record_deletion.py tests/integration/test_user_deletion.py -q`
+- **Gates:** `dsql_orphan_audit` **0 findings**; commits **`89483c2`**, **`d4ad20b`**; Deploy run **43438386528** green.
+
 ## 2026-11-13 — VPC Lambda S3 egress (lesson-file complete 504)
 
 - **Root cause:** `LambdaSecurityGroup` in [`rds-stack.yaml`](infrastructure/templates/rds-stack.yaml) allowed HTTPS egress only to `10.0.0.0/16`. S3 **gateway** endpoint traffic uses regional prefix-list-CIDRs (`pl-6da54004` in `eu-west-1`), so `LessonFileStorage.head_object` hung until API Gateway returned **504**.
