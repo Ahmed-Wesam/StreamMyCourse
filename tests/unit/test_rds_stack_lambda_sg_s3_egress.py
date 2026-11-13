@@ -30,18 +30,14 @@ def test_rds_stack_maps_s3_gateway_prefix_list_per_region() -> None:
     ), "RegionPrefixLists must map eu-west-1 S3Gateway to pl-6da54004"
 
 
-def _lambda_security_group_block(text: str) -> str:
-    start = text.index("  LambdaSecurityGroup:")
-    end = text.index("  RdsSecurityGroup:", start)
-    return text[start:end]
-
-
 def test_rds_stack_lambda_sg_egress_allows_s3_prefix_list_https() -> None:
     text = _rds_stack_text()
-    block = _lambda_security_group_block(text)
-    assert "DestinationPrefixListId" in block, (
-        "LambdaSecurityGroup must egress to S3 via DestinationPrefixListId"
-    )
+    assert "LambdaEgressS3Gateway:" in text
+    assert "AWS::EC2::SecurityGroupEgress" in text
+    start = text.index("  LambdaEgressS3Gateway:")
+    end = text.index("  RdsSecurityGroup:", start)
+    block = text[start:end]
+    assert re.search(r"GroupId:\s*!Ref LambdaSecurityGroup", block)
     assert re.search(
         r"DestinationPrefixListId:\s*!FindInMap",
         block,

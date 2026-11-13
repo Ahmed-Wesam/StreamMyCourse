@@ -161,20 +161,25 @@ Resources:
           # HTTPS to VPC interface endpoints (Secrets Manager, SQS) via private ENI IPs.
           CidrIp: 10.0.0.0/16
         - IpProtocol: tcp
-          FromPort: 443
-          ToPort: 443
-          # S3 gateway endpoint targets public S3 prefix-list CIDRs (not 10.0.0.0/16).
-          DestinationPrefixListId: !FindInMap
-            - RegionPrefixLists
-            - !Ref AWS::Region
-            - S3Gateway
-        - IpProtocol: tcp
           FromPort: 5432
           ToPort: 5432
           CidrIp: 10.0.0.0/16
       Tags:
         - Key: Name
           Value: !Sub 'StreamMyCourse-LambdaSG-${Environment}'
+
+  # Standalone rule avoids in-place SG replacement (exported LambdaSecurityGroupId).
+  LambdaEgressS3Gateway:
+    Type: AWS::EC2::SecurityGroupEgress
+    Properties:
+      GroupId: !Ref LambdaSecurityGroup
+      IpProtocol: tcp
+      FromPort: 443
+      ToPort: 443
+      DestinationPrefixListId: !FindInMap
+        - RegionPrefixLists
+        - !Ref AWS::Region
+        - S3Gateway
 
   RdsSecurityGroup:
     Type: AWS::EC2::SecurityGroup
