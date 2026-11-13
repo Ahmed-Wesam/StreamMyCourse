@@ -243,23 +243,6 @@ class ApiClient:
             json={},
         )
 
-    def complete_lesson_file_with_retry(
-        self, course_id: str, lesson_id: str, file_id: str, *, attempts: int = 5
-    ) -> httpx.Response:
-        """Complete upload; retry on transient API Gateway / Lambda timeouts after S3 PUT."""
-        import time
-
-        last: httpx.Response | None = None
-        for attempt in range(attempts):
-            last = self.complete_lesson_file(course_id, lesson_id, file_id)
-            if last.status_code == 200:
-                return last
-            if last.status_code not in (502, 503, 504):
-                return last
-            time.sleep(min(2.0 * (attempt + 1), 10.0))
-        assert last is not None
-        return last
-
     def delete_lesson_file(
         self, course_id: str, lesson_id: str, file_id: str
     ) -> httpx.Response:

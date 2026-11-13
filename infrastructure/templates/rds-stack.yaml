@@ -84,6 +84,12 @@ Conditions:
     - !Not [!Equals [!Ref SchemaApplierCodeS3Bucket, '']]
     - !Not [!Equals [!Ref SchemaApplierCodeS3Key, '']]
 
+# Regional com.amazonaws.<region>.s3 gateway endpoint prefix list IDs (Route 53 prefix lists).
+Mappings:
+  RegionPrefixLists:
+    eu-west-1:
+      S3Gateway: pl-6da54004
+
 Resources:
   # -------------------------- Network --------------------------
   Vpc:
@@ -145,17 +151,23 @@ Resources:
   LambdaSecurityGroup:
     Type: AWS::EC2::SecurityGroup
     Properties:
-      GroupDescription: 'Catalog Lambda ENIs (egress to RDS and VPC endpoints only)'
+      GroupDescription: 'Catalog Lambda ENIs (egress to RDS, interface endpoints, S3 gateway)'
       VpcId: !Ref Vpc
       # No inbound rules — Lambda ENIs never accept inbound traffic.
       SecurityGroupEgress:
         - IpProtocol: tcp
           FromPort: 443
           ToPort: 443
-          # HTTPS egress for VPC interface endpoints (Secrets Manager, SQS)
-          # and S3/DynamoDB gateway endpoints. CidrIp is restricted to the VPC itself
-          # for interface endpoints; AWS prefix lists handle gateway endpoints.
+          # HTTPS to VPC interface endpoints (Secrets Manager, SQS) via private ENI IPs.
           CidrIp: 10.0.0.0/16
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          # S3 gateway endpoint targets public S3 prefix-list CIDRs (not 10.0.0.0/16).
+          DestinationPrefixListId: !FindInMap
+            - RegionPrefixLists
+            - !Ref AWS::Region
+            - S3Gateway
         - IpProtocol: tcp
           FromPort: 5432
           ToPort: 5432
