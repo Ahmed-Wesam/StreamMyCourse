@@ -6,7 +6,7 @@ Description: 'StreamMyCourse - RDS PostgreSQL Stack (1-AZ VPC, private RDS, Secr
 #     Public subnet  10.0.1.0/24  (reserved for future bastion / NAT; currently no resources)
 #     Private subnet 10.0.2.0/24  (Lambda ENIs, RDS instance)
 # RDS is not publicly accessible. Lambda reaches AWS services via:
-#   - VPC Interface Endpoints: Secrets Manager, CloudWatch Logs (~$7.20/mo each)
+#   - VPC Interface Endpoints: Secrets Manager, SQS (~$7.20/mo each)
 #   - VPC Gateway Endpoints:   S3, DynamoDB (free; S3 for presign, DynamoDB for rollback)
 
 Parameters:
@@ -152,7 +152,7 @@ Resources:
         - IpProtocol: tcp
           FromPort: 443
           ToPort: 443
-          # HTTPS egress for VPC interface endpoints (Secrets Manager, CloudWatch Logs)
+          # HTTPS egress for VPC interface endpoints (Secrets Manager, SQS)
           # and S3/DynamoDB gateway endpoints. CidrIp is restricted to the VPC itself
           # for interface endpoints; AWS prefix lists handle gateway endpoints.
           CidrIp: 10.0.0.0/16
@@ -327,7 +327,7 @@ Resources:
       VPCSecurityGroups:
         - !Ref RdsSecurityGroup
       DBSubnetGroupName: !Ref DbSubnetGroup
-      BackupRetentionPeriod: 7
+      BackupRetentionPeriod: 1
       CopyTagsToSnapshot: true
       DeletionProtection: true
       EnableIAMDatabaseAuthentication: false
@@ -345,18 +345,6 @@ Resources:
     Properties:
       VpcId: !Ref Vpc
       ServiceName: !Sub 'com.amazonaws.${AWS::Region}.secretsmanager'
-      VpcEndpointType: Interface
-      PrivateDnsEnabled: true
-      SubnetIds:
-        - !Ref PrivateSubnet
-      SecurityGroupIds:
-        - !Ref EndpointSecurityGroup
-
-  LogsEndpoint:
-    Type: AWS::EC2::VPCEndpoint
-    Properties:
-      VpcId: !Ref Vpc
-      ServiceName: !Sub 'com.amazonaws.${AWS::Region}.logs'
       VpcEndpointType: Interface
       PrivateDnsEnabled: true
       SubnetIds:
