@@ -38,7 +38,10 @@ def _qualified(name: str) -> str:
 
 
 def setup_sql_statements() -> list[str]:
-    return [f"CREATE SCHEMA {SPIKE_SCHEMA}"]
+    return [
+        f"DROP SCHEMA IF EXISTS {SPIKE_SCHEMA} CASCADE",
+        f"CREATE SCHEMA {SPIKE_SCHEMA}",
+    ]
 
 
 def teardown_sql_statements() -> list[str]:
