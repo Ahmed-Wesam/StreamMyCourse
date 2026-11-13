@@ -25,13 +25,10 @@ def _is_preview_stack() -> bool:
     return os.environ.get("INTEGRATION_API_STACK", "").strip().endswith("Api-dsql")
 
 
-pytestmark = [
-    pytest.mark.integration,
-    pytest.mark.skipif(
-        not _is_preview_stack(),
-        reason="user deletion integration runs only on StreamMyCourse-Api-dsql",
-    ),
-]
+pytestmark = pytest.mark.skipif(
+    not _is_preview_stack(),
+    reason="user deletion integration runs only on StreamMyCourse-Api-dsql",
+)
 
 
 def _email() -> str:

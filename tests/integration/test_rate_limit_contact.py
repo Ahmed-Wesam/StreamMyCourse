@@ -25,13 +25,10 @@ def _is_preview_stack() -> bool:
     return stack.endswith("Api-dsql")
 
 
-pytestmark = [
-    pytest.mark.integration,
-    pytest.mark.skipif(
-        not _is_preview_stack(),
-        reason="contact 429 gate runs only on StreamMyCourse-Api-dsql",
-    ),
-]
+pytestmark = pytest.mark.skipif(
+    not _is_preview_stack(),
+    reason="contact 429 gate runs only on StreamMyCourse-Api-dsql",
+)
 
 
 @pytest.fixture(scope="session")

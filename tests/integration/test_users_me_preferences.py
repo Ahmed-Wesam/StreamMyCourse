@@ -19,9 +19,6 @@ from helpers.cognito_auth import (
     student_client_supports_native_signup,
 )
 
-pytestmark = pytest.mark.integration
-
-
 def _email() -> str:
     return f"pref-test-{uuid.uuid4().hex[:12]}@researchspectrum.org"
 
