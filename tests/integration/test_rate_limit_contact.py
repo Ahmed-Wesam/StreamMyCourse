@@ -65,7 +65,7 @@ def test_contact_rate_limit_returns_429_with_retry_after(api: ApiClient) -> None
             assert retry_after is not None
             assert int(retry_after) >= 1
             payload = resp.json()
-            assert payload.get("error") == "rate_limited"
+            assert payload.get("code") == "rate_limited"
             break
         assert resp.status_code == 202, resp.text
     assert saw_429, "expected at least one 429 from contact.ip rate limit"

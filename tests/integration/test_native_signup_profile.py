@@ -133,7 +133,7 @@ def test_native_signup_patch_and_get_users_me_profile(api: ApiClient) -> None:
         get_resp = api.get_users_me(headers=headers)
         assert get_resp.status_code == 200, get_resp.text
         data = get_resp.json()
-        user_sub_for_cleanup = str(data.get("userSub") or "")
+        user_sub_for_cleanup = str(data.get("userId") or data.get("cognitoSub") or "")
         assert data.get("country") == "Jordan"
         assert data.get("profession") == "Researcher"
         assert _same_instant_utc(data.get("termsAcceptedAt"), _TERMS_AT)

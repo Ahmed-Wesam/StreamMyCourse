@@ -80,7 +80,8 @@ def test_operator_delete_user_removes_dsql_row_and_cognito(api: ApiClient) -> No
     headers = {"Authorization": f"Bearer {tokens.id_token}"}
     me = api.get_users_me(headers=headers)
     assert me.status_code == 200, me.text
-    user_sub = me.json().get("userSub") or ""
+    body = me.json()
+    user_sub = str(body.get("userId") or body.get("cognitoSub") or "")
     assert user_sub
 
     rc = mod.run(
