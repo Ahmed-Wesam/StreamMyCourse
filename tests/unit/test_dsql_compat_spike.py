@@ -129,5 +129,6 @@ def test_dry_run_statement_order_is_deterministic() -> None:
     mod = _load_spike_module()
     lines = mod.dry_run_sql_lines()
     assert lines == mod.dry_run_sql_lines()
-    assert lines[0].upper().startswith("CREATE SCHEMA")
+    assert lines[0].upper().startswith("DROP SCHEMA IF EXISTS")
+    assert any(l.upper().startswith("CREATE SCHEMA") for l in lines)
     assert any("DROP SCHEMA" in line.upper() for line in lines)
