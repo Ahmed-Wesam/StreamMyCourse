@@ -8,6 +8,7 @@ from pathlib import Path
 DSQL_CLUSTER_ACTIONS = (
     "dsql:CreateCluster",
     "dsql:GetCluster",
+    "dsql:GetVpcEndpointServiceName",
     "dsql:UpdateCluster",
     "dsql:DeleteCluster",
     "dsql:ListClusters",
