@@ -6,6 +6,13 @@
 
 ---
 
+## 2026-11-13 — DSQL-8: Prod cutover to Aurora DSQL (shipped)
+
+- **Prod persistence:** `StreamMyCourse-Catalog-prod`, `StreamMyCourse-Auth-prod-UserProfileSync`, and `StreamMyCourse-BillingFulfillment-prod` use `DSQL_ENDPOINT` `cfuhjrrzy65ngud25rdqqso5t4.dsql.eu-west-1.on.aws` and have **no VPC** (`DB_HOST` unset). [`scripts/deploy-backend.sh`](scripts/deploy-backend.sh) passes `DsqlEndpoint` and an empty `RdsStackName` when the DSQL stack exists. The RDS instance, VPC, preview stack `StreamMyCourse-Api-dsql`, and frozen RDS migrations stay until **DSQL-9**.
+- **Sync connection:** Pre Token Generation reuses the open DSQL connection (`conn.close()` before the trigger returned was the failure on the first cutover Deploy). Measured REPORT sample **2763 ms** (bar 5000 ms).
+- **Integrity gate:** [`tests/integration/test_integrity_cascades.py`](tests/integration/test_integrity_cascades.py) on prod — student delete leaves the course, course delete is clean, a purchase row returns **409** `conflict`. Deploy [**43527043869**](https://github.com/Ahmed-Wesam/StreamMyCourse/actions/runs/43527043869) (`ab04c21`): **214 passed**, 37 skipped, `dsql_orphan_audit` **0 findings**. `test_student_single_session.py` passed on prod DSQL.
+- **Left for DSQL-9:** delete preview stack, `StreamMyCourse-RdsQuery-prod`, `StreamMyCourse-Rds-prod` (no final snapshot), RDS secret and snapshots; remove RDS connection code, migrations, and CI RDS jobs; drop transitional `tags_as_jsonb` / `areas_as_jsonb`.
+
 ## 2026-11-13 — DSQL-7: Assignments, certificates, research team (shipped)
 
 - **Assignments (7a):** `assignments/rds_repo.py` — `run_transaction` for criteria replace (`FOR UPDATE`), grade txn, draft `ON CONFLICT DO NOTHING`; batched deletes at course/module registry order **400**; user delete step **`assignment_certificate_research_rows`** at order **400** (`delete_assignment_children_for_user` + user certificates + bundle certs + research applications); `delete-user.py` enqueues submission S3 keys before DSQL delete.
