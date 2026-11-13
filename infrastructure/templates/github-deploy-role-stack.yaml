@@ -237,6 +237,9 @@ Resources:
               - dsql:TagResource
               - dsql:UntagResource
               - dsql:ListTagsForResource
+              - dsql:GetClusterPolicy
+              - dsql:PutClusterPolicy
+              - dsql:DeleteClusterPolicy
               - dsql:DbConnectAdmin
               - dsql:DbConnect
             Resource: !Sub "arn:aws:dsql:eu-west-1:${AWS::AccountId}:cluster/*"

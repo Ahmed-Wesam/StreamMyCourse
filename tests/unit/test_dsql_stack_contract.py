@@ -14,6 +14,9 @@ DSQL_CLUSTER_ACTIONS = (
     "dsql:TagResource",
     "dsql:UntagResource",
     "dsql:ListTagsForResource",
+    "dsql:GetClusterPolicy",
+    "dsql:PutClusterPolicy",
+    "dsql:DeleteClusterPolicy",
     "dsql:DbConnectAdmin",
     "dsql:DbConnect",
 )
