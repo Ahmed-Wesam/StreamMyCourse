@@ -65,6 +65,8 @@ jobs:
           PY
       - name: Lambda boundary import checks
         run: python scripts/check_lambda_boundaries.py
+      - name: Frozen RDS migration allowlist
+        run: python scripts/check_migrations_frozen.py
       - name: Install static analysis tools
         run: pip install vulture radon
       - name: Vulture (dead code)
