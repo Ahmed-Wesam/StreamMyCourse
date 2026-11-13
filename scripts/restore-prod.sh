@@ -547,7 +547,9 @@ package_cognito_sync_lambda() {
   mkdir -p "$pkg"
   ws="${ROOT}/infrastructure/lambda/cognito_user_profile_sync"
   cp "$ws/_vendor_bootstrap.py" "$ws/handler.py" "$ws/session_sync.py" "$ws/sync_config.py" "$ws/repo.py" "$pkg/"
-  pip install psycopg2-binary==2.9.9 \
+  cp "$ROOT/infrastructure/lambda/catalog/dsql_connect.py" "$pkg/"
+  cp "$ROOT/infrastructure/lambda/catalog/services/common/db_tx.py" "$pkg/db_tx.py"
+  pip install psycopg2-binary==2.9.9 aurora-dsql-python-connector==0.2.7 \
     --quiet \
     --platform manylinux2014_x86_64 \
     --only-binary=:all: \

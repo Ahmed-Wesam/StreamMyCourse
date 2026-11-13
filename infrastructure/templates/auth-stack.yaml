@@ -118,14 +118,25 @@ Parameters:
     Description: >-
       Aurora DSQL cluster ARN for dsql:DbConnect on the user profile sync Lambda (optional until cluster exists).
 
+  DsqlEndpoint:
+    Type: String
+    Default: ''
+    Description: >-
+      Aurora DSQL cluster endpoint hostname for the user profile sync Lambda.
+
 Conditions:
+  UseDsql: !Not [!Equals [!Ref DsqlEndpoint, '']]
+  UseRds: !Not [!Condition UseDsql]
   HasDsqlClusterArn: !Not [!Equals [!Ref DsqlClusterArn, '']]
+  HasDsqlEndpoint: !Not [!Equals [!Ref DsqlEndpoint, '']]
   HasRdsStackName: !Not [!Equals [!Ref RdsStackName, '']]
   HasSyncLambdaCode: !And
     - !Not [!Equals [!Ref CognitoUserProfileSyncCodeS3Bucket, '']]
     - !Not [!Equals [!Ref CognitoUserProfileSyncCodeS3Key, '']]
   ShouldDeployUserProfileSync: !And
-    - !Condition HasRdsStackName
+    - !Or
+      - !Condition HasRdsStackName
+      - !Condition HasDsqlEndpoint
     - !Equals [!Ref EnableUserProfileSync, 'true']
     - !Condition HasSyncLambdaCode
   HasPreSignUpCode: !And
@@ -157,8 +168,10 @@ Resources:
             Principal:
               Service: lambda.amazonaws.com
             Action: sts:AssumeRole
-      ManagedPolicyArns:
-        - arn:aws:iam::aws:policy/service-role/AWSLambdaVPCAccessExecutionRole
+      ManagedPolicyArns: !If
+        - UseRds
+        - - arn:aws:iam::aws:policy/service-role/AWSLambdaVPCAccessExecutionRole
+        - []
       Policies:
         - PolicyName: CloudWatchLogs
           PolicyDocument:
@@ -170,27 +183,33 @@ Resources:
                   - logs:CreateLogStream
                   - logs:PutLogEvents
                 Resource: !Sub 'arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/${AWS::StackName}-UserProfileSync:*'
-        - PolicyName: SecretsManagerRdsCreds
-          PolicyDocument:
-            Version: '2012-10-17'
-            Statement:
-              - Effect: Allow
-                Action:
-                  - secretsmanager:GetSecretValue
-                Resource: !ImportValue
-                  'Fn::Sub': '${RdsStackName}-DbSecretArn'
-        - PolicyName: LambdaVpcEni
-          PolicyDocument:
-            Version: '2012-10-17'
-            Statement:
-              - Effect: Allow
-                Action:
-                  - ec2:CreateNetworkInterface
-                  - ec2:DescribeNetworkInterfaces
-                  - ec2:DeleteNetworkInterface
-                  - ec2:AssignPrivateIpAddresses
-                  - ec2:UnassignPrivateIpAddresses
-                Resource: '*'
+        - !If
+          - UseRds
+          - PolicyName: SecretsManagerRdsCreds
+            PolicyDocument:
+              Version: '2012-10-17'
+              Statement:
+                - Effect: Allow
+                  Action:
+                    - secretsmanager:GetSecretValue
+                  Resource: !ImportValue
+                    'Fn::Sub': '${RdsStackName}-DbSecretArn'
+          - !Ref AWS::NoValue
+        - !If
+          - UseRds
+          - PolicyName: LambdaVpcEni
+            PolicyDocument:
+              Version: '2012-10-17'
+              Statement:
+                - Effect: Allow
+                  Action:
+                    - ec2:CreateNetworkInterface
+                    - ec2:DescribeNetworkInterfaces
+                    - ec2:DeleteNetworkInterface
+                    - ec2:AssignPrivateIpAddresses
+                    - ec2:UnassignPrivateIpAddresses
+                  Resource: '*'
+          - !Ref AWS::NoValue
         - PolicyName: CognitoAdminUpdateUserAttributes
           PolicyDocument:
             Version: '2012-10-17'
@@ -228,23 +247,45 @@ Resources:
       Role: !GetAtt UserProfileSyncLambdaRole.Arn
       Timeout: 30
       MemorySize: 256
-      VpcConfig:
-        SubnetIds:
-          - !ImportValue
-            'Fn::Sub': '${RdsStackName}-PrivateSubnetId'
-        SecurityGroupIds:
-          - !ImportValue
-            'Fn::Sub': '${RdsStackName}-LambdaSecurityGroupId'
+      VpcConfig: !If
+        - UseRds
+        - SubnetIds:
+            - !ImportValue
+              'Fn::Sub': '${RdsStackName}-PrivateSubnetId'
+          SecurityGroupIds:
+            - !ImportValue
+              'Fn::Sub': '${RdsStackName}-LambdaSecurityGroupId'
+        - !Ref AWS::NoValue
       Environment:
         Variables:
-          DB_SECRET_ARN: !ImportValue
-            'Fn::Sub': '${RdsStackName}-DbSecretArn'
-          DB_HOST: !ImportValue
-            'Fn::Sub': '${RdsStackName}-DbHost'
-          DB_PORT: !ImportValue
-            'Fn::Sub': '${RdsStackName}-DbPort'
-          DB_NAME: !ImportValue
-            'Fn::Sub': '${RdsStackName}-DbName'
+          DB_SECRET_ARN: !If
+            - UseRds
+            - !ImportValue
+              'Fn::Sub': '${RdsStackName}-DbSecretArn'
+            - !Ref AWS::NoValue
+          DB_HOST: !If
+            - UseRds
+            - !ImportValue
+              'Fn::Sub': '${RdsStackName}-DbHost'
+            - !Ref AWS::NoValue
+          DB_PORT: !If
+            - UseRds
+            - !ImportValue
+              'Fn::Sub': '${RdsStackName}-DbPort'
+            - !Ref AWS::NoValue
+          DB_NAME: !If
+            - UseRds
+            - !ImportValue
+              'Fn::Sub': '${RdsStackName}-DbName'
+            - !Ref AWS::NoValue
+          DSQL_ENDPOINT: !If
+            - UseDsql
+            - !Ref DsqlEndpoint
+            - !Ref AWS::NoValue
+          DSQL_USER: !If
+            - UseDsql
+            - smc_app
+            - !Ref AWS::NoValue
           LOG_LEVEL: INFO
           STUDENT_COGNITO_CLIENT_ID: !Ref StudentCognitoClientId
           TEACHER_COGNITO_CLIENT_ID: !Ref TeacherCognitoClientId

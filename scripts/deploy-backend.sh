@@ -58,6 +58,38 @@ AUTH_LAMBDA_DIR="$ROOT/infrastructure/lambda/catalog_token_authorizer"
 ACCOUNT="$(aws sts get-caller-identity --query Account --output text --region "$REGION")"
 ARTIFACT_BUCKET="streammycourse-artifacts-${ACCOUNT}-${REGION}"
 
+DSQL_ENDPOINT_VAL=""
+DSQL_CLUSTER_ARN_VAL=""
+
+_resolve_dsql_stack_outputs() {
+  local dsql_stack="${DSQL_STACK_NAME:-StreamMyCourse-Dsql-prod}"
+  if ! aws cloudformation describe-stacks --stack-name "$dsql_stack" --region "$REGION" &>/dev/null; then
+    return 1
+  fi
+  if [[ -z "$DSQL_ENDPOINT_VAL" ]]; then
+    DSQL_ENDPOINT_VAL="$(aws cloudformation describe-stacks \
+      --stack-name "$dsql_stack" \
+      --region "$REGION" \
+      --query 'Stacks[0].Outputs[?OutputKey==`Endpoint`].OutputValue' \
+      --output text)"
+  fi
+  if [[ -z "$DSQL_CLUSTER_ARN_VAL" ]]; then
+    DSQL_CLUSTER_ARN_VAL="$(aws cloudformation describe-stacks \
+      --stack-name "$dsql_stack" \
+      --region "$REGION" \
+      --query 'Stacks[0].Outputs[?OutputKey==`ResourceArn`].OutputValue' \
+      --output text)"
+  fi
+  [[ -n "$DSQL_ENDPOINT_VAL" && "$DSQL_ENDPOINT_VAL" != "None" \
+    && -n "$DSQL_CLUSTER_ARN_VAL" && "$DSQL_CLUSTER_ARN_VAL" != "None" ]]
+}
+
+_export_dsql_for_payments() {
+  export DSQL_ENDPOINT="${DSQL_ENDPOINT_VAL}"
+  export DSQL_CLUSTER_ARN="${DSQL_CLUSTER_ARN_VAL}"
+  export RDS_STACK_NAME=""
+}
+
 # CloudFormation only updates Lambda when S3Key *parameter* changes. Same key + new zip bytes = empty changeset.
 SUFFIX="${LAMBDA_CODE_SUFFIX:-}"
 if [[ -z "$SUFFIX" ]] && [[ -n "${GITHUB_SHA:-}" ]]; then
@@ -434,49 +466,43 @@ if [[ -n "${STUDENT_CLIENT:-}" && "${STUDENT_CLIENT}" != "None" ]]; then
   COGNITO_OVERRIDE+=("StudentCognitoClientId=${STUDENT_CLIENT}")
 fi
 
-# Catalog Lambda requires VPC + DB_* from the RDS stack exports.
 RDS_STACK_NAME="${RDS_STACK_NAME:-StreamMyCourse-Rds-${ENV}}"
 RDS_STACK_OVERRIDE=("RdsStackName=${RDS_STACK_NAME}")
+DSQL_PARAM_OVERRIDES=()
+PROD_USES_DSQL=false
 
-# Validate RDS stack exists before deploying API stack (prod path only; preview uses DSQL).
-if ! $IS_DSQL_PREVIEW; then
-  if ! aws cloudformation describe-stacks --stack-name "$RDS_STACK_NAME" --region "$REGION" &>/dev/null; then
-    echo "Error: RDS stack '$RDS_STACK_NAME' not found. Deploy the RDS stack first." >&2
-    exit 1
-  fi
+if [[ -n "${DSQL_ENDPOINT:-}" ]]; then
+  DSQL_ENDPOINT_VAL="${DSQL_ENDPOINT}"
+fi
+if [[ -n "${DSQL_CLUSTER_ARN:-}" ]]; then
+  DSQL_CLUSTER_ARN_VAL="${DSQL_CLUSTER_ARN}"
 fi
 
-DSQL_PARAM_OVERRIDES=()
 if $IS_DSQL_PREVIEW; then
-  DSQL_STACK_NAME="${DSQL_STACK_NAME:-StreamMyCourse-Dsql-prod}"
-  DSQL_ENDPOINT_VAL="${DSQL_ENDPOINT:-}"
-  DSQL_CLUSTER_ARN_VAL="${DSQL_CLUSTER_ARN:-}"
-  if aws cloudformation describe-stacks --stack-name "$DSQL_STACK_NAME" --region "$REGION" &>/dev/null; then
-    if [[ -z "$DSQL_ENDPOINT_VAL" ]]; then
-      DSQL_ENDPOINT_VAL="$(aws cloudformation describe-stacks \
-        --stack-name "$DSQL_STACK_NAME" \
-        --region "$REGION" \
-        --query 'Stacks[0].Outputs[?OutputKey==`Endpoint`].OutputValue' \
-        --output text)"
-    fi
-    if [[ -z "$DSQL_CLUSTER_ARN_VAL" ]]; then
-      DSQL_CLUSTER_ARN_VAL="$(aws cloudformation describe-stacks \
-        --stack-name "$DSQL_STACK_NAME" \
-        --region "$REGION" \
-        --query 'Stacks[0].Outputs[?OutputKey==`ResourceArn`].OutputValue' \
-        --output text)"
-    fi
-  fi
-  if [[ -z "$DSQL_ENDPOINT_VAL" || "$DSQL_ENDPOINT_VAL" == "None" \
-    || -z "$DSQL_CLUSTER_ARN_VAL" || "$DSQL_CLUSTER_ARN_VAL" == "None" ]]; then
-    echo "Error: DSQL_PREVIEW=1 requires DSQL endpoint and cluster ARN (deploy ${DSQL_STACK_NAME} or set DSQL_ENDPOINT and DSQL_CLUSTER_ARN)." >&2
+  if ! _resolve_dsql_stack_outputs; then
+    echo "Error: DSQL_PREVIEW=1 requires StreamMyCourse-Dsql-prod outputs (Endpoint, ResourceArn)." >&2
     exit 1
   fi
   DSQL_PARAM_OVERRIDES=(
     "ResourceNameSuffix=dsql"
     "DsqlEndpoint=${DSQL_ENDPOINT_VAL}"
     "DsqlClusterArn=${DSQL_CLUSTER_ARN_VAL}"
+    "RdsStackName="
   )
+  RDS_STACK_OVERRIDE=("RdsStackName=")
+elif ! _resolve_dsql_stack_outputs; then
+  if ! aws cloudformation describe-stacks --stack-name "$RDS_STACK_NAME" --region "$REGION" &>/dev/null; then
+    echo "Error: neither DSQL stack nor RDS stack '$RDS_STACK_NAME' is available for API deploy." >&2
+    exit 1
+  fi
+else
+  PROD_USES_DSQL=true
+  DSQL_PARAM_OVERRIDES=(
+    "DsqlEndpoint=${DSQL_ENDPOINT_VAL}"
+    "DsqlClusterArn=${DSQL_CLUSTER_ARN_VAL}"
+    "RdsStackName="
+  )
+  RDS_STACK_OVERRIDE=("RdsStackName=")
 fi
 
 VIDEO_EDGE_PARAM_OVERRIDES=()
@@ -555,6 +581,15 @@ _deploy_api_stack() {
     "${DSQL_PARAM_OVERRIDES[@]}"
 }
 
+if ! $IS_DSQL_PREVIEW && $PROD_USES_DSQL; then
+  _export_dsql_for_payments
+  PAY_SCRIPT="${ROOT}/scripts/deploy-payments.sh"
+  chmod +x "$PAY_SCRIPT"
+  export BILLING_FULFILLMENT_ALERT_EMAIL="${BILLING_FULFILLMENT_ALERT_EMAIL:-}"
+  echo "Pre-API: updating payments stack for DSQL fulfillment (auth already on DSQL)"
+  "$PAY_SCRIPT" "$ENV" "$REGION" "$ARTIFACT_BUCKET" "$SUFFIX"
+fi
+
 _deploy_api_stack "phase A"
 
 API_ENDPOINT="$(aws cloudformation describe-stacks \
@@ -607,6 +642,9 @@ if ! $IS_DSQL_PREVIEW && [[ -n "${CATALOG_LAMBDA_ARN:-}" && "${CATALOG_LAMBDA_AR
   export CATALOG_LAMBDA_ARN
   if [[ -n "${BILLING_SHOPPER_RESULT_URL:-}" ]]; then
     export BILLING_SHOPPER_RESULT_URL
+    if $PROD_USES_DSQL; then
+      _export_dsql_for_payments
+    fi
     PAY_SCRIPT="${ROOT}/scripts/deploy-payments.sh"
     chmod +x "$PAY_SCRIPT"
     echo "Updating payments stack with catalog invoke + billing return URLs"

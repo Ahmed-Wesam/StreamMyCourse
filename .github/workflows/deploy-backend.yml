@@ -553,6 +553,7 @@ jobs:
           cp "$WS/infrastructure/lambda/cognito_user_profile_sync/sync_config.py" "$PKG/"
           cp "$WS/infrastructure/lambda/cognito_user_profile_sync/repo.py" "$PKG/"
           cp "$WS/infrastructure/lambda/catalog/dsql_connect.py" "$PKG/"
+          cp "$WS/infrastructure/lambda/catalog/services/common/db_tx.py" "$PKG/db_tx.py"
           pip install -r "$WS/infrastructure/lambda/cognito_user_profile_sync/requirements.txt" \
             --quiet \
             --platform manylinux2014_x86_64 \
@@ -631,6 +632,23 @@ jobs:
             fi
           fi
 
+      - name: Resolve DSQL endpoint (prod)
+        id: dsql_endpoint_prod
+        run: |
+          set -euo pipefail
+          STACK="StreamMyCourse-Dsql-prod"
+          REGION="${{ env.AWS_REGION }}"
+          if aws cloudformation describe-stacks --stack-name "$STACK" --region "$REGION" >/dev/null 2>&1; then
+            ENDPOINT="$(aws cloudformation describe-stacks \
+              --stack-name "$STACK" \
+              --region "$REGION" \
+              --query "Stacks[0].Outputs[?OutputKey=='Endpoint'].OutputValue" \
+              --output text)"
+            if [[ -n "$ENDPOINT" && "$ENDPOINT" != "None" ]]; then
+              echo "endpoint=${ENDPOINT}" >> "$GITHUB_OUTPUT"
+            fi
+          fi
+
       - name: Ensure Zoho SMTP secret (prod)
         id: zoho_smtp_secret_prod
         env:
@@ -646,6 +664,10 @@ jobs:
           set -euo pipefail
           STACK="StreamMyCourse-Auth-prod"
           DSQL_AUTH_OVERRIDES=()
+          if [[ -n "${{ steps.dsql_endpoint_prod.outputs.endpoint }}" ]]; then
+            DSQL_AUTH_OVERRIDES+=("DsqlEndpoint=${{ steps.dsql_endpoint_prod.outputs.endpoint }}")
+            DSQL_AUTH_OVERRIDES+=("RdsStackName=")
+          fi
           if [[ -n "${{ steps.dsql_cluster_arn_prod.outputs.arn }}" ]]; then
             DSQL_AUTH_OVERRIDES+=("DsqlClusterArn=${{ steps.dsql_cluster_arn_prod.outputs.arn }}")
           fi
@@ -667,7 +689,6 @@ jobs:
               ${TEACHER_COGNITO_LOGOUT_URLS:+TeacherLogoutUrls=${TEACHER_COGNITO_LOGOUT_URLS}} \
               "GoogleClientId=${GOOGLE_OAUTH_CLIENT_ID}" \
               "GoogleClientSecret=${GOOGLE_OAUTH_CLIENT_SECRET}" \
-              "RdsStackName=StreamMyCourse-Rds-prod" \
               "EnableUserProfileSync=true" \
               "CognitoUserProfileSyncCodeS3Bucket=${{ steps.cognito_sync_pkg_prod.outputs.bucket }}" \
               "CognitoUserProfileSyncCodeS3Key=${{ steps.cognito_sync_pkg_prod.outputs.key }}" \
@@ -704,7 +725,6 @@ jobs:
                 ${TEACHER_COGNITO_LOGOUT_URLS:+TeacherLogoutUrls=${TEACHER_COGNITO_LOGOUT_URLS}} \
                 "GoogleClientId=${GOOGLE_OAUTH_CLIENT_ID}" \
                 "GoogleClientSecret=${GOOGLE_OAUTH_CLIENT_SECRET}" \
-                "RdsStackName=StreamMyCourse-Rds-prod" \
                 "EnableUserProfileSync=true" \
                 "CognitoUserProfileSyncCodeS3Bucket=${{ steps.cognito_sync_pkg_prod.outputs.bucket }}" \
                 "CognitoUserProfileSyncCodeS3Key=${{ steps.cognito_sync_pkg_prod.outputs.key }}" \
@@ -795,7 +815,9 @@ jobs:
             --region "$REGION" \
             --no-fail-on-empty-changeset \
             --parameter-overrides \
-              "DsqlClusterArn=${{ steps.dsql_cluster_arn_prod.outputs.arn }}"
+              "DsqlClusterArn=${{ steps.dsql_cluster_arn_prod.outputs.arn }}" \
+              "DsqlEndpoint=${{ steps.dsql_endpoint_prod.outputs.endpoint }}" \
+              "RdsStackName="
 
       - name: Summary
         if: success()
@@ -1183,6 +1205,17 @@ jobs:
           set -e
           echo "[integration-diag] pytest_end=$(date -u +"%Y-%m-%dT%H:%M:%SZ") exit=$rc"
           exit $rc
+
+      - name: DSQL orphan audit (prod)
+        if: steps.pytest.outcome == 'success'
+        run: |
+          set -euo pipefail
+          ENDPOINT="$(aws cloudformation describe-stacks \
+            --stack-name StreamMyCourse-Dsql-prod \
+            --region "${{ env.AWS_REGION }}" \
+            --query "Stacks[0].Outputs[?OutputKey=='Endpoint'].OutputValue" \
+            --output text)"
+          python scripts/dsql_orphan_audit.py --host "$ENDPOINT"
 
       - name: Summary
         if: always()

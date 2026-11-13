@@ -280,6 +280,23 @@ for a in "${PYTEST_ARGS[@]}"; do
 done
 if [[ "$has_explicit_target" == true ]]; then
     python -m pytest "${PYTEST_ARGS[@]}"
+    pytest_rc=$?
 else
     python -m pytest "${PYTEST_ARGS[@]}" tests/integration
+    pytest_rc=$?
 fi
+
+if [[ "$has_explicit_target" != true && "$pytest_rc" -eq 0 ]]; then
+    DSQL_STACK="${INTEGRATION_DSQL_STACK:-StreamMyCourse-Dsql-prod}"
+    ENDPOINT="$(aws cloudformation describe-stacks \
+        --stack-name "$DSQL_STACK" \
+        --region "$REGION" \
+        --query "Stacks[0].Outputs[?OutputKey=='Endpoint'].OutputValue" \
+        --output text 2>/dev/null || true)"
+    if [[ -n "$ENDPOINT" && "$ENDPOINT" != "None" ]]; then
+        log_info "Running DSQL orphan audit against $ENDPOINT"
+        python scripts/dsql_orphan_audit.py --host "$ENDPOINT"
+    fi
+fi
+
+exit "$pytest_rc"

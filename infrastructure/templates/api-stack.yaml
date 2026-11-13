@@ -70,10 +70,11 @@ Parameters:
 
   RdsStackName:
     Type: String
-    MinLength: 1
+    Default: ''
     Description: >-
       Name of the RDS stack (e.g. StreamMyCourse-Rds-prod) whose exports provide
-      the VPC/subnet/SG/secret and DB_* settings for the catalog Lambda (required).
+      the VPC/subnet/SG/secret and DB_* settings for the catalog Lambda. Empty when
+      DsqlEndpoint is set (Aurora DSQL).
 
   LogLevel:
     Type: String

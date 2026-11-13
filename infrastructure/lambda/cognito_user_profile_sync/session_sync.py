@@ -91,7 +91,10 @@ def _bump_student_session(event: Dict[str, Any], cfg: SyncConfig) -> str:
     user_sub = _user_sub_from_event(event)
     if not user_sub:
         raise RuntimeError("missing sub for student session bump")
-    if not cfg.db_secret_arn or not cfg.db_host:
+    dsql = (cfg.dsql_endpoint or "").strip()
+    if dsql:
+        pass
+    elif not cfg.db_secret_arn or not cfg.db_host:
         raise RuntimeError("misconfigured DB for student session bump")
 
     new_session = str(uuid4())

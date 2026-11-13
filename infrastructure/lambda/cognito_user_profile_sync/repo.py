@@ -142,24 +142,26 @@ def set_student_active_session_id(
     """Persist the canonical student session id (upsert row if needed)."""
     if psycopg2 is None:
         raise RuntimeError("psycopg2 is not available")
+    from db_tx import run_transaction
+
     conn = conn_factory()
     try:
-        cur = conn.cursor()
-        cur.execute(
-            """
-            INSERT INTO users (user_sub, email, role, cognito_sub, student_active_session_id, last_login_at)
-            VALUES (%s, '', 'student', %s, %s, NOW())
-            ON CONFLICT (user_sub) DO UPDATE
-              SET student_active_session_id = EXCLUDED.student_active_session_id,
-                  last_login_at = NOW(),
-                  updated_at = NOW()
-            """,
-            (user_sub, user_sub, session_id),
-        )
-        conn.commit()
-    except Exception:
-        conn.rollback()
-        raise
+
+        def body() -> None:
+            cur = conn.cursor()
+            cur.execute(
+                """
+                INSERT INTO users (user_sub, email, role, cognito_sub, student_active_session_id, last_login_at)
+                VALUES (%s, '', 'student', %s, %s, NOW())
+                ON CONFLICT (user_sub) DO UPDATE
+                  SET student_active_session_id = EXCLUDED.student_active_session_id,
+                      last_login_at = NOW(),
+                      updated_at = NOW()
+                """,
+                (user_sub, user_sub, session_id),
+            )
+
+        run_transaction(conn, body)
     finally:
         conn.close()
 
@@ -175,45 +177,47 @@ def upsert_user_profile(
     """Idempotent UPSERT into ``users`` (same semantics as catalog ``put_profile``)."""
     if psycopg2 is None:
         raise RuntimeError("psycopg2 is not available")
+    from db_tx import run_transaction
+
     conn = conn_factory()
     try:
-        cur = conn.cursor()
-        if student_active_session_id is not None:
-            cur.execute(
-                f"""
-                INSERT INTO users (user_sub, email, role, cognito_sub, student_active_session_id)
-                VALUES (%s, %s, %s, %s, %s)
-                ON CONFLICT (user_sub) DO UPDATE
-                  SET email       = EXCLUDED.email,
-                      role        = EXCLUDED.role,
-                      cognito_sub = EXCLUDED.cognito_sub,
-                      student_active_session_id = EXCLUDED.student_active_session_id,
-                      updated_at  = NOW()
-                RETURNING {_PROFILE_COLUMNS}
-                """,
-                (user_sub, email, role, user_sub, student_active_session_id),
-            )
-        else:
-            cur.execute(
-                f"""
-                INSERT INTO users (user_sub, email, role, cognito_sub)
-                VALUES (%s, %s, %s, %s)
-                ON CONFLICT (user_sub) DO UPDATE
-                  SET email       = EXCLUDED.email,
-                      role        = EXCLUDED.role,
-                      cognito_sub = EXCLUDED.cognito_sub,
-                      updated_at  = NOW()
-                RETURNING {_PROFILE_COLUMNS}
-                """,
-                (user_sub, email, role, user_sub),
-            )
-        conn.commit()
-        row = cur.fetchone()
-        if row is None:
-            logger.warning("users upsert returned no row for sub_prefix=%s", user_sub[:8])
-    except Exception:
-        conn.rollback()
-        raise
+
+        def body() -> None:
+            cur = conn.cursor()
+            if student_active_session_id is not None:
+                cur.execute(
+                    f"""
+                    INSERT INTO users (user_sub, email, role, cognito_sub, student_active_session_id)
+                    VALUES (%s, %s, %s, %s, %s)
+                    ON CONFLICT (user_sub) DO UPDATE
+                      SET email       = EXCLUDED.email,
+                          role        = EXCLUDED.role,
+                          cognito_sub = EXCLUDED.cognito_sub,
+                          student_active_session_id = EXCLUDED.student_active_session_id,
+                          updated_at  = NOW()
+                    RETURNING {_PROFILE_COLUMNS}
+                    """,
+                    (user_sub, email, role, user_sub, student_active_session_id),
+                )
+            else:
+                cur.execute(
+                    f"""
+                    INSERT INTO users (user_sub, email, role, cognito_sub)
+                    VALUES (%s, %s, %s, %s)
+                    ON CONFLICT (user_sub) DO UPDATE
+                      SET email       = EXCLUDED.email,
+                          role        = EXCLUDED.role,
+                          cognito_sub = EXCLUDED.cognito_sub,
+                          updated_at  = NOW()
+                    RETURNING {_PROFILE_COLUMNS}
+                    """,
+                    (user_sub, email, role, user_sub),
+                )
+            row = cur.fetchone()
+            if row is None:
+                logger.warning("users upsert returned no row for sub_prefix=%s", user_sub[:8])
+
+        run_transaction(conn, body)
     finally:
         conn.close()
 

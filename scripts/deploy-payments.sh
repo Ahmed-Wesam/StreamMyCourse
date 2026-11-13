@@ -21,7 +21,12 @@ EDGE_DIR="$ROOT/infrastructure/lambda/billing_edge"
 FULFILL_DIR="$ROOT/infrastructure/lambda/billing_fulfillment"
 
 PAYMENTS_STACK="StreamMyCourse-Payments-${ENV}"
-RDS_STACK="${RDS_STACK_NAME:-StreamMyCourse-Rds-${ENV}}"
+RDS_STACK="${RDS_STACK_NAME:-}"
+DSQL_ENDPOINT_PARAM="${DSQL_ENDPOINT:-}"
+DSQL_CLUSTER_ARN_PARAM="${DSQL_CLUSTER_ARN:-}"
+if [[ -z "$RDS_STACK" && -z "$DSQL_ENDPOINT_PARAM" ]]; then
+  RDS_STACK="StreamMyCourse-Rds-${ENV}"
+fi
 
 CATALOG_LAMBDA_ARN="${CATALOG_LAMBDA_ARN:-}"
 BILLING_SHOPPER_RESULT_URL="${BILLING_SHOPPER_RESULT_URL:-}"
@@ -283,7 +288,7 @@ aws cloudformation validate-template \
   --template-body "$VALIDATE_BODY_URI" \
   --region "$REGION"
 
-echo "Deploying payments stack: $PAYMENTS_STACK (RdsStackName=$RDS_STACK)"
+echo "Deploying payments stack: $PAYMENTS_STACK (RdsStackName=${RDS_STACK:-<empty>}, DsqlEndpoint=${DSQL_ENDPOINT_PARAM:+set})"
 aws cloudformation deploy \
   --template-file "$PAYMENTS_TEMPLATE" \
   --stack-name "$PAYMENTS_STACK" \
@@ -296,6 +301,8 @@ aws cloudformation deploy \
   "BillingEdgeCodeS3Key=${EDGE_KEY}" \
   "BillingFulfillmentCodeS3Key=${FULFILL_KEY}" \
   "RdsStackName=${RDS_STACK}" \
+  "DsqlEndpoint=${DSQL_ENDPOINT_PARAM}" \
+  "DsqlClusterArn=${DSQL_CLUSTER_ARN_PARAM}" \
   "PaymentProvider=${PAYMENT_PROVIDER}" \
   "HyperpaySecretArn=${HYPERPAY_SECRET_ARN}" \
   "HyperpayAccessToken=${HYPERPAY_ACCESS_TOKEN}" \
