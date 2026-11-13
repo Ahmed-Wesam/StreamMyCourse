@@ -136,7 +136,7 @@ GET    /courses/{id}                     // Full details for catalog; may includ
 PUT    /courses/{id}                     // Update title + description; optional body key **`page`** (JSON object) replaces stored marketing document when present (publisher only). Omitting `page` leaves `page_content` unchanged.
 PUT    /courses/{id}/publish             // Publish (requires ≥1 ready lesson)
 PUT    /courses/{id}/thumbnail-ready     // Body { thumbnailKey }; persist cover image after S3 PUT (see upload-url)
-DELETE /courses/{id}                     // Delete course; CASCADE removes modules + lessons + related progress
+DELETE /courses/{id}                     // Sync catalog delete via course-deletion registry (tombstone `deleting`, batched SQL). **409** `conflict` if any `purchases` row exists for the course (no purchase delete from this path). Student-scaled children (progress, notes, quizzes, assignments) need later DSQL registry steps **100** / **300** / **400** or delete may fail with FK **500** until wired.
 POST   /courses/{id}/enroll              // Idempotent self-service enrollment (PUBLISHED only); Cognito when enforced
 ```
 

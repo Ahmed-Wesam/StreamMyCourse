@@ -60,7 +60,18 @@ Related ADRs: [0011 video provider / Kinescope](./adr-0011-video-provider-port-k
 
 **Operator entry:** [`scripts/delete-user.py`](../../../scripts/delete-user.py) — Cognito admin APIs + DSQL admin connection; not wired in `bootstrap.py`.
 
-**Later workstreams:** DSQL-4..7 add `register_*_steps` in their own packages (orders **100**–**400**); DSQL-5 **`purchases`** at **200**.
+**Later workstreams:** DSQL-4..7 add `register_*_steps` in their own packages (orders **100**–**400**); DSQL-5 **`purchases`** at **200** (user delete only—not course delete).
+
+### `services/course_deletion/` (DSQL-3)
+
+| File | Layer | Notes |
+|------|-------|------|
+| `registry.py` | Domain | `register(name, order, scope, run)` — `scope` ∈ `lesson` \| `module` \| `course`; sorted by `order` |
+| `runner.py` | Domain | `CourseDeletionRunner.run(scope, parent_id)`; FK **`23503` propagates** (not mapped to HTTP) |
+| `catalog.py` | Wiring | `register_catalog_steps(registry, repo)` — catalog batches **900**, parent row **1000** |
+| `__init__.py` | Exports | `CourseDeletionRegistry`, `CourseDeletionRunner`, `register_catalog_steps` |
+
+**Bootstrap:** `CourseDeletionRegistry` + `register_catalog_steps` → `CourseDeletionRunner` → `CourseManagementService`. Later workstreams call `register_*_steps` at orders **100** / **300** / **400**; **no** purchase-delete step on course delete (409 guard in service).
 
 ### `services/enrollment/` (implemented)
 

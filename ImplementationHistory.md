@@ -6,6 +6,15 @@
 
 ---
 
+## 2026-11-13 — DSQL-3: Course catalog core (registry delete, OCC, preview gate)
+
+- **Course deletion:** `services/course_deletion/` — scoped registry (`lesson` \| `module` \| `course`), sync runner, `register_catalog_steps` (batched `lesson_files` / `lessons` / `course_modules` @ **900**, parent `DELETE` @ **1000**). `courses.status='deleting'` tombstone; public reads hide `deleting`; `include_deleting=True` only on `DELETE /courses/{id}` authz. **409** `conflict` when any `purchases` row exists (guard before tombstone).
+- **Adapter:** `CourseCatalogRdsRepository` — `run_transaction` / `delete_in_batches` for writes and catalog deletes; two-phase `set_lesson_orders`; `get_course(..., include_deleting=False)` default.
+- **Schema:** [`0002_lesson_video_key_index.sql`](infrastructure/database/dsql/0002_lesson_video_key_index.sql) (async partial index on `lessons.video_key`).
+- **Tests:** unit (`test_course_deletion_registry`, `test_rds_repo_dsql`, `test_dsql_delete`); integration `test_lesson_files.py`, `test_catalog_deletion.py` (purchase **409** on preview; prod uses pending file rows—**complete**+S3 HEAD still times out in VPC; follow-up).
+- **Gates:** CI/Deploy green **`c4e82de`**; prod integration **193 passed**, 21 skipped; preview catalog slice **23 passed** (full plan gate **73 passed**, 3 billing-dependent failures on preview—payments edge absent); `dsql_orphan_audit` **0 findings**; purchase-block preview test **1 passed**.
+- **DSQL-4..7 handoff:** register steps at **100** / **300** / **400** on same registry; use `delete_in_batches`; never delete `purchases` from course delete. **DSQL-9:** keep `0002` with schema (no catalog SQL branch to delete).
+
 ## 2026-11-13 — DSQL-2: Identity adapter, rate-limit OCC, user-deletion skeleton
 
 - **Users adapter:** `UserProfileRdsRepository` JSONB tag codec when the catalog runs on DSQL (`tags_as_jsonb` from bootstrap); profile writes and `delete_user_row` use `run_transaction` (SQLSTATE `40001` retry). Prod RDS path unchanged (`TEXT[]`, no `::jsonb`).
