@@ -144,7 +144,7 @@ def iam_mapping_exists(conn: Any, role_arn: str) -> bool:
             """
             SELECT 1
             FROM sys.iam_pg_role_mappings
-            WHERE iam_role_arn = %s AND pg_role = %s
+            WHERE arn = %s AND pg_role_name = %s
             """,
             (role_arn, DSQL_ROLE_APP),
         )
