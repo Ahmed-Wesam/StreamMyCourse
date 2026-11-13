@@ -1010,7 +1010,9 @@ describe('CourseManagement', () => {
       const savePassBtn = within(m1Row as HTMLElement).getByRole('button', {
         name: /Save pass score/i,
       })
-      await waitFor(() => expect(savePassBtn).not.toBeDisabled())
+      await waitFor(() =>
+        expect((savePassBtn as HTMLButtonElement).disabled).toBe(false),
+      )
       fireEvent.click(savePassBtn)
 
       await waitFor(() => {
