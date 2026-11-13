@@ -802,19 +802,9 @@ class _CertificateRequirementsAdapter:
 
         for row in self._assignments_repo.list_assignments(course_id):
 
-            submission = self._assignments_repo.get_latest_submission_for_user(
+            passed = self._assignments_repo.latest_assignment_grade_passed_for_user(
 
                 assignment_id=row.id, user_sub=user_sub
-
-            )
-
-            passed = bool(
-
-                submission is not None
-
-                and submission.grade is not None
-
-                and submission.grade.passed
 
             )
 

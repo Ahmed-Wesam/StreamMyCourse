@@ -38,6 +38,31 @@ def _bundle_amount_minor(conn) -> int:
     return _DEFAULT_BUNDLE_FILS
 
 
+def insert_paid_course_purchase(
+    user_sub: str,
+    course_id: str,
+    *,
+    purchase_id: str | None = None,
+    amount_minor: int = 1000,
+) -> str:
+    """Admin INSERT of a paid course row (preview only). Returns purchase id."""
+    pid = purchase_id or str(uuid.uuid4())
+    env = _billing_environment()
+    with admin_connect() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                INSERT INTO app.purchases (
+                    id, user_sub, environment, product_type, course_id,
+                    status, amount_minor, currency
+                ) VALUES (%s, %s, %s, 'course', %s, 'paid', %s, 'JOD')
+                """,
+                (pid, user_sub, env, course_id, amount_minor),
+            )
+        conn.commit()
+    return pid
+
+
 def insert_paid_bundle_purchase(user_sub: str, *, purchase_id: str | None = None) -> str:
     """Admin INSERT of a paid bundle row (preview only). Returns purchase id."""
     pid = purchase_id or str(uuid.uuid4())

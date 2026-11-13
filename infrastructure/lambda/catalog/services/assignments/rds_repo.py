@@ -1021,6 +1021,24 @@ class AssignmentsRdsRepository(AssignmentsRepositoryPort):
     def get_grade_for_submission(self, submission_id: str) -> Optional[GradeRow]:
         return self._load_grade(submission_id)
 
+    def latest_assignment_grade_passed_for_user(
+        self, *, assignment_id: str, user_sub: str
+    ) -> bool:
+        """True when the student's latest submission has a grade row with passed=true."""
+        cur = self._execute(
+            """
+            SELECT g.passed
+            FROM assignment_submissions s
+            INNER JOIN assignment_grades g ON g.submission_id = s.id
+            WHERE s.assignment_id = %s AND s.user_sub = %s
+            ORDER BY s.created_at DESC
+            LIMIT 1
+            """,
+            (assignment_id, user_sub),
+        )
+        row = cur.fetchone()
+        return bool(row and row[0])
+
     def _batched_delete(self, sql: str, params: tuple) -> int:
         return delete_in_batches(self._connection(), sql, params)
 

@@ -130,7 +130,7 @@ def test_research_team_apply_and_review_flow(
             body={"givenName": "Ada", "familyName": "Student", "country": "Jordan"}
         )
         _grade_passing_assignment(api, student_api, course_id)
-        submitted_areas = ["Clinical Research", "Systematic Reviews"]
+        submitted_areas = ["Clinical Research", "Systematic Reviews & Meta-Analysis"]
         ok = student_api.submit_research_team_application(
             _apply_body(researchAreas=submitted_areas)
         )
