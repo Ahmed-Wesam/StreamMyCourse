@@ -60,7 +60,7 @@ Related ADRs: [0011 video provider / Kinescope](./adr-0011-video-provider-port-k
 
 **Operator entry:** [`scripts/delete-user.py`](../../../scripts/delete-user.py) — Cognito admin APIs + DSQL admin connection; not wired in `bootstrap.py`.
 
-**DSQL-4 (shipped):** `learning_activity_days` delete step at order **100** (user registry only). **Later workstreams:** DSQL-5..7 add `register_*_steps` at **300** / **400**; DSQL-5 **`purchases`** at **200** (user delete only—not course delete).
+**DSQL-4 (shipped):** `learning_activity_days` delete step at order **100** (user registry only). **DSQL-5 (shipped):** **`purchases`** at order **200** on user delete (not course delete). **Later:** DSQL-6/7 at **300** / **400**.
 
 ### `services/course_deletion/` (DSQL-3)
 
@@ -110,7 +110,7 @@ Related ADRs: [0011 video provider / Kinescope](./adr-0011-video-provider-port-k
 | `checkout_service.py` / `manage_service.py` | Application | Checkout precheck; bundle/course price manage |
 | `controller.py` | HTTP adapter | `POST /billing/checkout-session`, `GET /billing/bundle`, `GET /billing/purchases`, price/bundle PATCH routes |
 | `internal_checkout.py` | Internal | Fulfillment-facing helpers invoked from billing queue path |
-| `repo.py` | Persistence | `purchases`, `bundle_offers`, course price |
+| `repo.py` | Persistence | `purchases`, `bundle_offers`, course price; checkout **`run_transaction`** + user-row lock; batched delete for user delete (**200**) |
 | `ports.py` / `models.py` | Contracts / domain | Purchase repository Protocol and models |
 
 **Supersedes** subscription module / `access-policy-v1` subscription rules (ADR 0013).

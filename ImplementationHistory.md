@@ -6,6 +6,14 @@
 
 ---
 
+## 2026-11-13 — DSQL-5: Commerce (purchases, preview billing routes, fulfillment OCC)
+
+- **Reservation (D4):** `reserve_pending_checkout` runs in one `run_transaction` with **`SELECT … FROM users FOR UPDATE`** before stale pending delete / paid re-check / single pending insert — shared SQL on **RDS 16** and **DSQL** (no new DDL). Interval probe **D6 compatible** (no `make_interval` fallback).
+- **Fulfillment (D7):** `billing_fulfillment/fulfillment_repo.py` — user-row lock when `user_sub` set, `process_event_in_transaction` inside `run_transaction`; `build_connection_factory` rejects both `DSQL_ENDPOINT` and `DB_HOST`; deploy copies catalog **`db_tx.py`** into fulfillment zip. **Prod payments stack still RDS-only** until DSQL-8.
+- **User delete (D1):** `purchases` batched delete at registry order **200** (`delete_purchases_for_user`; webhook rows retained).
+- **Preview API (D8):** Catalog billing **GET/PATCH** methods unconditional in [`api-stack.yaml`](infrastructure/templates/api-stack.yaml) (`CatalogApiDeploymentV47`); checkout-session / HyperPay webhook stay edge-gated. **`apigw_routing_path`** restores `/billing` prefix for nested REST child resources.
+- **Gates:** Preview E2E **15 passed** (`test_dsql_purchase_interval`, billing catalog/checkout/fulfillment, catalog deletion purchase **409**, user delete clears purchases); `dsql_orphan_audit` **0 findings**; prod Deploy integration green (**43459287933**). Commits **`e02626a`**, **`55e70f6`**, **`d7c47ce`**, **`e133d19`**.
+
 ## 2026-11-13 — DSQL-4: Learning records (progress, activity, notes)
 
 - **D1 — `enrollments` on DSQL only:** Removed unwired `services/enrollment/` adapter; **`POST /courses/{id}/enroll`** still returns **403** `purchase_required` (no row writes). DSQL migration [`0003_drop_enrollments.sql`](infrastructure/database/dsql/0003_drop_enrollments.sql) drops `app.enrollments`; **prod RDS** keeps the table until **DSQL-9**. Access remains purchase-based ([`CourseAccessService`](infrastructure/lambda/catalog/services/purchases/service.py)).
@@ -38,7 +46,7 @@
 - **Users adapter:** `UserProfileRdsRepository` JSONB tag codec when the catalog runs on DSQL (`tags_as_jsonb` from bootstrap); profile writes and `delete_user_row` use `run_transaction` (SQLSTATE `40001` retry). Prod RDS path unchanged (`TEXT[]`, no `::jsonb`).
 - **Rate limit:** `RateLimitRdsRepository.consume` wrapped in `run_transaction`; cluster probe **`SELECT make_interval(secs => 60)`** succeeded (2026-11-13, admin IAM).
 - **Sync packaging:** Cognito profile sync `build_connection_factory` raises if both `DSQL_ENDPOINT` and `DB_HOST` are set; deploy packages `cognito_user_profile_sync/requirements.txt` (includes DSQL connector).
-- **User deletion:** `services/user_deletion/` registry + **`scripts/delete-user.py`** (`--execute`, DSQL admin only, Cognito disable/delete on operator host). Step **`users`** order **1000**; purchase delete step reserved for DSQL-5. **`rate_limit_counters` not deleted** (shared buckets).
+- **User deletion:** `services/user_deletion/` registry + **`scripts/delete-user.py`** (`--execute`, DSQL admin only, Cognito disable/delete on operator host). Step **`users`** order **1000**; **`purchases`** at **200** (DSQL-5). **`rate_limit_counters` not deleted** (shared buckets).
 - **Tests / gates:** Preview HTTPS **8 passed** (`test_native_signup_profile`, `test_auth_gateway`, `test_users_me_preferences`, `test_rate_limit_contact`, `test_user_deletion` with `INTEGRATION_API_STACK=StreamMyCourse-Api-dsql`); prod suite **188 passed**, 19 skipped; `dsql_orphan_audit` **0 findings**. Commits through **`dbbf8a0`**.
 - **DSQL-8 handoff:** wrap Cognito sync profile writes in `run_transaction` when sync gets `DSQL_ENDPOINT` (include `db_tx.py` in zip). **DSQL-9:** remove `tags_as_jsonb` / RDS branch once prod is DSQL-only.
 
