@@ -65,9 +65,9 @@ class TestApigwRoutingPath:
     def test_restores_billing_prefix_from_route_key_for_nested_resource(self) -> None:
         course_id = "a974ea00-614c-434d-8fa1-464a93cd7c6a"
         evt = {
+            "httpMethod": "PATCH",
             "requestContext": {
                 "stage": "prod",
-                "routeKey": "PATCH /billing/courses/{courseId}/price",
                 "resourcePath": "/billing/courses/{courseId}/price",
             },
             "path": f"/courses/{course_id}/price",

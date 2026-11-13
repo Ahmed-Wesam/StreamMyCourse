@@ -104,10 +104,30 @@ def _normalize_gateway_path(stage: object, path: str) -> str:
     return _strip_leading_stage_segment(p)
 
 
-def _restore_billing_path_prefix(request_context: Dict[str, Any], normalized: str) -> str:
+def _synthetic_route_key(request_context: Dict[str, Any], event: Dict[str, Any]) -> str:
+    """Mirror runtime_context route_key synthesis for REST (v1) and HTTP (v2) events."""
+    rk = request_context.get("routeKey")
+    if isinstance(rk, str) and rk.strip():
+        return rk.strip()
+    http = request_context.get("http")
+    if isinstance(http, dict):
+        method = http.get("method")
+        path = http.get("path")
+        if isinstance(method, str) and method.strip() and isinstance(path, str) and path.strip():
+            return f"{method.strip()} {path.strip()}"
+    method = event.get("httpMethod")
+    resource_path = request_context.get("resourcePath")
+    if isinstance(method, str) and method.strip() and isinstance(resource_path, str) and resource_path.strip():
+        return f"{method.strip()} {resource_path.strip()}"
+    return ""
+
+
+def _restore_billing_path_prefix(
+    request_context: Dict[str, Any], event: Dict[str, Any], normalized: str
+) -> str:
     """REST API child resources under ``/billing`` may omit the parent in ``path``."""
-    route_key = request_context.get("routeKey")
-    if not isinstance(route_key, str) or " " not in route_key:
+    route_key = _synthetic_route_key(request_context, event)
+    if not route_key or " " not in route_key:
         return normalized
     _, template = route_key.split(" ", 1)
     template = template.strip()
@@ -137,7 +157,7 @@ def apigw_routing_path(event: Dict[str, Any]) -> str:
 
     def _finalize(candidate: str) -> str:
         normalized = _normalize_gateway_path(stage, candidate)
-        return _restore_billing_path_prefix(rc, normalized)
+        return _restore_billing_path_prefix(rc, event, normalized)
 
     resource_path = rc.get("resourcePath")
     if (
