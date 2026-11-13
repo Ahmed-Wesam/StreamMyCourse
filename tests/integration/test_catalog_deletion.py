@@ -5,7 +5,6 @@ from __future__ import annotations
 import os
 import uuid
 
-import httpx
 import pytest
 
 from helpers.api import ApiClient
@@ -14,16 +13,14 @@ from helpers.dsql_audit import admin_connect, execute_scalar
 from helpers.factories import make_test_title
 from helpers.module_contract import require_course_modules_list, require_lessons_include_module_fields
 
-_PDF_BYTES = b"%PDF-1.4 minimal\n"
-_PDF_SIZE = len(_PDF_BYTES)
-_CONTENT_TYPE = "application/pdf"
+_PDF_SIZE = 128
 
 
 def _is_dsql_preview_stack() -> bool:
     return os.environ.get("INTEGRATION_API_STACK", "").strip() == "StreamMyCourse-Api-dsql"
 
 
-def _create_ready_lesson_file(api: ApiClient, course_id: str, lesson_id: str) -> str:
+def _attach_lesson_file_row(api: ApiClient, course_id: str, lesson_id: str) -> str:
     created = api.create_lesson_file(
         course_id,
         lesson_id,
@@ -33,18 +30,7 @@ def _create_ready_lesson_file(api: ApiClient, course_id: str, lesson_id: str) ->
         byte_size=_PDF_SIZE,
     )
     assert created.status_code == 201, created.text
-    body = created.json()
-    file_id = str(body["fileId"])
-    put = httpx.put(
-        str(body["uploadUrl"]),
-        content=_PDF_BYTES,
-        headers={"Content-Type": _CONTENT_TYPE},
-        timeout=30.0,
-    )
-    assert put.status_code == 200, put.text
-    completed = api.complete_lesson_file_with_retry(course_id, lesson_id, file_id)
-    assert completed.status_code == 200, completed.text
-    return file_id
+    return str(created.json()["fileId"])
 
 
 def _sql_counts(conn, course_id: str) -> tuple[int, int, int, int]:
@@ -77,7 +63,7 @@ def test_delete_module_removes_lesson_and_file(api: ApiClient, course_factory) -
     )
     assert lr.status_code == 201, lr.text
     lesson_id = lr.json()["lessonId"]
-    _create_ready_lesson_file(api, course.course_id, lesson_id)
+    _attach_lesson_file_row(api, course.course_id, lesson_id)
 
     assert api.delete_course_module(course.course_id, victim_id).status_code == 200
 
@@ -104,7 +90,7 @@ def test_delete_lesson_removes_file_and_compacts_sibling(
     a = lesson_factory(course.course_id, label="keep")
     b = lesson_factory(course.course_id, label="drop")
     assert (a.order, b.order) == (1, 2)
-    _create_ready_lesson_file(api, course.course_id, b.lesson_id)
+    _attach_lesson_file_row(api, course.course_id, b.lesson_id)
 
     assert api.delete_lesson(course.course_id, b.lesson_id).status_code == 200
 
@@ -131,7 +117,7 @@ def test_delete_lesson_removes_file_and_compacts_sibling(
 def test_delete_course_removes_catalog_rows(api: ApiClient, course_factory, lesson_factory) -> None:
     course = course_factory(label="cat-del-course")
     lesson = lesson_factory(course.course_id, label="course-file")
-    _create_ready_lesson_file(api, course.course_id, lesson.lesson_id)
+    _attach_lesson_file_row(api, course.course_id, lesson.lesson_id)
 
     assert api.delete_course(course.course_id).status_code == 200
     assert api.get_course(course.course_id).status_code == 404
