@@ -71,6 +71,7 @@ def critical_sql_statements() -> list[str]:
         "CALL sys.wait_for_job(%s)",
         f"INSERT INTO {p('partial_uq')} (slot) VALUES (1) ON CONFLICT DO NOTHING",
         f"CREATE INDEX ASYNC IF NOT EXISTS idx_{SPIKE_SCHEMA}_fk_parent_id ON {p('fk_parent')} (id)",
+        f"CREATE ROLE {DSQL_USER_APP} WITH LOGIN",
         f"GRANT USAGE ON SCHEMA {SPIKE_SCHEMA} TO {DSQL_USER_APP}",
         f"GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA {SPIKE_SCHEMA} TO {DSQL_USER_APP}",
         "SET search_path TO app",
@@ -229,8 +230,13 @@ def _run_live(host: str, *, test_statement_timeout: bool) -> int:
             if sql.startswith("INSERT INTO") or sql.startswith("SET search_path"):
                 _execute_ddl(conn, sql)
                 continue
-            if sql.startswith("GRANT "):
-                _execute_ddl(conn, sql)
+            if sql.startswith("GRANT ") or sql.startswith("CREATE ROLE "):
+                try:
+                    _execute_ddl(conn, sql)
+                except Exception as exc:
+                    if sql.startswith("CREATE ROLE ") and "already exists" in str(exc).lower():
+                        continue
+                    raise
                 continue
             row = _execute_ddl(conn, sql)
             if "CREATE UNIQUE INDEX ASYNC" in sql and row:
