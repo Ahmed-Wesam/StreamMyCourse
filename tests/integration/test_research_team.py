@@ -19,7 +19,7 @@ from helpers.cognito_auth import (
 from helpers.dsql_audit import admin_connect, execute_scalar
 from helpers.factories import make_test_title
 from helpers.module_contract import require_course_modules_list
-from tests.integration.test_certificates import _grade_passing_assignment
+from test_certificates import _grade_passing_assignment
 
 _PDF_BYTES = b"%PDF-1.4\n"
 _PDF_SIZE = len(_PDF_BYTES)
