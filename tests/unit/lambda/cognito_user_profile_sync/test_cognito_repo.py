@@ -8,6 +8,7 @@ import sys
 from typing import Any
 from unittest.mock import MagicMock, patch
 
+import importlib.util
 import pytest
 
 _COGNITO_SRC = os.path.abspath(
@@ -17,6 +18,24 @@ _COGNITO_SRC = os.path.abspath(
 )
 if _COGNITO_SRC not in sys.path:
     sys.path.insert(0, _COGNITO_SRC)
+
+_DB_TX = os.path.abspath(
+    os.path.join(
+        os.path.dirname(__file__), "..", "..", "..", "..",
+        "infrastructure", "lambda", "catalog", "services", "common", "db_tx.py",
+    )
+)
+
+
+@pytest.fixture(autouse=True)
+def _register_db_tx() -> None:
+    if "db_tx" not in sys.modules:
+        spec = importlib.util.spec_from_file_location("db_tx", _DB_TX)
+        assert spec and spec.loader
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        sys.modules["db_tx"] = mod
+
 
 import repo as cognito_repo  # noqa: E402
 
