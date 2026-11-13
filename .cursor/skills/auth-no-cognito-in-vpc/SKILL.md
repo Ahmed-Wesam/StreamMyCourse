@@ -34,6 +34,8 @@ Rationale: the catalog Lambda runs in a VPC; Cognito access requires NAT/VPC end
 
 ## Allowed exceptions
 
+- **Operator scripts** (outside the VPC catalog package) may call Cognito `admin_disable_user` / `admin_delete_user` — e.g. [`scripts/delete-user.py`](../../../scripts/delete-user.py). `UserDeletionService` and catalog controllers/services must still **not** import `cognito-idp`.
+
 - **Only allowed**: verifying a JWT **offline** inside the Lambda (JWKS signature verification) *if and only if*:
   - it does **not** require calling Cognito APIs, and
   - it is used strictly to recover claims when an API Gateway authorizer is intentionally absent on a public route, and

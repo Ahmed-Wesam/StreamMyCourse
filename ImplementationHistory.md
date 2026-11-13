@@ -6,6 +6,15 @@
 
 ---
 
+## 2026-11-13 — DSQL-2: Identity adapter, rate-limit OCC, user-deletion skeleton
+
+- **Users adapter:** `UserProfileRdsRepository` JSONB tag codec when the catalog runs on DSQL (`tags_as_jsonb` from bootstrap); profile writes and `delete_user_row` use `run_transaction` (SQLSTATE `40001` retry). Prod RDS path unchanged (`TEXT[]`, no `::jsonb`).
+- **Rate limit:** `RateLimitRdsRepository.consume` wrapped in `run_transaction`; cluster probe **`SELECT make_interval(secs => 60)`** succeeded (2026-11-13, admin IAM).
+- **Sync packaging:** Cognito profile sync `build_connection_factory` raises if both `DSQL_ENDPOINT` and `DB_HOST` are set; deploy packages `cognito_user_profile_sync/requirements.txt` (includes DSQL connector).
+- **User deletion:** `services/user_deletion/` registry + **`scripts/delete-user.py`** (`--execute`, DSQL admin only, Cognito disable/delete on operator host). Step **`users`** order **1000**; purchase delete step reserved for DSQL-5. **`rate_limit_counters` not deleted** (shared buckets).
+- **Tests / gates:** Preview HTTPS **8 passed** (`test_native_signup_profile`, `test_auth_gateway`, `test_users_me_preferences`, `test_rate_limit_contact`, `test_user_deletion` with `INTEGRATION_API_STACK=StreamMyCourse-Api-dsql`); prod suite **188 passed**, 19 skipped; `dsql_orphan_audit` **0 findings**. Commits through **`dbbf8a0`**.
+- **DSQL-8 handoff:** wrap Cognito sync profile writes in `run_transaction` when sync gets `DSQL_ENDPOINT` (include `db_tx.py` in zip). **DSQL-9:** remove `tags_as_jsonb` / RDS branch once prod is DSQL-only.
+
 ## 2026-11-13 — DSQL-1: Aurora DSQL foundation (cluster, schema, preview API)
 
 - **Infrastructure:** [`dsql-stack.yaml`](infrastructure/templates/dsql-stack.yaml) → **`StreamMyCourse-Dsql-prod`** (`cfuhjrrzy65ngud25rdqqso5t4`, endpoint `cfuhjrrzy65ngud25rdqqso5t4.dsql.eu-west-1.on.aws`); GitHub deploy role extended (`dsql:*`, cluster policy + VPC endpoint read per CI learnings). Preview **`StreamMyCourse-Api-dsql`** (HTTPS `r420heimp2.execute-api.eu-west-1.amazonaws.com/prod`) — **no VPC**, **`DSQL_ENDPOINT`**; prod **`StreamMyCourse-Api-prod`** unchanged (RDS).

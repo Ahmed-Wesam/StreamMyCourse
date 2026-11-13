@@ -49,6 +49,19 @@ Related ADRs: [0011 video provider / Kinescope](./adr-0011-video-provider-port-k
 
 **Cross-context rule:** `auth` must not import `course_management` (enforced in CI). Cognito Admin/IdP calls stay **out** of this package (ADR 0014).
 
+### `services/user_deletion/` (DSQL-2)
+
+| File | Layer | Notes |
+|------|-------|------|
+| `registry.py` | Domain | Ordered steps: `register(name, order, run)` |
+| `service.py` | Domain | `delete_user(user_sub)`; maps `23503` → `UserDeletionBlocked` |
+| `identity.py` | Wiring | `register_identity_steps(registry, deleter)` — step `users` order **1000** |
+| `errors.py` | Domain errors | `UserDeletionBlocked` (not HTTP) |
+
+**Operator entry:** [`scripts/delete-user.py`](../../../scripts/delete-user.py) — Cognito admin APIs + DSQL admin connection; not wired in `bootstrap.py`.
+
+**Later workstreams:** DSQL-4..7 add `register_*_steps` in their own packages (orders **100**–**400**); DSQL-5 **`purchases`** at **200**.
+
 ### `services/enrollment/` (implemented)
 
 | File | Layer | Notes |
