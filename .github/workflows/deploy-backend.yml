@@ -405,10 +405,9 @@ jobs:
           fi
           export DSQL_ENDPOINT="$ENDPOINT"
           export PYTHONPATH="${{ github.workspace }}/infrastructure/lambda/catalog:${PYTHONPATH:-}"
-          SPIKE_ROLE_ARN="$(aws sts get-caller-identity --query Arn --output text)"
           python "${{ github.workspace }}/scripts/dsql_compat_spike.py" \
             --host "$ENDPOINT" \
-            --iam-role-arn "$SPIKE_ROLE_ARN"
+            --iam-role-arn "${{ vars.AWS_DEPLOY_ROLE_ARN }}"
 
       - name: Summary
         if: success()

@@ -216,9 +216,7 @@ def _run_dry_run() -> int:
 
 
 def _iam_grant_smc_app(conn: Any, iam_role_arn: str) -> None:
-    with conn.cursor() as cur:
-        cur.execute(f"AWS IAM GRANT {DSQL_USER_APP} TO '{iam_role_arn}'")
-    conn.commit()
+    _execute_ddl(conn, f"AWS IAM GRANT {DSQL_USER_APP} TO '{iam_role_arn}'")
 
 
 def _run_live(
@@ -263,9 +261,17 @@ def _run_live(
         _run_informational_probes(conn, host)
     except Exception:
         success = False
+        try:
+            conn.rollback()
+        except Exception:
+            pass
         raise
     finally:
         try:
+            try:
+                conn.rollback()
+            except Exception:
+                pass
             for sql in teardown_sql_statements():
                 _execute_ddl(conn, sql)
         finally:
