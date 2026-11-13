@@ -56,10 +56,21 @@ from fulfillment_repo import process_event_in_transaction  # noqa: E402
 _PROVIDER = "hyperpay"
 
 
-pytestmark = pytest.mark.skipif(
-    not resolve_dsql_endpoint(),
-    reason="DSQL endpoint not configured (DSQL_ENDPOINT or StreamMyCourse-Dsql-prod)",
-)
+def _is_dsql_preview_stack() -> bool:
+    stack = os.environ.get("INTEGRATION_API_STACK", "").strip()
+    return stack.endswith("Api-dsql")
+
+
+pytestmark = [
+    pytest.mark.skipif(
+        not resolve_dsql_endpoint(),
+        reason="DSQL endpoint not configured (DSQL_ENDPOINT or StreamMyCourse-Dsql-prod)",
+    ),
+    pytest.mark.skipif(
+        not _is_dsql_preview_stack(),
+        reason="fulfillment DSQL integration runs only on StreamMyCourse-Api-dsql",
+    ),
+]
 
 
 def _email() -> str:
