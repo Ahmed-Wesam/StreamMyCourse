@@ -9,7 +9,12 @@ from typing import Any, Callable, Optional
 from domain_events import BillingDomainEvent
 from fulfillment_config import FulfillmentConfig
 from models import PurchaseFulfillmentTarget, purchase_fulfillment_for_event
+from db_tx import run_transaction
 from service import FulfillmentResult
+
+_USER_SUB_FOR_UPDATE_SQL = """
+SELECT user_sub FROM users WHERE user_sub = %s FOR UPDATE
+"""
 
 try:  # pragma: no cover - optional until first DB call
     import psycopg2
@@ -43,6 +48,11 @@ def build_connection_factory(
     dsql_endpoint: str = "",
 ) -> ConnectionFactory:
     endpoint = (dsql_endpoint or "").strip()
+    host = (db_host or "").strip()
+    if endpoint and host:
+        raise RuntimeError(
+            "Configure either DSQL_ENDPOINT or DB_HOST for billing fulfillment, not both"
+        )
     if endpoint:
         from dsql_connect import build_connection_factory as dsql_factory
 
@@ -105,6 +115,11 @@ def _insert_webhook_event(cur: Any, event: BillingDomainEvent) -> Optional[str]:
     return str(row[0])
 
 
+def _lock_user_row(cur: Any, user_sub: str) -> None:
+    cur.execute(_USER_SUB_FOR_UPDATE_SQL, (user_sub,))
+    cur.fetchone()
+
+
 def _select_purchase_for_update(
     cur: Any,
     *,
@@ -139,6 +154,10 @@ def _select_purchase_for_update(
 
 
 def _apply_purchase_update(cur: Any, *, event: BillingDomainEvent, target: PurchaseFulfillmentTarget) -> bool:
+    bound_user = (event.user_sub or "").strip()
+    if bound_user:
+        _lock_user_row(cur, bound_user)
+
     if event.event_type in ("purchase.paid", "purchase.failed"):
         _select_purchase_for_update(cur, event=event, purchase_id=target.purchase_id)
         row = cur.fetchone()
@@ -167,7 +186,6 @@ def _apply_purchase_update(cur: Any, *, event: BillingDomainEvent, target: Purch
         return cur.rowcount > 0
 
     if event.event_type == "purchase.revoked":
-        bound_user = (event.user_sub or "").strip()
         if not bound_user:
             cur.execute(
                 """
@@ -216,33 +234,36 @@ def process_event_in_transaction(conn: Any, event: BillingDomainEvent) -> Fulfil
     if psycopg2 is None:
         raise RuntimeError("psycopg2 is not available")
 
-    cur = conn.cursor()
-    try:
-        webhook_id = _insert_webhook_event(cur, event)
-        if webhook_id is None:
-            conn.commit()
-            return FulfillmentResult(recorded=False, subscription_updated=False)
+    def body() -> FulfillmentResult:
+        cur = conn.cursor()
+        try:
+            webhook_id = _insert_webhook_event(cur, event)
+            if webhook_id is None:
+                return FulfillmentResult(recorded=False, subscription_updated=False)
 
-        purchase_updated = False
-        if event.is_purchase_event():
-            target = purchase_fulfillment_for_event(event)
-            purchase_updated = _apply_purchase_update(cur, event=event, target=target)
-        else:
-            logger.info(
-                "billing_fulfillment skip non-purchase event_type=%s provider_event_id=%s",
-                event.event_type,
-                event.provider_event_id,
+            purchase_updated = False
+            if event.is_purchase_event():
+                target = purchase_fulfillment_for_event(event)
+                purchase_updated = _apply_purchase_update(cur, event=event, target=target)
+            else:
+                logger.info(
+                    "billing_fulfillment skip non-purchase event_type=%s provider_event_id=%s",
+                    event.event_type,
+                    event.provider_event_id,
+                )
+
+            _mark_webhook_processed(cur, webhook_id)
+            return FulfillmentResult(
+                recorded=True,
+                subscription_updated=False,
+                purchase_updated=purchase_updated,
             )
+        finally:
+            cur.close()
 
-        _mark_webhook_processed(cur, webhook_id)
-        conn.commit()
-        return FulfillmentResult(
-            recorded=True,
-            subscription_updated=False,
-            purchase_updated=purchase_updated,
-        )
+    try:
+        return run_transaction(conn, body)
     except Exception as exc:
-        conn.rollback()
         if psycopg2 is not None and isinstance(exc, Psycopg2IntegrityError):
             logger.error(
                 "billing_fulfillment integrity error user_sub=%s plan_id=%s "
@@ -252,8 +273,6 @@ def process_event_in_transaction(conn: Any, event: BillingDomainEvent) -> Fulfil
                 event.provider_event_id,
             )
         raise
-    finally:
-        cur.close()
 
 
 class RdsFulfillmentRepository:

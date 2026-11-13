@@ -37,16 +37,18 @@ class FakeCursor:
 @dataclass
 class FakeConn:
     cursor_obj: FakeCursor = field(default_factory=FakeCursor)
+    committed: int = 0
+    rolled_back: int = 0
     autocommit: bool = True
 
     def cursor(self) -> FakeCursor:
         return self.cursor_obj
 
     def commit(self) -> None:
-        pass
+        self.committed += 1
 
     def rollback(self) -> None:
-        pass
+        self.rolled_back += 1
 
 
 def _repo(*, environment: str = "dev") -> tuple[PurchaseRdsRepository, FakeConn]:
@@ -173,7 +175,7 @@ class TestPurchaseCheckoutOwnership:
 class TestPurchaseReservePending:
     def test_fresh_pending_returns_checkout_in_progress(self) -> None:
         repo, conn = _repo()
-        conn.cursor_obj.fetchone_results = [(1,)]
+        conn.cursor_obj.fetchone_results = [(1,)]  # fresh pending after user lock + stale delete
 
         outcome = repo.reserve_pending_checkout(
             "student-sub",
@@ -186,10 +188,17 @@ class TestPurchaseReservePending:
 
         assert outcome == ("checkout_in_progress", None)
         assert not any("INSERT" in sql.upper() for sql, _ in conn.cursor_obj.executions)
+        first_sql = conn.cursor_obj.executions[0][0].lower()
+        assert "for update" in first_sql and "users" in first_sql
 
     def test_reserve_inserts_pending_course(self) -> None:
         repo, conn = _repo()
-        conn.cursor_obj.fetchone_results = [None, ("c0000000-0000-4000-8000-000000000001",)]
+        conn.cursor_obj.fetchone_results = [
+            None,  # fresh pending
+            None,  # bundle paid in txn
+            None,  # course paid in txn
+            ("c0000000-0000-4000-8000-000000000001",),
+        ]
 
         outcome = repo.reserve_pending_checkout(
             "student-sub",

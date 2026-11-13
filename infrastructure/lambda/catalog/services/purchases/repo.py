@@ -3,15 +3,15 @@
 from __future__ import annotations
 
 import logging
-from contextlib import contextmanager
 from datetime import datetime, timezone
-from typing import Any, Callable, Iterator, Optional
+from typing import Any, Callable, Optional
 
 try:  # pragma: no cover
     import psycopg2
 except Exception:  # pragma: no cover
     psycopg2 = None  # type: ignore[assignment]
 
+from services.common.db_tx import delete_in_batches, run_transaction
 from services.purchases.amounts import DEFAULT_PURCHASE_CURRENCY, validate_whole_jod_fils
 from services.purchases.models import BundleOffer, PurchaseRecord
 
@@ -156,24 +156,24 @@ VALUES (%s, %s, 'bundle', NULL, 'pending', %s, %s, %s)
 RETURNING id::text
 """
 
+_USER_SUB_FOR_UPDATE_SQL = """
+SELECT user_sub FROM users WHERE user_sub = %s FOR UPDATE
+"""
+
+_DELETE_PURCHASES_FOR_USER_SQL = """
+DELETE FROM purchases
+WHERE id IN (
+    SELECT id FROM purchases
+    WHERE user_sub = %s
+    LIMIT 1000
+)
+"""
+
 
 def _as_utc_aware(value: datetime) -> datetime:
     if value.tzinfo is None:
         return value.replace(tzinfo=timezone.utc)
     return value.astimezone(timezone.utc)
-
-
-@contextmanager
-def _atomic_transaction(conn: Any) -> Iterator[None]:
-    conn.autocommit = False
-    try:
-        yield
-        conn.commit()
-    except Exception:
-        conn.rollback()
-        raise
-    finally:
-        conn.autocommit = True
 
 
 class PurchaseRdsRepository:
@@ -256,10 +256,16 @@ class PurchaseRdsRepository:
         if amount_minor <= 0:
             raise ValueError("amount_minor must be positive")
         validate_whole_jod_fils(amount_minor)
-        self._execute(
-            _SET_BUNDLE_PRICE_SQL,
-            (int(amount_minor), self._deployment_environment),
-        )
+        conn = self._connection()
+
+        def body() -> None:
+            cur = conn.cursor()
+            cur.execute(
+                _SET_BUNDLE_PRICE_SQL,
+                (int(amount_minor), self._deployment_environment),
+            )
+
+        run_transaction(conn, body)
 
     def set_course_price(self, course_id: str, amount_minor: int) -> bool:
         normalized_course = (course_id or "").strip()
@@ -268,11 +274,17 @@ class PurchaseRdsRepository:
         if amount_minor <= 0:
             raise ValueError("amount_minor must be positive")
         validate_whole_jod_fils(amount_minor)
-        cur = self._execute(
-            _SET_COURSE_PRICE_SQL,
-            (int(amount_minor), normalized_course),
-        )
-        return cur.rowcount > 0
+        conn = self._connection()
+
+        def body() -> bool:
+            cur = conn.cursor()
+            cur.execute(
+                _SET_COURSE_PRICE_SQL,
+                (int(amount_minor), normalized_course),
+            )
+            return cur.rowcount > 0
+
+        return run_transaction(conn, body)
 
     def get_course_price_for_checkout(self, course_id: str) -> dict[str, object] | None:
         normalized_course = (course_id or "").strip()
@@ -346,16 +358,22 @@ class PurchaseRdsRepository:
         if not normalized_sub or ttl_minutes <= 0:
             return
         ptype, cid = self._product_params(product_type, course_id)
-        self._execute(
-            _DELETE_STALE_PENDING_CHECKOUT_SQL,
-            (
-                normalized_sub,
-                self._deployment_environment,
-                ptype,
-                cid,
-                ttl_minutes,
-            ),
-        )
+        conn = self._connection()
+
+        def body() -> None:
+            cur = conn.cursor()
+            cur.execute(
+                _DELETE_STALE_PENDING_CHECKOUT_SQL,
+                (
+                    normalized_sub,
+                    self._deployment_environment,
+                    ptype,
+                    cid,
+                    ttl_minutes,
+                ),
+            )
+
+        run_transaction(conn, body)
 
     def has_fresh_pending_checkout(
         self,
@@ -428,10 +446,16 @@ class PurchaseRdsRepository:
         if not normalized_sub:
             return
         ptype, cid = self._product_params(product_type, course_id)
-        self._execute(
-            _DELETE_PENDING_CHECKOUT_SQL,
-            (normalized_sub, self._deployment_environment, ptype, cid),
-        )
+        conn = self._connection()
+
+        def body() -> None:
+            cur = conn.cursor()
+            cur.execute(
+                _DELETE_PENDING_CHECKOUT_SQL,
+                (normalized_sub, self._deployment_environment, ptype, cid),
+            )
+
+        run_transaction(conn, body)
 
     def reserve_pending_checkout(
         self,
@@ -446,8 +470,9 @@ class PurchaseRdsRepository:
     ) -> tuple[str, str | None]:
         """Atomically supersede stale pending, block fresh pending, or insert pending row.
 
-        Returns ``(status, purchase_id)`` where *status* is ``checkout_in_progress`` or
-        ``reserved`` and *purchase_id* is set when a new pending row was inserted.
+        Returns ``(status, purchase_id)`` where *status* is ``checkout_in_progress``,
+        ``already_owned``, or ``reserved`` and *purchase_id* is set when a new pending
+        row was inserted.
         """
         normalized_sub = (user_sub or "").strip()
         if not normalized_sub:
@@ -458,8 +483,10 @@ class PurchaseRdsRepository:
             raise ValueError("ttl_minutes must be positive")
         ptype, cid = self._product_params(product_type, course_id)
         conn = self._connection()
-        with _atomic_transaction(conn):
+
+        def body() -> tuple[str, str | None]:
             cur = conn.cursor()
+            cur.execute(_USER_SUB_FOR_UPDATE_SQL, (normalized_sub,))
             cur.execute(
                 _DELETE_STALE_PENDING_CHECKOUT_SQL,
                 (
@@ -482,8 +509,20 @@ class PurchaseRdsRepository:
             )
             if cur.fetchone() is not None:
                 return ("checkout_in_progress", None)
+            cur.execute(
+                _HAS_PAID_BUNDLE_SQL,
+                (normalized_sub, self._deployment_environment),
+            )
+            if cur.fetchone() is not None:
+                return ("already_owned", None)
             if ptype == "course":
                 assert cid is not None
+                cur.execute(
+                    _HAS_PAID_COURSE_PURCHASE_SQL,
+                    (normalized_sub, self._deployment_environment, cid),
+                )
+                if cur.fetchone() is not None:
+                    return ("already_owned", None)
                 cur.execute(
                     _INSERT_PENDING_COURSE_PURCHASE_SQL,
                     (
@@ -510,3 +549,12 @@ class PurchaseRdsRepository:
             if row is None:
                 raise RuntimeError("pending purchase insert did not return id")
             return ("reserved", str(row[0]))
+
+        return run_transaction(conn, body)
+
+    def delete_purchases_for_user(self, user_sub: str) -> int:
+        return delete_in_batches(
+            self._connection(),
+            _DELETE_PURCHASES_FOR_USER_SQL,
+            (user_sub,),
+        )

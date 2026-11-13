@@ -146,6 +146,7 @@ mkdir -p "$FULFILL_BUILD"
   find . -type f ! -path './_vendor/*' ! -path '*/__pycache__/*' ! -name '*.pyc' -print0 \
     | xargs -0 -I{} cp --parents '{}' "$FULFILL_BUILD" )
 cp "$ROOT/infrastructure/lambda/catalog/dsql_connect.py" "$FULFILL_BUILD/"
+cp "$ROOT/infrastructure/lambda/catalog/services/common/db_tx.py" "$FULFILL_BUILD/db_tx.py"
 
 FULFILL_REQ="$FULFILL_DIR/requirements.txt"
 if [[ -f "$FULFILL_REQ" ]] && grep -qvE '^\s*($|#)' "$FULFILL_REQ" 2>/dev/null; then

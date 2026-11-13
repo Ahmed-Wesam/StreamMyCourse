@@ -101,12 +101,14 @@ class TestUserDeletionOrder:
         progress.delete_learning_activity_days_for_user.side_effect = lambda _: log.append("days")
         notes = MagicMock()
         notes.delete_lesson_notes_for_user.side_effect = lambda _: log.append("notes")
+        purchases = MagicMock()
+        purchases.delete_purchases_for_user.side_effect = lambda _: log.append("purchases")
         registry = UserDeletionRegistry()
-        register_operator_user_steps(registry, _FakeDeleter(), progress, notes)
+        register_operator_user_steps(registry, _FakeDeleter(), progress, notes, purchases)
         UserDeletionService(registry).delete_user(_SUB)
-        assert log == ["progress", "notes", "days"]
+        assert log == ["progress", "notes", "days", "purchases"]
         steps = registry.ordered_steps()
-        assert [s.order for s in steps] == [100, 100, 100, 1000]
+        assert [s.order for s in steps] == [100, 100, 100, 200, 1000]
         assert steps[-1].name == "users"
 
     def test_users_step_alone_at_1000(self) -> None:

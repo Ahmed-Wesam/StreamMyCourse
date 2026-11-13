@@ -87,6 +87,13 @@ def teacher_api(api_base_url: str) -> Iterator[ApiClient]:
         yield ApiClient(client)
 
 
+def _sql_purchase_count(conn, user_sub: str) -> int:
+    return int(
+        execute_scalar(conn, "SELECT COUNT(*) FROM app.purchases WHERE user_sub = %s", (user_sub,))
+        or 0
+    )
+
+
 def _sql_user_learning_counts(conn, user_sub: str) -> tuple[int, int, int, int]:
     users = int(execute_scalar(conn, "SELECT COUNT(*) FROM users WHERE user_sub = %s", (user_sub,)) or 0)
     progress = int(
@@ -192,9 +199,6 @@ def test_operator_delete_user_clears_progress_notes_and_activity_days(
             )
             assert note.status_code == 201, note.text
 
-            delete_purchase_by_id(purchase_id)
-            purchase_id = ""
-
             mod = _load_delete_user()
             rc = mod.run(
                 ["--user-sub", user_sub, "--execute"],
@@ -205,10 +209,13 @@ def test_operator_delete_user_clears_progress_notes_and_activity_days(
             )
             assert rc == 0, "delete-user.py should exit 0"
             email_for_cleanup = ""
+            purchase_id = ""
 
             with admin_connect() as conn:
                 counts = _sql_user_learning_counts(conn, user_sub)
+                purchases_left = _sql_purchase_count(conn, user_sub)
             assert counts == (0, 0, 0, 0)
+            assert purchases_left == 0
     finally:
         if purchase_id:
             delete_purchase_by_id(purchase_id)

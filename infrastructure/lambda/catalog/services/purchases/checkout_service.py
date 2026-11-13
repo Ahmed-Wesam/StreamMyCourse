@@ -60,6 +60,8 @@ class PurchaseCheckoutService:
         )
         if reservation_status == "checkout_in_progress":
             return {"blockReason": "checkout_in_progress"}
+        if reservation_status == "already_owned":
+            return {"blockReason": "already_owned"}
         if purchase_id:
             product = {**product, "purchase_id": purchase_id}
         return {"blockReason": None, "product": product}

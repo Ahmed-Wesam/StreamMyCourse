@@ -1129,7 +1129,6 @@ Resources:
   # API Gateway Resource: /billing
   BillingResource:
     Type: AWS::ApiGateway::Resource
-    Condition: HasBillingEdgeLambdaArn
     Properties:
       RestApiId: !Ref CatalogApi
       ParentId: !GetAtt CatalogApi.RootResourceId
@@ -1156,7 +1155,6 @@ Resources:
   # API Gateway Resource: /billing/bundle (RS-5 public list price + teacher PATCH)
   BillingBundleResource:
     Type: AWS::ApiGateway::Resource
-    Condition: HasBillingEdgeLambdaArn
     Properties:
       RestApiId: !Ref CatalogApi
       ParentId: !Ref BillingResource
@@ -1165,7 +1163,6 @@ Resources:
   # API Gateway Resource: /billing/purchases (RS-5 signed-in purchase history)
   BillingPurchasesResource:
     Type: AWS::ApiGateway::Resource
-    Condition: HasBillingEdgeLambdaArn
     Properties:
       RestApiId: !Ref CatalogApi
       ParentId: !Ref BillingResource
@@ -1174,7 +1171,6 @@ Resources:
   # API Gateway Resource: /billing/courses/{courseId}/price (RS-5 instructor course price)
   BillingCoursesResource:
     Type: AWS::ApiGateway::Resource
-    Condition: HasBillingEdgeLambdaArn
     Properties:
       RestApiId: !Ref CatalogApi
       ParentId: !Ref BillingResource
@@ -1182,7 +1178,6 @@ Resources:
 
   BillingCoursesCourseIdResource:
     Type: AWS::ApiGateway::Resource
-    Condition: HasBillingEdgeLambdaArn
     Properties:
       RestApiId: !Ref CatalogApi
       ParentId: !Ref BillingCoursesResource
@@ -1190,7 +1185,6 @@ Resources:
 
   BillingCoursesCourseIdPriceResource:
     Type: AWS::ApiGateway::Resource
-    Condition: HasBillingEdgeLambdaArn
     Properties:
       RestApiId: !Ref CatalogApi
       ParentId: !Ref BillingCoursesCourseIdResource
@@ -2437,7 +2431,6 @@ Resources:
   # API Gateway Method: GET /billing/bundle (public list price)
   BillingBundleGetMethod:
     Type: AWS::ApiGateway::Method
-    Condition: HasBillingEdgeLambdaArn
     Properties:
       RestApiId: !Ref CatalogApi
       ResourceId: !Ref BillingBundleResource
@@ -2450,7 +2443,6 @@ Resources:
 
   BillingBundleOptionsMethod:
     Type: AWS::ApiGateway::Method
-    Condition: HasBillingEdgeLambdaArn
     Properties:
       RestApiId: !Ref CatalogApi
       ResourceId: !Ref BillingBundleResource
@@ -2463,7 +2455,6 @@ Resources:
 
   BillingBundlePatchMethod:
     Type: AWS::ApiGateway::Method
-    Condition: HasBillingEdgeLambdaArn
     Properties:
       RestApiId: !Ref CatalogApi
       ResourceId: !Ref BillingBundleResource
@@ -2477,7 +2468,6 @@ Resources:
 
   BillingPurchasesGetMethod:
     Type: AWS::ApiGateway::Method
-    Condition: HasBillingEdgeLambdaArn
     Properties:
       RestApiId: !Ref CatalogApi
       ResourceId: !Ref BillingPurchasesResource
@@ -2491,7 +2481,6 @@ Resources:
 
   BillingPurchasesOptionsMethod:
     Type: AWS::ApiGateway::Method
-    Condition: HasBillingEdgeLambdaArn
     Properties:
       RestApiId: !Ref CatalogApi
       ResourceId: !Ref BillingPurchasesResource
@@ -2504,7 +2493,6 @@ Resources:
 
   BillingCoursesCourseIdPricePatchMethod:
     Type: AWS::ApiGateway::Method
-    Condition: HasBillingEdgeLambdaArn
     Properties:
       RestApiId: !Ref CatalogApi
       ResourceId: !Ref BillingCoursesCourseIdPriceResource
@@ -2518,7 +2506,6 @@ Resources:
 
   BillingCoursesCourseIdPriceOptionsMethod:
     Type: AWS::ApiGateway::Method
-    Condition: HasBillingEdgeLambdaArn
     Properties:
       RestApiId: !Ref CatalogApi
       ResourceId: !Ref BillingCoursesCourseIdPriceResource
@@ -3709,7 +3696,7 @@ Resources:
       RestApiId: !Ref CatalogApi
       Description: !Sub 'catalog-${LambdaCodeS3Key}'
 
-  CatalogApiDeploymentV46:
+  CatalogApiDeploymentV47:
     Type: AWS::ApiGateway::Deployment
     DependsOn:
       - CatalogLambdaApiPermission
@@ -3851,18 +3838,25 @@ Resources:
       - CourseResearchTeamRequirementPutMethod
       - CourseResearchTeamRequirementGetMethod
       - CourseResearchTeamRequirementOptionsMethod
+      - BillingBundleGetMethod
+      - BillingBundleOptionsMethod
+      - BillingBundlePatchMethod
+      - BillingPurchasesGetMethod
+      - BillingPurchasesOptionsMethod
+      - BillingCoursesCourseIdPricePatchMethod
+      - BillingCoursesCourseIdPriceOptionsMethod
       - MeActivityGetMethod
       - MeActivityOptionsMethod
     Properties:
       RestApiId: !Ref CatalogApi
-      Description: !Sub 'catalog-${LambdaCodeS3Key}-hyperpay-v46'
+      Description: !Sub 'catalog-${LambdaCodeS3Key}-billing-catalog-v47'
 
   # API Gateway Stage
   CatalogApiStage:
     Type: AWS::ApiGateway::Stage
     Properties:
       RestApiId: !Ref CatalogApi
-      DeploymentId: !Ref CatalogApiDeploymentV46
+      DeploymentId: !Ref CatalogApiDeploymentV47
       StageName: !Ref Environment
       Description: !Sub '${Environment} stage for Catalog API'
       MethodSettings:

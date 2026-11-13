@@ -37,16 +37,18 @@ class FakeCursor:
 @dataclass
 class FakeConn:
     cursor_obj: FakeCursor = field(default_factory=FakeCursor)
+    committed: int = 0
+    rolled_back: int = 0
     autocommit: bool = True
 
     def cursor(self) -> FakeCursor:
         return self.cursor_obj
 
     def commit(self) -> None:
-        pass
+        self.committed += 1
 
     def rollback(self) -> None:
-        pass
+        self.rolled_back += 1
 
 
 def _service() -> tuple[PurchaseCheckoutService, PurchaseRdsRepository, FakeConn]:
@@ -69,10 +71,12 @@ class TestPurchaseCheckoutPrecheck:
     def test_course_precheck_reserves_pending(self) -> None:
         svc, _repo, conn = _service()
         conn.cursor_obj.fetchone_results = [
-            None,  # bundle
-            None,  # course paid
+            None,  # bundle paid (ownership fast path)
+            None,  # course paid (ownership fast path)
             (50_000,),  # course price (50 JOD fils)
             None,  # fresh pending in txn
+            None,  # bundle paid in txn
+            None,  # course paid in txn
             (PURCHASE_ID,),  # INSERT RETURNING id
         ]
 
@@ -92,6 +96,7 @@ class TestPurchaseCheckoutPrecheck:
             None,  # bundle paid check
             (150_000, "JOD"),  # bundle offer (150 JOD fils)
             None,  # fresh pending
+            None,  # bundle paid in txn
             (PURCHASE_ID,),  # INSERT RETURNING id
         ]
 
@@ -121,6 +126,24 @@ class TestPurchaseCheckoutPrecheck:
         )
 
         assert result == {"blockReason": "checkout_in_progress"}
+
+    def test_already_owned_from_reservation_authority(self) -> None:
+        """Fast path may miss a concurrent paid row; the locked txn is authoritative."""
+        svc, _repo, conn = _service()
+        conn.cursor_obj.fetchone_results = [
+            None,  # bundle (fast path)
+            None,  # course (fast path)
+            (50_000,),  # course price
+            None,  # fresh pending
+            None,  # bundle paid in txn
+            (1,),  # course paid in txn
+        ]
+
+        result = svc.run_purchase_checkout_precheck(
+            "student-sub", product_type="course", course_id=COURSE_ID
+        )
+
+        assert result == {"blockReason": "already_owned"}
 
     def test_rollback_deletes_pending(self) -> None:
         svc, _repo, conn = _service()

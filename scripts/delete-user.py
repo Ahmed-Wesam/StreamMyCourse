@@ -19,6 +19,7 @@ from dsql_connect import connect  # noqa: E402
 from services.auth.rds_repo import UserProfileRdsRepository  # noqa: E402
 from services.lesson_notes.rds_repo import LessonNotesRdsRepository  # noqa: E402
 from services.progress.rds_repo import LessonProgressRdsRepository  # noqa: E402
+from services.purchases.repo import PurchaseRdsRepository  # noqa: E402
 from services.user_deletion import (  # noqa: E402
     UserDeletionBlocked,
     UserDeletionRegistry,
@@ -79,8 +80,16 @@ def _build_service(endpoint: str) -> UserDeletionService:
     profile_repo = UserProfileRdsRepository(factory, tags_as_jsonb=True)
     progress_repo = LessonProgressRdsRepository(factory)
     notes_repo = LessonNotesRdsRepository(factory)
+    deploy_env = (os.environ.get("DEPLOYMENT_ENVIRONMENT") or "prod").strip().lower()
+    purchase_repo = PurchaseRdsRepository(factory, deployment_environment=deploy_env)
     registry = UserDeletionRegistry()
-    register_operator_user_steps(registry, profile_repo, progress_repo, notes_repo)
+    register_operator_user_steps(
+        registry,
+        profile_repo,
+        progress_repo,
+        notes_repo,
+        purchase_repo,
+    )
     return UserDeletionService(registry)
 
 

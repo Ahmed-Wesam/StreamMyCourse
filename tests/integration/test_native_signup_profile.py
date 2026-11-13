@@ -60,6 +60,7 @@ def _delete_dsql_users_row_only(user_sub: str) -> None:
     from services.auth.rds_repo import UserProfileRdsRepository  # noqa: E402
     from services.lesson_notes.rds_repo import LessonNotesRdsRepository  # noqa: E402
     from services.progress.rds_repo import LessonProgressRdsRepository  # noqa: E402
+    from services.purchases.repo import PurchaseRdsRepository  # noqa: E402
     from services.user_deletion import (  # noqa: E402
         UserDeletionRegistry,
         UserDeletionService,
@@ -73,8 +74,15 @@ def _delete_dsql_users_row_only(user_sub: str) -> None:
     profile_repo = UserProfileRdsRepository(factory, tags_as_jsonb=True)
     progress_repo = LessonProgressRdsRepository(factory)
     notes_repo = LessonNotesRdsRepository(factory)
+    purchase_repo = PurchaseRdsRepository(factory, deployment_environment="prod")
     registry = UserDeletionRegistry()
-    register_operator_user_steps(registry, profile_repo, progress_repo, notes_repo)
+    register_operator_user_steps(
+        registry,
+        profile_repo,
+        progress_repo,
+        notes_repo,
+        purchase_repo,
+    )
     UserDeletionService(registry).delete_user(user_sub)
 
 

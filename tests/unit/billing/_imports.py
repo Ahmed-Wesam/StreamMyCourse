@@ -55,9 +55,24 @@ def _load_isolated(rel_file: str, module_name: str) -> ModuleType:
     return mod
 
 
+def _register_db_tx_for_fulfillment() -> None:
+    if "db_tx" in sys.modules:
+        return
+    root = Path(__file__).resolve().parents[3]
+    db_tx_path = root / "infrastructure/lambda/catalog/services/common/db_tx.py"
+    spec = importlib.util.spec_from_file_location("db_tx", db_tx_path)
+    if spec is None or spec.loader is None:
+        raise ImportError(f"cannot load db_tx from {db_tx_path}")
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    sys.modules["db_tx"] = mod
+
+
 def _load_fulfillment_module(name: str, filename: str) -> ModuleType:
     if name in sys.modules:
         return sys.modules[name]
+    if filename == "worker.py" or filename == "fulfillment_repo.py":
+        _register_db_tx_for_fulfillment()
     path = _BILLING_FULFILL_DIR / filename
     spec = importlib.util.spec_from_file_location(name, path)
     if spec is None or spec.loader is None:
