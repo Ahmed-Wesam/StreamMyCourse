@@ -116,6 +116,22 @@ def test_async_job_wait_failure_raises(applier) -> None:
         )
 
 
+def test_migration_check_undefined_table_is_not_applied(applier) -> None:
+    conn = FakeConn()
+    cur = FakeCursor()
+
+    class UndefinedTableError(Exception):
+        pgcode = "42P01"
+
+    def execute(sql: str, params: tuple[Any, ...] | None = None) -> None:
+        raise UndefinedTableError("relation app.schema_migrations does not exist")
+
+    cur.execute = execute  # type: ignore[method-assign]
+    conn.cursor = lambda: cur  # type: ignore[method-assign]
+    assert applier.migration_already_applied(conn, "0001") is False
+    assert conn.rollbacks == 1
+
+
 def test_skip_schema_when_version_recorded(applier) -> None:
     conn = FakeConn()
 

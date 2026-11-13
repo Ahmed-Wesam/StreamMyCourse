@@ -113,9 +113,14 @@ def migration_already_applied(conn: Any, version: str) -> bool:
                 "SELECT 1 FROM app.schema_migrations WHERE version = %s",
                 (version,),
             )
-            return cur.fetchone() is not None
-    finally:
+            found = cur.fetchone() is not None
         conn.commit()
+        return found
+    except Exception as exc:
+        conn.rollback()
+        if getattr(exc, "pgcode", None) == "42P01":
+            return False
+        raise
 
 
 def apply_migration_file(conn: Any, sql_text: str, version: str) -> bool:
