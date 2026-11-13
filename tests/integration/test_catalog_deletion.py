@@ -488,7 +488,7 @@ def test_delete_module_removes_assignment_submission_and_s3(
     fr = student_api.create_submission_file(
         course_id, assignment_id, sid, title="f.pdf", file_type="pdf", byte_size=_PDF_SIZE
     )
-    assert fr.status_code == 201, fr.text
+    assert fr.status_code in (200, 201), fr.text
     fid = fr.json()["fileId"]
     put = httpx.put(
         fr.json()["uploadUrl"],

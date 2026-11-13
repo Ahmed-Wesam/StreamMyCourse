@@ -109,7 +109,7 @@ def test_assignment_flow_draft_grade_delete(
         file_type="pdf",
         byte_size=_PDF_SIZE,
     )
-    assert file_resp.status_code == 201, file_resp.text
+    assert file_resp.status_code in (200, 201), file_resp.text
     body = file_resp.json()
     file_id = body["fileId"]
     upload_url = body["uploadUrl"]

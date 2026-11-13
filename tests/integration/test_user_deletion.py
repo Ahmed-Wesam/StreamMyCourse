@@ -439,6 +439,7 @@ def test_operator_delete_user_clears_assignment_submission_children(
 
     from helpers.cleanup import s3_object_exists
     from helpers.dsql_preview_access import ensure_student_subscription
+    from helpers.factories import build_lesson_factory
     from helpers.module_contract import require_course_modules_list
 
     pool = resolve_student_pool_config_or_skip()
@@ -488,9 +489,15 @@ def test_operator_delete_user_clears_assignment_submission_children(
                 ).status_code
                 == 200
             )
+            lesson = build_lesson_factory(teacher_api)(course_id, label="del-assign-lesson")
+            assert (
+                teacher_api.get_upload_url(course_id=course_id, lesson_id=lesson.lesson_id).status_code
+                == 200
+            )
+            assert teacher_api.mark_video_ready(course_id, lesson.lesson_id).status_code == 200
             assert teacher_api.publish_course(course_id).status_code == 200
 
-            ensure_student_subscription(api_base_url, disposable, course_id, module_id="")
+            ensure_student_subscription(api_base_url, disposable, course_id, lesson.lesson_id)
 
             purchase_id = insert_paid_bundle_purchase(user_sub)
 
@@ -498,14 +505,13 @@ def test_operator_delete_user_clears_assignment_submission_children(
             assert open_sub.status_code in (200, 201), open_sub.text
             sid = open_sub.json()["submission"]["id"]
 
-            presign = disposable.presign_submission_file(
+            file_resp = disposable.create_submission_file(
                 course_id, assignment_id, sid, title="f.pdf", file_type="pdf", byte_size=_PDF_SIZE
             )
-            assert presign.status_code == 200, presign.text
-            fid = presign.json()["file"]["id"]
-            upload = presign.json()["upload"]
+            assert file_resp.status_code in (200, 201), file_resp.text
+            fid = file_resp.json()["fileId"]
             put = httpx.put(
-                upload["url"],
+                file_resp.json()["uploadUrl"],
                 content=_PDF_BYTES,
                 headers={"Content-Type": "application/pdf"},
                 timeout=60.0,
