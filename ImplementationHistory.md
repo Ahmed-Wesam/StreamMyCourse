@@ -6,6 +6,13 @@
 
 ---
 
+## 2026-11-14 — Post-DSQL catalog cleanup (shipped)
+
+- **Integration hygiene:** [`delete_purchases_for_course_id`](tests/integration/helpers/dsql_preview_access.py) + [`clear_blocking_purchases`](tests/integration/helpers/cleanup.py) on session/course finalizers so `DELETE /courses/{id}` is not left at **409** when a test purchase row exists; preview-only integration modules and `Api-dsql` branches removed; public bundle GET kept in [`test_billing_catalog_preview.py`](tests/integration/test_billing_catalog_preview.py).
+- **Operator instructions:** [`infrastructure/README.md`](infrastructure/README.md) prod map lists **`StreamMyCourse-Dsql-prod`** (no prod RDS/RdsQuery stacks); empty `.cursor/skills/query-rds/` removed.
+- **Pipeline:** CI [**43554866199**](https://github.com/Ahmed-Wesam/StreamMyCourse/actions/runs/43554866199), Deploy [**43555050367**](https://github.com/Ahmed-Wesam/StreamMyCourse/actions/runs/43555050367) on **`f3027b3`** (includes **`06c0e32`** cleanup + Gitleaks install pin). First CI run failed on flaky `api.github.com` Gitleaks **403** only.
+- **Catalog confirmation:** After green Deploy, public `GET …/prod/courses` returned **0** rows; admin SQL had **no** `integration-test-%` courses. One-time operator delete was **idempotent** (nothing to remove). No product catalog titles were present on the public list.
+
 ## 2026-11-14 — DSQL-9: Decommission RDS, VPC, and preview API (shipped)
 
 - **Stacks removed (operator + Deploy):** `StreamMyCourse-Rds-prod` (**no final RDS snapshot** — pre-launch), RDS VPC/endpoints, `StreamMyCourse-RdsQuery-prod`, and preview **`StreamMyCourse-Api-dsql`**. **`StreamMyCourse-Dsql-prod`** retained (`DeletionProtectionEnabled`).
