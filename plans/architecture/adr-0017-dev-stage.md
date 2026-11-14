@@ -2,7 +2,7 @@
 
 ## Status
 
-**Accepted** (workflow and templates **2026-11-14**; **no dev stacks** created until Environment **`dev`** has distinct Google OAuth secrets)
+**Accepted** (workflow and templates **2026-11-14**; four dev stacks **CREATE/UPDATE_COMPLETE** after [Deploy dev **43596012266**](https://github.com/Ahmed-Wesam/StreamMyCourse/actions/runs/43596012266))
 
 ## Context
 
@@ -23,16 +23,22 @@ Engineers need an isolated **`dev`** API and Cognito pool for localhost work wit
 
 ## Observed state (2026-11-14)
 
-After the first dispatch ([Deploy dev **43564776149**](https://github.com/Ahmed-Wesam/StreamMyCourse/actions/runs/43564776149)):
+The first dispatch ([Deploy dev **43564776149**](https://github.com/Ahmed-Wesam/StreamMyCourse/actions/runs/43564776149)) stopped at **`guard-dev-google`** because Environment **`dev`** had no Google secrets. A later dispatch ([**43594755794**](https://github.com/Ahmed-Wesam/StreamMyCourse/actions/runs/43594755794)) created the DSQL cluster and schema, then failed in Auth because S3 upload progress was parsed as the package key. [`da1007f`](https://github.com/Ahmed-Wesam/StreamMyCourse/commit/da1007f) fixed that. [Deploy dev **43596012266**](https://github.com/Ahmed-Wesam/StreamMyCourse/actions/runs/43596012266) completed.
 
-- **`guard-dev-google` failed** — Environment **`dev`** secrets **`GOOGLE_OAUTH_CLIENT_ID`** and **`GOOGLE_OAUTH_CLIENT_SECRET`** were not set.
-- **No CloudFormation stacks** — `describe-stacks` in `eu-west-1` reported no `StreamMyCourse-Dsql-dev`, `StreamMyCourse-Auth-dev`, `StreamMyCourse-Api-dev`, or `StreamMyCourse-DevVideo-dev`.
+`describe-stacks` in `eu-west-1` after that run:
 
-Prod **Deploy** on commit `eac2fcf` completed successfully; `StreamMyCourse-Dsql-prod` was updated in place (tag parameter only; no cluster replacement).
+| Stack | Status |
+|-------|--------|
+| `StreamMyCourse-Dsql-dev` | `CREATE_COMPLETE` (cluster `xnuhmtafzjya4cdlho5ex66owu`, not the prod cluster) |
+| `StreamMyCourse-Auth-dev` | `UPDATE_COMPLETE` (hosted UI `streammycourse-auth-dev-878564870560.auth.eu-west-1.amazoncognito.com`) |
+| `StreamMyCourse-Api-dev` | `CREATE_COMPLETE` (`https://6fdkylrhwf.execute-api.eu-west-1.amazonaws.com/dev`) |
+| `StreamMyCourse-DevVideo-dev` | `CREATE_COMPLETE` |
+
+Signed-out `GET /dev/courses` returned `[]`. Signed-out `GET /prod/courses` also returned `[]`. `StreamMyCourse-Dsql-prod` stayed `CREATE_COMPLETE`.
 
 ## Consequences
 
-- Dev stage is **not shipped** until all four stacks exist and operators set dev Google credentials.
+- The four dev stacks exist and use a Google client that is not the prod client. Local Vite still defaults to the prod API.
 - Integration tests and **Deploy** on **`main`** remain **prod-only**.
 - Operators must create a **separate** Google OAuth client for **`dev`**; copying prod values is blocked by design.
 

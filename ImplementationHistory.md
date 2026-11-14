@@ -6,6 +6,13 @@
 
 ---
 
+## 2026-11-14 — Dev stage stacks created
+
+- **Dispatch:** [Deploy dev **43596012266**](https://github.com/Ahmed-Wesam/StreamMyCourse/actions/runs/43596012266) on **`da1007f`** succeeded. `describe-stacks` (`eu-west-1`): `StreamMyCourse-Dsql-dev` `CREATE_COMPLETE` (cluster `xnuhmtafzjya4cdlho5ex66owu`), `StreamMyCourse-Auth-dev` `UPDATE_COMPLETE`, `StreamMyCourse-Api-dev` `CREATE_COMPLETE`, `StreamMyCourse-DevVideo-dev` `CREATE_COMPLETE`.
+- **API:** `https://6fdkylrhwf.execute-api.eu-west-1.amazonaws.com/dev`. Signed-out `GET /dev/courses` and `GET /prod/courses` both returned `[]`. Prod cluster `StreamMyCourse-Dsql-prod` was not replaced.
+- **Earlier attempts:** [**43564776149**](https://github.com/Ahmed-Wesam/StreamMyCourse/actions/runs/43564776149) stopped at the Google guard (no secrets yet). [**43594755794**](https://github.com/Ahmed-Wesam/StreamMyCourse/actions/runs/43594755794) created DSQL and schema, then Auth failed because S3 upload progress was parsed as the package key. **`da1007f`** keeps that progress off stdout.
+- **ADR:** [ADR-0017](plans/architecture/adr-0017-dev-stage.md).
+
 ## 2026-11-14 — Dev stage workflow (templates only; dispatch blocked on Google secrets)
 
 - **Repo:** [`scripts/dev_stage.py`](scripts/dev_stage.py) guards (prod DSQL deny id, Google digest compare, parameter builders), [`scripts/deploy-dev.sh`](scripts/deploy-dev.sh), [`.github/workflows/deploy-dev.yml`](.github/workflows/deploy-dev.yml) (`workflow_dispatch` only), [`dev-video-bucket-stack.yaml`](infrastructure/templates/dev-video-bucket-stack.yaml); [`dsql-stack.yaml`](infrastructure/templates/dsql-stack.yaml) `Environment` parameter (`prod` default). [`deploy-backend.yml`](.github/workflows/deploy-backend.yml) unchanged — prod integration on `StreamMyCourse-Api-prod`.

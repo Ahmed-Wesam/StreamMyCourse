@@ -450,7 +450,7 @@ The frontend is built as **two separate SPAs** deployed to different subdomains:
 
 ## 10. Deployment (MVP)
 
-**Environment model:** **Customer traffic** uses **`prod`** only (`StreamMyCourse-*-prod`, GitHub Environment **`prod`**, [`deploy-backend.yml`](.github/workflows/deploy-backend.yml) on every green CI push to **`main`**). **Local** Vite defaults to proxying the **prod** API and Cognito (see §8). An **optional `dev` AWS stage** (separate DSQL cluster, Cognito, API Gateway stage `dev`, S3-only video bucket) is deployed only via manual **[`deploy-dev.yml`](.github/workflows/deploy-dev.yml)** + [`scripts/deploy-dev.sh`](scripts/deploy-dev.sh) — **not shipped** until stacks exist and Environment **`dev`** has its own Google OAuth secrets ([ADR-0017](plans/architecture/adr-0017-dev-stage.md)).
+**Environment model:** **Customer traffic** uses **`prod`** only (`StreamMyCourse-*-prod`, GitHub Environment **`prod`**, [`deploy-backend.yml`](.github/workflows/deploy-backend.yml) on every green CI push to **`main`**). **Local** Vite defaults to proxying the **prod** API and Cognito (see §8). An **optional `dev` AWS stage** (separate DSQL cluster, Cognito, API Gateway stage `dev`, S3-only video bucket) is deployed only via manual **[`deploy-dev.yml`](.github/workflows/deploy-dev.yml)** + [`scripts/deploy-dev.sh`](scripts/deploy-dev.sh). The four stacks exist in `eu-west-1` ([ADR-0017](plans/architecture/adr-0017-dev-stage.md)). Local Vite still defaults to prod.
 
 ### Frontend (Static Hosting)
 
@@ -531,7 +531,7 @@ Prod API (`deploy-backend.sh`):
 |-------|--------|-------|
 | **Local UI** | Vite (`http://localhost:5173` student, `5174` teacher) | [`frontend/.env.example`](frontend/.env.example): `VITE_API_BASE_URL=/api`, **`VITE_API_PROXY_TARGET`** → prod API Gateway; Cognito env from **`StreamMyCourse-Auth-prod`** outputs |
 | **Deployed (prod)** | AWS **`prod`** | [`.github/workflows/deploy-backend.yml`](.github/workflows/deploy-backend.yml) on **`main`** (after [`ci.yml`](.github/workflows/ci.yml)): edge + DSQL lane → backend → HTTPS integration pytest (`COGNITO_VERIFY_*`, `test_persistence_smoke`) → SPAs; GitHub Environment **`prod`** |
-| **Optional dev stage** | Manual dispatch only | Intended stacks: `StreamMyCourse-Dsql-dev`, `StreamMyCourse-Auth-dev`, `StreamMyCourse-Api-dev`, `StreamMyCourse-DevVideo-dev`. **2026-11-14:** first [`deploy-dev.yml`](.github/workflows/deploy-dev.yml) run stopped at Google guard — no stacks created; set **`GOOGLE_OAUTH_CLIENT_ID`** and **`GOOGLE_OAUTH_CLIENT_SECRET`** on Environment **`dev`** (separate client, not prod). |
+| **Optional dev stage** | Manual dispatch only | `StreamMyCourse-Dsql-dev`, `StreamMyCourse-Auth-dev`, `StreamMyCourse-Api-dev`, `StreamMyCourse-DevVideo-dev` are up. API: `https://6fdkylrhwf.execute-api.eu-west-1.amazonaws.com/dev`. Signed-out `GET /courses` is `[]`. Separate Google client on Environment **`dev`**. |
 | **Integration tests** | Prod stacks | [`scripts/run-local-integration-tests.sh`](scripts/run-local-integration-tests.sh) / [`scripts/run-integration-tests.ps1`](scripts/run-integration-tests.ps1); requires **`INTEGRATION_ALLOW_PROD_CLEANUP=1`** for mutating tests ([`tests/integration/README.md`](tests/integration/README.md)) |
 | **Legacy dev stacks** | Removed from repo | Operators tearing down old `*-dev` AWS resources: [`infrastructure/README.md`](infrastructure/README.md) **Phase 0** teardown |
 
