@@ -1,26 +1,16 @@
-"""Catalog delete regression: modules, lessons, courses, purchase guard (DSQL-3 S5)."""
+"""Catalog delete regression: modules, lessons, courses (DSQL-3 S5)."""
 
 from __future__ import annotations
 
-import os
-import uuid
-
 import httpx
-import pytest
 
 from helpers.api import ApiClient
-from helpers.billing_access import billing_environment, decode_jwt_sub
-from helpers.dsql_audit import admin_connect, execute_scalar
 from helpers.factories import make_test_title
 from helpers.module_contract import require_course_modules_list, require_lessons_include_module_fields
 
 _PDF_BYTES = b"%PDF-1.4 minimal\n"
 _PDF_SIZE = len(_PDF_BYTES)
 _CONTENT_TYPE = "application/pdf"
-
-
-def _is_dsql_preview_stack() -> bool:
-    return os.environ.get("INTEGRATION_API_STACK", "").strip() == "StreamMyCourse-Api-dsql"
 
 
 def _create_ready_lesson_file(api: ApiClient, course_id: str, lesson_id: str) -> str:
@@ -44,20 +34,6 @@ def _create_ready_lesson_file(api: ApiClient, course_id: str, lesson_id: str) ->
     assert put.status_code == 200, put.text
     assert api.complete_lesson_file(course_id, lesson_id, file_id).status_code == 200
     return file_id
-
-
-def _sql_counts(conn, course_id: str) -> tuple[int, int, int, int]:
-    return (
-        int(execute_scalar(conn, "SELECT COUNT(*) FROM app.courses WHERE id = %s", (course_id,)) or 0),
-        int(
-            execute_scalar(conn, "SELECT COUNT(*) FROM app.course_modules WHERE course_id = %s", (course_id,))
-            or 0
-        ),
-        int(execute_scalar(conn, "SELECT COUNT(*) FROM app.lessons WHERE course_id = %s", (course_id,)) or 0),
-        int(
-            execute_scalar(conn, "SELECT COUNT(*) FROM app.lesson_files WHERE course_id = %s", (course_id,)) or 0
-        ),
-    )
 
 
 def test_delete_module_removes_lesson_and_file(api: ApiClient, course_factory) -> None:
@@ -87,12 +63,6 @@ def test_delete_module_removes_lesson_and_file(api: ApiClient, course_factory) -
     assert len(remaining) == 1
     assert remaining[0]["id"] == default_id
 
-    if _is_dsql_preview_stack():
-        with admin_connect() as conn:
-            _, _, lesson_n, file_n = _sql_counts(conn, course.course_id)
-        assert lesson_n == 0
-        assert file_n == 0
-
     assert api.delete_course(course.course_id).status_code == 200
 
 
@@ -112,18 +82,6 @@ def test_delete_lesson_removes_file_and_compacts_sibling(
     assert listed[0]["id"] == a.lesson_id
     assert listed[0]["order"] == 1
 
-    if _is_dsql_preview_stack():
-        with admin_connect() as conn:
-            file_n = int(
-                execute_scalar(
-                    conn,
-                    "SELECT COUNT(*) FROM app.lesson_files WHERE course_id = %s",
-                    (course.course_id,),
-                )
-                or 0
-            )
-        assert file_n == 0
-
     assert api.delete_course(course.course_id).status_code == 200
 
 
@@ -134,11 +92,6 @@ def test_delete_course_removes_catalog_rows(api: ApiClient, course_factory, less
 
     assert api.delete_course(course.course_id).status_code == 200
     assert api.get_course(course.course_id).status_code == 404
-
-    if _is_dsql_preview_stack():
-        with admin_connect() as conn:
-            counts = _sql_counts(conn, course.course_id)
-        assert counts == (0, 0, 0, 0)
 
 
 def test_delete_last_module_still_bad_request(api: ApiClient, course_factory) -> None:
@@ -152,44 +105,6 @@ def test_delete_last_module_still_bad_request(api: ApiClient, course_factory) ->
     assert resp.json().get("code") == "bad_request"
 
     assert api.delete_course(course.course_id).status_code == 200
-
-
-@pytest.mark.skipif(
-    not _is_dsql_preview_stack(),
-    reason="purchase-blocked course delete requires INTEGRATION_API_STACK=StreamMyCourse-Api-dsql",
-)
-def test_course_delete_blocked_when_purchase_row_exists(api: ApiClient, course_factory) -> None:
-    course = course_factory(label="cat-del-purchase")
-    token = os.environ.get("INTEGRATION_COGNITO_JWT", "").strip()
-    assert token, "INTEGRATION_COGNITO_JWT required"
-    user_sub = decode_jwt_sub(token)
-    purchase_id = str(uuid.uuid4())
-    env = billing_environment()
-
-    with admin_connect() as conn:
-        with conn.cursor() as cur:
-            cur.execute(
-                """
-                INSERT INTO app.purchases (
-                    id, user_sub, environment, product_type, course_id,
-                    status, amount_minor, currency
-                ) VALUES (%s, %s, %s, 'course', %s, 'paid', %s, 'JOD')
-                """,
-                (purchase_id, user_sub, env, course.course_id, 1000),
-            )
-        conn.commit()
-
-    try:
-        blocked = api.delete_course(course.course_id)
-        assert blocked.status_code == 409, blocked.text
-        assert blocked.json().get("code") == "conflict"
-        assert api.get_course(course.course_id).status_code == 200
-    finally:
-        with admin_connect() as conn:
-            with conn.cursor() as cur:
-                cur.execute("DELETE FROM app.purchases WHERE id = %s", (purchase_id,))
-            conn.commit()
-        assert api.delete_course(course.course_id).status_code == 200
 
 
 def _mcq_options() -> list[dict[str, str]]:
@@ -223,117 +138,6 @@ def _setup_published_quiz_on_module(
     return bank_id
 
 
-def _quiz_row_counts_for_module(conn, module_id: str) -> tuple[int, int, int, int]:
-    quiz_n = int(
-        execute_scalar(conn, "SELECT COUNT(*) FROM app.module_quizzes WHERE module_id = %s", (module_id,))
-        or 0
-    )
-    binding_n = int(
-        execute_scalar(
-            conn,
-            """
-            SELECT COUNT(*)
-            FROM app.student_module_quiz_bindings b
-            JOIN app.module_quizzes mq ON mq.id = b.module_quiz_id
-            WHERE mq.module_id = %s
-            """,
-            (module_id,),
-        )
-        or 0
-    )
-    attempt_n = int(
-        execute_scalar(
-            conn,
-            """
-            SELECT COUNT(*)
-            FROM app.module_quiz_attempts a
-            JOIN app.student_module_quiz_bindings b ON b.id = a.binding_id
-            JOIN app.module_quizzes mq ON mq.id = b.module_quiz_id
-            WHERE mq.module_id = %s
-            """,
-            (module_id,),
-        )
-        or 0
-    )
-    submission_n = int(
-        execute_scalar(
-            conn,
-            """
-            SELECT COUNT(*)
-            FROM app.module_quiz_attempt_submissions s
-            JOIN app.module_quiz_attempts a ON a.id = s.attempt_id
-            JOIN app.student_module_quiz_bindings b ON b.id = a.binding_id
-            JOIN app.module_quizzes mq ON mq.id = b.module_quiz_id
-            WHERE mq.module_id = %s
-            """,
-            (module_id,),
-        )
-        or 0
-    )
-    return quiz_n, binding_n, attempt_n, submission_n
-
-
-def _quiz_row_counts_for_course(conn, course_id: str) -> tuple[int, int, int, int, int, int, int]:
-    banks = int(
-        execute_scalar(conn, "SELECT COUNT(*) FROM app.question_banks WHERE course_id = %s", (course_id,))
-        or 0
-    )
-    questions = int(
-        execute_scalar(conn, "SELECT COUNT(*) FROM app.questions WHERE course_id = %s", (course_id,)) or 0
-    )
-    quizzes = int(
-        execute_scalar(conn, "SELECT COUNT(*) FROM app.module_quizzes WHERE course_id = %s", (course_id,))
-        or 0
-    )
-    bindings = int(
-        execute_scalar(
-            conn, "SELECT COUNT(*) FROM app.student_module_quiz_bindings WHERE course_id = %s", (course_id,)
-        )
-        or 0
-    )
-    attempts = int(
-        execute_scalar(
-            conn,
-            """
-            SELECT COUNT(*)
-            FROM app.module_quiz_attempts a
-            JOIN app.student_module_quiz_bindings b ON b.id = a.binding_id
-            WHERE b.course_id = %s
-            """,
-            (course_id,),
-        )
-        or 0
-    )
-    submissions = int(
-        execute_scalar(
-            conn,
-            """
-            SELECT COUNT(*)
-            FROM app.module_quiz_attempt_submissions s
-            JOIN app.module_quiz_attempts a ON a.id = s.attempt_id
-            JOIN app.student_module_quiz_bindings b ON b.id = a.binding_id
-            WHERE b.course_id = %s
-            """,
-            (course_id,),
-        )
-        or 0
-    )
-    binding_questions = int(
-        execute_scalar(
-            conn,
-            """
-            SELECT COUNT(*)
-            FROM app.student_module_quiz_binding_questions q
-            JOIN app.student_module_quiz_bindings b ON b.id = q.binding_id
-            WHERE b.course_id = %s
-            """,
-            (course_id,),
-        )
-        or 0
-    )
-    return banks, questions, quizzes, bindings, binding_questions, attempts, submissions
-
-
 def test_delete_module_removes_quiz_rows_leaves_question_bank(
     api_base_url: str,
     api: ApiClient,
@@ -354,7 +158,7 @@ def test_delete_module_removes_quiz_rows_leaves_question_bank(
     assert extra.status_code == 201, extra.text
     victim_id = str(extra.json()["moduleId"])
 
-    bank_id = _setup_published_quiz_on_module(api, course_id, victim_id, served_n=served_n)
+    _setup_published_quiz_on_module(api, course_id, victim_id, served_n=served_n)
     lesson = lesson_factory(course_id, label="cat-del-qb-lesson")
     upload_resp = api.get_upload_url(course_id=course_id, lesson_id=lesson.lesson_id)
     assert upload_resp.status_code == 200, upload_resp.text
@@ -375,63 +179,7 @@ def test_delete_module_removes_quiz_rows_leaves_question_bank(
     assert quiz_rows == []
     assert student_api.start_module_quiz(course_id, victim_id).status_code == 404
 
-    if _is_dsql_preview_stack():
-        with admin_connect() as conn:
-            assert _quiz_row_counts_for_module(conn, victim_id) == (0, 0, 0, 0)
-            bank_n = int(
-                execute_scalar(
-                    conn,
-                    "SELECT COUNT(*) FROM app.question_banks WHERE course_id = %s AND id = %s",
-                    (course_id, bank_id),
-                )
-                or 0
-            )
-            question_n = int(
-                execute_scalar(
-                    conn,
-                    "SELECT COUNT(*) FROM app.questions WHERE course_id = %s AND question_bank_id = %s",
-                    (course_id, bank_id),
-                )
-                or 0
-            )
-        assert bank_n == 1
-        assert question_n == served_n
-
     assert api.delete_course(course_id).status_code == 200
-
-    if _is_dsql_preview_stack():
-        with admin_connect() as conn:
-            assert _quiz_row_counts_for_course(conn, course_id) == (0, 0, 0, 0, 0, 0, 0)
-
-
-def _assignment_counts_for_module(conn, course_id: str, module_id: str) -> tuple[int, int]:
-    submissions = int(
-        execute_scalar(
-            conn,
-            """
-            SELECT COUNT(*)
-            FROM app.assignment_submissions s
-            JOIN app.assignments a ON a.id = s.assignment_id
-            WHERE a.course_id = %s AND a.module_id = %s
-            """,
-            (course_id, module_id),
-        )
-        or 0
-    )
-    files = int(
-        execute_scalar(
-            conn,
-            """
-            SELECT COUNT(*)
-            FROM app.assignment_submission_files f
-            JOIN app.assignments a ON a.id = f.assignment_id
-            WHERE a.course_id = %s AND a.module_id = %s
-            """,
-            (course_id, module_id),
-        )
-        or 0
-    )
-    return submissions, files
 
 
 def test_delete_module_removes_assignment_submission_and_s3(
@@ -439,14 +187,9 @@ def test_delete_module_removes_assignment_submission_and_s3(
     api: ApiClient,
     student_api: ApiClient,
     course_factory,
-    video_bucket: str,
-    aws_region: str,
 ) -> None:
-    """DSQL-7a: module delete clears assignment children and enqueues submission S3 keys."""
-    import time
-
+    """DSQL-7a: module delete clears assignment submission rows over HTTPS."""
     from helpers.billing_access import ensure_student_subscription
-    from helpers.cleanup import s3_object_exists
 
     course = course_factory(label="cat-del-assign-mod")
     course_id = course.course_id
@@ -501,57 +244,5 @@ def test_delete_module_removes_assignment_submission_and_s3(
         student_api.complete_submission_file(course_id, assignment_id, sid, fid).status_code
         == 200
     )
-    object_key = ""
-    if _is_dsql_preview_stack():
-        with admin_connect() as conn:
-            object_key = str(
-                execute_scalar(
-                    conn,
-                    "SELECT object_key FROM app.assignment_submission_files WHERE id = %s",
-                    (fid,),
-                )
-                or ""
-            )
     assert api.delete_course_module(course_id, victim_id).status_code == 200
-    if _is_dsql_preview_stack():
-        with admin_connect() as conn:
-            subs, files = _assignment_counts_for_module(conn, course_id, victim_id)
-        assert subs == 0
-        assert files == 0
-    if object_key:
-        deadline = time.monotonic() + 120.0
-        while time.monotonic() < deadline:
-            if not s3_object_exists(video_bucket, object_key, region=aws_region):
-                break
-            time.sleep(2.0)
-        assert not s3_object_exists(video_bucket, object_key, region=aws_region)
     assert api.delete_course(course_id).status_code == 200
-
-
-def test_delete_course_removes_assignment_rows_preview_sql(
-    api: ApiClient,
-    course_factory,
-) -> None:
-    if not _is_dsql_preview_stack():
-        pytest.skip("assignment course delete SQL counts are preview-only")
-    course = course_factory(label="cat-del-assign-course")
-    course_id = course.course_id
-    mods = require_course_modules_list(api.list_course_modules(course_id))
-    created = api.create_assignment(
-        course_id,
-        module_id=mods[0]["id"],
-        title=make_test_title("course-assign"),
-    )
-    assert created.status_code == 201
-    assignment_id = created.json()["assignment"]["id"]
-    assert api.delete_course(course_id).status_code == 200
-    with admin_connect() as conn:
-        n = int(
-            execute_scalar(
-                conn,
-                "SELECT COUNT(*) FROM app.assignments WHERE id = %s",
-                (assignment_id,),
-            )
-            or 0
-        )
-    assert n == 0

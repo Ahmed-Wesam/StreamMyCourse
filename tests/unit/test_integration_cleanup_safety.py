@@ -148,3 +148,152 @@ class TestApiCourseCleanupSafetyNet:
         )
         assert report.courses_removed_via_api == ["a1"]
         assert report.leftover_objects == ["k1"]
+
+
+class TestPrefixedCourseCleanupClearsPurchases:
+    """HTTP safety-net must clear purchase rows blocking DELETE /courses/{id}."""
+
+    _TEST_COURSE_ID = "11111111-2222-4333-8444-555555555555"
+    _OTHER_TEST_COURSE_ID = "22222222-3333-4444-8555-666666666666"
+    _PROD_COURSE_ID = "aaaaaaaa-bbbb-4ccc-dddd-eeeeeeeeeeee"
+
+    def test_delete_succeeds_after_clearer_runs_on_409(self) -> None:
+        import unittest.mock as mock
+
+        clearer_calls: list[str] = []
+        purchase_cleared: dict[str, bool] = {self._TEST_COURSE_ID: False}
+
+        def fake_clearer(course_id: str) -> None:
+            clearer_calls.append(course_id)
+            purchase_cleared[course_id] = True
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            if request.method == "GET" and str(request.url.path).rstrip("/").endswith(
+                "courses/mine"
+            ):
+                return httpx.Response(
+                    200,
+                    json=[
+                        {
+                            "id": self._PROD_COURSE_ID,
+                            "title": "Research Methodology",
+                        },
+                        {
+                            "id": self._TEST_COURSE_ID,
+                            "title": "integration-test-leftover",
+                        },
+                    ],
+                )
+            if request.method == "DELETE" and self._PROD_COURSE_ID in str(request.url.path):
+                pytest.fail("DELETE must not run for non-test-prefixed courses")
+            if request.method == "DELETE" and self._TEST_COURSE_ID in str(request.url.path):
+                if purchase_cleared.get(self._TEST_COURSE_ID):
+                    return httpx.Response(
+                        200,
+                        json={"id": self._TEST_COURSE_ID, "deleted": True},
+                    )
+                return httpx.Response(409, json={"error": "purchase_exists"})
+            return httpx.Response(404, text="unexpected")
+
+        transport = httpx.MockTransport(handler)
+        RealHttpxClient = httpx.Client
+
+        def client_factory(**kwargs: object) -> httpx.Client:
+            return RealHttpxClient(transport=transport, **kwargs)
+
+        with mock.patch("helpers.cleanup.httpx.Client", side_effect=client_factory):
+            deleted, matched = delete_prefixed_teacher_courses_via_http(
+                api_base_url="https://api.example/dev",
+                auth_token="tok",
+                title_prefix="integration-test-",
+                clear_blocking_purchases=fake_clearer,
+            )
+
+        assert matched == [self._TEST_COURSE_ID]
+        assert deleted == [self._TEST_COURSE_ID]
+        assert clearer_calls == [self._TEST_COURSE_ID]
+
+    def test_clearer_error_on_first_course_still_deletes_second(self) -> None:
+        import unittest.mock as mock
+
+        def fake_clearer(course_id: str) -> None:
+            if course_id == self._TEST_COURSE_ID:
+                raise RuntimeError("dsql unavailable")
+
+        delete_attempts: dict[str, int] = {
+            self._TEST_COURSE_ID: 0,
+            self._OTHER_TEST_COURSE_ID: 0,
+        }
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            if request.method == "GET" and str(request.url.path).rstrip("/").endswith(
+                "courses/mine"
+            ):
+                return httpx.Response(
+                    200,
+                    json=[
+                        {
+                            "id": self._PROD_COURSE_ID,
+                            "title": "Research Methodology",
+                        },
+                        {
+                            "id": self._TEST_COURSE_ID,
+                            "title": "integration-test-one",
+                        },
+                        {
+                            "id": self._OTHER_TEST_COURSE_ID,
+                            "title": "integration-test-two",
+                        },
+                    ],
+                )
+            if request.method == "DELETE" and self._PROD_COURSE_ID in str(request.url.path):
+                pytest.fail("DELETE must not run for non-test-prefixed courses")
+            for cid in (self._TEST_COURSE_ID, self._OTHER_TEST_COURSE_ID):
+                if request.method == "DELETE" and cid in str(request.url.path):
+                    delete_attempts[cid] += 1
+                    if cid == self._TEST_COURSE_ID:
+                        return httpx.Response(409, json={"error": "purchase_exists"})
+                    return httpx.Response(
+                        200, json={"id": cid, "deleted": True}
+                    )
+            return httpx.Response(404, text="unexpected")
+
+        transport = httpx.MockTransport(handler)
+        RealHttpxClient = httpx.Client
+
+        def client_factory(**kwargs: object) -> httpx.Client:
+            return RealHttpxClient(transport=transport, **kwargs)
+
+        with mock.patch("helpers.cleanup.httpx.Client", side_effect=client_factory):
+            deleted, matched = delete_prefixed_teacher_courses_via_http(
+                api_base_url="https://api.example/dev",
+                auth_token="tok",
+                title_prefix="integration-test-",
+                clear_blocking_purchases=fake_clearer,
+            )
+
+        assert matched == [self._TEST_COURSE_ID, self._OTHER_TEST_COURSE_ID]
+        assert deleted == [self._OTHER_TEST_COURSE_ID]
+        assert delete_attempts[self._TEST_COURSE_ID] >= 1
+        assert delete_attempts[self._OTHER_TEST_COURSE_ID] >= 1
+
+    def test_conftest_wires_delete_purchases_for_course_id(self) -> None:
+        conftest_path = os.path.join(
+            os.path.dirname(__file__), "..", "integration", "conftest.py"
+        )
+        with open(conftest_path, encoding="utf-8") as f:
+            source = f.read()
+
+        assert "delete_purchases_for_course_id" in source
+
+        for marker in (
+            "def course_factory(",
+            "def alt_course_factory(",
+            "def _run_cleanup_for_token(",
+        ):
+            start = source.index(marker)
+            next_def = source.find("\ndef ", start + 1)
+            block = source[start : next_def if next_def != -1 else len(source)]
+            assert "delete_purchases_for_course_id" in block, (
+                f"{marker} must call delete_purchases_for_course_id"
+            )

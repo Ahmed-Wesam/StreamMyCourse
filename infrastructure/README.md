@@ -61,8 +61,7 @@ Or `.\deploy.ps1 -Delete -StackName YOUR_STACK -Template api -Region eu-west-1` 
 | Video (S3) | `StreamMyCourse-Video-prod` |
 | API + catalog | `StreamMyCourse-Api-prod` |
 | Auth (Cognito) | `StreamMyCourse-Auth-prod` |
-| RDS | `StreamMyCourse-Rds-prod` |
-| RDS query helper | `StreamMyCourse-RdsQuery-prod` |
+| Aurora DSQL (catalog) | `StreamMyCourse-Dsql-prod` |
 | Media cleanup | `StreamMyCourse-MediaCleanup-prod` |
 | Payments / billing edge | `StreamMyCourse-Payments-prod` |
 | Video provider edge (Kinescope) | `StreamMyCourse-VideoProviderEdge-prod` |
@@ -128,7 +127,7 @@ Use this when removing **old `*-dev`** resources after the prod-only cutover. **
 
 ## GitHub Actions — automated deploys
 
-**Every push to `main`** runs the **prod** pipeline: edge + RDS + backend + integration HTTP tests + verify RDS + SPAs. See [`.github/workflows/deploy-backend.yml`](../.github/workflows/deploy-backend.yml). **`cancel-in-progress: false`**: rapid commits **queue**. Lambda code is uploaded as **`catalog-prod-{gitSha12}.zip`**.
+**Every push to `main`** runs the **prod** pipeline: edge + DSQL + backend + HTTPS integration tests + prod SPAs. See [`.github/workflows/deploy-backend.yml`](../.github/workflows/deploy-backend.yml). **`cancel-in-progress: false`**: rapid commits **queue**. Lambda code is uploaded as **`catalog-prod-{gitSha12}.zip`**.
 
 ### Secrets and variables (deploy workflows)
 

@@ -46,8 +46,6 @@ def _ensure_fulfillment_importable() -> None:
 
 def _runs_on_target_stack() -> bool:
     stack = os.environ.get("INTEGRATION_API_STACK", "StreamMyCourse-Api-prod").strip()
-    if stack.endswith("Api-dsql"):
-        return True
     if not stack.endswith("Api-prod"):
         return False
     region = os.environ.get("INTEGRATION_AWS_REGION", "eu-west-1")
@@ -63,7 +61,7 @@ def _runs_on_target_stack() -> bool:
 
 pytestmark = pytest.mark.skipif(
     not _runs_on_target_stack(),
-    reason="integrity cascades: Api-dsql or prod catalog on DSQL",
+    reason="integrity cascades: prod catalog on DSQL",
 )
 
 

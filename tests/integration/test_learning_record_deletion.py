@@ -6,15 +6,7 @@ import os
 
 from helpers.api import ApiClient
 from helpers.billing_access import ensure_student_subscription
-from helpers.dsql_audit import admin_connect
-from helpers.dsql_preview_access import is_dsql_preview_api_stack
 from helpers.factories import make_test_title
-from helpers.learning_record_sql import (
-    count_notes_for_course,
-    count_notes_for_lesson,
-    count_progress_for_course,
-    count_progress_for_lesson,
-)
 from helpers.module_contract import require_course_modules_list
 
 
@@ -87,13 +79,6 @@ def test_lesson_delete_clears_progress_and_notes_for_owner_and_student(
         missing = client.list_lesson_notes(course_id, victim_id)
         assert missing.status_code == 404, missing.text
 
-    if is_dsql_preview_api_stack():
-        with admin_connect() as conn:
-            assert count_progress_for_lesson(conn, course_id=course_id, lesson_id=victim_id) == 0
-            assert count_notes_for_lesson(conn, course_id=course_id, lesson_id=victim_id) == 0
-            assert count_progress_for_lesson(conn, course_id=course_id, lesson_id=sibling_id) >= 2
-            assert count_notes_for_lesson(conn, course_id=course_id, lesson_id=sibling_id) >= 2
-
 
 def test_module_delete_clears_progress_and_notes_for_module_lessons(
     api_base_url: str,
@@ -114,12 +99,6 @@ def test_module_delete_clears_progress_and_notes_for_module_lessons(
 
     assert api.delete_course_module(course_id, victim_module_id).status_code == 200
 
-    if is_dsql_preview_api_stack():
-        with admin_connect() as conn:
-            assert count_progress_for_lesson(conn, course_id=course_id, lesson_id=victim_id) == 0
-            assert count_notes_for_lesson(conn, course_id=course_id, lesson_id=victim_id) == 0
-            assert count_progress_for_lesson(conn, course_id=course_id, lesson_id=sibling_id) >= 1
-
 
 def test_course_delete_clears_all_learning_records(
     api_base_url: str,
@@ -139,11 +118,6 @@ def test_course_delete_clears_all_learning_records(
 
     assert api.delete_course(course_id).status_code == 200
     assert api.get_course(course_id).status_code == 404
-
-    if is_dsql_preview_api_stack():
-        with admin_connect() as conn:
-            assert count_progress_for_course(conn, course_id) == 0
-            assert count_notes_for_course(conn, course_id) == 0
 
 
 def test_delete_last_module_still_bad_request(api: ApiClient, course_factory) -> None:

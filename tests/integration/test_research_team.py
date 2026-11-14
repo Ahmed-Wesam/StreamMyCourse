@@ -16,7 +16,6 @@ from helpers.cognito_auth import (
     resolve_student_pool_config_or_skip,
     student_client_supports_native_signup,
 )
-from helpers.dsql_audit import admin_connect, execute_scalar
 from helpers.factories import make_test_title
 from helpers.module_contract import require_course_modules_list
 from helpers.profile_patch import valid_profile_patch_body
@@ -24,10 +23,6 @@ from test_certificates import _grade_passing_assignment
 
 _PDF_BYTES = b"%PDF-1.4\n"
 _PDF_SIZE = len(_PDF_BYTES)
-
-
-def _is_dsql_preview_stack() -> bool:
-    return os.environ.get("INTEGRATION_API_STACK", "").strip() == "StreamMyCourse-Api-dsql"
 
 
 def _api_base() -> str:
@@ -144,27 +139,6 @@ def test_research_team_apply_and_review_flow(
         app_id = ok.json()["id"]
         assert admin_api.patch_research_team_application(app_id, status="under_review").status_code == 200
         assert admin_api.patch_research_team_application(app_id, status="accepted").status_code == 200
-        if _is_dsql_preview_stack():
-            with admin_connect() as conn:
-                areas_type = execute_scalar(
-                    conn,
-                    """
-                    SELECT jsonb_typeof(research_areas)
-                    FROM app.research_team_applications
-                    WHERE id = %s
-                    """,
-                    (app_id,),
-                )
-                open_count = execute_scalar(
-                    conn,
-                    """
-                    SELECT COUNT(*) FROM app.research_team_applications
-                    WHERE user_sub IS NOT NULL
-                      AND status IN ('submitted', 'under_review')
-                    """,
-                )
-            assert areas_type == "array"
-            assert int(open_count or 0) >= 0
     finally:
         admin_api.put_research_team_requirement(course_id, required=False)
         student_api.raw.close()

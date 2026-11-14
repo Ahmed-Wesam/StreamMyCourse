@@ -10,10 +10,8 @@ from __future__ import annotations
 import os
 import secrets
 import string
-import sys
 import uuid
 from datetime import datetime, timezone
-from pathlib import Path
 from typing import Iterator
 
 import httpx
@@ -47,56 +45,6 @@ def _same_instant_utc(actual: str | None, expected: str) -> bool:
         return False
     norm = lambda s: datetime.fromisoformat(s.replace("Z", "+00:00")).astimezone(timezone.utc)
     return norm(actual) == norm(expected)
-
-
-def _delete_dsql_users_row_only(user_sub: str) -> None:
-    repo_root = Path(__file__).resolve().parents[2]
-    catalog = repo_root / "infrastructure" / "lambda" / "catalog"
-    if str(catalog) not in sys.path:
-        sys.path.insert(0, str(catalog))
-    from helpers.dsql_audit import resolve_dsql_endpoint  # noqa: E402
-
-    from dsql_connect import connect  # noqa: E402
-    from services.auth.rds_repo import UserProfileRdsRepository  # noqa: E402
-    from services.lesson_notes.rds_repo import LessonNotesRdsRepository  # noqa: E402
-    from services.progress.rds_repo import LessonProgressRdsRepository  # noqa: E402
-    from services.purchases.repo import PurchaseRdsRepository  # noqa: E402
-    from services.question_banks.rds_repo import QuestionBankRdsRepository  # noqa: E402
-    from services.user_deletion import (  # noqa: E402
-        UserDeletionRegistry,
-        UserDeletionService,
-        register_operator_user_steps,
-    )
-
-    host = resolve_dsql_endpoint()
-    if not host or not user_sub:
-        return
-    factory = lambda: connect("admin", host)
-    profile_repo = UserProfileRdsRepository(factory)
-    progress_repo = LessonProgressRdsRepository(factory)
-    notes_repo = LessonNotesRdsRepository(factory)
-    purchase_repo = PurchaseRdsRepository(factory, deployment_environment="prod")
-    quiz_repo = QuestionBankRdsRepository(factory)
-    registry = UserDeletionRegistry()
-    from services.assignments.rds_repo import AssignmentsRdsRepository
-    from services.certificates.rds_repo import CertificatesRdsRepository
-    from services.research_team.rds_repo import ResearchTeamRdsRepository
-
-    assignments_repo = AssignmentsRdsRepository(factory)
-    certificates_repo = CertificatesRdsRepository(factory)
-    research_team_repo = ResearchTeamRdsRepository(factory)
-    register_operator_user_steps(
-        registry,
-        profile_repo,
-        progress_repo,
-        notes_repo,
-        purchase_repo,
-        quiz_repo,
-        assignments_repo,
-        certificates_repo,
-        research_team_repo,
-    )
-    UserDeletionService(registry).delete_user(user_sub)
 
 
 def _valid_patch_body() -> dict[str, str]:
@@ -142,7 +90,6 @@ def test_native_signup_patch_and_get_users_me_profile(api: ApiClient) -> None:
 
     email = _rs6_test_email()
     password = _strong_password()
-    user_sub_for_cleanup = ""
     try:
         tokens = mint_native_signup_tokens(cfg=pool, email=email, password=password)
         headers = {"Authorization": f"Bearer {tokens.id_token}"}
@@ -158,7 +105,6 @@ def test_native_signup_patch_and_get_users_me_profile(api: ApiClient) -> None:
         get_resp = api.get_users_me(headers=headers)
         assert get_resp.status_code == 200, get_resp.text
         data = get_resp.json()
-        user_sub_for_cleanup = str(data.get("userId") or data.get("cognitoSub") or "")
         assert data.get("country") == "Jordan"
         assert data.get("profession") == "Researcher"
         assert _same_instant_utc(data.get("termsAcceptedAt"), _TERMS_AT)
@@ -166,7 +112,4 @@ def test_native_signup_patch_and_get_users_me_profile(api: ApiClient) -> None:
         assert data.get("givenName") == "RS"
         assert data.get("familyName") == "Integration"
     finally:
-        preview = os.environ.get("INTEGRATION_API_STACK", "").strip().endswith("Api-dsql")
-        if preview and user_sub_for_cleanup:
-            _delete_dsql_users_row_only(user_sub_for_cleanup)
         admin_delete_cognito_user(cfg=pool, username=email)

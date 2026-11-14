@@ -6,28 +6,21 @@ import os
 import uuid
 
 import httpx
-import pytest
 
 from helpers.api import ApiClient
 from helpers.billing_access import ensure_student_subscription
-from helpers.dsql_preview_access import ensure_student_profile_row, insert_paid_bundle_purchase
 from helpers.cognito_auth import (
     admin_delete_cognito_user,
     mint_native_signup_tokens,
     resolve_student_pool_config_or_skip,
     student_client_supports_native_signup,
 )
-from helpers.dsql_audit import admin_connect, execute_scalar
 from helpers.factories import make_test_title
 from helpers.module_contract import require_course_modules_list
 from helpers.profile_patch import valid_profile_patch_body
 
 _PDF_BYTES = b"%PDF-1.4 minimal\n"
 _PDF_SIZE = len(_PDF_BYTES)
-
-
-def _is_dsql_preview_stack() -> bool:
-    return os.environ.get("INTEGRATION_API_STACK", "").strip() == "StreamMyCourse-Api-dsql"
 
 
 def _api_base() -> str:
@@ -93,17 +86,7 @@ def _grade_passing_assignment(
     if course_meta.status_code == 200 and course_meta.json().get("status") != "PUBLISHED":
         assert teacher.mark_video_ready(course_id, lesson_id).status_code == 200
         assert teacher.publish_course(course_id).status_code == 200
-    if _is_dsql_preview_stack():
-        ensure_student_profile_row(student)
-        me = student.get_users_me()
-        assert me.status_code == 200, me.text
-        user_sub = str(me.json().get("userId") or me.json().get("cognitoSub") or "")
-        assert user_sub
-        insert_paid_bundle_purchase(user_sub)
-        playback = student.get_playback(course_id, lesson_id)
-        assert playback.status_code == 200, playback.text
-    else:
-        ensure_student_subscription(_api_base(), student, course_id, lesson_id)
+    ensure_student_subscription(_api_base(), student, course_id, lesson_id)
     open_sub = student.open_assignment_submission(course_id, assignment_id)
     assert open_sub.status_code in (200, 201), open_sub.text
     submission_id = open_sub.json()["submission"]["id"]
@@ -182,54 +165,6 @@ def test_certificate_issue_verify_and_revoke(
         public = throwaway.get_certificate_public(credential_id)
         assert public.status_code == 200
         assert public.json().get("status") == "revoked"
-        if _is_dsql_preview_stack():
-            with admin_connect() as conn:
-                count = execute_scalar(
-                    conn,
-                    "SELECT COUNT(*) FROM app.certificates WHERE course_id = %s",
-                    (course.course_id,),
-                )
-            assert int(count or 0) == 1
     finally:
         throwaway.raw.close()
         admin_delete_cognito_user(cfg=pool, username=email)
-
-
-def test_course_delete_removes_certificates_preview_only(
-    api: ApiClient,
-    course_factory,
-    lesson_factory,
-) -> None:
-    if not _is_dsql_preview_stack():
-        pytest.skip("preview SQL assert only on StreamMyCourse-Api-dsql")
-    throwaway, pool, email = _throwaway_student_api()
-    course = None
-    try:
-        patched = throwaway.patch_users_me(
-            body=valid_profile_patch_body(givenName="Cert", familyName="Del")
-        )
-        assert patched.status_code == 200, patched.text
-        course = course_factory(label="cert-course-del")
-        lesson = lesson_factory(course.course_id, label="cert-del-lesson")
-        assert api.get_upload_url(course_id=course.course_id, lesson_id=lesson.lesson_id).status_code == 200
-        assert api.mark_video_ready(course.course_id, lesson.lesson_id).status_code == 200
-        assert api.publish_course(course.course_id).status_code == 200
-        _grade_passing_assignment(api, throwaway, course.course_id)
-        assert throwaway.get_my_certificates().status_code == 200
-        course_id = course.course_id
-        deleted = api.delete_course(course_id)
-        assert deleted.status_code in (200, 202, 204), deleted.text
-        assert api.get_course(course_id).status_code == 404
-        with admin_connect() as conn:
-            count = execute_scalar(
-                conn,
-                "SELECT COUNT(*) FROM app.certificates WHERE course_id = %s",
-                (course_id,),
-            )
-        assert int(count or 0) == 0
-        course = None
-    finally:
-        throwaway.raw.close()
-        admin_delete_cognito_user(cfg=pool, username=email)
-        if course is not None:
-            api.delete_course(course.course_id)

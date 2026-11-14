@@ -6,23 +6,16 @@ import os
 import time
 
 import httpx
-import pytest
 
 from helpers.api import ApiClient
 from helpers.billing_access import ensure_student_subscription
 from helpers.cleanup import s3_object_exists
-from helpers.dsql_audit import admin_connect, execute_scalar
-from helpers.dsql_preview_access import ensure_student_profile_row
 from helpers.factories import make_test_title
 from helpers.module_contract import require_course_modules_list
 
 _PDF_BYTES = b"%PDF-1.4 minimal\n"
 _PDF_SIZE = len(_PDF_BYTES)
 _CONTENT_TYPE = "application/pdf"
-
-
-def _is_dsql_preview_stack() -> bool:
-    return os.environ.get("INTEGRATION_API_STACK", "").strip() == "StreamMyCourse-Api-dsql"
 
 
 def _wait_until_object_absent(
@@ -44,8 +37,6 @@ def test_assignment_flow_draft_grade_delete(
     video_bucket: str,
     aws_region: str,
 ) -> None:
-    if _is_dsql_preview_stack():
-        ensure_student_profile_row(student_api)
     course = course_factory(label="assign-flow")
     mods = require_course_modules_list(api.list_course_modules(course.course_id))
     module_id = mods[0]["id"]
@@ -92,27 +83,6 @@ def test_assignment_flow_draft_grade_delete(
     assert open2.status_code in (200, 201), open2.text
     assert open2.json()["submission"]["id"] == submission_id
 
-    if _is_dsql_preview_stack():
-        deadline = time.monotonic() + 15.0
-        drafts = 0
-        while time.monotonic() < deadline:
-            with admin_connect() as conn:
-                drafts = int(
-                    execute_scalar(
-                        conn,
-                        """
-                        SELECT COUNT(*) FROM app.assignment_submissions
-                        WHERE assignment_id = %s AND user_sub IS NOT NULL AND status = 'draft'
-                        """,
-                        (assignment_id,),
-                    )
-                    or 0
-                )
-            if drafts == 1:
-                break
-            time.sleep(0.5)
-        assert drafts == 1
-
     file_resp = student_api.create_submission_file(
         course.course_id,
         assignment_id,
@@ -138,36 +108,10 @@ def test_assignment_flow_draft_grade_delete(
     )
     assert complete.status_code == 200, complete.text
 
-    if _is_dsql_preview_stack():
-        with admin_connect() as conn:
-            object_key = str(
-                execute_scalar(
-                    conn,
-                    """
-                    SELECT object_key FROM app.assignment_submission_files
-                    WHERE id = %s
-                    """,
-                    (file_id,),
-                )
-                or ""
-            )
-
     submitted = student_api.submit_assignment_submission(
         course.course_id, assignment_id, submission_id
     )
     assert submitted.status_code == 200, submitted.text
-
-    if _is_dsql_preview_stack():
-        with admin_connect() as conn:
-            drafts = execute_scalar(
-                conn,
-                """
-                SELECT COUNT(*) FROM app.assignment_submissions
-                WHERE assignment_id = %s AND status = 'draft'
-                """,
-                (assignment_id,),
-            )
-        assert int(drafts or 0) == 0
 
     graded = api.grade_assignment_submission(
         course.course_id,
@@ -181,18 +125,6 @@ def test_assignment_flow_draft_grade_delete(
     deleted = api.delete_assignment(course.course_id, assignment_id)
     assert deleted.status_code == 200, deleted.text
     assert api.get_assignment(course.course_id, assignment_id).status_code == 404
-
-    if _is_dsql_preview_stack():
-        with admin_connect() as conn:
-            child_n = execute_scalar(
-                conn,
-                """
-                SELECT COUNT(*) FROM app.assignment_submissions
-                WHERE assignment_id = %s
-                """,
-                (assignment_id,),
-            )
-        assert int(child_n or 0) == 0
 
     if object_key:
         _wait_until_object_absent(video_bucket, object_key, region=aws_region)

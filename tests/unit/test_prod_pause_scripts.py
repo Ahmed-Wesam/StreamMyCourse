@@ -272,3 +272,20 @@ def test_export_pause_manifest_sh_uses_python_fallback() -> None:
     assert "PY=python" in text
     assert '"$PY"' in text
     assert "python3 <<" not in text
+
+
+def test_infrastructure_readme_prod_catalog_uses_dsql_not_rds() -> None:
+    """Operator docs: prod stack map and CI summary must not name legacy RDS prod stacks."""
+    path = _repo_root() / "infrastructure" / "README.md"
+    text = path.read_text(encoding="utf-8")
+    for forbidden in ("StreamMyCourse-Rds-prod", "StreamMyCourse-RdsQuery-prod"):
+        assert forbidden not in text, (
+            f"infrastructure/README.md must not reference prod RDS stack {forbidden!r}"
+        )
+    assert "StreamMyCourse-Dsql-prod" in text
+    ci_match = re.search(r"\*\*Every push to `main`\*\*[^\n]+", text)
+    assert ci_match, "GitHub Actions CI summary paragraph missing in infrastructure/README.md"
+    ci_line = ci_match.group(0)
+    assert re.search(r"verify\s+RDS", ci_line, re.IGNORECASE) is None, (
+        "CI paragraph must not say the pipeline verifies RDS"
+    )

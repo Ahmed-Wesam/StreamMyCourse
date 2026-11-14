@@ -2,22 +2,14 @@
 
 from __future__ import annotations
 
-import os
-
 import httpx
-import pytest
 
 from helpers.api import ApiClient
-from helpers.dsql_audit import admin_connect, execute_scalar
 from helpers.factories import make_test_title
 
 _PDF_BYTES = b"%PDF-1.4 minimal\n"
 _PDF_SIZE = len(_PDF_BYTES)
 _CONTENT_TYPE = "application/pdf"
-
-
-def _is_dsql_preview_stack() -> bool:
-    return os.environ.get("INTEGRATION_API_STACK", "").strip().endswith("Api-dsql")
 
 
 def _create_ready_lesson_file(
@@ -72,30 +64,3 @@ def test_lesson_file_create_complete_list_delete(api: ApiClient, course_factory,
     gone = api.get_course(course.course_id)
     assert gone.status_code == 404, gone.text
     assert gone.json().get("code") == "not_found"
-
-
-def test_lesson_files_removed_in_dsql_after_course_delete(
-    api: ApiClient, course_factory, lesson_factory
-) -> None:
-    if not _is_dsql_preview_stack():
-        pytest.skip("DSQL row counts require INTEGRATION_API_STACK ending with Api-dsql")
-
-    course = course_factory(label="lesson-files-dsql")
-    lesson = lesson_factory(course.course_id, label="dsql-file")
-    _create_ready_lesson_file(api, course.course_id, lesson.lesson_id)
-
-    assert api.delete_course(course.course_id).status_code == 200
-
-    with admin_connect() as conn:
-        file_count = execute_scalar(
-            conn,
-            "SELECT COUNT(*) FROM app.lesson_files WHERE course_id = %s",
-            (course.course_id,),
-        )
-        lesson_count = execute_scalar(
-            conn,
-            "SELECT COUNT(*) FROM app.lessons WHERE course_id = %s",
-            (course.course_id,),
-        )
-    assert int(file_count or 0) == 0
-    assert int(lesson_count or 0) == 0

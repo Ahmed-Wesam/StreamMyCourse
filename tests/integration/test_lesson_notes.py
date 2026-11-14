@@ -6,8 +6,6 @@ import os
 
 from helpers.api import ApiClient
 from helpers.billing_access import ensure_student_subscription
-from helpers.dsql_audit import admin_connect, execute_scalar
-from helpers.dsql_preview_access import is_dsql_preview_api_stack
 
 
 def _require_jwts() -> None:
@@ -25,25 +23,14 @@ def _published_lesson(api: ApiClient, course_factory, lesson_factory) -> tuple[s
     return course.course_id, lesson.lesson_id
 
 
-def _note_count_by_id(conn, note_id: str) -> int:
-    return int(
-        execute_scalar(
-            conn,
-            "SELECT COUNT(*) FROM app.lesson_notes WHERE id = %s",
-            (note_id,),
-        )
-        or 0
-    )
-
-
-def test_lesson_notes_owner_crud_other_caller_404_and_preview_sql(
+def test_lesson_notes_owner_crud_other_caller_404(
     api_base_url: str,
     api: ApiClient,
     student_api: ApiClient,
     course_factory,
     lesson_factory,
 ) -> None:
-    """Author CRUD; another principal cannot list or mutate the note; preview SQL empty after delete."""
+    """Author CRUD; another principal cannot list or mutate the note."""
     _require_jwts()
     course_id, lesson_id = _published_lesson(api, course_factory, lesson_factory)
     ensure_student_subscription(api_base_url, student_api, course_id, lesson_id)
@@ -83,7 +70,3 @@ def test_lesson_notes_owner_crud_other_caller_404_and_preview_sql(
     after_list = student_api.list_lesson_notes(course_id, lesson_id)
     assert after_list.status_code == 200
     assert not any(n["id"] == note_id for n in (after_list.json().get("notes") or []))
-
-    if is_dsql_preview_api_stack():
-        with admin_connect() as conn:
-            assert _note_count_by_id(conn, note_id) == 0

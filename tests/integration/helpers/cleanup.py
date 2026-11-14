@@ -13,7 +13,7 @@ import logging
 import os
 import re
 import sys
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from typing import Any, List, Tuple
 
@@ -78,6 +78,7 @@ def delete_prefixed_teacher_courses_via_http(
     auth_token: str,
     title_prefix: str,
     timeout_s: float = 30.0,
+    clear_blocking_purchases: Callable[[str], None] | None = None,
 ) -> Tuple[List[str], List[str]]:
     """DELETE every course owned by the token user whose title starts with *title_prefix*
     (``GET /courses/mine``, then ``DELETE /courses/{id}``). No direct DB access.
@@ -128,7 +129,24 @@ def delete_prefixed_teacher_courses_via_http(
             if not course_id:
                 continue
             matched_ids.append(course_id)
+            if clear_blocking_purchases is not None:
+                try:
+                    clear_blocking_purchases(course_id)
+                except Exception as e:
+                    log_integration_cleanup_error(
+                        f"API safety-net purchase cleanup for course {course_id} raised ({e!r}); "
+                        "still attempting DELETE /courses/{course_id}."
+                    )
             del_resp = client.delete(f"/courses/{course_id}")
+            if del_resp.status_code == 409 and clear_blocking_purchases is not None:
+                try:
+                    clear_blocking_purchases(course_id)
+                except Exception as e:
+                    log_integration_cleanup_error(
+                        f"API safety-net purchase cleanup for course {course_id} raised ({e!r}); "
+                        "retrying DELETE /courses/{course_id}."
+                    )
+                del_resp = client.delete(f"/courses/{course_id}")
             if del_resp.status_code in (200, 404):
                 deleted_ids.append(course_id)
             else:

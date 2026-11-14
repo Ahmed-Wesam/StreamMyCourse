@@ -20,6 +20,7 @@ import httpx
 import pytest
 
 from helpers.api import ApiClient
+from helpers.dsql_preview_access import delete_purchases_for_course_id
 from helpers.factories import (
     TEST_TITLE_PREFIX,
     build_course_factory,
@@ -230,6 +231,10 @@ def course_factory(api: ApiClient, request: pytest.FixtureRequest):
     def cleanup() -> None:
         for course_id in created_course_ids:
             try:
+                delete_purchases_for_course_id(course_id)
+            except Exception:
+                pass
+            try:
                 api.delete_course(course_id)
             except Exception:
                 # Per policy, cleanup failures are non-fatal; safety net catches leftovers.
@@ -257,6 +262,10 @@ def alt_course_factory(alt_api: ApiClient, request: pytest.FixtureRequest):
 
     def cleanup() -> None:
         for course_id in created_course_ids:
+            try:
+                delete_purchases_for_course_id(course_id)
+            except Exception:
+                pass
             try:
                 alt_api.delete_course(course_id)
             except Exception:
@@ -334,6 +343,7 @@ def _run_cleanup_for_token(api_base: str, token: str, title_prefixes: list[str])
                 api_base_url=api_base,
                 auth_token=token,
                 title_prefix=prefix,
+                clear_blocking_purchases=delete_purchases_for_course_id,
             )
             all_deleted.extend(deleted)
             all_matched.extend(matched)

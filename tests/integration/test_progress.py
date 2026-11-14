@@ -8,9 +8,7 @@ These tests verify the progress service behavior including:
 - Course-level progress aggregation
 - Auto-completion at 92% ratio threshold
 
-On preview (``INTEGRATION_API_STACK`` ending with ``Api-dsql``), subscribed
-courses use D9 admin bundle purchase via ``ensure_student_subscription`` instead
-of the HyperPay webhook path.
+Subscribed courses use ``ensure_student_subscription`` (HyperPay webhook path on prod).
 """
 
 from __future__ import annotations
