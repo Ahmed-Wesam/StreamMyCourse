@@ -6,6 +6,11 @@
 
 ---
 
+## 2026-11-14 — Dev gate: cleanup queue and missing checkout
+
+- Deploy [**43605825039**](https://github.com/Ahmed-Wesam/StreamMyCourse/actions/runs/43605825039) deployed dev, then the suite failed. Deletes of lessons that have files returned **503** `service_unavailable` because `MEDIA_CLEANUP_QUEUE_URL` was empty. Checkout returned API Gateway **403** (`missing equal-sign` in `Authorization`) because the billing routes are not on the dev API, and the helper only skipped **404**.
+- [`scripts/deploy-dev.sh`](scripts/deploy-dev.sh) now passes the existing `StreamMyCourse-MediaCleanup-dev` URL and ARN into the API stack. No new worker. Checkout **403** with that API Gateway body skips the same way a missing route does.
+
 ## 2026-11-14 — Dev integration gate before prod
 
 - **Order:** [`deploy-backend.yml`](.github/workflows/deploy-backend.yml) calls [`deploy-dev.yml`](.github/workflows/deploy-dev.yml), runs **`integration-http-tests`** against `StreamMyCourse-Api-dev` / `StreamMyCourse-Dsql-dev` / `StreamMyCourse-Auth-dev`, then starts prod edge, DSQL, backend, and SPAs only if that suite passes.
