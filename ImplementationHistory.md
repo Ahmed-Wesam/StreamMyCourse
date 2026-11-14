@@ -6,6 +6,13 @@
 
 ---
 
+## 2026-11-14 — Dev stage workflow (templates only; dispatch blocked on Google secrets)
+
+- **Repo:** [`scripts/dev_stage.py`](scripts/dev_stage.py) guards (prod DSQL deny id, Google digest compare, parameter builders), [`scripts/deploy-dev.sh`](scripts/deploy-dev.sh), [`.github/workflows/deploy-dev.yml`](.github/workflows/deploy-dev.yml) (`workflow_dispatch` only), [`dev-video-bucket-stack.yaml`](infrastructure/templates/dev-video-bucket-stack.yaml); [`dsql-stack.yaml`](infrastructure/templates/dsql-stack.yaml) `Environment` parameter (`prod` default). [`deploy-backend.yml`](.github/workflows/deploy-backend.yml) unchanged — prod integration on `StreamMyCourse-Api-prod`.
+- **Commit:** `eac2fcf` — CI [**43563217682**](https://github.com/Ahmed-Wesam/StreamMyCourse/actions/runs/43563217682) success; Deploy [**43563379446**](https://github.com/Ahmed-Wesam/StreamMyCourse/actions/runs/43563379446) success (prod DSQL tag update only).
+- **First dev dispatch:** [**43564776149**](https://github.com/Ahmed-Wesam/StreamMyCourse/actions/runs/43564776149) — **`guard-dev-google`** failed: Environment **`dev`** missing **`GOOGLE_OAUTH_CLIENT_ID`** and **`GOOGLE_OAUTH_CLIENT_SECRET`**. No dev stacks in `eu-west-1` (`StreamMyCourse-Dsql-dev`, `Auth-dev`, `Api-dev`, `DevVideo-dev` all absent).
+- **ADR:** [ADR-0017](plans/architecture/adr-0017-dev-stage.md). Dev stage **not** marked shipped.
+
 ## 2026-11-14 — Post-DSQL catalog cleanup (shipped)
 
 - **Integration hygiene:** [`delete_purchases_for_course_id`](tests/integration/helpers/dsql_preview_access.py) + [`clear_blocking_purchases`](tests/integration/helpers/cleanup.py) on session/course finalizers so `DELETE /courses/{id}` is not left at **409** when a test purchase row exists; preview-only integration modules and `Api-dsql` branches removed; public bundle GET kept in [`test_billing_catalog_preview.py`](tests/integration/test_billing_catalog_preview.py).
