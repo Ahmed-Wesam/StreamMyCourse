@@ -346,6 +346,18 @@ if [[ -n "${TM_QUEUE_URL:-}" && -n "${TM_QUEUE_ARN:-}" ]]; then
   )
 fi
 
+if [[ -n "${DSQL_ENDPOINT:-}" ]]; then
+  DSQL_ENDPOINT_VAL="${DSQL_ENDPOINT}"
+fi
+if [[ -n "${DSQL_CLUSTER_ARN:-}" ]]; then
+  DSQL_CLUSTER_ARN_VAL="${DSQL_CLUSTER_ARN}"
+fi
+if ! _resolve_dsql_stack_outputs; then
+  echo "Error: StreamMyCourse-Dsql-${ENV} outputs (Endpoint, ResourceArn) required before deploy." >&2
+  exit 1
+fi
+_export_dsql_for_payments
+
 # Billing edge + fulfillment queue (WS2). Override all three to skip payments stack redeploy.
 BILLING_EDGE_ARN="${BILLING_EDGE_LAMBDA_ARN:-}"
 BILLING_QUEUE_URL="${BILLING_FULFILLMENT_QUEUE_URL:-}"

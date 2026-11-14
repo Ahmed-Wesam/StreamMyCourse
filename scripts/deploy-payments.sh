@@ -21,11 +21,11 @@ EDGE_DIR="$ROOT/infrastructure/lambda/billing_edge"
 FULFILL_DIR="$ROOT/infrastructure/lambda/billing_fulfillment"
 
 PAYMENTS_STACK="StreamMyCourse-Payments-${ENV}"
-RDS_STACK="${RDS_STACK_NAME:-}"
 DSQL_ENDPOINT_PARAM="${DSQL_ENDPOINT:-}"
 DSQL_CLUSTER_ARN_PARAM="${DSQL_CLUSTER_ARN:-}"
-if [[ -z "$RDS_STACK" && -z "$DSQL_ENDPOINT_PARAM" ]]; then
-  RDS_STACK="StreamMyCourse-Rds-${ENV}"
+if [[ -z "$DSQL_ENDPOINT_PARAM" || -z "$DSQL_CLUSTER_ARN_PARAM" ]]; then
+  echo "DSQL_ENDPOINT and DSQL_CLUSTER_ARN are required for payments deploy (from StreamMyCourse-Dsql-${ENV})." >&2
+  exit 1
 fi
 
 CATALOG_LAMBDA_ARN="${CATALOG_LAMBDA_ARN:-}"
@@ -288,7 +288,7 @@ aws cloudformation validate-template \
   --template-body "$VALIDATE_BODY_URI" \
   --region "$REGION"
 
-echo "Deploying payments stack: $PAYMENTS_STACK (RdsStackName=${RDS_STACK:-<empty>}, DsqlEndpoint=${DSQL_ENDPOINT_PARAM:+set})"
+echo "Deploying payments stack: $PAYMENTS_STACK (DsqlEndpoint set, DsqlClusterArn set)"
 aws cloudformation deploy \
   --template-file "$PAYMENTS_TEMPLATE" \
   --stack-name "$PAYMENTS_STACK" \
@@ -300,7 +300,6 @@ aws cloudformation deploy \
   "LambdaCodeS3Bucket=${ARTIFACT_BUCKET}" \
   "BillingEdgeCodeS3Key=${EDGE_KEY}" \
   "BillingFulfillmentCodeS3Key=${FULFILL_KEY}" \
-  "RdsStackName=${RDS_STACK}" \
   "DsqlEndpoint=${DSQL_ENDPOINT_PARAM}" \
   "DsqlClusterArn=${DSQL_CLUSTER_ARN_PARAM}" \
   "PaymentProvider=${PAYMENT_PROVIDER}" \

@@ -104,6 +104,14 @@ def test_deploy_payments_sh_copies_db_tx_into_fulfillment_zip() -> None:
     assert 'FULFILL_BUILD/db_tx.py' in text or '"$FULFILL_BUILD/db_tx.py"' in text
 
 
+def test_deploy_payments_sh_requires_dsql_not_rds() -> None:
+    text = (ROOT / "scripts/deploy-payments.sh").read_text(encoding="utf-8")
+    assert "RdsStackName" not in text
+    assert "StreamMyCourse-Rds-" not in text
+    assert "DSQL_ENDPOINT" in text
+    assert "DSQL_CLUSTER_ARN" in text
+
+
 def test_billing_fulfillment_build_connection_factory_uses_dsql(fake_dsql_connect: MagicMock) -> None:
     fulfill_mod = _load_module(
         "fulfillment_repo",

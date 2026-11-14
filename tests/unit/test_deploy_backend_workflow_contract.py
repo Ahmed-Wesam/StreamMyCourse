@@ -195,6 +195,14 @@ def test_deploy_payments_sh_cleans_rollback_and_orphan_sqs() -> None:
     assert "_ensure_payments_stack_deployable" in text
     assert "ROLLBACK_COMPLETE" in text
     assert "StreamMyCourse-BillingFulfillment-DLQ-" in text
+    assert "RdsStackName" not in text
+
+
+def test_deploy_backend_sh_resolves_dsql_before_early_payments() -> None:
+    text = _deploy_backend_sh_text()
+    pay_idx = text.index("# Billing edge + fulfillment queue")
+    dsql_idx = text.index("if ! _resolve_dsql_stack_outputs; then", 0, pay_idx)
+    assert dsql_idx < pay_idx
 
 
 def test_deploy_backend_sh_deploys_payments_before_api_stack() -> None:
