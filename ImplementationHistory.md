@@ -2,9 +2,15 @@
 
 > Living document tracking all implementation progress, decisions, and milestones.
 >
-> **Note (2026):** CI/CD and integration tests target **prod only** (`StreamMyCourse-*-prod`). Older entries below may reference **dev** stacks, **`streammycourse-api`**, **`deploy-environment.ps1`**, or **`deploy-backend-dev-only.yml`** — see current docs in [`AGENTS.md`](AGENTS.md), [`design.md`](design.md) §10, and [`infrastructure/README.md`](infrastructure/README.md).
+> **Note (2026):** A green push to **`main`** deploys **dev**, runs the HTTPS suite against the dev API, then deploys **prod**. Older entries below may reference **prod-only** integration, **`streammycourse-api`**, **`deploy-environment.ps1`**, or **`deploy-backend-dev-only.yml`** — see current docs in [`AGENTS.md`](AGENTS.md), [`design.md`](design.md) §10, and [`infrastructure/README.md`](infrastructure/README.md).
 
 ---
+
+## 2026-11-14 — Dev integration gate before prod
+
+- **Order:** [`deploy-backend.yml`](.github/workflows/deploy-backend.yml) calls [`deploy-dev.yml`](.github/workflows/deploy-dev.yml), runs **`integration-http-tests`** against `StreamMyCourse-Api-dev` / `StreamMyCourse-Dsql-dev` / `StreamMyCourse-Auth-dev`, then starts prod edge, DSQL, backend, and SPAs only if that suite passes.
+- **Dev parallelism:** the S3 video bucket deploys beside DSQL, schema, and auth. The API waits for both auth and the bucket.
+- **Tests:** `INTEGRATION_VIDEO_PROVIDER=s3`. Cognito passwords stay on GitHub Environment **prod** and are minted into the dev pool. SQL probes use the dev cluster endpoint, not `cfuhjrrzy65ngud25rdqqso5t4`. Migration **0005** seeds the dev bundle price so `GET /billing/bundle` matches the catalog lookup by environment.
 
 ## 2026-11-14 — SQS poll interval, API metrics, and test-mail bounces
 

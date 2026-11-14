@@ -12,7 +12,7 @@ Engineers need an isolated **`dev`** API and Cognito pool for localhost work wit
 
 | Area | Choice |
 |------|--------|
-| **Trigger** | [`.github/workflows/deploy-dev.yml`](../../.github/workflows/deploy-dev.yml) — **`workflow_dispatch` only**; does not run on push and does not modify [`deploy-backend.yml`](../../.github/workflows/deploy-backend.yml). |
+| **Trigger** | [`.github/workflows/deploy-dev.yml`](../../.github/workflows/deploy-dev.yml) — **`workflow_dispatch`** and **`workflow_call`**. [`.github/workflows/deploy-backend.yml`](../../.github/workflows/deploy-backend.yml) calls it after CI and before any prod job. It does not run on push by itself. |
 | **Script** | [`scripts/deploy-dev.sh`](../../scripts/deploy-dev.sh) (`dev` + `dsql\|schema\|auth\|video\|api`); guards and parameter builders in [`scripts/dev_stage.py`](../../scripts/dev_stage.py). |
 | **Stacks (intended)** | `StreamMyCourse-Dsql-dev`, `StreamMyCourse-Auth-dev`, `StreamMyCourse-Api-dev`, `StreamMyCourse-DevVideo-dev` (S3-only [`dev-video-bucket-stack.yaml`](../../infrastructure/templates/dev-video-bucket-stack.yaml)). |
 | **DSQL** | Same [`dsql-stack.yaml`](../../infrastructure/templates/dsql-stack.yaml) with `Environment=dev`; prod cluster id is denied in `dev_stage.py`. |
