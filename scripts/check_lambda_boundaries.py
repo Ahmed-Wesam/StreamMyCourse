@@ -79,6 +79,7 @@ _BILLING_EDGE_BOTO3_ALLOWED = frozenset(
 _BILLING_FULFILLMENT_BOTO3_ALLOWED = frozenset(
     {
         _p("infrastructure/lambda/billing_fulfillment/fulfillment_repo.py"),
+        _p("infrastructure/lambda/billing_fulfillment/sqs_scheduled_poll.py"),
     }
 )
 
@@ -111,6 +112,7 @@ _CATALOG_SMTP_ALLOWED = frozenset()
 _TRANSACTIONAL_MAIL_BOTO3_ALLOWED = frozenset(
     {
         _p("infrastructure/lambda/transactional_mail/smtp_config.py"),
+        _p("infrastructure/lambda/transactional_mail/sqs_scheduled_poll.py"),
     }
 )
 

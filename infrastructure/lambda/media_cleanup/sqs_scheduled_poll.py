@@ -6,12 +6,23 @@ four times, 15 seconds apart, so a message waits at most about 15 seconds.
 
 from __future__ import annotations
 
+import os
 import time
-from typing import Any, Callable, Dict, List
+from typing import Any, Callable, Dict, List, Optional
 
 import boto3
 
-_sqs = boto3.client("sqs")
+_sqs: Optional[Any] = None
+
+
+def _sqs_client() -> Any:
+    """Create the client on first use. Import must not require AWS_REGION (unit tests)."""
+    global _sqs
+    if _sqs is None:
+        region = os.environ.get("AWS_REGION") or os.environ.get("AWS_DEFAULT_REGION") or "eu-west-1"
+        _sqs = boto3.client("sqs", region_name=region)
+    return _sqs
+
 
 POLL_MAX_MESSAGES = 10
 POLL_INTERVAL_SECONDS = 15
@@ -27,7 +38,7 @@ def poll_queue_records(queue_url: str) -> List[Dict[str, Any]]:
     if not url:
         raise RuntimeError("WORK_QUEUE_URL is not configured")
 
-    resp = _sqs.receive_message(
+    resp = _sqs_client().receive_message(
         QueueUrl=url,
         MaxNumberOfMessages=POLL_MAX_MESSAGES,
         WaitTimeSeconds=0,
@@ -89,4 +100,4 @@ def delete_processed_messages(
         rh = str(record.get("_receiptHandle") or "")
         if not rh:
             continue
-        _sqs.delete_message(QueueUrl=url, ReceiptHandle=rh)
+        _sqs_client().delete_message(QueueUrl=url, ReceiptHandle=rh)
