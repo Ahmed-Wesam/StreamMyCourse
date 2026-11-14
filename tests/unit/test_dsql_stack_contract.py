@@ -41,6 +41,12 @@ def _read_template(name: str) -> str:
     return path.read_text(encoding="utf-8")
 
 
+def _parameters_block(text: str) -> str:
+    match = re.search(r"(?ms)^Parameters:.*?(?=^Resources:)", text)
+    assert match, "Parameters section not found"
+    return match.group(0)
+
+
 def _cluster_resource_block(text: str) -> str:
     """YAML block for the DSQL cluster resource (through deletion policies / properties)."""
     match = re.search(
@@ -81,10 +87,29 @@ def test_dsql_stack_no_multi_region_or_cluster_policy_document() -> None:
     assert "PolicyDocument:" not in text
 
 
+def test_dsql_stack_environment_parameter_prod_default() -> None:
+    text = _read_template("dsql-stack.yaml")
+    params = _parameters_block(text)
+    assert re.search(r"^\s+Environment:\s*$", params, re.MULTILINE)
+    assert re.search(r"Default:\s+prod\s*$", params, re.MULTILINE)
+    assert re.search(r"AllowedValues:.*\bprod\b", params) or re.search(
+        r"^\s+-\s+prod\s*$", params, re.MULTILINE
+    )
+    assert re.search(r"AllowedValues:.*\bdev\b", params) or re.search(
+        r"^\s+-\s+dev\s*$", params, re.MULTILINE
+    )
+
+
 def test_dsql_stack_tags_project_and_name() -> None:
-    block = _cluster_resource_block(_read_template("dsql-stack.yaml"))
+    text = _read_template("dsql-stack.yaml")
+    params = _parameters_block(text)
+    assert re.search(r"Default:\s+prod\s*$", params, re.MULTILINE)
+    block = _cluster_resource_block(text)
     assert re.search(r"Key:\s+Project\s*\n\s+Value:\s+StreamMyCourse", block)
-    assert re.search(r"Key:\s+Name\s*\n\s+Value:\s+streammycourse-prod", block)
+    assert re.search(
+        r"Key:\s+Name\s*\n\s+Value:\s*!Sub\s+'streammycourse-\$\{Environment\}'",
+        block,
+    )
 
 
 def test_github_deploy_role_dsql_cluster_management_and_connect() -> None:

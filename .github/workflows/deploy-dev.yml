@@ -1,0 +1,205 @@
+# Manual dev stage deploy only — does not run on push and does not touch prod integration targets.
+name: Deploy dev
+
+on:
+  workflow_dispatch:
+
+permissions:
+  id-token: write
+  contents: read
+
+concurrency:
+  group: deploy-dev
+  cancel-in-progress: false
+
+env:
+  AWS_REGION: eu-west-1
+
+jobs:
+  resolve-oidc-deploy-role:
+    name: Resolve repo OIDC deploy role ARN
+    runs-on: ubuntu-latest
+    outputs:
+      aws_deploy_role_arn: ${{ steps.pin.outputs.arn }}
+    steps:
+      - id: pin
+        run: |
+          echo "arn=${{ vars.AWS_DEPLOY_ROLE_ARN }}" >> "$GITHUB_OUTPUT"
+
+  hash-prod-google-client-id:
+    name: Hash prod Google client id (digest only)
+    runs-on: ubuntu-latest
+    needs: resolve-oidc-deploy-role
+    environment: prod
+    outputs:
+      prod_google_client_id_sha256: ${{ steps.hash.outputs.sha256 }}
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+
+      - id: hash
+        env:
+          GOOGLE_OAUTH_CLIENT_ID: ${{ secrets.GOOGLE_OAUTH_CLIENT_ID }}
+        run: |
+          set -euo pipefail
+          set +x
+          DIGEST="$(python "${{ github.workspace }}/scripts/dev_stage.py" hash-client-id | tr -d '\n')"
+          echo "sha256=${DIGEST}" >> "$GITHUB_OUTPUT"
+
+  guard-dev-google:
+    name: Guard dev Google OAuth credentials
+    runs-on: ubuntu-latest
+    needs: [resolve-oidc-deploy-role, hash-prod-google-client-id]
+    environment: dev
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+
+      # Set GitHub Environment dev secrets GOOGLE_OAUTH_CLIENT_ID and GOOGLE_OAUTH_CLIENT_SECRET
+      - name: Refuse prod Google client or missing dev secrets
+        env:
+          GOOGLE_OAUTH_CLIENT_ID: ${{ secrets.GOOGLE_OAUTH_CLIENT_ID }}
+          GOOGLE_OAUTH_CLIENT_SECRET: ${{ secrets.GOOGLE_OAUTH_CLIENT_SECRET }}
+          PROD_GOOGLE_CLIENT_ID_SHA256: ${{ needs.hash-prod-google-client-id.outputs.prod_google_client_id_sha256 }}
+        run: |
+          set -euo pipefail
+          python "${{ github.workspace }}/scripts/dev_stage.py" guard-google
+
+  deploy-dsql-dev:
+    name: DSQL cluster (dev)
+    runs-on: ubuntu-latest
+    needs: [resolve-oidc-deploy-role, guard-dev-google]
+    environment: dev
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v6
+        with:
+          role-to-assume: ${{ needs.resolve-oidc-deploy-role.outputs.aws_deploy_role_arn }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Deploy DSQL stack (dev)
+        run: |
+          chmod +x scripts/deploy-dev.sh
+          ./scripts/deploy-dev.sh dev dsql
+
+  apply-schema-dev:
+    name: Apply DSQL schema (dev)
+    runs-on: ubuntu-latest
+    needs: [resolve-oidc-deploy-role, guard-dev-google, deploy-dsql-dev]
+    environment: dev
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v6
+        with:
+          role-to-assume: ${{ needs.resolve-oidc-deploy-role.outputs.aws_deploy_role_arn }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+
+      - name: Install schema applier dependencies
+        run: |
+          pip install --quiet psycopg2-binary==2.9.9 aurora-dsql-python-connector
+
+      - name: Apply dev schema and grant dev Lambda roles
+        run: |
+          chmod +x scripts/deploy-dev.sh
+          ./scripts/deploy-dev.sh dev schema
+
+  deploy-auth-dev:
+    name: Auth (dev) — Cognito
+    runs-on: ubuntu-latest
+    needs: [resolve-oidc-deploy-role, guard-dev-google, apply-schema-dev]
+    environment: dev
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v6
+        with:
+          role-to-assume: ${{ needs.resolve-oidc-deploy-role.outputs.aws_deploy_role_arn }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+
+      - name: Deploy auth stack (dev)
+        env:
+          GOOGLE_OAUTH_CLIENT_ID: ${{ secrets.GOOGLE_OAUTH_CLIENT_ID }}
+          GOOGLE_OAUTH_CLIENT_SECRET: ${{ secrets.GOOGLE_OAUTH_CLIENT_SECRET }}
+          DEV_COGNITO_DOMAIN_PREFIX: ${{ vars.DEV_COGNITO_DOMAIN_PREFIX }}
+        run: |
+          set -euo pipefail
+          echo "::add-mask::${GOOGLE_OAUTH_CLIENT_ID}"
+          echo "::add-mask::${GOOGLE_OAUTH_CLIENT_SECRET}"
+          chmod +x scripts/deploy-dev.sh
+          ./scripts/deploy-dev.sh dev auth
+
+  deploy-video-dev:
+    name: Dev video bucket (S3 only)
+    runs-on: ubuntu-latest
+    needs: [resolve-oidc-deploy-role, guard-dev-google, deploy-auth-dev]
+    environment: dev
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v6
+        with:
+          role-to-assume: ${{ needs.resolve-oidc-deploy-role.outputs.aws_deploy_role_arn }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Deploy dev video bucket stack
+        run: |
+          chmod +x scripts/deploy-dev.sh
+          ./scripts/deploy-dev.sh dev video
+
+  deploy-api-dev:
+    name: API (dev) — Lambda catalog
+    runs-on: ubuntu-latest
+    needs: [resolve-oidc-deploy-role, guard-dev-google, deploy-video-dev]
+    environment: dev
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v6
+        with:
+          role-to-assume: ${{ needs.resolve-oidc-deploy-role.outputs.aws_deploy_role_arn }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+
+      - name: Deploy API stack (dev)
+        run: |
+          chmod +x scripts/deploy-dev.sh
+          ./scripts/deploy-dev.sh dev api

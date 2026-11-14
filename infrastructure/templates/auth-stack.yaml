@@ -6,7 +6,7 @@ Description: >-
 Parameters:
   Environment:
     Type: String
-    AllowedValues: [prod]
+    AllowedValues: [prod, dev]
     Default: prod
 
   CognitoDomainPrefix:

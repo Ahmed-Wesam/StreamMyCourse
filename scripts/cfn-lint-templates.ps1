@@ -32,6 +32,7 @@ $templates = @(
     'infrastructure/templates/api-stack.yaml',
     'infrastructure/templates/auth-stack.yaml',
     'infrastructure/templates/video-stack.yaml',
+    'infrastructure/templates/dev-video-bucket-stack.yaml',
     'infrastructure/templates/edge-hosting-stack.yaml',
     'infrastructure/templates/github-deploy-role-stack.yaml',
     'infrastructure/templates/billing-alarm.yaml',

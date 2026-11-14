@@ -20,6 +20,7 @@ cd "$ROOT"
 $CFN_LINT --config-file .cfnlintrc infrastructure/templates/api-stack.yaml
 $CFN_LINT --config-file .cfnlintrc infrastructure/templates/auth-stack.yaml
 $CFN_LINT --config-file .cfnlintrc infrastructure/templates/video-stack.yaml
+$CFN_LINT --config-file .cfnlintrc infrastructure/templates/dev-video-bucket-stack.yaml
 $CFN_LINT --config-file .cfnlintrc infrastructure/templates/edge-hosting-stack.yaml
 $CFN_LINT --config-file .cfnlintrc infrastructure/templates/github-deploy-role-stack.yaml
 $CFN_LINT --config-file .cfnlintrc infrastructure/templates/billing-alarm.yaml

@@ -4,7 +4,7 @@ Description: 'StreamMyCourse - MVP API Stack (API Gateway + Lambda, no event sou
 Parameters:
   Environment:
     Type: String
-    AllowedValues: [prod]
+    AllowedValues: [prod, dev]
     Default: prod
     Description: Deployment environment
 

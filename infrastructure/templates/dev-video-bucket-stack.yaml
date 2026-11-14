@@ -1,0 +1,62 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: >-
+  StreamMyCourse - Dev video uploads bucket (S3 only; no CloudFront).
+  For StreamMyCourse-DevVideo-dev stack.
+
+Parameters:
+  Environment:
+    Type: String
+    AllowedValues: [dev]
+    Default: dev
+    Description: Deployment environment (dev only)
+
+Resources:
+  DevVideoBucket:
+    Type: AWS::S3::Bucket
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      CorsConfiguration:
+        CorsRules:
+          - AllowedMethods:
+              - GET
+              - HEAD
+              - PUT
+            AllowedOrigins:
+              - http://localhost:5173
+              - http://127.0.0.1:5173
+              - http://localhost:5174
+              - http://127.0.0.1:5174
+            AllowedHeaders:
+              - Content-Type
+              - Authorization
+              - x-amz-content-sha256
+              - x-amz-date
+              - x-amz-security-token
+              - Range
+              - If-Range
+            ExposedHeaders:
+              - ETag
+              - Accept-Ranges
+              - Content-Length
+              - Content-Range
+            MaxAge: 300
+      Tags:
+        - Key: Project
+          Value: StreamMyCourse
+        - Key: Environment
+          Value: !Ref Environment
+
+Outputs:
+  BucketName:
+    Description: Dev video bucket name for catalog presigned uploads
+    Value: !Ref DevVideoBucket
