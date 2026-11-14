@@ -3811,7 +3811,6 @@ Resources:
           HttpMethod: 'GET'
           ThrottlingRateLimit: 40
           ThrottlingBurstLimit: 80
-          MetricsEnabled: true
         - ResourcePath: '/courses/*'
           HttpMethod: 'GET'
           ThrottlingRateLimit: 40
@@ -3820,7 +3819,6 @@ Resources:
           HttpMethod: '*'
           ThrottlingRateLimit: 100
           ThrottlingBurstLimit: 200
-          MetricsEnabled: true
 
   CatalogApi4xxAlarm:
     Type: AWS::CloudWatch::Alarm

@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
+import logging
 import smtplib
 from email.message import EmailMessage
 from typing import Protocol
 
 from smtp_config import ZohoSmtpConfig
+
+logger = logging.getLogger(__name__)
 
 ALLOWLIST_TO_ADDRESSES: frozenset[str] = frozenset({"support@researchspectrum.org"})
 
@@ -27,6 +30,21 @@ def _normalize_kind(kind: str | None) -> str:
     if raw in ("contact", "notify"):
         return raw
     raise ValueError(f"Unsupported mail kind {kind!r}")
+
+
+def _recipient_domain(to_address: str) -> str:
+    _reject_crlf(to_address, "to")
+    if "@" not in to_address:
+        return ""
+    return to_address.rsplit("@", 1)[-1].strip().lower()
+
+
+def _is_undeliverable_local_domain(domain: str) -> bool:
+    if not domain:
+        return True
+    if domain.endswith(".local"):
+        return True
+    return False
 
 
 def _validate_notify_recipient(to_address: str) -> str:
@@ -78,6 +96,14 @@ def send_transactional_mail(
     else:
         if to_address not in ALLOWLIST_TO_ADDRESSES:
             raise ValueError(f"Recipient {to_address!r} is not on the allowlist")
+
+    domain = _recipient_domain(to_address)
+    if _is_undeliverable_local_domain(domain):
+        logger.info(
+            "Skipping transactional mail to undeliverable local domain (kind=%s)",
+            mail_kind,
+        )
+        return
 
     _reject_crlf(subject, "subject")
 

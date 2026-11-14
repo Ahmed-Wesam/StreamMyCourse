@@ -9,15 +9,15 @@ from typing import Any, Dict, List
 
 from mail import send_transactional_mail
 from smtp_config import load_zoho_smtp_config
+from sqs_scheduled_poll import run_scheduled_polls, should_poll_queue
 
 logger = logging.getLogger(__name__)
 logger.setLevel(os.environ.get("LOG_LEVEL", "INFO").upper())
 
 
-def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
+def _process_records(records: List[Dict[str, Any]], cfg: Any) -> List[Dict[str, str]]:
     failures: List[Dict[str, str]] = []
-    cfg = load_zoho_smtp_config()
-    for record in event.get("Records") or []:
+    for record in records:
         mid = record.get("messageId") or ""
         try:
             body = json.loads(record.get("body") or "{}")
@@ -26,8 +26,25 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             logger.exception("Failed processing transactional mail message %s", mid)
             if mid:
                 failures.append({"itemIdentifier": mid})
+    return failures
 
-    return {"batchItemFailures": failures}
+
+def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
+    if should_poll_queue(event):
+        queue_url = (os.environ.get("WORK_QUEUE_URL") or "").strip()
+        loaded: Dict[str, Any] = {}
+
+        def handle_batch(records: List[Dict[str, Any]]) -> List[Dict[str, str]]:
+            if "cfg" not in loaded:
+                loaded["cfg"] = load_zoho_smtp_config()
+            return _process_records(records, loaded["cfg"])
+
+        return {"batchItemFailures": run_scheduled_polls(queue_url, handle_batch)}
+
+    records: List[Dict[str, Any]] = list(event.get("Records") or [])
+    if not records:
+        return {"batchItemFailures": []}
+    return {"batchItemFailures": _process_records(records, load_zoho_smtp_config())}
 
 
 def _send_for_message(*, body: Dict[str, Any], cfg: Any, message_id: str) -> None:

@@ -143,7 +143,7 @@ Resources:
       FunctionName: !Sub 'StreamMyCourse-TransactionalMailWorker-${Environment}'
       Runtime: python3.11
       Handler: worker.lambda_handler
-      Timeout: 30
+      Timeout: 90
       MemorySize: 256
       Role: !GetAtt TransactionalMailWorkerRole.Arn
       Code:
@@ -151,6 +151,7 @@ Resources:
         S3Key: !Ref LambdaCodeS3Key
       Environment:
         Variables:
+          WORK_QUEUE_URL: !Ref TransactionalMailQueue
           ZOHO_SMTP_SECRET_ARN: !Ref ZohoSmtpSecretArn
           LOG_LEVEL: INFO
       Tags:
@@ -163,11 +164,31 @@ Resources:
     Type: AWS::Lambda::EventSourceMapping
     Properties:
       BatchSize: 10
-      Enabled: true
+      Enabled: false
       EventSourceArn: !GetAtt TransactionalMailQueue.Arn
       FunctionName: !Ref TransactionalMailWorker
       FunctionResponseTypes:
         - ReportBatchItemFailures
+
+  TransactionalMailWorkerScheduleRule:
+    Type: AWS::Events::Rule
+    Properties:
+      Name: !Sub 'StreamMyCourse-TransactionalMailWorker-${Environment}-Schedule'
+      Description: >-
+        Wake the mail worker once a minute. The worker then checks the queue every 15 seconds.
+      ScheduleExpression: rate(1 minute)
+      State: ENABLED
+      Targets:
+        - Id: TransactionalMailWorkerTarget
+          Arn: !GetAtt TransactionalMailWorker.Arn
+
+  TransactionalMailWorkerSchedulePermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref TransactionalMailWorker
+      Action: lambda:InvokeFunction
+      Principal: events.amazonaws.com
+      SourceArn: !GetAtt TransactionalMailWorkerScheduleRule.Arn
 
 Outputs:
   TransactionalMailQueueUrl:

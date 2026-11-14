@@ -296,6 +296,84 @@ def test_contact_or_missing_kind_rejects_student_address(
     assert not RecordingSmtpFactory.instances
 
 
+def test_notify_skips_noreply_local_without_smtp(
+    mail_mod: ModuleType, zoho_cfg: Any, caplog: pytest.LogCaptureFixture
+) -> None:
+    import logging
+
+    caplog.set_level(logging.INFO)
+    RecordingSmtpFactory.reset()
+    mail_mod.send_transactional_mail(
+        cfg=zoho_cfg,
+        to_address="ci-student@noreply.local",
+        subject="Grade ready",
+        body_text="You scored 80%",
+        kind="notify",
+        smtp_factory=RecordingSmtpFactory,  # type: ignore[arg-type]
+    )
+    assert not RecordingSmtpFactory.instances
+    assert "undeliverable local domain" in caplog.text
+    assert "ci-student@noreply.local" not in caplog.text
+
+
+def test_notify_skips_any_dot_local_domain(
+    mail_mod: ModuleType, zoho_cfg: Any
+) -> None:
+    RecordingSmtpFactory.reset()
+    mail_mod.send_transactional_mail(
+        cfg=zoho_cfg,
+        to_address="rt-student-abc@noreply.local",
+        subject="Update",
+        body_text="body",
+        kind="notify",
+        smtp_factory=RecordingSmtpFactory,  # type: ignore[arg-type]
+    )
+    assert not RecordingSmtpFactory.instances
+
+
+def test_notify_still_sends_real_customer_domain(
+    mail_mod: ModuleType, zoho_cfg: Any
+) -> None:
+    RecordingSmtpFactory.reset()
+    mail_mod.send_transactional_mail(
+        cfg=zoho_cfg,
+        to_address="student@school.edu",
+        subject="Grade ready",
+        body_text="You scored 80%",
+        kind="notify",
+        smtp_factory=RecordingSmtpFactory,  # type: ignore[arg-type]
+    )
+    assert len(RecordingSmtpFactory.sent_messages) == 1
+
+
+def test_worker_notify_skips_local_domain_without_batch_failure(
+    worker_mod: ModuleType,
+    mail_mod: ModuleType,
+    zoho_cfg: Any,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    RecordingSmtpFactory.reset()
+    monkeypatch.setattr(worker_mod, "load_zoho_smtp_config", lambda **_: zoho_cfg)
+    real_send = worker_mod.send_transactional_mail
+
+    def send_with_fake_smtp(**kwargs: Any) -> None:
+        kwargs["smtp_factory"] = RecordingSmtpFactory  # type: ignore[assignment]
+        return real_send(**kwargs)
+
+    monkeypatch.setattr(worker_mod, "send_transactional_mail", send_with_fake_smtp)
+
+    body = {
+        "kind": "notify",
+        "to": "ci-student@noreply.local",
+        "subject": "Grade ready",
+        "bodyText": "You passed",
+    }
+    event = {"Records": [{"messageId": "m-local", "body": json.dumps(body)}]}
+    out = worker_mod.lambda_handler(event, None)
+    assert out == {"batchItemFailures": []}
+    assert not RecordingSmtpFactory.instances
+
+
 def test_notify_accepts_one_student_address(
     mail_mod: ModuleType, zoho_cfg: Any
 ) -> None:

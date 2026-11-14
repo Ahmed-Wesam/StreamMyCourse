@@ -303,6 +303,7 @@ Resources:
         S3Key: !Ref BillingFulfillmentCodeS3Key
       Environment:
         Variables:
+          WORK_QUEUE_URL: !Ref BillingFulfillmentQueue
           DEPLOYMENT_ENVIRONMENT: !Ref Environment
           DSQL_ENDPOINT: !Ref DsqlEndpoint
           DSQL_USER: smc_app
@@ -365,11 +366,31 @@ Resources:
     Type: AWS::Lambda::EventSourceMapping
     Properties:
       BatchSize: 10
-      Enabled: true
+      Enabled: false
       EventSourceArn: !GetAtt BillingFulfillmentQueue.Arn
       FunctionName: !Ref BillingFulfillment
       FunctionResponseTypes:
         - ReportBatchItemFailures
+
+  BillingFulfillmentScheduleRule:
+    Type: AWS::Events::Rule
+    Properties:
+      Name: !Sub 'StreamMyCourse-BillingFulfillment-${Environment}-Schedule'
+      Description: >-
+        Wake the billing fulfillment worker once a minute. The worker then checks the queue every 15 seconds.
+      ScheduleExpression: rate(1 minute)
+      State: ENABLED
+      Targets:
+        - Id: BillingFulfillmentTarget
+          Arn: !GetAtt BillingFulfillment.Arn
+
+  BillingFulfillmentSchedulePermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref BillingFulfillment
+      Action: lambda:InvokeFunction
+      Principal: events.amazonaws.com
+      SourceArn: !GetAtt BillingFulfillmentScheduleRule.Arn
 
 Outputs:
   BillingEdgeLambdaArn:

@@ -40,6 +40,12 @@
       "Resource": "arn:aws:sqs:eu-west-1:YOUR_AWS_ACCOUNT_ID:StreamMyCourse-*"
     },
     {
+      "Sid": "EventsRulesStreamMyCourse",
+      "Effect": "Allow",
+      "Action": "events:*",
+      "Resource": "arn:aws:events:eu-west-1:YOUR_AWS_ACCOUNT_ID:rule/StreamMyCourse-*"
+    },
+    {
       "Sid": "ApiGatewayEuWest1",
       "Effect": "Allow",
       "Action": ["apigateway:*", "execute-api:*"],

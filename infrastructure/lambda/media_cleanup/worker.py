@@ -10,6 +10,7 @@ from typing import Any, Dict, List
 import boto3
 
 from kinescope_adapter import KinescopeDeleteAdapter
+from sqs_scheduled_poll import run_scheduled_polls, should_poll_queue
 
 logger = logging.getLogger(__name__)
 logger.setLevel(os.environ.get("LOG_LEVEL", "INFO").upper())
@@ -17,20 +18,14 @@ logger.setLevel(os.environ.get("LOG_LEVEL", "INFO").upper())
 _s3 = boto3.client("s3")
 
 
-def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
-    bucket = (os.environ.get("VIDEO_BUCKET") or "").strip()
-    records = event.get("Records") or []
+def _process_records(records: List[Dict[str, Any]], *, bucket: str) -> List[Dict[str, str]]:
     failures: List[Dict[str, str]] = []
-    for record in event.get("Records") or []:
+    for record in records:
         mid = record.get("messageId") or ""
         try:
             body = json.loads(record.get("body") or "{}")
             provider = str(body.get("provider") or "").strip().lower()
-            keys = (
-                body.get("s3Keys")
-                or body.get("keys")
-                or []
-            )
+            keys = body.get("s3Keys") or body.get("keys") or []
             kinescope_video_ids = body.get("kinescopeVideoIds") or []
             course_id = str(body.get("courseId") or "")
             _delete_for_message(
@@ -45,8 +40,22 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             logger.exception("Failed processing SQS message %s", mid)
             if mid:
                 failures.append({"itemIdentifier": mid})
+    return failures
 
-    return {"batchItemFailures": failures}
+
+def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
+    bucket = (os.environ.get("VIDEO_BUCKET") or "").strip()
+    if should_poll_queue(event):
+        queue_url = (os.environ.get("WORK_QUEUE_URL") or "").strip()
+        return {
+            "batchItemFailures": run_scheduled_polls(
+                queue_url,
+                lambda records: _process_records(records, bucket=bucket),
+            )
+        }
+
+    records: List[Dict[str, Any]] = list(event.get("Records") or [])
+    return {"batchItemFailures": _process_records(records, bucket=bucket)}
 
 
 def _delete_for_message(

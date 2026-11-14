@@ -136,6 +136,7 @@ Resources:
         S3Key: !Ref LambdaCodeS3Key
       Environment:
         Variables:
+          WORK_QUEUE_URL: !Ref MediaCleanupQueue
           VIDEO_BUCKET: !Ref VideoBucketName
           KINESCOPE_API_TOKEN: !Ref KinescopeApiToken
           LOG_LEVEL: INFO
@@ -149,11 +150,31 @@ Resources:
     Type: AWS::Lambda::EventSourceMapping
     Properties:
       BatchSize: 10
-      Enabled: true
+      Enabled: false
       EventSourceArn: !GetAtt MediaCleanupQueue.Arn
       FunctionName: !Ref MediaCleanupWorker
       FunctionResponseTypes:
         - ReportBatchItemFailures
+
+  MediaCleanupWorkerScheduleRule:
+    Type: AWS::Events::Rule
+    Properties:
+      Name: !Sub 'StreamMyCourse-MediaCleanupWorker-${Environment}-Schedule'
+      Description: >-
+        Wake the media cleanup worker once a minute. The worker then checks the queue every 15 seconds.
+      ScheduleExpression: rate(1 minute)
+      State: ENABLED
+      Targets:
+        - Id: MediaCleanupWorkerTarget
+          Arn: !GetAtt MediaCleanupWorker.Arn
+
+  MediaCleanupWorkerSchedulePermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref MediaCleanupWorker
+      Action: lambda:InvokeFunction
+      Principal: events.amazonaws.com
+      SourceArn: !GetAtt MediaCleanupWorkerScheduleRule.Arn
 
 Outputs:
   MediaCleanupQueueUrl:

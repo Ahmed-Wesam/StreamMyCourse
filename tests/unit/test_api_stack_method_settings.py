@@ -22,3 +22,10 @@ def test_webhook_throttles_use_explicit_post_paths_not_star_star() -> None:
     ):
         assert path in stage_block
     assert stage_block.count("HttpMethod: 'POST'") >= 3
+
+
+def test_catalog_api_stage_does_not_enable_per_method_metrics() -> None:
+    """Method-level MetricsEnabled publishes billable custom metrics; stage 4XX alarm needs only stage scope."""
+    text = _api_stack_text()
+    stage_block = text.split("CatalogApiStage:")[1].split("CatalogApi4xxAlarm:")[0]
+    assert "MetricsEnabled:" not in stage_block
