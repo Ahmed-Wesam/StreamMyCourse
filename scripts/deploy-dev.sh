@@ -190,10 +190,12 @@ _package_cognito_profile_sync() {
     --only-binary=:all: \
     --python-version 3.11 \
     --implementation cp \
-    -t "$pkg/_vendor"
+    -t "$pkg/_vendor" \
+    >/dev/null
   (cd "$pkg" && zip -rq "$stage/bundle.zip" .)
-  aws s3 cp "$stage/bundle.zip" "s3://${ARTIFACT_BUCKET}/${key}" --region "$REGION"
-  echo "${ARTIFACT_BUCKET} ${key}"
+  # stdout is only the bucket and key; callers parse that line with read.
+  aws s3 cp "$stage/bundle.zip" "s3://${ARTIFACT_BUCKET}/${key}" --region "$REGION" >/dev/null
+  printf '%s %s\n' "$ARTIFACT_BUCKET" "$key"
 }
 
 _package_cognito_pre_signup() {
@@ -205,8 +207,8 @@ _package_cognito_pre_signup() {
   cp "$ROOT/infrastructure/lambda/cognito_pre_signup/handler.py" "$pkg/"
   cp "$ROOT/infrastructure/lambda/cognito_pre_signup/linking.py" "$pkg/"
   (cd "$pkg" && zip -rq "$stage/bundle.zip" .)
-  aws s3 cp "$stage/bundle.zip" "s3://${ARTIFACT_BUCKET}/${key}" --region "$REGION"
-  echo "${ARTIFACT_BUCKET} ${key}"
+  aws s3 cp "$stage/bundle.zip" "s3://${ARTIFACT_BUCKET}/${key}" --region "$REGION" >/dev/null
+  printf '%s %s\n' "$ARTIFACT_BUCKET" "$key"
 }
 
 _auth_overrides_to_args() {
