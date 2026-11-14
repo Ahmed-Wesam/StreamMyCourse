@@ -43,10 +43,7 @@ def _purchase_event(**overrides: object) -> BillingDomainEvent:
 def _dev_config() -> FulfillmentConfig:
     return FulfillmentConfig(
         deployment_environment="dev",
-        db_secret_arn="arn:test",
-        db_host="db.test",
-        db_name="app",
-        db_port=5432,
+        dsql_endpoint="example.dsql.eu-west-1.on.aws",
     )
 
 
@@ -86,12 +83,10 @@ def test_environment_mismatch_skips_repo_and_returns_success() -> None:
 
 def test_load_fulfillment_config_reads_deployment_environment(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("DEPLOYMENT_ENVIRONMENT", "prod")
-    monkeypatch.setenv("DB_HOST", "db.internal")
-    monkeypatch.setenv("DB_SECRET_ARN", "arn:secret")
+    monkeypatch.setenv("DSQL_ENDPOINT", "cluster.dsql.internal")
     cfg = load_fulfillment_config()
     assert cfg.deployment_environment == "prod"
-    assert cfg.db_host == "db.internal"
-    assert cfg.db_secret_arn == "arn:secret"
+    assert cfg.dsql_endpoint == "cluster.dsql.internal"
 
 
 def test_domain_event_from_sqs_dict_round_trip() -> None:

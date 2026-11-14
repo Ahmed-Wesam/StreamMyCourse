@@ -1,4 +1,4 @@
-"""Catalog unconfigured message mentions RDS and DSQL dependencies."""
+"""Catalog unconfigured message mentions DSQL dependency."""
 
 from __future__ import annotations
 
@@ -25,7 +25,7 @@ def cfg_wildcard() -> AppConfig:
     )
 
 
-def test_catalog_unconfigured_message_lists_dsql_and_rds(
+def test_catalog_unconfigured_message_lists_dsql_endpoint(
     monkeypatch: pytest.MonkeyPatch,
     cfg_wildcard: AppConfig,
     make_lambda_event,
@@ -41,5 +41,5 @@ def test_catalog_unconfigured_message_lists_dsql_and_rds(
     body = json.loads(resp["body"])
     assert body["code"] == "catalog_unconfigured"
     msg = body["message"]
-    assert "DB_HOST" in msg
     assert "DSQL_ENDPOINT" in msg
+    assert "DB_HOST" not in msg

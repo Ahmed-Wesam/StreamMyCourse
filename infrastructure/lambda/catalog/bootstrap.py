@@ -6,7 +6,7 @@ Responsibilities:
 
   * Load configuration once per warm Lambda container.
 
-  * Wire PostgreSQL repository adapters (RDS only).
+  * Wire PostgreSQL repository adapters (Aurora DSQL only).
 
   * Build the domain services and cache them in module state so subsequent
 
@@ -16,15 +16,11 @@ Responsibilities:
 
 
 
-Nothing here talks to AWS SDKs directly except inside the private
+Database connections are opened lazily via ``dsql_connect`` inside
 
-``_build_rds_connection_factory`` helper, which is the only place Secrets
+``_build_dsql_connection_factory``. Tests patch Aurora DSQL connect to exercise
 
-Manager and ``psycopg2.connect`` are called. Tests patch that helper (or the
-
-module-level ``_secretsmanager_client`` / ``_psycopg2_connect`` hooks it uses)
-
-to exercise the wiring without network access.
+wiring without network access.
 
 """
 
@@ -34,7 +30,7 @@ from __future__ import annotations
 
 
 
-import json
+import os
 
 from dataclasses import dataclass
 
@@ -1032,54 +1028,6 @@ ConnectionFactory = Callable[[], Any]
 
 
 
-def _secretsmanager_client() -> Any:
-
-    import boto3
-
-
-
-    return boto3.client("secretsmanager")
-
-
-
-
-
-def _psycopg2_connect(**kwargs: Any) -> Any:
-
-    import psycopg2
-
-
-
-    conn = psycopg2.connect(**kwargs)
-
-    # Default to autocommit so a read-only `_execute(commit=False)` does not
-
-    # leave the connection idle in a transaction holding share locks across
-
-    # warm Lambda invocations. Repository methods that need multi-statement
-
-    # atomicity (e.g. CourseCatalogRdsRepository.create_course,
-
-    # set_lesson_orders) explicitly toggle autocommit off via
-
-    # `_atomic_transaction` for the duration of their block.
-
-    conn.autocommit = True
-
-    return conn
-
-
-
-
-
-def _rds_config_complete(cfg: AppConfig) -> bool:
-
-    return bool(cfg.db_host and cfg.db_name and cfg.db_secret_arn)
-
-
-
-
-
 def _dsql_config_complete(cfg: AppConfig) -> bool:
 
     return bool((cfg.dsql_endpoint or "").strip())
@@ -1090,7 +1038,19 @@ def _dsql_config_complete(cfg: AppConfig) -> bool:
 
 def _db_config_complete(cfg: AppConfig) -> bool:
 
-    return _rds_config_complete(cfg) or _dsql_config_complete(cfg)
+    return _dsql_config_complete(cfg)
+
+
+
+
+
+def _rds_env_present() -> bool:
+
+    return bool(
+        (os.environ.get("DB_HOST") or "").strip()
+        or (os.environ.get("DB_SECRET_ARN") or "").strip()
+        or (os.environ.get("DB_NAME") or "").strip()
+    )
 
 
 
@@ -1098,105 +1058,13 @@ def _db_config_complete(cfg: AppConfig) -> bool:
 
 def _assert_single_db_dependency(cfg: AppConfig) -> None:
 
-    if _dsql_config_complete(cfg) and cfg.db_host:
+    if _dsql_config_complete(cfg) and _rds_env_present():
 
         raise RuntimeError(
 
-            "Cannot set both DSQL_ENDPOINT and DB_HOST; configure exactly one database dependency"
+            "Cannot set both DSQL_ENDPOINT and RDS DB_* env vars; configure DSQL only"
 
         )
-
-
-
-
-
-def _build_rds_connection_factory(cfg: AppConfig) -> ConnectionFactory:
-
-    """Return a ``() -> connection`` callable that lazily opens a PostgreSQL
-
-    connection using credentials fetched from Secrets Manager.
-
-
-
-    The factory is called at most once per warm Lambda container (caching in
-
-    the repo adapters themselves), so the Secrets Manager fetch happens on the
-
-    first query rather than at cold-start import time. This keeps import cheap
-
-    when the Lambda is invoked but does not touch RDS.
-
-    """
-
-    if not cfg.db_secret_arn:
-
-        raise RuntimeError("DB_SECRET_ARN is required for the RDS catalog")
-
-    if not cfg.db_host:
-
-        raise RuntimeError("DB_HOST is required for the RDS catalog")
-
-    if not cfg.db_name:
-
-        raise RuntimeError("DB_NAME is required for the RDS catalog")
-
-
-
-    def factory() -> Any:
-
-        sm = _secretsmanager_client()
-
-        response = sm.get_secret_value(SecretId=cfg.db_secret_arn)
-
-        payload_raw = response.get("SecretString") or ""
-
-        try:
-
-            payload = json.loads(payload_raw)
-
-        except json.JSONDecodeError as exc:
-
-            raise RuntimeError("RDS secret is not valid JSON") from exc
-
-        user = str(payload.get("username") or "")
-
-        password = str(payload.get("password") or "")
-
-        if not user or not password:
-
-            raise RuntimeError("RDS secret missing username/password fields")
-
-        return _psycopg2_connect(
-
-            host=cfg.db_host,
-
-            port=int(cfg.db_port or 5432),
-
-            dbname=cfg.db_name,
-
-            user=user,
-
-            password=password,
-
-            sslmode="require",
-
-            connect_timeout=5,
-
-            # Server-side single-statement cap. A wedged query raises
-
-            # psycopg2.errors.QueryCanceled at 10s instead of stalling the warm
-
-            # container until the Lambda hard timeout, letting the repo-layer
-
-            # OperationalError retry path open a fresh connection if needed.
-
-            options="-c statement_timeout=10000",
-
-        )
-
-
-
-    return factory
 
 
 
@@ -1222,11 +1090,7 @@ def _build_connection_factory(cfg: AppConfig) -> ConnectionFactory:
 
     _assert_single_db_dependency(cfg)
 
-    if _dsql_config_complete(cfg):
-
-        return _build_dsql_connection_factory(cfg)
-
-    return _build_rds_connection_factory(cfg)
+    return _build_dsql_connection_factory(cfg)
 
 
 
@@ -1276,11 +1140,7 @@ def build_aws_deps(cfg: AppConfig) -> AwsDeps:
 
     if not _db_config_complete(cfg):
 
-        raise RuntimeError(
-
-            "Catalog requires either RDS (DB_HOST, DB_NAME, DB_SECRET_ARN) or DSQL (DSQL_ENDPOINT)"
-
-        )
+        raise RuntimeError("DSQL_ENDPOINT is required for the catalog")
 
 
 
@@ -1298,10 +1158,7 @@ def build_aws_deps(cfg: AppConfig) -> AwsDeps:
 
     course_access = CourseAccessService(purchase_repo, course_repo)
 
-    auth_repo = UserProfileRdsRepository(
-        conn_factory,
-        tags_as_jsonb=_dsql_config_complete(cfg),
-    )
+    auth_repo = UserProfileRdsRepository(conn_factory)
 
     progress_repo = LessonProgressRdsRepository(conn_factory)
 
@@ -1476,10 +1333,7 @@ def build_aws_deps(cfg: AppConfig) -> AwsDeps:
 
 
 
-    research_team_repo = ResearchTeamRdsRepository(
-        conn_factory,
-        areas_as_jsonb=_dsql_config_complete(cfg),
-    )
+    research_team_repo = ResearchTeamRdsRepository(conn_factory)
 
     research_team_service = ResearchTeamService(
 
@@ -1631,7 +1485,7 @@ def lambda_bootstrap() -> Tuple[
 
     Composition root: load config and construct dependencies once.
 
-    When RDS settings are incomplete the catalog cannot be wired, so
+    When DSQL is not configured the catalog cannot be wired, so
 
     ``(cfg, None, …)`` (eight ``None`` service slots) is returned and the handler responds
 

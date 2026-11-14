@@ -10,34 +10,13 @@ from dataclasses import dataclass
 class SyncConfig:
     """Runtime configuration loaded once per cold start."""
 
-    db_secret_arn: str
-    db_host: str
-    db_name: str
-    db_port: int
-    dsql_endpoint: str = ""
+    dsql_endpoint: str
     student_client_id: str = ""
     teacher_client_id: str = ""
 
 
-_DEFAULT_DB_PORT = 5432
-
-
-def _parse_db_port(raw: str) -> int:
-    s = (raw or "").strip()
-    if not s:
-        return _DEFAULT_DB_PORT
-    try:
-        return int(s)
-    except ValueError:
-        return _DEFAULT_DB_PORT
-
-
 def load_sync_config() -> SyncConfig:
     return SyncConfig(
-        db_secret_arn=os.environ.get("DB_SECRET_ARN", "").strip(),
-        db_host=os.environ.get("DB_HOST", "").strip(),
-        db_name=os.environ.get("DB_NAME", "postgres").strip() or "postgres",
-        db_port=_parse_db_port(os.environ.get("DB_PORT", "")),
         dsql_endpoint=os.environ.get("DSQL_ENDPOINT", "").strip(),
         student_client_id=os.environ.get("STUDENT_COGNITO_CLIENT_ID", "").strip(),
         teacher_client_id=os.environ.get("TEACHER_COGNITO_CLIENT_ID", "").strip(),

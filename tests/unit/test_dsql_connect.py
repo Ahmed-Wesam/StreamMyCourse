@@ -40,20 +40,6 @@ def fake_aurora_module(monkeypatch: pytest.MonkeyPatch) -> Dict[str, Any]:
     return {"connect_calls": calls, "module": mod}
 
 
-def _cfg_rds(**kwargs: Any) -> AppConfig:
-    base = dict(
-        video_bucket="",
-        default_mp4_url="",
-        video_url="",
-        allowed_origins=["*"],
-        db_host="rds.example.com",
-        db_name="smc",
-        db_secret_arn="arn:aws:secretsmanager:eu-west-1:1:secret:x",
-    )
-    base.update(kwargs)
-    return AppConfig(**base)
-
-
 def _cfg_dsql(endpoint: str = "abc.dsql.eu-west-1.on.aws", **kwargs: Any) -> AppConfig:
     base = dict(
         video_bucket="",
@@ -67,23 +53,18 @@ def _cfg_dsql(endpoint: str = "abc.dsql.eu-west-1.on.aws", **kwargs: Any) -> App
 
 
 class TestBootstrapDbSelection:
-    def test_rds_only_uses_rds_factory_not_dsql(
-        self, monkeypatch: pytest.MonkeyPatch, fake_aurora_module: Dict[str, Any]
+    def test_rds_env_only_leaves_lambda_unconfigured_without_secrets_manager(
+        self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        rds_called = {"n": 0}
-
-        def _rds_factory(cfg: AppConfig) -> Any:
-            rds_called["n"] += 1
-            return lambda: MagicMock(name="rds")
-
-        monkeypatch.setattr(bootstrap_mod, "_build_rds_connection_factory", _rds_factory)
-
-        cfg = _cfg_rds()
-        factory = bootstrap_mod._build_connection_factory(cfg)
-        factory()
-
-        assert rds_called["n"] == 1
-        assert fake_aurora_module["connect_calls"] == []
+        sm = MagicMock()
+        monkeypatch.setenv("DB_HOST", "rds.example.com")
+        monkeypatch.setenv("DB_NAME", "smc")
+        monkeypatch.setenv("DB_SECRET_ARN", "arn:aws:secretsmanager:eu-west-1:1:secret:x")
+        monkeypatch.setenv("ALLOWED_ORIGINS", "*")
+        with patch("boto3.client", return_value=sm):
+            out = bootstrap_mod.lambda_bootstrap()
+        assert out[1] is None
+        sm.get_secret_value.assert_not_called()
 
     def test_dsql_only_calls_aurora_connect(
         self, monkeypatch: pytest.MonkeyPatch, fake_aurora_module: Dict[str, Any]
@@ -99,9 +80,12 @@ class TestBootstrapDbSelection:
         assert kw["host"] == cfg.dsql_endpoint
         assert conn is not None
 
-    def test_both_rds_and_dsql_raises(self) -> None:
-        cfg = _cfg_rds(dsql_endpoint="abc.dsql.eu-west-1.on.aws")
-        with pytest.raises(RuntimeError, match="both.*DSQL_ENDPOINT.*DB_HOST"):
+    def test_both_rds_and_dsql_raises(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("DB_HOST", "rds.example.com")
+        cfg = _cfg_dsql()
+        with pytest.raises(RuntimeError, match="DSQL_ENDPOINT.*RDS"):
             bootstrap_mod.build_aws_deps(cfg)
 
     def test_neither_config_leaves_lambda_unconfigured(

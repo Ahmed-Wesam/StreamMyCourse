@@ -61,7 +61,6 @@ _CATALOG_PSYCOPG2_ALLOWED = frozenset(
         _p("infrastructure/lambda/catalog/services/certificates/rds_repo.py"),
         _p("infrastructure/lambda/catalog/services/research_team/rds_repo.py"),
         _p("infrastructure/lambda/catalog/services/question_banks/rds_repo.py"),
-        _p("infrastructure/lambda/catalog/services/subscription/repo.py"),
         _p("infrastructure/lambda/catalog/services/purchases/repo.py"),
         _p("infrastructure/lambda/catalog/services/rate_limit/rds_repo.py"),
         _p("infrastructure/lambda/cognito_user_profile_sync/repo.py"),

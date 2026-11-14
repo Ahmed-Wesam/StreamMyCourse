@@ -91,12 +91,8 @@ def test_set_student_active_session_id_uses_run_transaction() -> None:
     assert "student_active_session_id" in sql
 
 
-def test_session_bump_allows_dsql_endpoint_without_db_host() -> None:
+def test_session_bump_allows_dsql_endpoint() -> None:
     cfg = SyncConfig(
-        db_secret_arn="",
-        db_host="",
-        db_name="app",
-        db_port=5432,
         dsql_endpoint="cfuhjrrzy65ngud25rdqqso5t4.dsql.eu-west-1.on.aws",
         student_client_id="student-client",
         teacher_client_id="",

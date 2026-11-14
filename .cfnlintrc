@@ -7,4 +7,6 @@ ignore_checks:
   - W8001
   # Redundant DependsOn warnings (benign; dependencies implied via Ref/GetAtt).
   - W3005
+  # Samtranslator runtime-deprecation advisory (Lambda runtime bump is separate work).
+  - E2533
 

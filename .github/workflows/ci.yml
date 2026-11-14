@@ -65,8 +65,6 @@ jobs:
           PY
       - name: Lambda boundary import checks
         run: python scripts/check_lambda_boundaries.py
-      - name: Frozen RDS migration allowlist
-        run: python scripts/check_migrations_frozen.py
       - name: Install static analysis tools
         run: pip install vulture radon
       - name: Vulture (dead code)
@@ -93,7 +91,7 @@ jobs:
           cfn-lint --config-file .cfnlintrc infrastructure/templates/edge-hosting-stack.yaml
           cfn-lint --config-file .cfnlintrc infrastructure/templates/github-deploy-role-stack.yaml
           cfn-lint --config-file .cfnlintrc infrastructure/templates/billing-alarm.yaml
-          cfn-lint --config-file .cfnlintrc infrastructure/templates/rds-stack.yaml
+          cfn-lint --config-file .cfnlintrc infrastructure/templates/dsql-stack.yaml
           cfn-lint --config-file .cfnlintrc infrastructure/templates/media-cleanup-stack.yaml
           cfn-lint --config-file .cfnlintrc infrastructure/templates/transactional-mail-stack.yaml
           cfn-lint --config-file .cfnlintrc infrastructure/templates/payments-stack.yaml

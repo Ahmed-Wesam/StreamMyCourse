@@ -3,7 +3,7 @@ name: query-dsql
 description: >-
   Runs SQL against Aurora DSQL for StreamMyCourse using the operator runbook.
   Use when the user invokes /query_dsql, asks to query DSQL, run orphan audit,
-  check preview schema, or connect admin to StreamMyCourse-Dsql-prod.
+  check prod catalog schema, or connect admin to StreamMyCourse-Dsql-prod.
 disable-model-invocation: true
 ---
 
@@ -19,13 +19,12 @@ The runbook is the source of truth; this skill does not replace it.
 
 ## Agent execution notes
 
-- **Region:** default `eu-west-1`. Cluster stack: `StreamMyCourse-Dsql-prod`.
+- **Region:** default `eu-west-1`. Cluster stack: `StreamMyCourse-Dsql-prod` (prod catalog, profile sync, and billing fulfillment).
+- **Preview stack** `StreamMyCourse-Api-dsql` is deleted (DSQL-9); integration tests target prod API unless a test file sets another stack.
 - **Admin only** for ad-hoc SQL from the operator machine or CI applier jobs. App runtime uses `smc_app` via `dsql:DbConnect`.
 - **psql 14+** required for SNI. Mention this when connection fails with opaque TLS errors.
 - **Never log** IAM DB auth tokens, passwords, or full DSNs. Hostname and token **length** are fine.
 - **Discovery:** use `.cursor/skills/aws-cli/SKILL.md` for stack outputs instead of guessing hostnames.
-- **Preview gate:** integration SQL lives in `tests/integration/test_dsql_foundation.py`; it is skipped unless `INTEGRATION_API_STACK` ends with `Api-dsql`.
-
 ## User intent
 
 - If the user names **SQL** and wants DSQL: mint admin token per runbook, connect with `search_path=app`, run the statement, summarize results without secrets.

@@ -61,16 +61,18 @@ class _UniqueViolationWithConstraint(pg_errors.UniqueViolation):
         return SimpleNamespace(constraint_name=self._constraint_name)
 
 
-def test_areas_from_db_parses_json_string() -> None:
-    assert _areas_from_db('["systematic_reviews"]') == ("systematic_reviews",)
-
-
-def test_areas_from_db_accepts_list() -> None:
-    assert _areas_from_db(["Clinical Research"]) == ("Clinical Research",)
+def test_areas_from_db_parses_json_string_and_list() -> None:
+    expected = ("Clinical Research",)
+    assert _areas_from_db('["Clinical Research"]') == expected
+    assert _areas_from_db(["Clinical Research"]) == expected
 
 
 class TestResearchAreasBinding:
-    def test_dsql_insert_uses_jsonb_cast(self) -> None:
+    def test_constructor_rejects_areas_as_jsonb_kwarg(self) -> None:
+        with pytest.raises(TypeError):
+            ResearchTeamRdsRepository(lambda: FakeConn(), areas_as_jsonb=True)
+
+    def test_insert_uses_jsonb_cast(self) -> None:
         conn = FakeConn()
         conn.cursor_obj.rows_to_return = [
             (
@@ -95,7 +97,7 @@ class TestResearchAreasBinding:
                 datetime(2026, 1, 1, tzinfo=timezone.utc),
             )
         ]
-        repo = ResearchTeamRdsRepository(lambda: conn, areas_as_jsonb=True)
+        repo = ResearchTeamRdsRepository(lambda: conn)
         row = ApplicationRow(
             id="app-1",
             user_sub="sub-1",
@@ -126,58 +128,6 @@ class TestResearchAreasBinding:
             if isinstance(p, str) and p.startswith("[")
         )
         assert areas_param == json.dumps(["Clinical Research"])
-
-    def test_rds_insert_binds_list_without_jsonb_cast(self) -> None:
-        conn = FakeConn()
-        conn.cursor_obj.rows_to_return = [
-            (
-                "app-1",
-                "sub-1",
-                "submitted",
-                False,
-                datetime(2026, 1, 1, tzinfo=timezone.utc),
-                "Ada",
-                "a@b.com",
-                "Jordan",
-                "Uni",
-                "Student",
-                0,
-                0,
-                "Beginner",
-                "None",
-                ["Clinical Research"],
-                "x",
-                "y",
-                "5",
-                datetime(2026, 1, 1, tzinfo=timezone.utc),
-            )
-        ]
-        repo = ResearchTeamRdsRepository(lambda: conn, areas_as_jsonb=False)
-        row = ApplicationRow(
-            id="app-1",
-            user_sub="sub-1",
-            status="submitted",
-            reapply_allowed=False,
-            submitted_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
-            full_name="Ada",
-            email="a@b.com",
-            country="Jordan",
-            institution="Uni",
-            position="Student",
-            publication_count=0,
-            project_count=0,
-            stats_experience="Beginner",
-            sys_review_experience="None",
-            research_areas=("Clinical Research",),
-            interests="x",
-            motivation="y",
-            weekly_hours="5",
-            acknowledged_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
-        )
-        repo.insert_application(row)
-        sql = conn.cursor_obj.executions[0][0]
-        assert "::jsonb" not in sql
-        assert ["Clinical Research"] in conn.cursor_obj.executions[0][1]
 
 
 class TestResearchTeamOcc:

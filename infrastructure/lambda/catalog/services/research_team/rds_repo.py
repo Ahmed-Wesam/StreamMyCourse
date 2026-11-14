@@ -93,11 +93,8 @@ def _row_from_db(row: tuple) -> ApplicationRow:
 
 
 class ResearchTeamRdsRepository(ResearchTeamRepositoryPort):
-    def __init__(
-        self, conn_factory: ConnectionFactory, *, areas_as_jsonb: bool = False
-    ) -> None:
+    def __init__(self, conn_factory: ConnectionFactory) -> None:
         self._conn_factory = conn_factory
-        self._areas_as_jsonb = areas_as_jsonb
         self._conn: Optional[Any] = None
 
     def _connection(self) -> Any:
@@ -182,14 +179,11 @@ class ResearchTeamRdsRepository(ResearchTeamRepositoryPort):
             for r in cur.fetchall()
         ]
 
-    def _bind_research_areas(self, areas: tuple[str, ...] | list[str]) -> Any:
-        values = list(areas)
-        if self._areas_as_jsonb:
-            return json.dumps(values)
-        return values
+    def _bind_research_areas(self, areas: tuple[str, ...] | list[str]) -> str:
+        return json.dumps(list(areas))
 
     def _research_areas_sql_fragment(self) -> str:
-        return "%s::jsonb" if self._areas_as_jsonb else "%s"
+        return "%s::jsonb"
 
     def set_requirement(self, course_id: str, *, required: bool) -> None:
         conn = self._connection()

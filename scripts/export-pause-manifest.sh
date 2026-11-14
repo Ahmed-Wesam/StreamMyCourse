@@ -48,8 +48,6 @@ STACK_VIDEO="StreamMyCourse-Video-prod"
 STACK_EDGE="StreamMyCourse-EdgeHosting-prod"
 STACK_API="StreamMyCourse-Api-prod"
 STACK_AUTH="StreamMyCourse-Auth-prod"
-STACK_RDS="StreamMyCourse-Rds-prod"
-
 cfn_output() {
   local stack="$1" region="$2" key="$3"
   if ! aws cloudformation describe-stacks --stack-name "$stack" --region "$region" &>/dev/null; then
@@ -79,11 +77,6 @@ user_pool_id="$(cfn_output "$STACK_AUTH" "$REGION_EU" UserPoolId)"
 student_user_pool_client_id="$(cfn_output "$STACK_AUTH" "$REGION_EU" StudentUserPoolClientId)"
 teacher_user_pool_client_id="$(cfn_output "$STACK_AUTH" "$REGION_EU" TeacherUserPoolClientId)"
 cognito_hosted_ui_domain="$(cfn_output "$STACK_AUTH" "$REGION_EU" HostedUIDomain)"
-rds_db_host="$(cfn_output "$STACK_RDS" "$REGION_EU" DbHost)"
-
-# rds_snapshot_identifier: fill after manual pause snapshot (see runbook) OR record the
-# auto-created final snapshot ID after StreamMyCourse-Rds-prod stack delete / teardown.
-rds_snapshot_identifier=""
 
 # GitHub Environment prod checklist — names only (no values); from prod-shutdown-restore plan.
 GITHUB_ENV_CHECKLIST=(
@@ -94,20 +87,20 @@ GITHUB_ENV_CHECKLIST=(
   "TEACHER_WEB_DOMAIN"
   "GOOGLE_OAUTH_CLIENT_ID"
   "GOOGLE_OAUTH_CLIENT_SECRET"
-  "COGNITO_RDS_VERIFY_TEST_PASSWORD"
-  "COGNITO_RDS_VERIFY_JWT"
-  "COGNITO_RDS_VERIFY_TEST_USERNAME"
-  "COGNITO_RDS_VERIFY_TEST_PASSWORD_ALT"
-  "COGNITO_RDS_VERIFY_TEST_USERNAME_ALT"
-  "COGNITO_RDS_VERIFY_TEST_PASSWORD_STUDENT"
-  "COGNITO_RDS_VERIFY_TEST_USERNAME_STUDENT"
+  "COGNITO_VERIFY_TEST_PASSWORD"
+  "COGNITO_VERIFY_JWT"
+  "COGNITO_VERIFY_TEST_USERNAME"
+  "COGNITO_VERIFY_TEST_PASSWORD_ALT"
+  "COGNITO_VERIFY_TEST_USERNAME_ALT"
+  "COGNITO_VERIFY_TEST_PASSWORD_STUDENT"
+  "COGNITO_VERIFY_TEST_USERNAME_STUDENT"
 )
 
 export OUT_PATH \
   aws_account_id \
   video_bucket_name student_bucket_name teacher_bucket_name \
   api_endpoint user_pool_id student_user_pool_client_id teacher_user_pool_client_id \
-  cognito_hosted_ui_domain rds_db_host rds_snapshot_identifier
+  cognito_hosted_ui_domain
 
 PAUSE_MANIFEST_JSON_KEYS_JSON="$("$PY" -c 'import json, sys; print(json.dumps(sys.argv[1:]))' "${PAUSE_MANIFEST_JSON_KEYS[@]}")"
 export PAUSE_MANIFEST_JSON_KEYS_JSON
@@ -130,8 +123,6 @@ manifest = {
     "student_user_pool_client_id": os.environ["student_user_pool_client_id"],
     "teacher_user_pool_client_id": os.environ["teacher_user_pool_client_id"],
     "cognito_hosted_ui_domain": os.environ["cognito_hosted_ui_domain"],
-    "rds_db_host": os.environ["rds_db_host"],
-    "rds_snapshot_identifier": os.environ["rds_snapshot_identifier"],
     "github_env_checklist": [
         "AWS_DEPLOY_ROLE_ARN",
         "COGNITO_DOMAIN_PREFIX",
@@ -140,13 +131,13 @@ manifest = {
         "TEACHER_WEB_DOMAIN",
         "GOOGLE_OAUTH_CLIENT_ID",
         "GOOGLE_OAUTH_CLIENT_SECRET",
-        "COGNITO_RDS_VERIFY_TEST_PASSWORD",
-        "COGNITO_RDS_VERIFY_JWT",
-        "COGNITO_RDS_VERIFY_TEST_USERNAME",
-        "COGNITO_RDS_VERIFY_TEST_PASSWORD_ALT",
-        "COGNITO_RDS_VERIFY_TEST_USERNAME_ALT",
-        "COGNITO_RDS_VERIFY_TEST_PASSWORD_STUDENT",
-        "COGNITO_RDS_VERIFY_TEST_USERNAME_STUDENT",
+        "COGNITO_VERIFY_TEST_PASSWORD",
+        "COGNITO_VERIFY_JWT",
+        "COGNITO_VERIFY_TEST_USERNAME",
+        "COGNITO_VERIFY_TEST_PASSWORD_ALT",
+        "COGNITO_VERIFY_TEST_USERNAME_ALT",
+        "COGNITO_VERIFY_TEST_PASSWORD_STUDENT",
+        "COGNITO_VERIFY_TEST_USERNAME_STUDENT",
     ],
 }
 

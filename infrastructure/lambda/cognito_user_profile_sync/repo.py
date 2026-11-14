@@ -8,8 +8,8 @@ stays independent of the ``services/`` package tree. Keep SQL aligned when the
 
 from __future__ import annotations
 
-import json
 import logging
+import os
 from typing import Any, Callable, Optional
 
 try:  # pragma: no cover - optional until first DB call
@@ -24,12 +24,6 @@ COGNITO_STUDENT_SESSION_MIRROR_ATTR = "active_session_id"
 COGNITO_STUDENT_SESSION_MIRROR_KEY = f"custom:{COGNITO_STUDENT_SESSION_MIRROR_ATTR}"
 
 ConnectionFactory = Callable[[], Any]
-
-
-def _secretsmanager_client() -> Any:
-    import boto3
-
-    return boto3.client("secretsmanager")
 
 
 def _cognito_idp_client() -> Any:
@@ -57,58 +51,24 @@ def mirror_student_active_session_attribute(
     )
 
 
-def _psycopg2_connect(**kwargs: Any) -> Any:
-    import psycopg2 as pg
+def _rds_env_present() -> bool:
+    return bool(
+        (os.environ.get("DB_HOST") or "").strip()
+        or (os.environ.get("DB_SECRET_ARN") or "").strip()
+    )
 
-    return pg.connect(**kwargs)
 
-
-def build_connection_factory(
-    *,
-    db_secret_arn: str,
-    db_host: str,
-    db_name: str,
-    db_port: int,
-    dsql_endpoint: str = "",
-) -> ConnectionFactory:
+def build_connection_factory(*, dsql_endpoint: str) -> ConnectionFactory:
     endpoint = (dsql_endpoint or "").strip()
-    host = (db_host or "").strip()
-    if endpoint and host:
+    if endpoint and _rds_env_present():
         raise RuntimeError(
-            "Configure either DSQL_ENDPOINT or DB_HOST for user profile sync, not both"
+            "Configure DSQL_ENDPOINT only for user profile sync, not RDS DB_* env vars"
         )
-    if endpoint:
-        from dsql_connect import build_connection_factory as dsql_factory
+    if not endpoint:
+        raise RuntimeError("DSQL_ENDPOINT is required for user profile sync")
+    from dsql_connect import build_connection_factory as dsql_factory
 
-        return dsql_factory(endpoint)
-    if not db_secret_arn:
-        raise RuntimeError("DB_SECRET_ARN is required")
-    if not db_host:
-        raise RuntimeError("DB_HOST is required")
-
-    def factory() -> Any:
-        sm = _secretsmanager_client()
-        response = sm.get_secret_value(SecretId=db_secret_arn)
-        payload_raw = response.get("SecretString") or ""
-        try:
-            payload = json.loads(payload_raw)
-        except json.JSONDecodeError as exc:
-            raise RuntimeError("RDS secret is not valid JSON") from exc
-        user = str(payload.get("username") or "")
-        password = str(payload.get("password") or "")
-        if not user or not password:
-            raise RuntimeError("RDS secret missing username/password fields")
-        return _psycopg2_connect(
-            host=db_host,
-            port=int(db_port or 5432),
-            dbname=db_name,
-            user=user,
-            password=password,
-            sslmode="require",
-            connect_timeout=5,
-        )
-
-    return factory
+    return dsql_factory(endpoint)
 
 
 _PROFILE_COLUMNS = "user_sub, email, role, cognito_sub, created_at, updated_at"
@@ -217,11 +177,5 @@ def get_cached_connection_factory(cfg: Any) -> ConnectionFactory:
     """Return a process-wide connection factory (one Secrets Manager fetch per warm container)."""
     global _cached_factory
     if _cached_factory is None:
-        _cached_factory = build_connection_factory(
-            db_secret_arn=cfg.db_secret_arn,
-            db_host=cfg.db_host,
-            db_name=cfg.db_name,
-            db_port=cfg.db_port,
-            dsql_endpoint=cfg.dsql_endpoint,
-        )
+        _cached_factory = build_connection_factory(dsql_endpoint=cfg.dsql_endpoint)
     return _cached_factory

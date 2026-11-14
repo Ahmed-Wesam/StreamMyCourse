@@ -1,6 +1,6 @@
 # Prod shutdown and restore runbook
 
-**Scope:** Pause or tear down **prod** CloudFormation stacks to reduce AWS spend while retaining restorable data (S3 buckets with `Retain`, RDS final snapshot). Bring prod back with the pause manifest and restore scripts, or via a greenfield GitHub **Deploy** dispatch when retained buckets are gone.
+**Scope:** Pause or tear down **prod** CloudFormation stacks to reduce AWS spend while retaining restorable data (S3 buckets with `Retain`, **Aurora DSQL cluster** untouched). Bring prod back with the pause manifest and restore scripts, or via a greenfield GitHub **Deploy** dispatch when retained buckets are gone.
 
 **Scripts (source of truth):**
 
@@ -9,8 +9,7 @@
 | [`scripts/export-pause-manifest.sh`](../../scripts/export-pause-manifest.sh) | Export restore metadata from live stack outputs (no secret values) |
 | [`scripts/teardown-prod.sh`](../../scripts/teardown-prod.sh) | Ordered stack deletes + optional manifest export |
 | [`scripts/teardown-prod.ps1`](../../scripts/teardown-prod.ps1) | Windows wrapper → Git Bash / WSL |
-| [`scripts/restore-prod.sh`](../../scripts/restore-prod.sh) | Import retained buckets, redeploy stacks from manifest + RDS snapshot |
-| [`scripts/sync-rds-secret-after-restore.sh`](../../scripts/sync-rds-secret-after-restore.sh) | Align RDS master password with Secrets Manager after snapshot restore |
+| [`scripts/restore-prod.sh`](../../scripts/restore-prod.sh) | Import retained buckets, redeploy edge/auth/backend against existing DSQL cluster |
 | [`scripts/lib/prod_pause_constants.sh`](../../scripts/lib/prod_pause_constants.sh) | Shared teardown stack order and manifest key list |
 
 Stack order and manifest keys are also enforced by [`tests/unit/test_prod_pause_scripts.py`](../../tests/unit/test_prod_pause_scripts.py).
@@ -19,18 +18,18 @@ Stack order and manifest keys are also enforced by [`tests/unit/test_prod_pause_
 
 ## 1. Overview / when to use
 
-Use this runbook when you need to **stop prod AWS spend** for an extended period (account pause, cost control, migration window) while keeping a path to restore course media, SPA assets, and PostgreSQL data.
+Use this runbook when you need to **stop prod AWS spend** for an extended period (account pause, cost control, migration window) while keeping a path to restore course media, SPA assets, and **catalog data on Aurora DSQL**.
 
 **What shutdown does**
 
 - Deletes prod CloudFormation stacks in dependency-safe order (see §3).
 - **Retains** S3 buckets defined with `DeletionPolicy: Retain` in [`edge-hosting-stack.yaml`](../templates/edge-hosting-stack.yaml) (student + teacher site buckets) and [`video-stack.yaml`](../templates/video-stack.yaml) (video/uploads bucket).
-- **Snapshots** RDS on `StreamMyCourse-Rds-prod` stack delete (`DeletionPolicy: Snapshot` on the DB instance in [`rds-stack.yaml`](../templates/rds-stack.yaml)).
+- **Retains** Aurora DSQL (`StreamMyCourse-Dsql-prod`) — not part of teardown; cluster idles near $0 while Lambdas/API are gone ([`dsql-stack.yaml`](../templates/dsql-stack.yaml)).
 - Does **not** export or store secrets; the pause manifest holds infrastructure IDs and GitHub Environment **names** only.
 
 **What restore does**
 
-- **Retained-bucket path:** [`restore-prod.sh`](../../scripts/restore-prod.sh) CloudFormation-imports existing buckets, redeploys edge/RDS/auth/backend, syncs RDS credentials, applies schema, then prints follow-up steps (GitHub secrets + integration tests + SPA deploy).
+- **Retained-bucket path:** [`restore-prod.sh`](../../scripts/restore-prod.sh) CloudFormation-imports existing buckets, redeploys edge/auth/backend against the **existing** DSQL cluster, then prints follow-up steps (GitHub secrets + integration tests + SPA deploy).
 - **Greenfield path:** If retained buckets were deleted, `restore-prod.sh` cannot import them — use GitHub **Deploy** `workflow_dispatch` (§6) to create fresh stacks (data in deleted buckets is not recovered by these scripts).
 
 **When not to use**
@@ -76,7 +75,7 @@ Export does not copy secret values. Ensure you can restore these names (also lis
 - `TEACHER_WEB_DOMAIN`
 - `GOOGLE_OAUTH_CLIENT_ID`
 - `GOOGLE_OAUTH_CLIENT_SECRET`
-- `COGNITO_RDS_VERIFY_*` (integration / verify-rds credentials)
+- `COGNITO_VERIFY_*` (integration / Cognito verify credentials)
 
 Store existing values in your password manager before teardown.
 
@@ -94,7 +93,7 @@ Run **before** stack deletes so stack outputs are still available. Default outpu
 ./scripts/export-pause-manifest.sh --out /secure/path/pause-manifest-prod.json
 ```
 
-Manifest fields (see [`PAUSE_MANIFEST_JSON_KEYS`](../../scripts/lib/prod_pause_constants.sh)): `aws_account_id`, `regions`, bucket names, API/Cognito/RDS host identifiers, `rds_snapshot_identifier` (empty until §4), `github_env_checklist`.
+Manifest fields (see [`PAUSE_MANIFEST_JSON_KEYS`](../../scripts/lib/prod_pause_constants.sh)): `aws_account_id`, `regions`, bucket names, API/Cognito identifiers, `github_env_checklist` (no RDS/DSQL host fields — DSQL stack is not deleted on pause).
 
 You can combine export with teardown:
 
@@ -162,13 +161,11 @@ Type AWS account ID (<account-id>) to confirm prod teardown:
 | 3 | StreamMyCourse-VideoProviderEdge-prod | eu-west-1 |
 | 4 | StreamMyCourse-Payments-prod | eu-west-1 |
 | 5 | StreamMyCourse-MediaCleanup-prod | eu-west-1 |
-| 6 | StreamMyCourse-RdsQuery-prod | eu-west-1 |
-| 7 | StreamMyCourse-Rds-prod | eu-west-1 |
-| 8 | StreamMyCourse-Video-prod | eu-west-1 |
-| 9 | StreamMyCourse-EdgeHosting-prod | us-east-1 |
-| 10 | StreamMyCourse-ArtifactJanitor-prod | eu-west-1 |
+| 6 | StreamMyCourse-Video-prod | eu-west-1 |
+| 7 | StreamMyCourse-EdgeHosting-prod | us-east-1 |
+| 8 | StreamMyCourse-ArtifactJanitor-prod | eu-west-1 |
 
-Before deleting **StreamMyCourse-Rds-prod**, teardown disables **deletion protection** on RDS instance `streammycourse-prod` and waits until the instance is `available`.
+**Not deleted on pause:** `StreamMyCourse-Dsql-prod` (Aurora DSQL). Legacy RDS stacks are no longer in the teardown list (DSQL-9).
 
 **Legacy stacks** (deleted if present):
 
@@ -189,34 +186,15 @@ Each stack delete waits for `stack-delete-complete`.
 | **Video S3 bucket** (`video_bucket_name` in manifest) | `DeletionPolicy: Retain` on `VideoBucket` |
 | **Student site bucket** (`student_bucket_name`) | Retain on `SiteBucket` |
 | **Teacher site bucket** (`teacher_bucket_name`) | Retain on `TeacherSiteBucket` |
-| **RDS snapshot(s)** | Created on `StreamMyCourse-Rds-prod` delete; required for DB restore |
+| **Aurora DSQL cluster** (`StreamMyCourse-Dsql-prod`) | Not torn down; catalog data survives pause |
 | **Pause manifest** (off-repo copy) | Restore input; never commit `pause-manifest.json` |
 | **GitHub Environment `prod` vars/secrets** | Required for edge/auth deploy and CI |
-
-### Record RDS snapshot ID
-
-After `StreamMyCourse-Rds-prod` delete, find the **final snapshot** (stack delete or any manual snapshot you took pre-teardown) and set it in the manifest:
-
-```bash
-aws rds describe-db-snapshots \
-  --region eu-west-1 \
-  --query "DBSnapshots[?contains(DBSnapshotIdentifier, 'streammycourse-prod')].DBSnapshotIdentifier" \
-  --output text
-```
-
-Edit the saved manifest JSON:
-
-```json
-"rds_snapshot_identifier": "rds:streammycourse-prod-2026-08-05-..."
-```
-
-`restore-prod.sh` **requires** a non-empty `rds_snapshot_identifier`.
 
 ### Optional housekeeping (outside scripts)
 
 - **Artifact bucket** `streammycourse-artifacts-<account>-eu-west-1` may still exist; safe to keep for restore uploads.
-- **Secrets Manager** secret `streammycourse/prod/rds-credentials` may outlive the RDS instance; restore reuses it via `deploy-rds-stack.sh` + `sync-rds-secret-after-restore.sh`.
-- **Do not** delete retained buckets or RDS snapshots unless you accept **permanent** loss of that data tier.
+- **Do not** delete retained buckets or the **DSQL cluster** unless you accept **permanent** loss of that data tier.
+- Ad-hoc catalog SQL: [`dsql-query-runbook.md`](dsql-query-runbook.md) and `.cursor/skills/query-dsql/SKILL.md` (not RDS).
 
 ### Re-enable deploy workflow
 
@@ -224,9 +202,9 @@ Leave **Deploy** disabled until restore verification (§7) or until you intentio
 
 ---
 
-## 5. Restore procedure (retained buckets + snapshot)
+## 5. Restore procedure (retained buckets)
 
-Use when the three manifest bucket names still exist in AWS and you have a valid `rds_snapshot_identifier`.
+Use when the three manifest bucket names still exist in AWS and **`StreamMyCourse-Dsql-prod`** was not deleted.
 
 ### Required environment variables
 
@@ -282,11 +260,8 @@ Confirms manifest `aws_account_id` matches current CLI account, then prompts for
 
 1. **Import retained S3** — CloudFormation import for `StreamMyCourse-EdgeHosting-prod` (us-east-1) and `StreamMyCourse-Video-prod` (eu-west-1); skips if stack already exists.
 2. **Deploy edge** — `./scripts/deploy-edge.sh prod`
-3. **Deploy RDS from snapshot** — `RESTORE_DB_SNAPSHOT_IDENTIFIER=<manifest value> ./scripts/deploy-rds-stack.sh prod`
-4. **Sync RDS secret** — `./scripts/sync-rds-secret-after-restore.sh prod`
-5. **Apply schema** — invoke schema-applier Lambda from RDS stack output `SchemaApplierFunctionName`
-6. **Deploy auth** — Cognito stack with user-profile sync Lambda artifact upload
-7. **Deploy backend** — `./scripts/deploy-backend.sh prod` (media cleanup, payments, API, etc.)
+3. **Deploy auth** — Cognito stack with user-profile sync (reads **DsqlEndpoint** / **DsqlClusterArn** from existing `StreamMyCourse-Dsql-prod`)
+4. **Deploy backend** — `./scripts/deploy-backend.sh prod` (media cleanup, payments, API, etc.)
 
 ### Post-restore script output
 
@@ -295,16 +270,6 @@ Confirms manifest `aws_account_id` matches current CLI account, then prompts for
 1. Sync GitHub secrets: `.\scripts\set-github-auth-secrets-from-stack.ps1 -Environment prod`
 2. Integration tests: `.\scripts\run-integration-tests.ps1` or `./scripts/run-local-integration-tests.sh`
 3. Deploy SPAs via GitHub Actions (push `main` or deploy workflows after **Deploy** is re-enabled)
-
-### RDS credential sync (standalone)
-
-If you deploy RDS from snapshot outside `restore-prod.sh`, run:
-
-```bash
-./scripts/sync-rds-secret-after-restore.sh prod
-```
-
-Snapshot restores keep the **snapshot’s** master password; the stack’s Secrets Manager secret may differ. This script sets the instance password from `streammycourse/prod/rds-credentials` and waits until `streammycourse-prod` is available.
 
 ---
 
@@ -317,20 +282,12 @@ Use when **retained S3 buckets were deleted** (or never existed). `restore-prod.
 3. Re-enable workflow **Deploy** ([`deploy-backend.yml`](../../.github/workflows/deploy-backend.yml)).
 4. **Actions** → **Deploy** → **Run workflow** → branch `main` → **Run workflow**.
 
-The dispatch runs the full prod pipeline (edge, RDS, schema apply, backend, integration HTTP tests, verify RDS, student + teacher SPA deploys) without waiting for CI on `main`.
+The dispatch runs the full prod pipeline (edge, DSQL schema apply if needed, backend, integration HTTP tests, student + teacher SPA deploys) without waiting for CI on `main`.
 
 **Data implications**
 
 - **New S3 buckets** — empty; previous bucket objects are not restored by this workflow.
-- **RDS** — CI `deploy-rds-prod` deploys a **fresh** instance (no `DbSnapshotIdentifier` in the workflow). To recover PostgreSQL data when a snapshot still exists, run locally **before or instead of** relying on that job:
-
-  ```bash
-  export RESTORE_DB_SNAPSHOT_IDENTIFIER='rds:streammycourse-prod-...'
-  ./scripts/deploy-rds-stack.sh prod
-  ./scripts/sync-rds-secret-after-restore.sh prod
-  ```
-
-  Then align CI/backend deploy with the restored DB, or run `restore-prod.sh` steps 5–7 manually after edge/video/RDS are in place.
+- **Catalog** — if **`StreamMyCourse-Dsql-prod`** still exists, data remains; if the cluster was deleted, recovery requires a prior backup/export (DSQL has no automated backups in stack).
 
 ---
 
@@ -369,8 +326,8 @@ Rebuild SPAs if pool/client IDs changed (Deploy workflow or reusable web deploy 
 
 ### Billing
 
-- **AWS Billing** / Cost Explorer: confirm tear-down removed daily spend from deleted stacks (Lambda, API Gateway, CloudFront, RDS compute, etc.).
-- Expect minimal ongoing cost for **retained S3**, **RDS snapshot storage**, and any orphaned secrets/logs until fully cleaned up.
+- **AWS Billing** / Cost Explorer: confirm tear-down removed daily spend from deleted stacks (Lambda, API Gateway, CloudFront, etc.).
+- Expect minimal ongoing cost for **retained S3**, **idle DSQL cluster**, and any orphaned secrets/logs until fully cleaned up.
 
 ---
 
@@ -380,12 +337,10 @@ Rebuild SPAs if pool/client IDs changed (Deploy workflow or reusable web deploy 
 |------------|--------|
 | **Cognito users** | Teardown deletes `StreamMyCourse-Auth-prod`. Restore creates a **new** user pool. Manifest `user_pool_id` and client IDs are **historical**; users must sign in again via Google on the new pool. |
 | **CFN import one-time** | Each retained bucket can be imported into a stack once. If `StreamMyCourse-EdgeHosting-prod` or `StreamMyCourse-Video-prod` already exists, import is skipped — do not delete only the stack while keeping buckets unless you plan a manual re-import. |
-| **RDS credential sync** | Snapshot password ≠ Secrets Manager until `sync-rds-secret-after-restore.sh` runs. Lambda/schema applier failures after restore often mean this step was skipped. |
-| **Manifest snapshot field** | Export leaves `rds_snapshot_identifier` empty; operator must fill after RDS delete (§4). |
+| **DSQL cluster** | Pause does not delete `StreamMyCourse-Dsql-prod`. If the cluster is deleted outside this runbook, catalog data is not restored by `restore-prod.sh`. |
 | **No secret export** | Pause manifest never includes passwords, OAuth secrets, or JWTs. |
-| **DynamoDB catalog** | Deleted with API stack; restore redeploys empty catalog unless RDS snapshot contained app data only (catalog is DynamoDB, not RDS). |
 | **Windows** | `teardown-prod.ps1` delegates to bash; Git Bash or WSL required. `restore-prod.sh` is bash-only. |
-| **Deletion protection** | Teardown disables RDS deletion protection before RDS stack delete; do not run teardown against unintended accounts. |
+| **Wrong account** | Teardown prompts for account ID confirmation; do not run against unintended accounts. |
 
 ---
 

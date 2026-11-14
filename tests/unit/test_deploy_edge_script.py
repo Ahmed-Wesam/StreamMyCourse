@@ -2,8 +2,21 @@
 
 from __future__ import annotations
 
+import shutil
 import subprocess
 from pathlib import Path
+
+
+def _bash_executable() -> str:
+    for candidate in (
+        Path(r"C:\Program Files\Git\bin\bash.exe"),
+        Path(r"C:\Program Files (x86)\Git\bin\bash.exe"),
+    ):
+        if candidate.is_file():
+            return str(candidate)
+    found = shutil.which("bash")
+    assert found, "bash not found for syntax check (install Git Bash or WSL)"
+    return found
 
 
 def test_deploy_edge_script_passes_bash_syntax_check() -> None:
@@ -11,7 +24,7 @@ def test_deploy_edge_script_passes_bash_syntax_check() -> None:
     script = root / "scripts" / "deploy-edge.sh"
     assert script.is_file(), f"missing {script}"
     subprocess.run(
-        ["bash", "-n", str(script)],
+        [_bash_executable(), "-n", str(script)],
         check=True,
         cwd=str(root),
     )

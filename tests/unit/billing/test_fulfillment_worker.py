@@ -34,10 +34,7 @@ def _event_dict(**overrides: object) -> BillingDomainEvent:
 def test_worker_reports_batch_failure_on_environment_mismatch(monkeypatch: pytest.MonkeyPatch) -> None:
     cfg = FulfillmentConfig(
         deployment_environment="dev",
-        db_secret_arn="arn:test",
-        db_host="db.test",
-        db_name="app",
-        db_port=5432,
+        dsql_endpoint="example.dsql.eu-west-1.on.aws",
     )
     repo = MagicMock()
     monkeypatch.setattr(worker, "_config_loader", lambda: cfg)
@@ -55,13 +52,9 @@ def test_worker_reports_batch_failure_on_environment_mismatch(monkeypatch: pytes
     repo.process_event.assert_not_called()
 
 
-def test_worker_accepts_dsql_endpoint_without_db_host(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_worker_accepts_dsql_endpoint(monkeypatch: pytest.MonkeyPatch) -> None:
     cfg = FulfillmentConfig(
         deployment_environment="prod",
-        db_secret_arn="",
-        db_host="",
-        db_name="app",
-        db_port=5432,
         dsql_endpoint="example.dsql.eu-west-1.on.aws",
     )
     monkeypatch.setattr(worker, "_config_loader", lambda: cfg)
@@ -69,27 +62,36 @@ def test_worker_accepts_dsql_endpoint_without_db_host(monkeypatch: pytest.Monkey
     assert result == {"batchItemFailures": []}
 
 
-def test_worker_rejects_missing_db_config(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_worker_rejects_missing_dsql_endpoint(monkeypatch: pytest.MonkeyPatch) -> None:
+    cfg = FulfillmentConfig(deployment_environment="prod", dsql_endpoint="")
+    monkeypatch.setattr(worker, "_config_loader", lambda: cfg)
+    with pytest.raises(RuntimeError, match="DSQL_ENDPOINT"):
+        worker.lambda_handler({"Records": []}, None)
+
+
+def test_worker_rejects_db_host_only(monkeypatch: pytest.MonkeyPatch) -> None:
+    cfg = FulfillmentConfig(deployment_environment="prod", dsql_endpoint="")
+    monkeypatch.setenv("DB_HOST", "rds.example")
+    monkeypatch.setattr(worker, "_config_loader", lambda: cfg)
+    with pytest.raises(RuntimeError, match="DSQL_ENDPOINT"):
+        worker.lambda_handler({"Records": []}, None)
+
+
+def test_worker_rejects_both_dsql_and_rds_env(monkeypatch: pytest.MonkeyPatch) -> None:
     cfg = FulfillmentConfig(
         deployment_environment="prod",
-        db_secret_arn="",
-        db_host="",
-        db_name="app",
-        db_port=5432,
-        dsql_endpoint="",
+        dsql_endpoint="example.dsql.eu-west-1.on.aws",
     )
+    monkeypatch.setenv("DB_HOST", "rds.example")
     monkeypatch.setattr(worker, "_config_loader", lambda: cfg)
-    with pytest.raises(RuntimeError, match="DSQL_ENDPOINT or DB_SECRET_ARN"):
+    with pytest.raises(RuntimeError, match="DSQL_ENDPOINT only"):
         worker.lambda_handler({"Records": []}, None)
 
 
 def test_worker_returns_batch_failure_on_processing_error(monkeypatch: pytest.MonkeyPatch) -> None:
     cfg = FulfillmentConfig(
         deployment_environment="dev",
-        db_secret_arn="arn:test",
-        db_host="db.test",
-        db_name="app",
-        db_port=5432,
+        dsql_endpoint="example.dsql.eu-west-1.on.aws",
     )
     repo = MagicMock()
     repo.process_event.side_effect = RuntimeError("db down")

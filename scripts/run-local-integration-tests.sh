@@ -6,7 +6,7 @@
 #   - AWS CLI configured with credentials that can read CloudFormation stacks
 #     and call cognito-idp:AdminInitiateAuth on the prod user pool
 #   - Prod stacks deployed (StreamMyCourse-Api-prod, StreamMyCourse-Video-prod, StreamMyCourse-Auth-prod)
-#   - CI Cognito user created via ensure-ci-rds-verify-cognito-user.sh
+#   - CI Cognito user created via ensure-ci-verify-cognito-user.sh
 #
 # Password is read from .env.local file (auto-loaded) or environment variable
 #

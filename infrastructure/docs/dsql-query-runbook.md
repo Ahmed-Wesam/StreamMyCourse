@@ -1,6 +1,6 @@
 # Aurora DSQL query runbook (operator)
 
-Ad-hoc SQL against the **`StreamMyCourse-Dsql-prod`** cluster for schema checks and investigations. Production catalog traffic still uses RDS; this database backs the preview API (`StreamMyCourse-Api-dsql`) only.
+Ad-hoc SQL against the **`StreamMyCourse-Dsql-prod`** cluster for schema checks and investigations. **Prod catalog**, Cognito user-profile sync, and billing fulfillment all use this cluster. The transitional preview stack **`StreamMyCourse-Api-dsql`** is gone (DSQL-9). Pause/teardown does **not** delete the DSQL stack — the cluster idles near $0 while compute stacks are down.
 
 ## Prerequisites
 

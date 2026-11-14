@@ -82,26 +82,14 @@ def _profile_row(tags: Any = None) -> Tuple[Any, ...]:
 
 
 class TestTagsCodec:
-    def test_rds_preference_update_binds_list_without_jsonb(self) -> None:
-        conn = FakeConn()
-        conn.cursor_obj.rows_to_return = [_profile_row(["x"])]
-        repo = UserProfileRdsRepository(lambda: conn, tags_as_jsonb=False)
-        repo.update_learning_preferences(
-            user_sub="sub-1",
-            autoplay_next=True,
-            auto_mark_complete=True,
-            progress_celebrations=True,
-            research_interest_tags=["surgical_research"],
-        )
-        _, params = conn.cursor_obj.executions[-1]
-        assert params[3] == ["surgical_research"]
-        sql = conn.cursor_obj.executions[-1][0]
-        assert "::jsonb" not in sql
+    def test_constructor_rejects_tags_as_jsonb_kwarg(self) -> None:
+        with pytest.raises(TypeError):
+            UserProfileRdsRepository(lambda: FakeConn(), tags_as_jsonb=True)
 
-    def test_dsql_preference_update_binds_json_text(self) -> None:
+    def test_preference_update_binds_json_text(self) -> None:
         conn = FakeConn()
         conn.cursor_obj.rows_to_return = [_profile_row('["surgical_research"]')]
-        repo = UserProfileRdsRepository(lambda: conn, tags_as_jsonb=True)
+        repo = UserProfileRdsRepository(lambda: conn)
         repo.update_learning_preferences(
             user_sub="sub-1",
             autoplay_next=True,
@@ -113,27 +101,21 @@ class TestTagsCodec:
         assert params[3] == json.dumps(["surgical_research"])
         assert "%s::jsonb" in conn.cursor_obj.executions[-1][0]
 
-    def test_rds_reset_uses_array_literal(self) -> None:
+    def test_reset_binds_default_tags_json(self) -> None:
         conn = FakeConn()
         conn.cursor_obj.rows_to_return = [_profile_row()]
-        repo = UserProfileRdsRepository(lambda: conn, tags_as_jsonb=False)
-        repo.reset_built_preferences(user_sub="sub-1")
-        sql = conn.cursor_obj.executions[-1][0]
-        assert "ARRAY['systematic_reviews', 'meta_analysis']::text[]" in sql
-        assert "::jsonb" not in sql
-
-    def test_dsql_reset_binds_default_tags_json(self) -> None:
-        conn = FakeConn()
-        conn.cursor_obj.rows_to_return = [_profile_row()]
-        repo = UserProfileRdsRepository(lambda: conn, tags_as_jsonb=True)
+        repo = UserProfileRdsRepository(lambda: conn)
         repo.reset_built_preferences(user_sub="sub-1")
         _, params = conn.cursor_obj.executions[-1]
         assert params[0] == json.dumps(list(DEFAULT_RESEARCH_INTEREST_TAGS))
+        assert "%s::jsonb" in conn.cursor_obj.executions[-1][0]
 
-    def test_row_to_profile_parses_json_string_tags(self) -> None:
-        row = _profile_row('["systematic_reviews"]')
-        profile = _row_to_profile(row)
-        assert profile["researchInterestTags"] == ["systematic_reviews"]
+    def test_row_to_profile_parses_json_string_and_list_tags(self) -> None:
+        expected = ["systematic_reviews"]
+        from_json = _row_to_profile(_profile_row('["systematic_reviews"]'))
+        from_list = _row_to_profile(_profile_row(["systematic_reviews"]))
+        assert from_json["researchInterestTags"] == expected
+        assert from_list["researchInterestTags"] == expected
 
 
 class TestOccProfileWrites:

@@ -1,4 +1,4 @@
-"""Contract tests: Deploy workflow keeps prod RDS graph and verify job wired."""
+"""Contract tests: Deploy workflow (DSQL-9 S6 — no RDS jobs, unified Cognito verify names)."""
 
 from __future__ import annotations
 
@@ -12,12 +12,6 @@ def _repo_root() -> Path:
 
 def _workflow_text() -> str:
     path = _repo_root() / ".github" / "workflows" / "deploy-backend.yml"
-    assert path.is_file(), f"missing {path}"
-    return path.read_text(encoding="utf-8")
-
-
-def _verify_rds_reusable_text() -> str:
-    path = _repo_root() / ".github" / "workflows" / "verify-rds-reusable.yml"
     assert path.is_file(), f"missing {path}"
     return path.read_text(encoding="utf-8")
 
@@ -57,14 +51,55 @@ def test_delete_waf_stacks_cleanup_script_present() -> None:
     assert path.is_file(), "missing scripts/delete-waf-stacks.sh (documented in ImplementationHistory.md)"
 
 
-def test_deploy_workflow_includes_prod_rds_job_ids() -> None:
+def test_deploy_workflow_omits_rds_and_verify_jobs() -> None:
     text = _workflow_text()
-    for needle in (
+    for forbidden in (
         "  deploy-rds-prod:",
         "  apply-schema-prod:",
+        "  deploy-api-dsql:",
         "  verify-prod-rds:",
     ):
-        assert needle in text, f"missing job block {needle!r}"
+        assert forbidden not in text, f"removed job still present: {forbidden!r}"
+
+
+def test_verify_rds_reusable_workflow_removed() -> None:
+    path = _repo_root() / ".github" / "workflows" / "verify-rds-reusable.yml"
+    assert not path.is_file(), "verify-rds-reusable.yml must be deleted (DSQL-9 S6)"
+
+
+def test_deploy_workflow_uses_cognito_verify_secret_names() -> None:
+    text = _workflow_text()
+    assert "COGNITO_VERIFY_" in text
+    assert "COGNITO_RDS_VERIFY_" not in text
+
+
+def test_removed_rds_deploy_scripts_absent() -> None:
+    root = _repo_root()
+    for rel in (
+        "scripts/deploy-rds-stack.sh",
+        "scripts/deploy-rds-query-stack.sh",
+        "scripts/sync-rds-secret-after-restore.sh",
+    ):
+        assert not (root / rel).is_file(), f"RDS script should be removed: {rel}"
+
+
+def test_ensure_ci_verify_cognito_user_script_present() -> None:
+    root = _repo_root()
+    assert (root / "scripts" / "ensure-ci-verify-cognito-user.sh").is_file()
+    assert not (root / "scripts" / "ensure-ci-rds-verify-cognito-user.sh").is_file()
+
+
+def test_deploy_backend_sh_has_no_dsql_preview_lane() -> None:
+    text = (_repo_root() / "scripts" / "deploy-backend.sh").read_text(encoding="utf-8")
+    assert "DSQL_PREVIEW" not in text
+    assert "StreamMyCourse-Api-dsql" not in text
+
+
+def test_infrastructure_deploy_ps1_no_rds_template_or_rds_stack_name() -> None:
+    text = (_repo_root() / "infrastructure" / "deploy.ps1").read_text(encoding="utf-8")
+    assert '"rds"' not in text
+    assert "RdsStackName" not in text
+    assert "DsqlEndpoint" in text
 
 
 def test_deploy_backend_uses_repository_variable_for_oidc_role_not_environment_secret() -> None:
@@ -79,7 +114,7 @@ def test_deploy_backend_uses_repository_variable_for_oidc_role_not_environment_s
 def test_integration_http_tests_use_prod_environment_and_pinned_oidc_role_output() -> None:
     """integration-http-tests attach `environment: prod` and resolve prod stack names."""
     text = _workflow_text()
-    http_tests = _job_block(text, "integration-http-tests", "\n  verify-prod-rds:")
+    http_tests = _job_block(text, "integration-http-tests", "\n  deploy-web-prod:")
     assert re.search(r"^\s+environment:\s*prod\s*$", http_tests, re.M)
     assert "needs.resolve-oidc-deploy-role.outputs.aws_deploy_role_arn" in http_tests
     assert (
@@ -106,16 +141,16 @@ def test_deploy_workflow_has_no_dev_jobs() -> None:
         assert forbidden not in text, f"dev job or stack reference must be removed: {forbidden!r}"
 
 
-def test_deploy_backend_prod_depends_on_rds_and_schema_and_wires_rds_stack() -> None:
+def test_deploy_backend_prod_depends_on_gate_and_edge_only() -> None:
     text = _workflow_text()
     start = text.index("  deploy-backend-prod:")
     end = text.index("    steps:", start)
     block = text[start:end]
-    assert "      - deploy-rds-prod" in block
-    assert "      - apply-schema-prod" in block
-    assert "needs.deploy-rds-prod.result == 'success'" in block
-    assert "needs.apply-schema-prod.result == 'success'" in block
-    assert "RDS_STACK_NAME: StreamMyCourse-Rds-prod" in block
+    assert "      - gate" in block
+    assert "      - deploy-edge-prod" in block
+    assert "deploy-rds-prod" not in block
+    assert "apply-schema-prod" not in block
+    assert "RDS_STACK_NAME" not in block
 
 
 def _job_block(text: str, job_id: str, next_marker: str) -> str:
@@ -124,61 +159,16 @@ def _job_block(text: str, job_id: str, next_marker: str) -> str:
     return text[start:next_job]
 
 
-def test_verify_prod_rds_wires_only_prod_stacks_and_reusable_environment_prod() -> None:
+def test_spa_deploy_jobs_need_integration_http_tests_not_verify_rds() -> None:
     text = _workflow_text()
-    block = _job_block(text, "verify-prod-rds", "\n  deploy-web-prod:")
-    assert "uses: ./.github/workflows/verify-rds-reusable.yml" in block
-    assert re.search(r"^    environment:\s*prod\s*$", block, re.M) is None
-    assert "COGNITO_RDS_VERIFY_TEST_PASSWORD: ${{ secrets.COGNITO_RDS_VERIFY_TEST_PASSWORD }}" in block
-    assert "COGNITO_RDS_VERIFY_JWT: ${{ secrets.COGNITO_RDS_VERIFY_JWT }}" in block
-    assert "github_environment: prod" in block
-    assert "aws_region: eu-west-1" in block
-    assert "api_stack_name: StreamMyCourse-Api-prod" in block
-    assert "video_stack_name: StreamMyCourse-Video-prod" in block
-    assert "auth_stack_name: StreamMyCourse-Auth-prod" in block
-    assert "aws_deploy_role_arn: ${{ vars.AWS_DEPLOY_ROLE_ARN }}" in block
-    assert "secrets.INTEG_PROD_COGNITO_" not in block
-    assert "vars.INTEG_PROD_COGNITO_" not in block
-    assert "StreamMyCourse-Auth-dev" not in block
-
-
-def test_verify_rds_reusable_uses_unified_environment_secret_names() -> None:
-    text = _verify_rds_reusable_text()
-    assert "workflow_call:" in text
-    assert "COGNITO_RDS_VERIFY_TEST_PASSWORD:" in text  # workflow_call secrets + step env
-    assert "COGNITO_RDS_VERIFY_JWT:" in text
-    assert "environment: ${{ inputs.github_environment }}" in text
-    assert "inputs.aws_deploy_role_arn" in text
-    assert "secrets.COGNITO_RDS_VERIFY_TEST_PASSWORD" in text
-    assert "secrets.COGNITO_RDS_VERIFY_JWT" in text
-    assert "vars.COGNITO_RDS_VERIFY_TEST_USERNAME" in text
-    assert "secrets.COGNITO_RDS_VERIFY_DEV_TEST_PASSWORD" not in text
-    assert "secrets.COGNITO_RDS_VERIFY_PROD_TEST_PASSWORD" not in text
-
-
-def test_verify_rds_reusable_has_no_literal_environment_specific_stack_names() -> None:
-    """Reusable workflow must stay decoupled: stack names only via inputs (no dev/prod literals here)."""
-    text = _verify_rds_reusable_text()
-    for forbidden in (
-        "StreamMyCourse-Auth-dev",
-        "StreamMyCourse-Auth-prod",
-        "StreamMyCourse-Video-dev",
-        "StreamMyCourse-Video-prod",
-        "StreamMyCourse-Api-prod",
-        "streammycourse-api",
-        "StreamMyCourse-Catalog-dev",
-        "StreamMyCourse-Catalog-prod",
-    ):
-        assert forbidden not in text, f"unexpected coupling literal {forbidden!r} in verify-rds-reusable.yml"
-
-
-def test_deploy_rds_prod_does_not_depend_on_dev_edge() -> None:
-    text = _workflow_text()
-    start = text.index("  deploy-rds-prod:")
-    end = text.index("    steps:", start)
-    block = text[start:end]
-    assert "deploy-edge-dev" not in block
-    assert "needs.deploy-edge-dev.result" not in block
+    for job_id in ("deploy-web-prod", "deploy-teacher-web-prod"):
+        start = text.index(f"  {job_id}:")
+        tail = text[start:]
+        m = re.search(r"\n  [a-z][\w-]*:", tail[len(f"  {job_id}:") :])
+        end = start + len(f"  {job_id}:") + (m.start() if m else len(tail))
+        block = text[start:end]
+        assert "integration-http-tests" in block
+        assert "verify-prod-rds" not in block
 
 
 def _deploy_backend_sh_text() -> str:
@@ -189,7 +179,7 @@ def _deploy_backend_sh_text() -> str:
 
 def test_deploy_backend_prod_packages_cognito_pre_signup_lambda() -> None:
     text = _workflow_text()
-    block = _job_block(text, "deploy-backend-prod", "\n  # Prod-only")
+    block = _job_block(text, "deploy-backend-prod", "\n  integration-http-tests:")
     assert "Package and upload Cognito PreSignUp Lambda (prod)" in block
     assert "cognito_pre_signup_pkg_prod" in block
     assert "cognito-pre-signup-prod-" in block
@@ -242,7 +232,7 @@ def test_api_stack_exposes_billing_and_hyperpay_webhook_routes() -> None:
 
 def test_deploy_workflow_prod_provisions_hyperpay_secret() -> None:
     text = _workflow_text()
-    block = _job_block(text, "deploy-backend-prod", "\n  # Prod-only")
+    block = _job_block(text, "deploy-backend-prod", "\n  integration-http-tests:")
     assert "Ensure HyperPay secret (prod)" in block
     assert "ensure-hyperpay-secret.sh" in block
     assert "HYPERPAY_ACCESS_TOKEN" in block

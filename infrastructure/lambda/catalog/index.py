@@ -65,21 +65,17 @@ _INTERNAL_EVENTS = frozenset(
 )
 
 
-def _rds_config_complete(cfg: AppConfig) -> bool:
-    return bool(cfg.db_host and cfg.db_name and cfg.db_secret_arn)
-
-
 def _dsql_config_complete(cfg: AppConfig) -> bool:
     return bool((cfg.dsql_endpoint or "").strip())
 
 
 def _db_config_complete(cfg: AppConfig) -> bool:
-    return _rds_config_complete(cfg) or _dsql_config_complete(cfg)
+    return _dsql_config_complete(cfg)
 
 
 CATALOG_UNCONFIGURED_MESSAGE = (
-    "Catalog is not configured: set DB_HOST, DB_NAME, and DB_SECRET_ARN for RDS, "
-    "or DSQL_ENDPOINT for Aurora DSQL (deploy the api stack with the matching database wiring)."
+    "Catalog is not configured: set DSQL_ENDPOINT for Aurora DSQL "
+    "(deploy the api stack with DSQL database wiring)."
 )
 
 

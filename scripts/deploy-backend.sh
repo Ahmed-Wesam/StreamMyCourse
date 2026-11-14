@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Deploy video (S3) + API (Lambda, API Gateway, RDS-backed catalog) for prod.
+# Deploy video (S3) + API (Lambda, API Gateway, DSQL-backed catalog) for prod.
 # Used in CI (Linux) or locally (Git Bash / WSL).
 set -euo pipefail
 
@@ -13,13 +13,7 @@ prod) ;;
 esac
 
 REGION="${AWS_REGION:-eu-west-1}"
-IS_DSQL_PREVIEW=false
-if [[ "${DSQL_PREVIEW:-}" == "1" ]]; then
-  IS_DSQL_PREVIEW=true
-  API_STACK="StreamMyCourse-Api-dsql"
-else
-  API_STACK="StreamMyCourse-Api-prod"
-fi
+API_STACK="StreamMyCourse-Api-${ENV}"
 CORS="https://researchspectrum.org,https://teach.researchspectrum.org,http://localhost:5173,http://localhost:5174"
 VIDEO_CORS="https://researchspectrum.org,https://teach.researchspectrum.org,http://localhost:5173,http://127.0.0.1:5173,http://localhost:5174,http://127.0.0.1:5174"
 GW_ALLOW="https://researchspectrum.org"
@@ -87,7 +81,6 @@ _resolve_dsql_stack_outputs() {
 _export_dsql_for_payments() {
   export DSQL_ENDPOINT="${DSQL_ENDPOINT_VAL}"
   export DSQL_CLUSTER_ARN="${DSQL_CLUSTER_ARN_VAL}"
-  export RDS_STACK_NAME=""
 }
 
 # CloudFormation only updates Lambda when S3Key *parameter* changes. Same key + new zip bytes = empty changeset.
@@ -311,10 +304,9 @@ fi
 
 # Async transactional mail (contact form → Zoho SMTP worker). Override both URL and ARN to
 # reuse a pre-deployed queue without running the transactional-mail stack again.
-# Preview stack (DSQL_PREVIEW=1) leaves transactional mail unwired (ADR-0016 / D9).
 TM_QUEUE_URL="${TRANSACTIONAL_MAIL_QUEUE_URL:-}"
 TM_QUEUE_ARN="${TRANSACTIONAL_MAIL_QUEUE_ARN:-}"
-if ! $IS_DSQL_PREVIEW && [[ -z "$TM_QUEUE_URL" || -z "$TM_QUEUE_ARN" ]]; then
+if [[ -z "$TM_QUEUE_URL" || -z "$TM_QUEUE_ARN" ]]; then
   TM_SCRIPT="${ROOT}/scripts/deploy-transactional-mail.sh"
   chmod +x "$TM_SCRIPT"
   CATALOG_LAMBDA_ROLE_ARN=""
@@ -355,11 +347,10 @@ if [[ -n "${TM_QUEUE_URL:-}" && -n "${TM_QUEUE_ARN:-}" ]]; then
 fi
 
 # Billing edge + fulfillment queue (WS2). Override all three to skip payments stack redeploy.
-# Preview stack does not attach billing edge routes or redeploy payments (D9).
 BILLING_EDGE_ARN="${BILLING_EDGE_LAMBDA_ARN:-}"
 BILLING_QUEUE_URL="${BILLING_FULFILLMENT_QUEUE_URL:-}"
 BILLING_QUEUE_ARN="${BILLING_FULFILLMENT_QUEUE_ARN:-}"
-if ! $IS_DSQL_PREVIEW && [[ -z "$BILLING_EDGE_ARN" || -z "$BILLING_QUEUE_URL" || -z "$BILLING_QUEUE_ARN" ]]; then
+if [[ -z "$BILLING_EDGE_ARN" || -z "$BILLING_QUEUE_URL" || -z "$BILLING_QUEUE_ARN" ]]; then
   PAY_SCRIPT="${ROOT}/scripts/deploy-payments.sh"
   chmod +x "$PAY_SCRIPT"
   export BILLING_FULFILLMENT_ALERT_EMAIL="${BILLING_FULFILLMENT_ALERT_EMAIL:-}"
@@ -450,11 +441,6 @@ if [[ -z "${COGNITO_USER_POOL_ARN:-}" || "${COGNITO_USER_POOL_ARN}" == "None" ]]
       --output text)"
   fi
 fi
-if $IS_DSQL_PREVIEW && [[ -z "${COGNITO_USER_POOL_ARN:-}" || "${COGNITO_USER_POOL_ARN}" == "None" ]]; then
-  echo "Error: DSQL preview deploy requires CognitoUserPoolArn (set COGNITO_USER_POOL_ARN or deploy ${AUTH_STACK_NAME})." >&2
-  exit 1
-fi
-
 COGNITO_OVERRIDE=()
 if [[ -n "${COGNITO_USER_POOL_ARN:-}" && "${COGNITO_USER_POOL_ARN}" != "None" ]]; then
   COGNITO_OVERRIDE+=("CognitoUserPoolArn=${COGNITO_USER_POOL_ARN}")
@@ -466,10 +452,7 @@ if [[ -n "${STUDENT_CLIENT:-}" && "${STUDENT_CLIENT}" != "None" ]]; then
   COGNITO_OVERRIDE+=("StudentCognitoClientId=${STUDENT_CLIENT}")
 fi
 
-RDS_STACK_NAME="${RDS_STACK_NAME:-StreamMyCourse-Rds-${ENV}}"
-RDS_STACK_OVERRIDE=("RdsStackName=${RDS_STACK_NAME}")
 DSQL_PARAM_OVERRIDES=()
-PROD_USES_DSQL=false
 
 if [[ -n "${DSQL_ENDPOINT:-}" ]]; then
   DSQL_ENDPOINT_VAL="${DSQL_ENDPOINT}"
@@ -478,32 +461,14 @@ if [[ -n "${DSQL_CLUSTER_ARN:-}" ]]; then
   DSQL_CLUSTER_ARN_VAL="${DSQL_CLUSTER_ARN}"
 fi
 
-if $IS_DSQL_PREVIEW; then
-  if ! _resolve_dsql_stack_outputs; then
-    echo "Error: DSQL_PREVIEW=1 requires StreamMyCourse-Dsql-prod outputs (Endpoint, ResourceArn)." >&2
-    exit 1
-  fi
-  DSQL_PARAM_OVERRIDES=(
-    "ResourceNameSuffix=dsql"
-    "DsqlEndpoint=${DSQL_ENDPOINT_VAL}"
-    "DsqlClusterArn=${DSQL_CLUSTER_ARN_VAL}"
-    "RdsStackName="
-  )
-  RDS_STACK_OVERRIDE=("RdsStackName=")
-elif ! _resolve_dsql_stack_outputs; then
-  if ! aws cloudformation describe-stacks --stack-name "$RDS_STACK_NAME" --region "$REGION" &>/dev/null; then
-    echo "Error: neither DSQL stack nor RDS stack '$RDS_STACK_NAME' is available for API deploy." >&2
-    exit 1
-  fi
-else
-  PROD_USES_DSQL=true
-  DSQL_PARAM_OVERRIDES=(
-    "DsqlEndpoint=${DSQL_ENDPOINT_VAL}"
-    "DsqlClusterArn=${DSQL_CLUSTER_ARN_VAL}"
-    "RdsStackName="
-  )
-  RDS_STACK_OVERRIDE=("RdsStackName=")
+if ! _resolve_dsql_stack_outputs; then
+  echo "Error: StreamMyCourse-Dsql-${ENV} outputs (Endpoint, ResourceArn) required for API deploy." >&2
+  exit 1
 fi
+DSQL_PARAM_OVERRIDES=(
+  "DsqlEndpoint=${DSQL_ENDPOINT_VAL}"
+  "DsqlClusterArn=${DSQL_CLUSTER_ARN_VAL}"
+)
 
 VIDEO_EDGE_PARAM_OVERRIDES=()
 VIDEO_EDGE_STACK="StreamMyCourse-VideoProviderEdge-${ENV}"
@@ -526,7 +491,7 @@ if aws cloudformation describe-stacks --stack-name "$API_STACK" --region "$REGIO
   fi
 fi
 
-if ! $IS_DSQL_PREVIEW && [[ "$VIDEO_PROVIDER" == "kinescope" && -n "$PREFLIGHT_CATALOG_ARN" && "$PREFLIGHT_CATALOG_ARN" != "None" ]]; then
+if [[ "$VIDEO_PROVIDER" == "kinescope" && -n "$PREFLIGHT_CATALOG_ARN" && "$PREFLIGHT_CATALOG_ARN" != "None" ]]; then
   export CATALOG_LAMBDA_ARN="$PREFLIGHT_CATALOG_ARN"
   export CORS_ALLOW_ORIGIN="${CORS}"
   VIDEO_EDGE_SCRIPT="${ROOT}/scripts/deploy-video-provider-edge.sh"
@@ -572,7 +537,6 @@ _deploy_api_stack() {
     "GatewayResponseAllowOrigin=${GW_ALLOW}" \
     "BillingTeacherSub=${BILLING_TEACHER_SUB:-}" \
     "${COGNITO_OVERRIDE[@]}" \
-    "${RDS_STACK_OVERRIDE[@]}" \
     "${MEDIA_PARAM_OVERRIDES[@]}" \
     "${TRANSACTIONAL_MAIL_PARAM_OVERRIDES[@]}" \
     "${BILLING_PARAM_OVERRIDES[@]}" \
@@ -581,14 +545,12 @@ _deploy_api_stack() {
     "${DSQL_PARAM_OVERRIDES[@]}"
 }
 
-if ! $IS_DSQL_PREVIEW && $PROD_USES_DSQL; then
-  _export_dsql_for_payments
-  PAY_SCRIPT="${ROOT}/scripts/deploy-payments.sh"
-  chmod +x "$PAY_SCRIPT"
-  export BILLING_FULFILLMENT_ALERT_EMAIL="${BILLING_FULFILLMENT_ALERT_EMAIL:-}"
-  echo "Pre-API: updating payments stack for DSQL fulfillment (auth already on DSQL)"
-  "$PAY_SCRIPT" "$ENV" "$REGION" "$ARTIFACT_BUCKET" "$SUFFIX"
-fi
+_export_dsql_for_payments
+PAY_SCRIPT="${ROOT}/scripts/deploy-payments.sh"
+chmod +x "$PAY_SCRIPT"
+export BILLING_FULFILLMENT_ALERT_EMAIL="${BILLING_FULFILLMENT_ALERT_EMAIL:-}"
+echo "Pre-API: updating payments stack for DSQL fulfillment (auth already on DSQL)"
+"$PAY_SCRIPT" "$ENV" "$REGION" "$ARTIFACT_BUCKET" "$SUFFIX"
 
 _deploy_api_stack "phase A"
 
@@ -599,7 +561,7 @@ API_ENDPOINT="$(aws cloudformation describe-stacks \
   --output text)"
 echo "ApiEndpoint: $API_ENDPOINT"
 
-if ! $IS_DSQL_PREVIEW && [[ "$VIDEO_PROVIDER" == "kinescope" ]]; then
+if [[ "$VIDEO_PROVIDER" == "kinescope" ]]; then
   CONFIG_DRM_SCRIPT="${ROOT}/scripts/configure-kinescope-drm-auth.sh"
   if [[ ! -f "$CONFIG_DRM_SCRIPT" ]]; then
     echo "Error: missing ${CONFIG_DRM_SCRIPT} (required when VIDEO_PROVIDER=kinescope)." >&2
@@ -638,13 +600,11 @@ if [[ -n "${STUDENT_SITE_URL}" && "${STUDENT_SITE_URL}" != "None" ]]; then
   BILLING_SHOPPER_RESULT_URL="${STUDENT_SITE_URL%/}/billing/result"
 fi
 
-if ! $IS_DSQL_PREVIEW && [[ -n "${CATALOG_LAMBDA_ARN:-}" && "${CATALOG_LAMBDA_ARN}" != "None" ]]; then
+if [[ -n "${CATALOG_LAMBDA_ARN:-}" && "${CATALOG_LAMBDA_ARN}" != "None" ]]; then
   export CATALOG_LAMBDA_ARN
   if [[ -n "${BILLING_SHOPPER_RESULT_URL:-}" ]]; then
     export BILLING_SHOPPER_RESULT_URL
-    if $PROD_USES_DSQL; then
-      _export_dsql_for_payments
-    fi
+    _export_dsql_for_payments
     PAY_SCRIPT="${ROOT}/scripts/deploy-payments.sh"
     chmod +x "$PAY_SCRIPT"
     echo "Updating payments stack with catalog invoke + billing return URLs"
@@ -655,7 +615,7 @@ if ! $IS_DSQL_PREVIEW && [[ -n "${CATALOG_LAMBDA_ARN:-}" && "${CATALOG_LAMBDA_AR
 fi
 
 # Video provider edge (Kinescope): first-time env only — catalog did not exist pre-deploy.
-if ! $IS_DSQL_PREVIEW && [[ "$VIDEO_PROVIDER" == "kinescope" && -n "${CATALOG_LAMBDA_ARN:-}" && "${CATALOG_LAMBDA_ARN}" != "None" ]]; then
+if [[ "$VIDEO_PROVIDER" == "kinescope" && -n "${CATALOG_LAMBDA_ARN:-}" && "${CATALOG_LAMBDA_ARN}" != "None" ]]; then
   if ((${#VIDEO_EDGE_PARAM_OVERRIDES[@]} == 0)); then
     export CATALOG_LAMBDA_ARN
     export CORS_ALLOW_ORIGIN="${CORS}"

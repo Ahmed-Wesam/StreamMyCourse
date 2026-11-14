@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-# Create or update the dedicated CI user for Verify prod RDS (or local RDS path tests).
+# Create or update the dedicated CI user for integration HTTP tests (or local pytest).
 # Requires AWS credentials with cognito-idp admin APIs on the target pool (default prod stack).
 #
 # Usage:
-#   ./scripts/ensure-ci-rds-verify-cognito-user.sh
-#   ./scripts/ensure-ci-rds-verify-cognito-user.sh --role student --username student-test@noreply.local
-#   CI_RDS_VERIFY_PASSWORD='your-strong-password' ./scripts/ensure-ci-rds-verify-cognito-user.sh
+#   ./scripts/ensure-ci-verify-cognito-user.sh
+#   ./scripts/ensure-ci-verify-cognito-user.sh --role student --username student-test@noreply.local
+#   CI_RDS_VERIFY_PASSWORD='your-strong-password' ./scripts/ensure-ci-verify-cognito-user.sh
 #
 # Options:
 #   --role ROLE            User role: teacher or student (default: teacher)
@@ -126,5 +126,5 @@ aws cognito-idp admin-update-user-attributes \
     "Name=custom:role,Value=$ROLE" \
   --region "$REGION"
 
-echo "Done. Store the same password in GitHub secret COGNITO_RDS_VERIFY_TEST_PASSWORD on the"
+echo "Done. Store the same password in GitHub secret COGNITO_VERIFY_TEST_PASSWORD on the"
 echo "GitHub Environment that matches this stack (prod for *-Auth-prod)."

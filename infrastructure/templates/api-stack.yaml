@@ -68,14 +68,6 @@ Parameters:
       Student app client ID for catalog single-session enforcement (STUDENT_COGNITO_CLIENT_ID).
       Empty disables the API middleware check until wired by deploy.
 
-  RdsStackName:
-    Type: String
-    Default: ''
-    Description: >-
-      Name of the RDS stack (e.g. StreamMyCourse-Rds-prod) whose exports provide
-      the VPC/subnet/SG/secret and DB_* settings for the catalog Lambda. Empty when
-      DsqlEndpoint is set (Aurora DSQL).
-
   LogLevel:
     Type: String
     Default: 'INFO'
@@ -234,8 +226,6 @@ Conditions:
   UseKinescopeVideoEdge: !And
     - !Condition IsKinescopeProvider
     - !Condition HasVideoProviderEdgeLambdaArn
-  UseDsql: !Not [!Equals [!Ref DsqlEndpoint, '']]
-  UseRds: !Not [!Condition UseDsql]
   HasResourceNameSuffix: !Not [!Equals [!Ref ResourceNameSuffix, '']]
 
 Resources:
@@ -319,48 +309,14 @@ Resources:
                     - sqs:SendMessage
                   Resource: !Ref TransactionalMailQueueArn
           - !Ref AWS::NoValue
-        # VPC ENI lifecycle for Lambda-in-VPC. These actions are resource-less by
-        # AWS design (they return IDs from the global EC2 API) — standard for the
-        # Lambda-in-VPC pattern.
-        - !If
-          - UseRds
-          - PolicyName: LambdaVpcEni
-            PolicyDocument:
-              Version: '2012-10-17'
-              Statement:
-                - Effect: Allow
-                  Action:
-                    - ec2:CreateNetworkInterface
-                    - ec2:DescribeNetworkInterfaces
-                    - ec2:DeleteNetworkInterface
-                    - ec2:AssignPrivateIpAddresses
-                    - ec2:UnassignPrivateIpAddresses
-                  Resource: '*'
-          - !Ref AWS::NoValue
-        # Scoped to the specific RDS credentials secret exported by the RDS stack.
-        - !If
-          - UseRds
-          - PolicyName: SecretsManagerRdsCreds
-            PolicyDocument:
-              Version: '2012-10-17'
-              Statement:
-                - Effect: Allow
-                  Action:
-                    - secretsmanager:GetSecretValue
-                  Resource: !ImportValue
-                    'Fn::Sub': '${RdsStackName}-DbSecretArn'
-          - !Ref AWS::NoValue
-        - !If
-          - UseDsql
-          - PolicyName: DsqlDbConnect
-            PolicyDocument:
-              Version: '2012-10-17'
-              Statement:
-                - Effect: Allow
-                  Action:
-                    - dsql:DbConnect
-                  Resource: !Ref DsqlClusterArn
-          - !Ref AWS::NoValue
+        - PolicyName: DsqlDbConnect
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - dsql:DbConnect
+                Resource: !Ref DsqlClusterArn
       Tags:
         - Key: Project
           Value: StreamMyCourse
@@ -379,23 +335,13 @@ Resources:
             - !Ref Environment
       Runtime: python3.11
       Handler: index.lambda_handler
-      # Bumped from 15s to 30s to absorb VPC cold-start (~1-2s ENI attach) and
-      # Secrets Manager fetch (~0.5-1s on cold start).
-      Timeout: 30
+      # DSQL has no ENI wait; 20 s stays under API Gateway 29 s limit.
+      Timeout: 20
       MemorySize: 512
       Role: !GetAtt CatalogLambdaRole.Arn
       Code:
         S3Bucket: !Ref LambdaCodeS3Bucket
         S3Key: !Ref LambdaCodeS3Key
-      VpcConfig: !If
-        - UseRds
-        - SubnetIds:
-            - !ImportValue
-              'Fn::Sub': '${RdsStackName}-PrivateSubnetId'
-          SecurityGroupIds:
-            - !ImportValue
-              'Fn::Sub': '${RdsStackName}-LambdaSecurityGroupId'
-        - !Ref AWS::NoValue
       Environment:
         Variables:
           DEFAULT_MP4_URL: !Ref DefaultMp4Url
@@ -403,34 +349,8 @@ Resources:
           VIDEO_BUCKET: !Ref VideoBucketName
           ALLOWED_ORIGINS: !Ref CorsAllowOrigin
           LOG_LEVEL: !Ref LogLevel
-          DB_HOST: !If
-            - UseRds
-            - !ImportValue
-              'Fn::Sub': '${RdsStackName}-DbHost'
-            - !Ref AWS::NoValue
-          DB_PORT: !If
-            - UseRds
-            - !ImportValue
-              'Fn::Sub': '${RdsStackName}-DbPort'
-            - !Ref AWS::NoValue
-          DB_NAME: !If
-            - UseRds
-            - !ImportValue
-              'Fn::Sub': '${RdsStackName}-DbName'
-            - !Ref AWS::NoValue
-          DB_SECRET_ARN: !If
-            - UseRds
-            - !ImportValue
-              'Fn::Sub': '${RdsStackName}-DbSecretArn'
-            - !Ref AWS::NoValue
-          DSQL_ENDPOINT: !If
-            - UseDsql
-            - !Ref DsqlEndpoint
-            - !Ref AWS::NoValue
-          DSQL_USER: !If
-            - UseDsql
-            - smc_app
-            - !Ref AWS::NoValue
+          DSQL_ENDPOINT: !Ref DsqlEndpoint
+          DSQL_USER: smc_app
           MEDIA_CLEANUP_QUEUE_URL: !Ref MediaCleanupQueueUrl
           TRANSACTIONAL_MAIL_QUEUE_URL: !Ref TransactionalMailQueueUrl
           BILLING_TEACHER_SUB: !Ref BillingTeacherSub

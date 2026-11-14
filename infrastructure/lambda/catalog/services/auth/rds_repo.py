@@ -114,22 +114,15 @@ def _row_to_profile(row: Tuple[Any, ...]) -> Dict[str, Any]:
 
 
 class UserProfileRdsRepository:
-    def __init__(
-        self, conn_factory: ConnectionFactory, *, tags_as_jsonb: bool = False
-    ) -> None:
+    def __init__(self, conn_factory: ConnectionFactory) -> None:
         self._conn_factory = conn_factory
         self._conn: Optional[Any] = None
-        self._tags_as_jsonb = tags_as_jsonb
 
-    def _tags_write_param(self, tags: list[str]) -> Any:
-        if self._tags_as_jsonb:
-            return json.dumps(tags)
-        return tags
+    def _tags_write_param(self, tags: list[str]) -> str:
+        return json.dumps(tags)
 
     def _tags_assignment_sql(self) -> str:
-        if self._tags_as_jsonb:
-            return "research_interest_tags = %s::jsonb"
-        return "research_interest_tags = %s"
+        return "research_interest_tags = %s::jsonb"
 
     def _connection(self) -> Any:
         if self._conn is None:
@@ -290,15 +283,8 @@ class UserProfileRdsRepository:
         return run_transaction(self._connection(), body)
 
     def reset_built_preferences(self, *, user_sub: str) -> Dict[str, Any]:
-        if self._tags_as_jsonb:
-            tags_sql = "research_interest_tags = %s::jsonb"
-            tags_param: Any = json.dumps(list(DEFAULT_RESEARCH_INTEREST_TAGS))
-            extra_params: tuple[Any, ...] = (tags_param,)
-        else:
-            tags_sql = (
-                "research_interest_tags = ARRAY['systematic_reviews', 'meta_analysis']::text[]"
-            )
-            extra_params = ()
+        tags_sql = "research_interest_tags = %s::jsonb"
+        tags_param = json.dumps(list(DEFAULT_RESEARCH_INTEREST_TAGS))
         sql = f"""
             UPDATE users
                SET pref_autoplay_next = TRUE,
@@ -309,7 +295,7 @@ class UserProfileRdsRepository:
              WHERE user_sub = %s
             RETURNING {_PROFILE_COLUMNS}
             """
-        params = (*extra_params, user_sub)
+        params = (tags_param, user_sub)
 
         def body() -> Dict[str, Any]:
             cur = self._execute(sql, params, commit=False)

@@ -12,7 +12,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
-ENSURE="${REPO_ROOT}/scripts/ensure-ci-rds-verify-cognito-user.sh"
+ENSURE="${REPO_ROOT}/scripts/ensure-ci-verify-cognito-user.sh"
 
 ensure_one() {
   local role="$1"

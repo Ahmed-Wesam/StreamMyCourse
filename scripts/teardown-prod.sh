@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 # Teardown prod CloudFormation stacks (pause/shutdown Phase 2).
 #
+# Aurora DSQL (StreamMyCourse-Dsql-prod) is not part of pause — cluster idles near $0.
+#
 # Usage:
 #   ./scripts/teardown-prod.sh [--dry-run] [--confirm] [--skip-missing] [--manifest-out PATH]
 #
@@ -16,10 +18,6 @@ DRY_RUN=false
 CONFIRM=false
 SKIP_MISSING=false
 MANIFEST_OUT=""
-
-RDS_STACK_NAME="StreamMyCourse-Rds-prod"
-RDS_DB_INSTANCE_ID="streammycourse-prod"
-RDS_REGION="eu-west-1"
 
 usage() {
   echo "Usage: $0 [--dry-run] [--confirm] [--skip-missing] [--manifest-out PATH]" >&2
@@ -106,29 +104,6 @@ run_waf_teardown() {
   bash "$waf_script"
 }
 
-disable_rds_deletion_protection() {
-  if [[ "$DRY_RUN" == true ]]; then
-    echo "[dry-run] Would disable deletion protection on RDS instance $RDS_DB_INSTANCE_ID ($RDS_REGION) and wait until available"
-    return 0
-  fi
-  if ! aws rds describe-db-instances \
-    --db-instance-identifier "$RDS_DB_INSTANCE_ID" \
-    --region "$RDS_REGION" >/dev/null 2>&1; then
-    echo "RDS instance $RDS_DB_INSTANCE_ID not found; skipping deletion protection disable."
-    return 0
-  fi
-  echo "Disabling deletion protection on RDS instance $RDS_DB_INSTANCE_ID ($RDS_REGION)..."
-  aws rds modify-db-instance \
-    --db-instance-identifier "$RDS_DB_INSTANCE_ID" \
-    --no-deletion-protection \
-    --apply-immediately \
-    --region "$RDS_REGION"
-  echo "Waiting for RDS instance $RDS_DB_INSTANCE_ID to become available..."
-  aws rds wait db-instance-available \
-    --db-instance-identifier "$RDS_DB_INSTANCE_ID" \
-    --region "$RDS_REGION"
-}
-
 delete_stack_entry() {
   local entry="$1"
   local stack="${entry%%:*}"
@@ -141,10 +116,6 @@ delete_stack_entry() {
     fi
     echo "Stack $stack not found in $region (use --skip-missing to continue)." >&2
     exit 1
-  fi
-
-  if [[ "$stack" == "$RDS_STACK_NAME" ]]; then
-    disable_rds_deletion_protection
   fi
 
   if [[ "$DRY_RUN" == true ]]; then

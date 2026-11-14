@@ -50,13 +50,15 @@ def _integration_diag(msg: str) -> None:
     sys.stderr.flush()
 
 
-def _run_is_rds_smoke_only(config: pytest.Config) -> bool:
-    """True when pytest was invoked only for test_rds_path (verify-rds CI job)."""
+def _run_is_persistence_smoke_only(config: pytest.Config) -> bool:
+    """True when pytest was invoked only for test_persistence_smoke."""
     args = [str(a) for a in getattr(config, "args", []) or [] if str(a).strip()]
     if not args:
         return False
     targets = [a for a in args if not a.startswith("-")]
-    return bool(targets) and all("test_rds_path" in target for target in targets)
+    return bool(targets) and all(
+        "test_persistence_smoke" in target for target in targets
+    )
 
 
 _SESSION_T0_MONO = 0.0
@@ -84,7 +86,7 @@ def pytest_sessionstart(session: pytest.Session) -> None:
         api
         and expects_kinescope()
         and not integration_kinescope_webhook_secret()
-        and not _run_is_rds_smoke_only(session.config)
+        and not _run_is_persistence_smoke_only(session.config)
     ):
         pytest.exit(
             "INTEGRATION_KINESCOPE_WEBHOOK_SECRET (or KINESCOPE_WEBHOOK_SECRET) is required "
@@ -147,7 +149,7 @@ def aws_region() -> str:
 def http_client(api_base_url: str) -> Iterator[httpx.Client]:
     # Dev (and prod) stacks enforce Cognito on mutating routes.
     # CI: `.github/workflows/deploy-backend.yml` `integration-http-tests` mints
-    # `INTEGRATION_COGNITO_JWT` (same flow as `verify-rds-reusable.yml`).
+    # `INTEGRATION_COGNITO_JWT` (same mint flow as deploy-backend integration job).
     default_headers: dict[str, str] = {}
     token = os.environ.get("INTEGRATION_COGNITO_JWT", "").strip()
     if token:

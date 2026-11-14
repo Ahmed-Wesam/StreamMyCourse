@@ -110,7 +110,8 @@ class TestServiceUnconfigured:
         assert resp["statusCode"] == 503
         body = json.loads(resp["body"])
         assert body["code"] == "catalog_unconfigured"
-        assert "DB_HOST" in body["message"]
+        assert "DSQL_ENDPOINT" in body["message"]
+        assert "DB_HOST" not in body["message"]
         # CORS headers must be present on the unconfigured response too.
         headers = resp["headers"]
         assert headers["Access-Control-Allow-Origin"] == "*"
@@ -391,15 +392,13 @@ class TestProgressRouting:
         assert body["code"] == "catalog_unconfigured"
 
 
-def _cfg_with_rds(**overrides: Any) -> AppConfig:
+def _cfg_with_dsql(**overrides: Any) -> AppConfig:
     base = dict(
         video_bucket="b",
         default_mp4_url="",
         video_url="",
         allowed_origins=["*"],
-        db_host="rds.example.com",
-        db_name="smc",
-        db_secret_arn="arn:aws:secretsmanager:eu-west-1:123:secret:x",
+        dsql_endpoint="abc.dsql.eu-west-1.on.aws",
     )
     base.update(overrides)
     return AppConfig(**base)
@@ -411,7 +410,7 @@ class TestRateLimitMiddleware:
         monkeypatch: pytest.MonkeyPatch,
         make_lambda_event,
     ) -> None:
-        cfg = _cfg_with_rds()
+        cfg = _cfg_with_dsql()
         mock_service = MagicMock(spec=CourseManagementService)
         mock_service.list_published_courses.return_value = []
         mock_auth = MagicMock()
@@ -452,7 +451,7 @@ class TestRateLimitMiddleware:
         monkeypatch: pytest.MonkeyPatch,
         make_lambda_event,
     ) -> None:
-        cfg = _cfg_with_rds()
+        cfg = _cfg_with_dsql()
         mock_service = MagicMock(spec=CourseManagementService)
         mock_auth = MagicMock()
         mock_rl = MagicMock()
@@ -487,7 +486,7 @@ class TestRateLimitMiddleware:
         monkeypatch: pytest.MonkeyPatch,
         make_lambda_event,
     ) -> None:
-        cfg = _cfg_with_rds()
+        cfg = _cfg_with_dsql()
         mock_service = MagicMock(spec=CourseManagementService)
         mock_auth = MagicMock()
         mock_rl = MagicMock()
@@ -523,7 +522,7 @@ class TestRateLimitMiddleware:
         monkeypatch: pytest.MonkeyPatch,
         make_lambda_event,
     ) -> None:
-        cfg = _cfg_with_rds()
+        cfg = _cfg_with_dsql()
         mock_service = MagicMock(spec=CourseManagementService)
         mock_service.list_published_courses.return_value = []
         mock_auth = MagicMock()
@@ -554,7 +553,7 @@ class TestRateLimitMiddleware:
         monkeypatch: pytest.MonkeyPatch,
         make_lambda_event,
     ) -> None:
-        cfg = _cfg_with_rds()
+        cfg = _cfg_with_dsql()
         mock_service = MagicMock(spec=CourseManagementService)
         mock_auth = MagicMock()
         mock_rl = MagicMock()

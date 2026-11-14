@@ -56,28 +56,25 @@ def _sample_post_auth_event(
 
 
 @pytest.fixture
-def rds_cfg() -> SyncConfig:
+def dsql_cfg() -> SyncConfig:
     return SyncConfig(
-        db_secret_arn="arn:aws:secretsmanager:eu-west-1:123:secret:x",
-        db_host="db.local",
-        db_name="app",
-        db_port=5432,
+        dsql_endpoint="cluster.dsql.eu-west-1.on.aws",
         student_client_id=STUDENT_CLIENT_ID,
         teacher_client_id=TEACHER_CLIENT_ID,
     )
 
 
-def test_sync_skips_without_sub(rds_cfg: SyncConfig) -> None:
+def test_sync_skips_without_sub(dsql_cfg: SyncConfig) -> None:
     evt: Dict[str, Any] = _sample_post_auth_event()
     del evt["request"]["userAttributes"]["sub"]  # type: ignore[index]
     with patch("handler.upsert_user_profile") as mock_upsert:
-        out = sync_post_authentication(evt, rds_cfg)
+        out = sync_post_authentication(evt, dsql_cfg)
     assert out is evt
     mock_upsert.assert_not_called()
 
 
 def test_sync_skips_when_db_not_configured() -> None:
-    cfg = SyncConfig(db_secret_arn="", db_host="", db_name="app", db_port=5432)
+    cfg = SyncConfig(dsql_endpoint="")
     evt = _sample_post_auth_event()
     with patch("handler.upsert_user_profile") as mock_upsert:
         out = sync_post_authentication(evt, cfg)
@@ -85,14 +82,14 @@ def test_sync_skips_when_db_not_configured() -> None:
     mock_upsert.assert_not_called()
 
 
-def test_sync_calls_upsert_with_normalized_role(rds_cfg: SyncConfig) -> None:
+def test_sync_calls_upsert_with_normalized_role(dsql_cfg: SyncConfig) -> None:
     evt = _sample_post_auth_event(role_attr="Admin")
     mock_factory = MagicMock()
     with (
         patch("handler.get_cached_connection_factory", return_value=mock_factory),
         patch("handler.upsert_user_profile") as mock_upsert,
     ):
-        sync_post_authentication(evt, rds_cfg)
+        sync_post_authentication(evt, dsql_cfg)
     mock_upsert.assert_called_once()
     args, kwargs = mock_upsert.call_args
     assert args[0] is mock_factory
@@ -101,35 +98,30 @@ def test_sync_calls_upsert_with_normalized_role(rds_cfg: SyncConfig) -> None:
     assert kwargs["role"] == "admin"
 
 
-def test_sync_uses_role_attr_when_custom_missing(rds_cfg: SyncConfig) -> None:
+def test_sync_uses_role_attr_when_custom_missing(dsql_cfg: SyncConfig) -> None:
     evt = _sample_post_auth_event(role_attr="student", use_custom_role_key=False)
     mock_factory = MagicMock()
     with (
         patch("handler.get_cached_connection_factory", return_value=mock_factory),
         patch("handler.upsert_user_profile") as mock_upsert,
     ):
-        sync_post_authentication(evt, rds_cfg)
+        sync_post_authentication(evt, dsql_cfg)
     assert mock_upsert.call_args.kwargs["role"] == "student"
 
 
-def test_sync_does_not_raise_on_upsert_failure(rds_cfg: SyncConfig) -> None:
+def test_sync_does_not_raise_on_upsert_failure(dsql_cfg: SyncConfig) -> None:
     evt = _sample_post_auth_event()
     mock_factory = MagicMock()
     with (
         patch("handler.get_cached_connection_factory", return_value=mock_factory),
         patch("handler.upsert_user_profile", side_effect=RuntimeError("db down")),
     ):
-        out = sync_post_authentication(evt, rds_cfg)
+        out = sync_post_authentication(evt, dsql_cfg)
     assert out is evt
 
 
 def test_lambda_handler_routes_post_authentication() -> None:
-    cfg = SyncConfig(
-        db_secret_arn="arn:aws:secretsmanager:eu-west-1:123:secret:x",
-        db_host="db.local",
-        db_name="app",
-        db_port=5432,
-    )
+    cfg = SyncConfig(dsql_endpoint="cluster.dsql.eu-west-1.on.aws")
     evt = _sample_post_auth_event()
     with (
         patch("handler._config_loader", return_value=cfg),
@@ -143,12 +135,7 @@ def test_lambda_handler_routes_post_authentication() -> None:
 
 
 def test_lambda_handler_routes_pre_token_generation() -> None:
-    cfg = SyncConfig(
-        db_secret_arn="arn:aws:secretsmanager:eu-west-1:123:secret:x",
-        db_host="db.local",
-        db_name="app",
-        db_port=5432,
-    )
+    cfg = SyncConfig(dsql_endpoint="cluster.dsql.eu-west-1.on.aws")
     evt = {
         "triggerSource": "TokenGeneration_RefreshTokens",
         "callerContext": {"clientId": STUDENT_CLIENT_ID},
@@ -166,7 +153,7 @@ def test_lambda_handler_routes_pre_token_generation() -> None:
     assert out == {"token": True}
 
 
-def test_sync_student_client_does_not_copy_cognito_session_to_rds(rds_cfg: SyncConfig) -> None:
+def test_sync_student_client_does_not_copy_cognito_session_to_rds(dsql_cfg: SyncConfig) -> None:
     """Pre Token bump owns session id; PostAuth must not write a stale attribute."""
     evt = _sample_post_auth_event(
         role_attr="student",
@@ -178,11 +165,11 @@ def test_sync_student_client_does_not_copy_cognito_session_to_rds(rds_cfg: SyncC
         patch("handler.get_cached_connection_factory", return_value=mock_factory),
         patch("handler.upsert_user_profile") as mock_upsert,
     ):
-        sync_post_authentication(evt, rds_cfg)
+        sync_post_authentication(evt, dsql_cfg)
     assert mock_upsert.call_args.kwargs.get("student_active_session_id") is None
 
 
-def test_sync_teacher_client_does_not_set_student_session(rds_cfg: SyncConfig) -> None:
+def test_sync_teacher_client_does_not_set_student_session(dsql_cfg: SyncConfig) -> None:
     evt = _sample_post_auth_event(
         role_attr="teacher",
         client_id=TEACHER_CLIENT_ID,
@@ -193,5 +180,5 @@ def test_sync_teacher_client_does_not_set_student_session(rds_cfg: SyncConfig) -
         patch("handler.get_cached_connection_factory", return_value=mock_factory),
         patch("handler.upsert_user_profile") as mock_upsert,
     ):
-        sync_post_authentication(evt, rds_cfg)
+        sync_post_authentication(evt, dsql_cfg)
     assert mock_upsert.call_args.kwargs.get("student_active_session_id") is None

@@ -1,4 +1,4 @@
-"""WS3-P8: payments-stack fulfillment RDS env, IAM, and DLQ alarm."""
+"""WS3-P8: payments-stack fulfillment DSQL env, IAM, and DLQ alarm."""
 
 from __future__ import annotations
 
@@ -33,12 +33,12 @@ def test_payments_stack_fulfillment_db_env_and_deployment_environment() -> None:
     end = text.index("  BillingFulfillmentEventSourceMapping:", start)
     block = text[start:end]
     assert "DEPLOYMENT_ENVIRONMENT:" in block
-    assert "DB_HOST:" in block
-    assert "DB_PORT:" in block
-    assert "DB_NAME:" in block
-    assert "DB_SECRET_ARN:" in block
-    assert "${RdsStackName}-DbHost" in block
-    assert "${RdsStackName}-DbSecretArn" in block
+    assert "DSQL_ENDPOINT:" in block
+    assert "DSQL_USER:" in block
+    assert "DsqlEndpoint" in block
+    assert "DB_HOST:" not in block
+    assert "DB_SECRET_ARN:" not in block
+    assert "RdsStackName" not in block
 
 
 def test_payments_stack_billing_edge_shopper_result_env() -> None:
@@ -51,11 +51,12 @@ def test_payments_stack_billing_edge_shopper_result_env() -> None:
     assert "BillingShopperResultUrl" in block
 
 
-def test_payments_stack_fulfillment_role_can_read_db_secret() -> None:
+def test_payments_stack_fulfillment_role_dsql_connect() -> None:
     text = _payments_stack_text()
     start = text.index("  BillingFulfillmentRole:")
     end = text.index("  BillingFulfillment:", start)
     block = text[start:end]
-    assert "SecretsManagerRdsCreds" in block
-    assert "secretsmanager:GetSecretValue" in block
-    assert "${RdsStackName}-DbSecretArn" in block
+    assert "dsql:DbConnect" in block
+    assert "DsqlClusterArn" in block
+    assert "SecretsManagerRdsCreds" not in block
+    assert "RdsStackName" not in block

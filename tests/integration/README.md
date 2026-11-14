@@ -2,7 +2,7 @@
 
 HTTPS-driven tests that exercise a deployed backend (API Gateway + Lambda + PostgreSQL catalog + S3) end-to-end.
 
-**CI targets the prod stack** (`StreamMyCourse-Api-prod`, `StreamMyCourse-Video-prod`, region `eu-west-1`). The job uses GitHub Environment `prod` so Cognito JWT minting reuses the same secrets/variables as **Verify prod RDS** (`COGNITO_RDS_VERIFY_*`, `COGNITO_RDS_VERIFY_TEST_USERNAME` — see below).
+**CI targets the prod stack** (`StreamMyCourse-Api-prod`, `StreamMyCourse-Video-prod`, region `eu-west-1`). The job uses GitHub Environment `prod` so Cognito JWT minting uses **`COGNITO_VERIFY_*`** secrets and variables (see below).
 
 ## What gets tested
 
@@ -23,7 +23,7 @@ Catalog lesson access requires a **paid course or bundle purchase** (not enrollm
 
 If the payments stack is missing or billing is unconfigured, helpers skip with reasons such as **404** (route missing), **503 `billing_unconfigured`**, or **401** (webhook decrypt failed — check webhook secret).
 
-**HyperPay full flow (eu-test widget URL + webhook → paid):** `tests/integration/test_billing_hyperpay_full_flow.py` needs a student **without** a paid bundle (default `ci-student@noreply.local` is RS-16 seeded — use `student-test@noreply.local` via `ensure-ci-rds-verify-cognito-user.sh` and `LOCAL_COGNITO_USERNAME_STUDENT=student-test@noreply.local ./scripts/run-local-integration-tests.sh tests/integration/test_billing_hyperpay_full_flow.py`).
+**HyperPay full flow (eu-test widget URL + webhook → paid):** `tests/integration/test_billing_hyperpay_full_flow.py` needs a student **without** a paid bundle (default `ci-student@noreply.local` is RS-16 seeded — use `student-test@noreply.local` via `ensure-ci-verify-cognito-user.sh` and `LOCAL_COGNITO_USERNAME_STUDENT=student-test@noreply.local ./scripts/run-local-integration-tests.sh tests/integration/test_billing_hyperpay_full_flow.py`).
 
 **Checkout E2E (WS6):** `tests/integration/test_billing_checkout_e2e.py` exercises `POST /billing/checkout-session` → HyperPay webhook → playback **200**, **409 `already_owned`** when the student already has a paid bundle (`ensure_student_subscription`), and **409 `checkout_in_progress`** on a second checkout before webhook (pending row). Requires **`INTEGRATION_COGNITO_JWT_STUDENT`** and webhook secret. Run only that file:
 
@@ -107,18 +107,18 @@ You need a dedicated test user in the Cognito pool with a known password:
 export CI_RDS_VERIFY_PASSWORD='YourStrongPassword123!'
 
 # Primary teacher (default)
-./scripts/ensure-ci-rds-verify-cognito-user.sh
+./scripts/ensure-ci-verify-cognito-user.sh
 
 # Alternate teacher (when using INTEGRATION_COGNITO_JWT_ALT / LOCAL_COGNITO_PASSWORD_ALT)
-./scripts/ensure-ci-rds-verify-cognito-user.sh --username ci-rds-verify-2@noreply.local
+./scripts/ensure-ci-verify-cognito-user.sh --username ci-rds-verify-2@noreply.local
 
 # Student (when using INTEGRATION_COGNITO_JWT_STUDENT / LOCAL_COGNITO_PASSWORD_STUDENT)
-./scripts/ensure-ci-rds-verify-cognito-user.sh --role student --username ci-student@noreply.local
+./scripts/ensure-ci-verify-cognito-user.sh --role student --username ci-student@noreply.local
 ```
 
 Each run sets **`given_name`**, **`family_name`**, and **`email`** so integration JWTs satisfy the playback watermark gate (at least one name part + email).
 
-Store the same password in GitHub secret `COGNITO_RDS_VERIFY_TEST_PASSWORD` on the `prod` environment if you want CI to use the same credentials.
+Store the same password in GitHub secret `COGNITO_VERIFY_TEST_PASSWORD` on the `prod` environment if you want CI to use the same credentials.
 
 ### Run tests
 
@@ -182,7 +182,7 @@ The HTTP test calls themselves only need **`INTEGRATION_COGNITO_JWT`** when rout
 
 ## Cognito credentials (CI vs local)
 
-GitHub Deploy workflow **Integration HTTP tests** attaches **`environment: prod`**. Resolve stack outputs against **StreamMyCourse-Api-prod** and **StreamMyCourse-Video-prod**, then mint **`INTEGRATION_COGNITO_JWT`** exactly like **`verify-rds-reusable.yml`**: **`StreamMyCourse-Auth-prod`** outputs, **`ADMIN_USER_PASSWORD_AUTH`**, **`TeacherUserPoolClientId`**.
+GitHub Deploy workflow **Integration HTTP tests** attaches **`environment: prod`**. Resolve stack outputs against **StreamMyCourse-Api-prod** and **StreamMyCourse-Video-prod**, then mint **`INTEGRATION_COGNITO_JWT`** from **`StreamMyCourse-Auth-prod`** outputs, **`ADMIN_USER_PASSWORD_AUTH`**, and **`TeacherUserPoolClientId`** (see **`deploy-backend.yml`** integration job).
 
 **RS-6 native sign-up:** [`test_native_signup_profile.py`](test_native_signup_profile.py) creates a disposable `rs6-test-*@researchspectrum.org` user via public **`sign_up`** + **`admin_confirm_sign_up`**, then **`PATCH /users/me`** and **`GET /users/me`**; **`admin_delete_user`** in teardown. Skips when the student client lacks SRP/COGNITO, when **`PATCH /users/me`** returns **404** (migration **016** / API method not deployed), or when **`INTEGRATION_API_BASE_URL`** / AWS stack resolution is unavailable.
 
@@ -194,27 +194,25 @@ GitHub Deploy workflow **Integration HTTP tests** attaches **`environment: prod`
 | Alt Teacher | `INTEGRATION_COGNITO_JWT_ALT` | Second teacher (cross-user access control) | `test_access_control.py` |
 | Student | `INTEGRATION_COGNITO_JWT_STUDENT` | Enrolled student (limited read/playback) | `test_enrollment.py`, `test_student_permissions_allowed.py`, `test_student_permissions_denials.py`, `test_progress.py`, `test_playback_auth.py`, `test_kinescope_drm_auth.py`, `test_billing_checkout_e2e.py` |
 
-**On GitHub Environment `prod`** (reuse for both Integration HTTP tests and Verify prod RDS):
+**On GitHub Environment `prod`** (Integration HTTP tests and persistence smoke):
 
-- **Secret** `COGNITO_RDS_VERIFY_TEST_PASSWORD`
-- **Variable** `COGNITO_RDS_VERIFY_TEST_USERNAME` (optional; defaults to `ci-rds-verify@noreply.local`)
-- **Secret** `COGNITO_RDS_VERIFY_JWT` (optional fallback if minting fails)
+- **Secret** `COGNITO_VERIFY_TEST_PASSWORD`
+- **Variable** `COGNITO_VERIFY_TEST_USERNAME` (optional; defaults to `ci-rds-verify@noreply.local`)
+- **Secret** `COGNITO_VERIFY_JWT` (optional fallback if minting fails)
 
 **For multi-principal tests**, the same user pool credentials can mint tokens for different test users (configured in the Cognito pool) via `INTEGRATION_COGNITO_JWT_ALT` and `INTEGRATION_COGNITO_JWT_STUDENT`.
 
 **OIDC:** The Configure AWS Credentials step assumes the **repository** IAM role via job output **`resolve-oidc-deploy-role`** (pins **`vars.AWS_DEPLOY_ROLE_ARN`** in a job without `environment:`) so **`environment: prod`** does not shadow the deploy-role variable.
 
-## Smoke tests (`test_rds_path.py`)
+## Smoke tests (`test_persistence_smoke.py`)
 
-Focused checks for catalog round-trips (create/read/update, lesson FK). Same fixtures as the rest of the suite.
+Focused checks for catalog round-trips against Aurora DSQL (create/read, lesson FK, default module, delete). Same fixtures as the rest of the suite.
 
-**Prod CI/CD:** [`.github/workflows/deploy-backend.yml`](../../.github/workflows/deploy-backend.yml) deploys RDS, applies schema via VPC Lambda, deploys **`deploy-backend-prod`**, runs **Integration HTTP tests**, then **Verify prod RDS** runs `test_rds_path.py` again via **`verify-rds-reusable.yml`**.
+**Prod CI/CD:** [`.github/workflows/deploy-backend.yml`](../../.github/workflows/deploy-backend.yml) runs **Integration HTTP tests** (includes `test_persistence_smoke.py`) after backend deploy.
 
 **GitHub Actions variable:** Set **`AWS_DEPLOY_ROLE_ARN`** at repo scope (IAM role ARN from **`github-deploy-role-stack.yaml`** output **`GitHubDeployRoleArn`**).
 
-**Bootstrap the CI Cognito user** (operator workstation): see **`scripts/ensure-ci-rds-verify-cognito-user.sh`** and **`COGNITO_RDS_VERIFY_TEST_PASSWORD`** on **`prod`**. The script sets **`given_name`**, **`family_name`**, and **`email`** (playback requires at least one name part + email). Re-run it after deploying the watermark gate if existing CI users were created before those attributes were added. **Deploy** also runs **`scripts/ensure-integration-cognito-playback-profiles.sh`** before minting integration JWTs.
-
-**Local RDS** (advanced): [`scripts/deploy-rds-stack.sh`](../../scripts/deploy-rds-stack.sh) targets **`prod`**; integration tests normally follow **`prod`** in CI.
+**Bootstrap the CI Cognito user** (operator workstation): see **`scripts/ensure-ci-verify-cognito-user.sh`** and **`COGNITO_VERIFY_TEST_PASSWORD`** on **`prod`**. The script sets **`given_name`**, **`family_name`**, and **`email`** (playback requires at least one name part + email). Re-run it after deploying the watermark gate if existing CI users were created before those attributes were added. **Deploy** also runs **`scripts/ensure-integration-cognito-playback-profiles.sh`** before minting integration JWTs.
 
 ## Test layout
 
@@ -241,7 +239,7 @@ tests/integration/
   test_playback_upload.py           -- video upload and processing
   test_progress.py                  -- student progress tracking
   test_publish.py                   -- course publish/unpublish lifecycle
-  test_rds_path.py                  -- catalog database round-trips (also used for Verify RDS)
+  test_persistence_smoke.py         -- catalog DSQL round-trips (course, lesson, module, delete)
   test_s3_cleanup.py                -- S3 object lifecycle and cleanup verification
   test_smoke.py                     -- basic connectivity and health checks
   test_student_permissions_allowed.py -- student-positive authorization tests

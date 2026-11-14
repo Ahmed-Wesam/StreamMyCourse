@@ -104,3 +104,16 @@ def test_github_deploy_role_dsql_service_linked_role() -> None:
     assert dsql_slr, (
         "expected Sid IamDsqlServiceLinkedRole with iam:AWSServiceName dsql.amazonaws.com"
     )
+
+
+def test_github_deploy_role_s8_slim_no_rds_vpc_or_rds_secrets() -> None:
+    """DSQL-9 S8: drop RDS/VPC stack deploy permissions; app Secrets Manager only."""
+    text = _read_template("github-deploy-role-stack.yaml")
+    assert "Sid: RdsStackManage" not in text
+    assert "Sid: Ec2VpcStackManage" not in text
+    assert "rds:" not in text
+    assert "rds-db-credentials" not in text
+    assert "secret:streammycourse/*" in text
+    assert "Sid: SecretsManagerAppSecrets" in text
+    for action in ("dsql:DbConnectAdmin", "dsql:DbConnect"):
+        assert action in text, f"deploy role missing IAM action {action!r}"

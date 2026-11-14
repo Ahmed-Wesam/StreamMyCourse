@@ -1,4 +1,4 @@
-"""DSQL-1 S5 — preview API stack contract (UseDsql / name token / conditional VPC + DB)."""
+"""DSQL-1 / DSQL-9 — api stack preview lane (name token + DSQL env, no RDS)."""
 
 from __future__ import annotations
 
@@ -40,13 +40,11 @@ def test_dsql_preview_parameters_exist_with_empty_defaults() -> None:
         )
 
 
-def test_use_dsql_and_use_rds_conditions() -> None:
+def test_no_use_rds_or_use_dsql_conditions() -> None:
     cond = _conditions_block(_api_stack_text())
-    assert re.search(r"^\s+UseDsql:\s*", cond, re.MULTILINE)
-    assert re.search(r"^\s+UseRds:\s*", cond, re.MULTILINE)
     assert re.search(r"^\s+HasResourceNameSuffix:\s*", cond, re.MULTILINE)
-    assert "DsqlEndpoint" in cond
-    assert "!Condition UseDsql" in cond
+    assert "UseDsql" not in cond
+    assert "UseRds" not in cond
 
 
 def test_empty_suffix_name_token_resolves_to_environment() -> None:
@@ -56,7 +54,6 @@ def test_empty_suffix_name_token_resolves_to_environment() -> None:
         r"NameToken:\s*!If\s*\n\s*-\s*HasResourceNameSuffix\s*\n\s*-\s*!Ref ResourceNameSuffix\s*\n\s*-\s*!Ref Environment",
         text,
     ), "NameToken must use ResourceNameSuffix when set, else Environment"
-    # Prod path: empty suffix still produces *-${Environment} via the name token.
     assert re.search(
         r"StreamMyCourse-CatalogLambdaRole-\$\{NameToken\}",
         text,
@@ -67,58 +64,20 @@ def test_empty_suffix_name_token_resolves_to_environment() -> None:
     )
 
 
-def test_vpc_config_and_rds_imports_gated_on_use_rds() -> None:
+def test_catalog_sets_dsql_env_unconditionally() -> None:
     text = _api_stack_text()
+    assert "VpcConfig" not in text
+    assert "RdsStackName" not in text
     assert re.search(
-        r"VpcConfig:\s*!If\s*\n\s*-\s*UseRds",
-        text,
-    ), "VpcConfig must be conditional on UseRds"
-    assert re.search(
-        r"DB_HOST:\s*!If\s*\n\s*-\s*UseRds\s*\n\s*-\s*!ImportValue",
-        text,
-    ), "DB_HOST ImportValue must be inside UseRds"
-    assert re.search(
-        r"PolicyName:\s*LambdaVpcEni",
-        text,
-    )
-    vpc_policy = re.search(
-        r"PolicyName:\s*LambdaVpcEni.*?(?=PolicyName:|Tags:)",
-        text,
-        re.DOTALL,
-    )
-    assert vpc_policy and "!If" in vpc_policy.group(0) and "UseRds" in vpc_policy.group(0)
-
-
-def test_dsql_branch_sets_dsql_endpoint_not_db_secret() -> None:
-    text = _api_stack_text()
-    assert re.search(
-        r"DSQL_ENDPOINT:\s*!If\s*\n\s*-\s*UseDsql",
+        r"DSQL_ENDPOINT:\s*!Ref DsqlEndpoint",
         text,
     )
     assert re.search(
-        r"DSQL_USER:\s*!If\s*\n\s*-\s*UseDsql",
+        r"DSQL_USER:\s*smc_app",
         text,
     )
-    assert "smc_app" in text
-    db_secret = re.search(
-        r"DB_SECRET_ARN:\s*!If\s*\n\s*-\s*UseRds",
-        text,
-    )
-    assert db_secret, "DB_SECRET_ARN must only be set on UseRds"
     assert re.search(
         r"dsql:DbConnect",
         text,
     )
-    assert re.search(
-        r"DsqlClusterArn",
-        text,
-    )
-
-
-def test_db_host_port_name_also_conditional_on_use_rds() -> None:
-    text = _api_stack_text()
-    for key in ("DB_PORT", "DB_NAME"):
-        assert re.search(
-            rf"{key}:\s*!If\s*\n\s*-\s*UseRds\s*\n\s*-\s*!ImportValue",
-            text,
-        ), f"{key} must ImportValue only under UseRds"
+    assert "DsqlClusterArn" in text

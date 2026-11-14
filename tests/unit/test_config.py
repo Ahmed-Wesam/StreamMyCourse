@@ -13,10 +13,7 @@ def _clear_env(monkeypatch: pytest.MonkeyPatch) -> None:
         "DEFAULT_MP4_URL",
         "VIDEO_URL",
         "ALLOWED_ORIGINS",
-        "DB_HOST",
-        "DB_NAME",
-        "DB_PORT",
-        "DB_SECRET_ARN",
+        "DSQL_ENDPOINT",
         "LOG_LEVEL",
         "MEDIA_CLEANUP_QUEUE_URL",
     ):
@@ -39,10 +36,10 @@ class TestLoadConfigDefaults:
 
     def test_strips_whitespace(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setenv("VIDEO_BUCKET", "  my-bucket  ")
-        monkeypatch.setenv("DB_HOST", "  rds.example.com  ")
+        monkeypatch.setenv("DSQL_ENDPOINT", "  cluster.dsql.example  ")
         cfg = load_config()
         assert cfg.video_bucket == "my-bucket"
-        assert cfg.db_host == "rds.example.com"
+        assert cfg.dsql_endpoint == "cluster.dsql.example"
 
 
 class TestAllowedOrigins:
@@ -85,49 +82,22 @@ class TestAllowedOrigins:
         assert cfg.allowed_origins == ["https://app.example.com"]
 
 
-class TestRdsFields:
-    """RDS config fields are read from the environment for the PostgreSQL adapters."""
+class TestDsqlEndpoint:
+    """DSQL endpoint is the sole catalog database dependency."""
 
-    def test_rds_fields_empty_when_env_unset(self) -> None:
+    def test_dsql_endpoint_empty_when_env_unset(self) -> None:
         cfg = load_config()
-        assert cfg.db_host == ""
-        assert cfg.db_name == ""
-        assert cfg.db_secret_arn == ""
-        assert cfg.db_port == 5432
+        assert cfg.dsql_endpoint == ""
 
-    def test_rds_fields_loaded_from_env(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        monkeypatch.setenv("DB_HOST", "rds.example.com")
-        monkeypatch.setenv("DB_NAME", "streammycourse")
-        monkeypatch.setenv("DB_PORT", "5433")
-        monkeypatch.setenv(
-            "DB_SECRET_ARN",
-            "arn:aws:secretsmanager:eu-west-1:123:secret:rds-cred-abcdef",
-        )
+    def test_dsql_endpoint_loaded_from_env(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("DSQL_ENDPOINT", "abc.dsql.eu-west-1.on.aws")
         cfg = load_config()
-        assert cfg.db_host == "rds.example.com"
-        assert cfg.db_name == "streammycourse"
-        assert cfg.db_port == 5433
-        assert cfg.db_secret_arn.startswith("arn:aws:secretsmanager:")
+        assert cfg.dsql_endpoint == "abc.dsql.eu-west-1.on.aws"
 
-    def test_db_port_falls_back_to_default_on_non_integer(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        monkeypatch.setenv("DB_PORT", "not-a-number")
+    def test_dsql_endpoint_strips_whitespace(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("DSQL_ENDPOINT", "  cluster.dsql.example  ")
         cfg = load_config()
-        assert cfg.db_port == 5432
-
-    def test_rds_fields_strip_whitespace(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        monkeypatch.setenv("DB_HOST", "  rds.example.com  ")
-        monkeypatch.setenv("DB_NAME", "  smc  ")
-        monkeypatch.setenv("DB_SECRET_ARN", "  arn:aws:sm:eu:1:secret:x  ")
-        cfg = load_config()
-        assert cfg.db_host == "rds.example.com"
-        assert cfg.db_name == "smc"
-        assert cfg.db_secret_arn == "arn:aws:sm:eu:1:secret:x"
+        assert cfg.dsql_endpoint == "cluster.dsql.example"
 
 
 class TestMediaCleanupQueueUrl:

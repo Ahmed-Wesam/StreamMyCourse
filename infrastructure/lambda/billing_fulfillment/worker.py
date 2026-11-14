@@ -62,12 +62,14 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     if not config.deployment_environment:
         raise RuntimeError("DEPLOYMENT_ENVIRONMENT is required")
     dsql = (config.dsql_endpoint or "").strip()
-    has_rds = bool(config.db_secret_arn and config.db_host)
-    if not dsql and not has_rds:
-        raise RuntimeError("DSQL_ENDPOINT or DB_SECRET_ARN and DB_HOST are required")
-    if dsql and has_rds:
+    if not dsql:
+        raise RuntimeError("DSQL_ENDPOINT is required for billing fulfillment")
+    if dsql and (
+        (os.environ.get("DB_HOST") or "").strip()
+        or (os.environ.get("DB_SECRET_ARN") or "").strip()
+    ):
         raise RuntimeError(
-            "Configure either DSQL_ENDPOINT or DB_HOST for billing fulfillment, not both"
+            "Configure DSQL_ENDPOINT only for billing fulfillment, not RDS DB_* env vars"
         )
 
     repo = _repo_factory(config)

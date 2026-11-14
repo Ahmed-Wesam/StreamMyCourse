@@ -1,5 +1,5 @@
 AWSTemplateFormatVersion: '2010-09-09'
-Description: 'StreamMyCourse - Billing edge (no VPC) + fulfillment queue/worker (VPC stub, WS2)'
+Description: 'StreamMyCourse - Billing edge + fulfillment queue/worker (Aurora DSQL, no VPC)'
 
 Parameters:
   Environment:
@@ -19,13 +19,6 @@ Parameters:
   BillingFulfillmentCodeS3Key:
     Type: String
     Description: S3 key for the billing fulfillment Lambda deployment package
-
-  RdsStackName:
-    Type: String
-    Default: ''
-    Description: >-
-      RDS stack (e.g. StreamMyCourse-Rds-prod) whose exports provide VPC subnet
-      and Lambda security group for the fulfillment worker. Empty when DsqlEndpoint is set.
 
   DsqlEndpoint:
     Type: String
@@ -107,9 +100,6 @@ Parameters:
       Aurora DSQL cluster ARN for dsql:DbConnect on the fulfillment worker (optional until cluster exists).
 
 Conditions:
-  UseDsql: !Not [!Equals [!Ref DsqlEndpoint, '']]
-  UseRds: !Not [!Condition UseDsql]
-  HasDsqlClusterArn: !Not [!Equals [!Ref DsqlClusterArn, '']]
   HasBillingFulfillmentAlertEmail: !Not [!Equals [!Ref BillingFulfillmentAlertEmail, '']]
   HasCatalogLambdaArn: !Not [!Equals [!Ref CatalogLambdaArn, '']]
 
@@ -285,44 +275,14 @@ Resources:
                   - sqs:GetQueueAttributes
                   - sqs:ChangeMessageVisibility
                 Resource: !GetAtt BillingFulfillmentQueue.Arn
-        - !If
-          - UseRds
-          - PolicyName: SecretsManagerRdsCreds
-            PolicyDocument:
-              Version: '2012-10-17'
-              Statement:
-                - Effect: Allow
-                  Action:
-                    - secretsmanager:GetSecretValue
-                  Resource: !ImportValue
-                    'Fn::Sub': '${RdsStackName}-DbSecretArn'
-          - !Ref AWS::NoValue
-        - !If
-          - UseRds
-          - PolicyName: LambdaVpcEni
-            PolicyDocument:
-              Version: '2012-10-17'
-              Statement:
-                - Effect: Allow
-                  Action:
-                    - ec2:CreateNetworkInterface
-                    - ec2:DescribeNetworkInterfaces
-                    - ec2:DeleteNetworkInterface
-                    - ec2:AssignPrivateIpAddresses
-                    - ec2:UnassignPrivateIpAddresses
-                  Resource: '*'
-          - !Ref AWS::NoValue
-        - !If
-          - HasDsqlClusterArn
-          - PolicyName: DsqlDbConnect
-            PolicyDocument:
-              Version: '2012-10-17'
-              Statement:
-                - Effect: Allow
-                  Action:
-                    - dsql:DbConnect
-                  Resource: !Ref DsqlClusterArn
-          - !Ref AWS::NoValue
+        - PolicyName: DsqlDbConnect
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - dsql:DbConnect
+                Resource: !Ref DsqlClusterArn
       Tags:
         - Key: Project
           Value: StreamMyCourse
@@ -341,46 +301,11 @@ Resources:
       Code:
         S3Bucket: !Ref LambdaCodeS3Bucket
         S3Key: !Ref BillingFulfillmentCodeS3Key
-      VpcConfig: !If
-        - UseRds
-        - SubnetIds:
-            - !ImportValue
-              'Fn::Sub': '${RdsStackName}-PrivateSubnetId'
-          SecurityGroupIds:
-            - !ImportValue
-              'Fn::Sub': '${RdsStackName}-LambdaSecurityGroupId'
-        - !Ref AWS::NoValue
       Environment:
         Variables:
           DEPLOYMENT_ENVIRONMENT: !Ref Environment
-          DB_HOST: !If
-            - UseRds
-            - !ImportValue
-              'Fn::Sub': '${RdsStackName}-DbHost'
-            - !Ref AWS::NoValue
-          DB_PORT: !If
-            - UseRds
-            - !ImportValue
-              'Fn::Sub': '${RdsStackName}-DbPort'
-            - !Ref AWS::NoValue
-          DB_NAME: !If
-            - UseRds
-            - !ImportValue
-              'Fn::Sub': '${RdsStackName}-DbName'
-            - !Ref AWS::NoValue
-          DB_SECRET_ARN: !If
-            - UseRds
-            - !ImportValue
-              'Fn::Sub': '${RdsStackName}-DbSecretArn'
-            - !Ref AWS::NoValue
-          DSQL_ENDPOINT: !If
-            - UseDsql
-            - !Ref DsqlEndpoint
-            - !Ref AWS::NoValue
-          DSQL_USER: !If
-            - UseDsql
-            - smc_app
-            - !Ref AWS::NoValue
+          DSQL_ENDPOINT: !Ref DsqlEndpoint
+          DSQL_USER: smc_app
           LOG_LEVEL: INFO
       Tags:
         - Key: Project

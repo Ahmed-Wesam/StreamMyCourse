@@ -247,88 +247,8 @@ Resources:
             Condition:
               StringEquals:
                 aws:RequestedRegion: eu-west-1
-          # RDS + VPC + Secrets Manager for the rds-stack (ADR 0008)
-          # Permission set chosen to cover the full CloudFormation
-          # AWS::RDS::DBInstance + AWS::RDS::DBParameterGroup provider
-          # surface, so future param-group / instance modifications do not
-          # surface a new AccessDenied per CFN read-back path.
-          - Sid: RdsStackManage
-            Effect: Allow
-            Action:
-              - rds:CreateDBInstance
-              - rds:DeleteDBInstance
-              - rds:ModifyDBInstance
-              - rds:RebootDBInstance
-              - rds:DescribeDBInstances
-              - rds:CreateDBSubnetGroup
-              - rds:DeleteDBSubnetGroup
-              - rds:DescribeDBSubnetGroups
-              - rds:ModifyDBSubnetGroup
-              - rds:CreateDBParameterGroup
-              - rds:DeleteDBParameterGroup
-              - rds:DescribeDBParameterGroups
-              - rds:DescribeDBParameters
-              - rds:ModifyDBParameterGroup
-              - rds:ResetDBParameterGroup
-              - rds:DescribeEngineDefaultParameters
-              - rds:CreateDBSnapshot
-              - rds:DeleteDBSnapshot
-              - rds:DescribeDBSnapshots
-              - rds:DescribeEvents
-              - rds:DescribePendingMaintenanceActions
-              - rds:DescribeOptionGroups
-              - rds:DescribeCertificates
-              - rds:DescribeDBLogFiles
-              - rds:DescribeDBClusters
-              - rds:DescribeDBClusterParameterGroups
-              - rds:DescribeDBClusterSnapshots
-              - rds:AddTagsToResource
-              - rds:RemoveTagsFromResource
-              - rds:ListTagsForResource
-              - rds:DescribeDBEngineVersions
-            Resource: "*"
-            Condition:
-              StringEquals:
-                aws:RequestedRegion: eu-west-1
-          - Sid: Ec2VpcStackManage
-            Effect: Allow
-            Action:
-              - ec2:CreateVpc
-              - ec2:DeleteVpc
-              - ec2:DescribeVpcs
-              - ec2:ModifyVpcAttribute
-              - ec2:CreateSubnet
-              - ec2:DeleteSubnet
-              - ec2:DescribeSubnets
-              - ec2:CreateRouteTable
-              - ec2:DeleteRouteTable
-              - ec2:DescribeRouteTables
-              - ec2:AssociateRouteTable
-              - ec2:DisassociateRouteTable
-              - ec2:CreateSecurityGroup
-              - ec2:DeleteSecurityGroup
-              - ec2:DescribeSecurityGroups
-              - ec2:AuthorizeSecurityGroupEgress
-              - ec2:AuthorizeSecurityGroupIngress
-              - ec2:RevokeSecurityGroupEgress
-              - ec2:RevokeSecurityGroupIngress
-              - ec2:UpdateSecurityGroupRuleDescriptionsEgress
-              - ec2:UpdateSecurityGroupRuleDescriptionsIngress
-              - ec2:CreateVpcEndpoint
-              - ec2:DeleteVpcEndpoints
-              - ec2:DescribeVpcEndpoints
-              - ec2:ModifyVpcEndpoint
-              - ec2:DescribePrefixLists
-              - ec2:DescribeAvailabilityZones
-              - ec2:CreateTags
-              - ec2:DeleteTags
-              - ec2:DescribeTags
-            Resource: "*"
-            Condition:
-              StringEquals:
-                aws:RequestedRegion: eu-west-1
           # GetRandomPassword is not resource-scoped; keep it only on Resource "*" (SecretsManagerList).
-          - Sid: SecretsManagerRdsCredentials
+          - Sid: SecretsManagerAppSecrets
             Effect: Allow
             Action:
               - secretsmanager:CreateSecret
@@ -339,9 +259,7 @@ Resources:
               - secretsmanager:UntagResource
               - secretsmanager:UpdateSecret
               - secretsmanager:PutSecretValue
-            Resource:
-              - !Sub "arn:aws:secretsmanager:eu-west-1:${AWS::AccountId}:secret:streammycourse/*"
-              - !Sub "arn:aws:secretsmanager:eu-west-1:${AWS::AccountId}:secret:rds-db-credentials/*"
+            Resource: !Sub "arn:aws:secretsmanager:eu-west-1:${AWS::AccountId}:secret:streammycourse/*"
           - Sid: SecretsManagerList
             Effect: Allow
             Action:

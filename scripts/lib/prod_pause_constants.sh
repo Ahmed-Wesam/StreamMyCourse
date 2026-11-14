@@ -13,8 +13,6 @@ TEARDOWN_STACKS=(
   "StreamMyCourse-VideoProviderEdge-prod:eu-west-1"
   "StreamMyCourse-Payments-prod:eu-west-1"
   "StreamMyCourse-MediaCleanup-prod:eu-west-1"
-  "StreamMyCourse-RdsQuery-prod:eu-west-1"
-  "StreamMyCourse-Rds-prod:eu-west-1"
   "StreamMyCourse-Video-prod:eu-west-1"
   "StreamMyCourse-EdgeHosting-prod:us-east-1"
   "StreamMyCourse-ArtifactJanitor-prod:eu-west-1"
@@ -39,7 +37,5 @@ PAUSE_MANIFEST_JSON_KEYS=(
   "student_user_pool_client_id"
   "teacher_user_pool_client_id"
   "cognito_hosted_ui_domain"
-  "rds_db_host"
-  "rds_snapshot_identifier"
   "github_env_checklist"
 )

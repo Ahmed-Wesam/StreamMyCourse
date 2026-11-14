@@ -82,10 +82,7 @@ def _student_refresh_event(
 @pytest.fixture
 def session_cfg() -> SyncConfig:
     return SyncConfig(
-        db_secret_arn="arn:aws:secretsmanager:eu-west-1:123:secret:x",
-        db_host="db.local",
-        db_name="app",
-        db_port=5432,
+        dsql_endpoint="cluster.dsql.eu-west-1.on.aws",
         student_client_id=STUDENT_CLIENT_ID,
         teacher_client_id=TEACHER_CLIENT_ID,
     )

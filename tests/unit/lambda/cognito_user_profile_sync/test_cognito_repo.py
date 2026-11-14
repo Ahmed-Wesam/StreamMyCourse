@@ -47,90 +47,33 @@ def reset_cached_factory() -> Any:
     cognito_repo._cached_factory = None
 
 
-def test_build_connection_factory_requires_secret_arn() -> None:
-    with pytest.raises(RuntimeError, match="DB_SECRET_ARN"):
-        cognito_repo.build_connection_factory(
-            db_secret_arn="", db_host="h", db_name="n", db_port=5432
-        )
+def test_build_connection_factory_requires_dsql_endpoint() -> None:
+    with pytest.raises(RuntimeError, match="DSQL_ENDPOINT"):
+        cognito_repo.build_connection_factory(dsql_endpoint="")
 
 
-def test_build_connection_factory_requires_db_host() -> None:
-    with pytest.raises(RuntimeError, match="DB_HOST"):
-        cognito_repo.build_connection_factory(
-            db_secret_arn="arn:x", db_host="", db_name="n", db_port=5432
-        )
+def test_build_connection_factory_rejects_rds_env_with_dsql(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("DB_HOST", "rds.example")
+    with pytest.raises(RuntimeError, match="DSQL_ENDPOINT only"):
+        cognito_repo.build_connection_factory(dsql_endpoint="cluster.dsql.example")
 
 
-def test_factory_fetches_secret_and_connects_with_expected_kwargs() -> None:
-    sm = MagicMock()
-    sm.get_secret_value.return_value = {
-        "SecretString": json.dumps({"username": "u", "password": "p"}),
-    }
-    conn = MagicMock()
-    connect_calls: list[dict[str, Any]] = []
-
-    def fake_connect(**kwargs: Any) -> MagicMock:
-        connect_calls.append(kwargs)
-        return conn
-
-    factory = cognito_repo.build_connection_factory(
-        db_secret_arn="arn:aws:secretsmanager:us-east-1:1:secret:x",
-        db_host="db.example",
-        db_name="appdb",
-        db_port=5432,
-    )
-    with (
-        patch.object(cognito_repo, "_secretsmanager_client", return_value=sm),
-        patch.object(cognito_repo, "_psycopg2_connect", side_effect=fake_connect),
-    ):
-        c = factory()
-
-    assert c is conn
-    sm.get_secret_value.assert_called_once_with(
-        SecretId="arn:aws:secretsmanager:us-east-1:1:secret:x"
-    )
-    assert connect_calls == [
+def test_factory_delegates_to_dsql_connect() -> None:
+    inner = MagicMock(return_value=MagicMock(name="conn"))
+    build_dsql = MagicMock(return_value=inner)
+    with patch.dict(
+        sys.modules,
         {
-            "host": "db.example",
-            "port": 5432,
-            "dbname": "appdb",
-            "user": "u",
-            "password": "p",
-            "sslmode": "require",
-            "connect_timeout": 5,
-        }
-    ]
-
-
-def test_factory_invalid_secret_json_raises() -> None:
-    sm = MagicMock()
-    sm.get_secret_value.return_value = {"SecretString": "not-json"}
-    factory = cognito_repo.build_connection_factory(
-        db_secret_arn="arn:x",
-        db_host="h",
-        db_name="n",
-        db_port=5432,
-    )
-    with (
-        patch.object(cognito_repo, "_secretsmanager_client", return_value=sm),
-        patch.object(cognito_repo, "_psycopg2_connect", MagicMock()),
-        pytest.raises(RuntimeError, match="not valid JSON"),
+            "dsql_connect": MagicMock(build_connection_factory=build_dsql),
+        },
     ):
-        factory()
-
-
-def test_factory_missing_user_or_password_raises() -> None:
-    sm = MagicMock()
-    sm.get_secret_value.return_value = {"SecretString": json.dumps({"username": ""})}
-    factory = cognito_repo.build_connection_factory(
-        db_secret_arn="arn:x", db_host="h", db_name="n", db_port=5432
-    )
-    with (
-        patch.object(cognito_repo, "_secretsmanager_client", return_value=sm),
-        patch.object(cognito_repo, "_psycopg2_connect", MagicMock()),
-        pytest.raises(RuntimeError, match="username/password"),
-    ):
-        factory()
+        factory = cognito_repo.build_connection_factory(dsql_endpoint="cluster.dsql.example")
+        conn = factory()
+    build_dsql.assert_called_once_with("cluster.dsql.example")
+    inner.assert_called_once()
+    assert conn is inner.return_value
 
 
 def test_set_student_active_session_id_records_last_login_at() -> None:
@@ -198,10 +141,7 @@ def test_get_cached_connection_factory_builds_once() -> None:
         return lambda: MagicMock(name="conn")
 
     cfg = MagicMock()
-    cfg.db_secret_arn = "arn:x"
-    cfg.db_host = "h"
-    cfg.db_name = "n"
-    cfg.db_port = 5432
+    cfg.dsql_endpoint = "cluster.dsql.example"
 
     with patch.object(cognito_repo, "build_connection_factory", side_effect=build):
         f1 = cognito_repo.get_cached_connection_factory(cfg)

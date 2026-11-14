@@ -44,14 +44,6 @@ Parameters:
     MinLength: 1
     Description: Google OAuth client secret (required for Google IdP)
 
-  RdsStackName:
-    Type: String
-    Default: ''
-    Description: >-
-      RDS stack name (e.g. StreamMyCourse-Rds-prod) whose exports supply VPC, DB
-      secret, and endpoints for the optional PostAuthentication user sync Lambda.
-      Leave empty to skip the sync Lambda (local auth-only deploys).
-
   EnableUserProfileSync:
     Type: String
     Default: 'false'
@@ -59,8 +51,8 @@ Parameters:
       - 'true'
       - 'false'
     Description: >-
-      When true, and RdsStackName plus Lambda S3 code params are set, attach
-      PostAuthentication to upsert RDS users on each successful login.
+      When true, and DsqlEndpoint plus Lambda S3 code params are set, attach
+      PostAuthentication to upsert catalog users on each successful login.
 
   CognitoUserProfileSyncCodeS3Bucket:
     Type: String
@@ -125,18 +117,12 @@ Parameters:
       Aurora DSQL cluster endpoint hostname for the user profile sync Lambda.
 
 Conditions:
-  UseDsql: !Not [!Equals [!Ref DsqlEndpoint, '']]
-  UseRds: !Not [!Condition UseDsql]
-  HasDsqlClusterArn: !Not [!Equals [!Ref DsqlClusterArn, '']]
   HasDsqlEndpoint: !Not [!Equals [!Ref DsqlEndpoint, '']]
-  HasRdsStackName: !Not [!Equals [!Ref RdsStackName, '']]
   HasSyncLambdaCode: !And
     - !Not [!Equals [!Ref CognitoUserProfileSyncCodeS3Bucket, '']]
     - !Not [!Equals [!Ref CognitoUserProfileSyncCodeS3Key, '']]
   ShouldDeployUserProfileSync: !And
-    - !Or
-      - !Condition HasRdsStackName
-      - !Condition HasDsqlEndpoint
+    - !Condition HasDsqlEndpoint
     - !Equals [!Ref EnableUserProfileSync, 'true']
     - !Condition HasSyncLambdaCode
   HasPreSignUpCode: !And
@@ -168,10 +154,6 @@ Resources:
             Principal:
               Service: lambda.amazonaws.com
             Action: sts:AssumeRole
-      ManagedPolicyArns: !If
-        - UseRds
-        - - arn:aws:iam::aws:policy/service-role/AWSLambdaVPCAccessExecutionRole
-        - []
       Policies:
         - PolicyName: CloudWatchLogs
           PolicyDocument:
@@ -183,33 +165,6 @@ Resources:
                   - logs:CreateLogStream
                   - logs:PutLogEvents
                 Resource: !Sub 'arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/${AWS::StackName}-UserProfileSync:*'
-        - !If
-          - UseRds
-          - PolicyName: SecretsManagerRdsCreds
-            PolicyDocument:
-              Version: '2012-10-17'
-              Statement:
-                - Effect: Allow
-                  Action:
-                    - secretsmanager:GetSecretValue
-                  Resource: !ImportValue
-                    'Fn::Sub': '${RdsStackName}-DbSecretArn'
-          - !Ref AWS::NoValue
-        - !If
-          - UseRds
-          - PolicyName: LambdaVpcEni
-            PolicyDocument:
-              Version: '2012-10-17'
-              Statement:
-                - Effect: Allow
-                  Action:
-                    - ec2:CreateNetworkInterface
-                    - ec2:DescribeNetworkInterfaces
-                    - ec2:DeleteNetworkInterface
-                    - ec2:AssignPrivateIpAddresses
-                    - ec2:UnassignPrivateIpAddresses
-                  Resource: '*'
-          - !Ref AWS::NoValue
         - PolicyName: CognitoAdminUpdateUserAttributes
           PolicyDocument:
             Version: '2012-10-17'
@@ -218,17 +173,14 @@ Resources:
                 Action:
                   - cognito-idp:AdminUpdateUserAttributes
                 Resource: !Sub 'arn:aws:cognito-idp:${AWS::Region}:${AWS::AccountId}:userpool/*'
-        - !If
-          - HasDsqlClusterArn
-          - PolicyName: DsqlDbConnect
-            PolicyDocument:
-              Version: '2012-10-17'
-              Statement:
-                - Effect: Allow
-                  Action:
-                    - dsql:DbConnect
-                  Resource: !Ref DsqlClusterArn
-          - !Ref AWS::NoValue
+        - PolicyName: DsqlDbConnect
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - dsql:DbConnect
+                Resource: !Ref DsqlClusterArn
       Tags:
         - Key: Project
           Value: StreamMyCourse
@@ -247,45 +199,10 @@ Resources:
       Role: !GetAtt UserProfileSyncLambdaRole.Arn
       Timeout: 30
       MemorySize: 256
-      VpcConfig: !If
-        - UseRds
-        - SubnetIds:
-            - !ImportValue
-              'Fn::Sub': '${RdsStackName}-PrivateSubnetId'
-          SecurityGroupIds:
-            - !ImportValue
-              'Fn::Sub': '${RdsStackName}-LambdaSecurityGroupId'
-        - !Ref AWS::NoValue
       Environment:
         Variables:
-          DB_SECRET_ARN: !If
-            - UseRds
-            - !ImportValue
-              'Fn::Sub': '${RdsStackName}-DbSecretArn'
-            - !Ref AWS::NoValue
-          DB_HOST: !If
-            - UseRds
-            - !ImportValue
-              'Fn::Sub': '${RdsStackName}-DbHost'
-            - !Ref AWS::NoValue
-          DB_PORT: !If
-            - UseRds
-            - !ImportValue
-              'Fn::Sub': '${RdsStackName}-DbPort'
-            - !Ref AWS::NoValue
-          DB_NAME: !If
-            - UseRds
-            - !ImportValue
-              'Fn::Sub': '${RdsStackName}-DbName'
-            - !Ref AWS::NoValue
-          DSQL_ENDPOINT: !If
-            - UseDsql
-            - !Ref DsqlEndpoint
-            - !Ref AWS::NoValue
-          DSQL_USER: !If
-            - UseDsql
-            - smc_app
-            - !Ref AWS::NoValue
+          DSQL_ENDPOINT: !Ref DsqlEndpoint
+          DSQL_USER: smc_app
           LOG_LEVEL: INFO
           STUDENT_COGNITO_CLIENT_ID: !Ref StudentCognitoClientId
           TEACHER_COGNITO_CLIENT_ID: !Ref TeacherCognitoClientId
@@ -629,7 +546,7 @@ Resources:
         Ref: CatalogUserPool
       GenerateSecret: false
       # ALLOW_ADMIN_USER_PASSWORD_AUTH enables server-side AdminInitiateAuth for CI
-      # tokens (e.g. CI mint or COGNITO_RDS_VERIFY_JWT on the GitHub Environment) without exposing USER_PASSWORD_AUTH on the public client.
+      # tokens (e.g. CI mint or COGNITO_VERIFY_JWT on the GitHub Environment) without exposing USER_PASSWORD_AUTH on the public client.
       ExplicitAuthFlows:
         - ALLOW_REFRESH_TOKEN_AUTH
         - ALLOW_ADMIN_USER_PASSWORD_AUTH

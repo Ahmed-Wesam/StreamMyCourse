@@ -10,13 +10,8 @@ param(
     [string]$Region = "eu-west-1",
 
     [Parameter(Mandatory=$false)]
-    [ValidateSet("billing", "api", "auth", "video", "edge-hosting", "rds")]
+    [ValidateSet("billing", "api", "auth", "video", "edge-hosting")]
     [string]$Template = "api",
-
-    # api template: name of the rds-stack to import VPC/subnet/SG/secret from (required).
-    # When empty, deploy.ps1 defaults to StreamMyCourse-Rds-<Environment>.
-    [Parameter(Mandatory=$false)]
-    [string]$RdsStackName = "",
 
     [Parameter(Mandatory=$false)]
     [string]$EmailAddress = "",
@@ -92,7 +87,7 @@ param(
     [Parameter(Mandatory=$false)]
     [string]$GoogleClientSecret = "",
 
-    # auth stack: optional PostAuthentication Lambda (same RdsStackName as api when profile sync is on)
+    # auth stack: optional PostAuthentication Lambda (DSQL profile sync when DsqlEndpoint is set)
     [Parameter(Mandatory=$false)]
     [ValidateSet("true", "false", "")]
     [string]$EnableUserProfileSync = "",
@@ -125,9 +120,6 @@ param(
     [Parameter(Mandatory=$true)]
     [string]$CognitoClientId,
 
-    # rds template: PostgreSQL engine version (empty = template default for the region)
-    [Parameter(Mandatory=$false)]
-    [string]$DbEngineVersion = ""
 )
 
 $ErrorActionPreference = "Stop"
@@ -149,10 +141,6 @@ if ($Template -eq "edge-hosting") {
 
 if ($Template -eq "auth") {
     $effectiveRegion = $Region
-}
-
-if ($StackName -eq "" -and $Template -eq "rds") {
-    $StackName = "StreamMyCourse-Rds-$Environment"
 }
 
 Write-Host "=========================================" -ForegroundColor Cyan
@@ -182,6 +170,31 @@ try {
 } catch {
     Write-Host "[X] AWS credentials not configured" -ForegroundColor Red
     exit 1
+}
+
+function Get-DsqlStackOutputs {
+    param(
+        [string]$Env,
+        [string]$Reg
+    )
+    $dsqlStack = "StreamMyCourse-Dsql-$Env"
+    try {
+        $endpoint = aws cloudformation describe-stacks --stack-name $dsqlStack --region $Reg `
+            --query "Stacks[0].Outputs[?OutputKey=='Endpoint'].OutputValue" --output text 2>$null
+        $clusterArn = aws cloudformation describe-stacks --stack-name $dsqlStack --region $Reg `
+            --query "Stacks[0].Outputs[?OutputKey=='ResourceArn'].OutputValue" --output text 2>$null
+        if ($endpoint -and $endpoint -ne "None" -and $clusterArn -and $clusterArn -ne "None") {
+            return @{ Endpoint = $endpoint.Trim(); ClusterArn = $clusterArn.Trim() }
+        }
+    } catch {
+        return $null
+    }
+    return $null
+}
+
+$dsqlOutputs = $null
+if ($Template -eq "api" -or $Template -eq "auth") {
+    $dsqlOutputs = Get-DsqlStackOutputs -Env $Environment -Reg $Region
 }
 
 $templatePath = "$PSScriptRoot\templates\$Template-stack.yaml"
@@ -314,94 +327,6 @@ if ($Template -eq "api") {
     Remove-Item $authZip -Force
 }
 
-# Schema-applier Lambda zip for RDS stack (same layout as CI deploy-rds-dev).
-$rdsArtifactBucket = ""
-$rdsSchemaKey = ""
-if ($Template -eq "rds") {
-    $rdsArtifactBucket = "streammycourse-artifacts-$($caller.Account)-$Region"
-    try {
-        aws s3api head-bucket --bucket $rdsArtifactBucket --region $Region 2>&1 | Out-Null
-    } catch {
-        Write-Host "Creating artifacts bucket: $rdsArtifactBucket" -ForegroundColor Yellow
-        aws s3 mb "s3://$rdsArtifactBucket" --region $Region
-        aws s3api put-bucket-versioning --bucket $rdsArtifactBucket --versioning-configuration Status=Enabled --region $Region
-    }
-
-    $gitSha = (& git -C $PSScriptRoot rev-parse HEAD 2>$null)
-    if (-not $gitSha) { $gitSha = [DateTimeOffset]::UtcNow.ToUnixTimeSeconds().ToString() }
-    $gitSha = $gitSha.Trim()
-    $short = if ($gitSha.Length -ge 12) { $gitSha.Substring(0, 12) } else { $gitSha }
-    $rdsSchemaKey = "rds-schema-apply-$Environment-$short.zip"
-
-    $schemaHandler = "$PSScriptRoot\lambda\rds_schema_apply\index.py"
-    $schemaSqlFiles = @(
-        "$PSScriptRoot\database\migrations\001_initial_schema.sql",
-        "$PSScriptRoot\database\migrations\003_progress_course_lesson_fk.sql",
-        "$PSScriptRoot\database\migrations\004_enforce_course_created_by.sql",
-        "$PSScriptRoot\database\migrations\006_question_banks_module_quizzes.sql",
-        "$PSScriptRoot\database\migrations\007_question_bank_questions.sql",
-        "$PSScriptRoot\database\migrations\008_student_module_quiz_bindings.sql",
-        "$PSScriptRoot\database\migrations\009_module_quiz_attempts.sql",
-        "$PSScriptRoot\database\migrations\010_module_quiz_attempt_submissions.sql",
-        "$PSScriptRoot\database\migrations\011_billing_subscription.sql",
-        "$PSScriptRoot\database\migrations\012_billing_plan_price_50_jod.sql",
-        "$PSScriptRoot\database\migrations\013_student_active_session.sql",
-        "$PSScriptRoot\database\migrations\014_rate_limit_counters.sql",
-        "$PSScriptRoot\database\migrations\015_one_time_purchases.sql",
-        "$PSScriptRoot\database\migrations\016_user_profile_fields.sql",
-        "$PSScriptRoot\database\migrations\017_course_page_content.sql",
-        "$PSScriptRoot\database\migrations\018_module_quiz_pass_percent.sql",
-        "$PSScriptRoot\database\migrations\019_lesson_files_and_notes.sql",
-        "$PSScriptRoot\database\migrations\020_assignments.sql",
-        "$PSScriptRoot\database\migrations\021_certificates.sql",
-        "$PSScriptRoot\database\migrations\022_research_team.sql",
-        "$PSScriptRoot\database\migrations\023_rs16_learning_features.sql",
-        "$PSScriptRoot\database\migrations\024_hyperpay_jod.sql",
-        "$PSScriptRoot\database\migrations\025_bundle_certificates.sql"
-    )
-    if (-not (Test-Path $schemaHandler)) {
-        Write-Host "[X] Missing schema applier: $schemaHandler" -ForegroundColor Red
-        exit 1
-    }
-    foreach ($schemaSql in $schemaSqlFiles) {
-        if (-not (Test-Path $schemaSql)) {
-            Write-Host "[X] Missing migration SQL: $schemaSql" -ForegroundColor Red
-            exit 1
-        }
-    }
-
-    $pkgRoot = Join-Path $env:TEMP "rds-schema-pkg-$Environment-$([System.Guid]::NewGuid().ToString('N').Substring(0,8))"
-    $pkgDir = $pkgRoot
-    New-Item -ItemType Directory -Path $pkgDir -Force | Out-Null
-    Copy-Item -Path $schemaHandler -Destination (Join-Path $pkgDir "index.py") -Force
-    $schemaSql = (Get-Content -Path $schemaSqlFiles -Raw) -join [Environment]::NewLine
-    Set-Content -Path (Join-Path $pkgDir "schema.sql") -Value $schemaSql -Encoding UTF8
-
-    Write-Host "Installing psycopg2-binary (Linux x86_64) into schema-applier bundle" -ForegroundColor Yellow
-    & python -m pip install `
-        --quiet `
-        psycopg2-binary==2.9.9 `
-        --platform manylinux2014_x86_64 `
-        --only-binary=:all: `
-        --python-version 3.11 `
-        --implementation cp `
-        -t $pkgDir
-    if ($LASTEXITCODE -ne 0) {
-        Write-Host "[X] pip install failed for schema applier" -ForegroundColor Red
-        Remove-Item $pkgRoot -Recurse -Force -ErrorAction SilentlyContinue
-        exit 1
-    }
-
-    $tempZip = "$env:TEMP\rds-schema-$Environment.zip"
-    if (Test-Path $tempZip) { Remove-Item $tempZip -Force }
-    Compress-Archive -Path "$pkgDir\*" -DestinationPath $tempZip -Force
-    Remove-Item $pkgRoot -Recurse -Force
-
-    Write-Host "Uploading schema-applier to s3://$rdsArtifactBucket/$rdsSchemaKey" -ForegroundColor Yellow
-    aws s3 cp $tempZip "s3://$rdsArtifactBucket/$rdsSchemaKey" --region $Region
-    Remove-Item $tempZip -Force
-}
-
 # CloudFront invalidation Lambda zip for video stack (runtime boto3 only; index.py in bundle root).
 $videoArtifactBucket = ""
 $videoInvalidationKey = ""
@@ -473,8 +398,8 @@ if ($Template -eq "edge-hosting") {
 }
 
 $capabilities = @('CAPABILITY_IAM')
-# api + rds + auth + video templates create IAM roles with explicit RoleName (named IAM resources).
-if ($Template -eq "api" -or $Template -eq "rds" -or $Template -eq "auth" -or $Template -eq "video") {
+# api + auth + video templates create IAM roles with explicit RoleName (named IAM resources).
+if ($Template -eq "api" -or $Template -eq "auth" -or $Template -eq "video") {
     $capabilities = @('CAPABILITY_IAM', 'CAPABILITY_NAMED_IAM')
 }
 
@@ -548,8 +473,9 @@ if ($Template -eq "edge-hosting") {
     }
     $authOverrides += "GoogleClientId=$GoogleClientId"
     $authOverrides += "GoogleClientSecret=$GoogleClientSecret"
-    if ($RdsStackName -ne "") {
-        $authOverrides += "RdsStackName=$RdsStackName"
+    if ($null -ne $dsqlOutputs) {
+        $authOverrides += "DsqlEndpoint=$($dsqlOutputs.Endpoint)"
+        $authOverrides += "DsqlClusterArn=$($dsqlOutputs.ClusterArn)"
     }
     if ($EnableUserProfileSync -ne "") {
         $authOverrides += "EnableUserProfileSync=$EnableUserProfileSync"
@@ -578,9 +504,9 @@ if ($Template -eq "edge-hosting") {
     $cfDeployArgs += '--parameter-overrides'
     $cfDeployArgs += $authOverrides
 } elseif ($Template -eq "api") {
-    if ($RdsStackName -eq "") {
-        $RdsStackName = "StreamMyCourse-Rds-$Environment"
-        Write-Host "Note: RdsStackName defaulting to $RdsStackName" -ForegroundColor Yellow
+    if ($null -eq $dsqlOutputs) {
+        Write-Host "[X] StreamMyCourse-Dsql-$Environment must exist (Endpoint + ResourceArn outputs) before api deploy." -ForegroundColor Red
+        exit 1
     }
     # api-stack.yaml can exceed CloudFormation's 51,200-byte inline template limit.
     $cfDeployArgs += '--s3-bucket', $artifactBucket
@@ -590,7 +516,8 @@ if ($Template -eq "edge-hosting") {
         "LambdaCodeS3Bucket=$artifactBucket",
         "LambdaCodeS3Key=$lambdaKey",
         "TokenAuthorizerCodeS3Key=$tokenAuthorizerKey",
-        "RdsStackName=$RdsStackName"
+        "DsqlEndpoint=$($dsqlOutputs.Endpoint)",
+        "DsqlClusterArn=$($dsqlOutputs.ClusterArn)"
     )
     if ($VideoBucketName -ne "") {
         $apiOverrides += "VideoBucketName=$VideoBucketName"
@@ -611,17 +538,6 @@ if ($Template -eq "edge-hosting") {
     $apiOverrides += "CognitoClientId=$CognitoClientId"
     $cfDeployArgs += '--parameter-overrides'
     $cfDeployArgs += $apiOverrides
-} elseif ($Template -eq "rds") {
-    $rdsOverrides = @(
-        "Environment=$Environment",
-        "SchemaApplierCodeS3Bucket=$rdsArtifactBucket",
-        "SchemaApplierCodeS3Key=$rdsSchemaKey"
-    )
-    if ($DbEngineVersion -ne "") {
-        $rdsOverrides += "DbEngineVersion=$DbEngineVersion"
-    }
-    $cfDeployArgs += '--parameter-overrides'
-    $cfDeployArgs += $rdsOverrides
 } elseif ($Template -eq "video") {
     $videoCors = 'https://researchspectrum.org,https://teach.researchspectrum.org,http://localhost:5173,http://127.0.0.1:5173,http://localhost:5174,http://127.0.0.1:5174'
     $videoOverrides = @(
@@ -640,15 +556,6 @@ if ($Template -eq "edge-hosting") {
 
 if ($LASTEXITCODE -eq 0) {
     Write-Host "`n[OK] Stack deployment successful!" -ForegroundColor Green
-
-    if ($Template -eq "rds") {
-        Write-Host "Waiting for RDS instance streammycourse-$Environment to become available..." -ForegroundColor Yellow
-        aws rds wait db-instance-available --db-instance-identifier "streammycourse-$Environment" --region $effectiveRegion
-        if ($LASTEXITCODE -ne 0) {
-            Write-Host "[X] Timed out or failed waiting for RDS instance" -ForegroundColor Red
-            exit 1
-        }
-    }
 
     Write-Host "`nStack Outputs:" -ForegroundColor Cyan
     aws cloudformation describe-stacks --stack-name $StackName --region $effectiveRegion --query 'Stacks[0].Outputs' --output table

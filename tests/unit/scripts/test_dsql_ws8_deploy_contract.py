@@ -1,4 +1,4 @@
-"""DSQL-8 S3: template and deploy-order contracts."""
+"""DSQL-8/9: deploy-order contracts and auth sync template (DSQL-only)."""
 
 from __future__ import annotations
 
@@ -7,23 +7,15 @@ from pathlib import Path
 _REPO = Path(__file__).resolve().parents[3]
 
 
-def test_auth_sync_condition_allows_dsql_without_rds() -> None:
+def test_auth_sync_condition_requires_dsql_endpoint_not_rds() -> None:
     text = (_REPO / "infrastructure/templates/auth-stack.yaml").read_text(encoding="utf-8")
     assert "HasDsqlEndpoint" in text
+    assert "HasRdsStackName" not in text
     assert "ShouldDeployUserProfileSync: !And" in text
-    assert "HasRdsStackName" in text
     block = text.split("ShouldDeployUserProfileSync", 1)[1][:400]
     assert "HasDsqlEndpoint" in block
-    assert "UseDsql" in text
     assert "DSQL_ENDPOINT" in text
-
-
-def test_payments_and_auth_vpc_config_gated_on_use_rds() -> None:
-    pay = (_REPO / "infrastructure/templates/payments-stack.yaml").read_text(encoding="utf-8")
-    auth = (_REPO / "infrastructure/templates/auth-stack.yaml").read_text(encoding="utf-8")
-    assert "VpcConfig: !If" in pay
-    assert "UseRds" in pay
-    assert "VpcConfig: !If" in auth
+    assert "DsqlEndpoint" in text
 
 
 def test_workflow_auth_before_deploy_backend() -> None:

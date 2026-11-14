@@ -1,14 +1,4 @@
-"""Catalog persistence smoke tests (PostgreSQL in managed dev/prod).
-
-These tests assert that the deployed API can round-trip writes and reads when
-the catalog is backed by PostgreSQL. The rest of the integration suite exercises
-the same contract; this module adds a focused smoke for FK and metadata paths.
-
-The tests assume:
-- `INTEGRATION_API_BASE_URL` points at the deployed API
-- The PostgreSQL schema (001_initial_schema.sql) has been applied
-
-See `.cursor/plans/rds_dev_rollout_ci_cd_39a30e0b.plan.md` for rollout details."""
+"""Deployed API round-trips course/lesson/default module/course delete against Aurora DSQL."""
 
 from __future__ import annotations
 
@@ -21,7 +11,7 @@ from helpers.module_contract import (
 
 def test_create_and_read_course_round_trips(api: ApiClient, course_factory):
     """POST /courses followed by GET /courses/{id} must succeed."""
-    course = course_factory(description="rds-smoke")
+    course = course_factory(description="dsql-smoke")
 
     got = api.get_course(course.course_id)
     assert got.status_code == 200, (
@@ -31,7 +21,7 @@ def test_create_and_read_course_round_trips(api: ApiClient, course_factory):
     body = got.json()
     assert body["id"] == course.course_id
     assert body["title"] == course.title
-    assert body["description"] == "rds-smoke"
+    assert body["description"] == "dsql-smoke"
     assert body["status"] == "DRAFT"
 
 
@@ -52,7 +42,7 @@ def test_lesson_create_under_course(
 
 def test_course_create_includes_default_module(api: ApiClient, course_factory):
     """POST /courses must leave a default ``course_modules`` row (module_order 0)."""
-    course = course_factory(description="module-smoke")
+    course = course_factory(description="dsql-smoke")
     r = api.list_course_modules(course.course_id)
     mods = require_course_modules_list(r)
     assert len(mods) >= 1

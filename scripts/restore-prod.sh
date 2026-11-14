@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Restore prod from pause manifest (retained S3 buckets + RDS snapshot).
+# Restore prod from pause manifest (retained S3 buckets). Aurora DSQL cluster is not torn down on pause.
 #
 # Usage:
 #   ./scripts/restore-prod.sh --manifest PATH [--confirm] [--dry-run]
@@ -28,7 +28,7 @@ REGION_EU="eu-west-1"
 REGION_US="us-east-1"
 EDGE_STACK="StreamMyCourse-EdgeHosting-${ENV}"
 VIDEO_STACK="StreamMyCourse-Video-${ENV}"
-RDS_STACK="StreamMyCourse-Rds-${ENV}"
+DSQL_STACK="StreamMyCourse-Dsql-${ENV}"
 AUTH_STACK="StreamMyCourse-Auth-${ENV}"
 
 MANIFEST=""
@@ -94,7 +94,7 @@ fi
 
 validate_manifest() {
   local key val
-  for key in aws_account_id video_bucket_name student_bucket_name teacher_bucket_name rds_snapshot_identifier regions; do
+  for key in aws_account_id video_bucket_name student_bucket_name teacher_bucket_name regions; do
     val="$(jq -r ".${key} // empty" "$MANIFEST" | tr -d '\r')"
     if [[ -z "$val" || "$val" == "null" ]]; then
       echo "Manifest missing required key: ${key}" >&2
@@ -105,10 +105,36 @@ validate_manifest() {
     echo "Manifest regions must be a non-empty array." >&2
     exit 1
   fi
-  if [[ -z "$(jq -r '.rds_snapshot_identifier' "$MANIFEST" | tr -d '\r')" ]]; then
-    echo "Manifest rds_snapshot_identifier must be non-empty." >&2
+}
+
+dsql_stack_output() {
+  local key="$1"
+  if ! stack_exists "$DSQL_STACK" "$REGION_EU"; then
+    echo ""
+    return 0
+  fi
+  aws cloudformation describe-stacks \
+    --stack-name "$DSQL_STACK" \
+    --region "$REGION_EU" \
+    --query "Stacks[0].Outputs[?OutputKey=='${key}'].OutputValue | [0]" \
+    --output text 2>/dev/null || true
+}
+
+require_dsql_cluster() {
+  local endpoint arn
+  endpoint="$(dsql_stack_output Endpoint)"
+  arn="$(dsql_stack_output ResourceArn)"
+  if [[ "$DRY_RUN" == true ]]; then
+    DSQL_ENDPOINT_RESTORE="${endpoint:-dry-run.dsql.eu-west-1.on.aws}"
+    DSQL_CLUSTER_ARN_RESTORE="${arn:-arn:aws:dsql:eu-west-1:000000000000:cluster/dry-run}"
+    return 0
+  fi
+  if [[ -z "$endpoint" || "$endpoint" == "None" || -z "$arn" || "$arn" == "None" ]]; then
+    echo "Aurora DSQL stack ${DSQL_STACK} must exist with Endpoint and ResourceArn outputs (not deleted during pause)." >&2
     exit 1
   fi
+  DSQL_ENDPOINT_RESTORE="$endpoint"
+  DSQL_CLUSTER_ARN_RESTORE="$arn"
 }
 
 manifest_get() {
@@ -464,62 +490,6 @@ deploy_edge() {
   "$SCRIPT_DIR/deploy-edge.sh" "$ENV"
 }
 
-deploy_rds_from_snapshot() {
-  local snapshot
-  snapshot="$(manifest_get rds_snapshot_identifier)"
-  if [[ "$DRY_RUN" == true ]]; then
-    echo "[dry-run] Would run: RESTORE_DB_SNAPSHOT_IDENTIFIER=${snapshot} $SCRIPT_DIR/deploy-rds-stack.sh ${ENV}"
-    return 0
-  fi
-  RESTORE_DB_SNAPSHOT_IDENTIFIER="$snapshot" "$SCRIPT_DIR/deploy-rds-stack.sh" "$ENV"
-}
-
-sync_rds_secret() {
-  if [[ "$DRY_RUN" == true ]]; then
-    echo "[dry-run] Would run: $SCRIPT_DIR/sync-rds-secret-after-restore.sh ${ENV}"
-    return 0
-  fi
-  "$SCRIPT_DIR/sync-rds-secret-after-restore.sh" "$ENV"
-}
-
-invoke_schema_applier() {
-  if [[ "$DRY_RUN" == true ]]; then
-    echo "[dry-run] Would invoke schema-applier Lambda from ${RDS_STACK} output SchemaApplierFunctionName"
-    return 0
-  fi
-  local fn out
-  fn="$(aws cloudformation describe-stacks \
-    --stack-name "$RDS_STACK" \
-    --region "$REGION_EU" \
-    --query "Stacks[0].Outputs[?OutputKey=='SchemaApplierFunctionName'].OutputValue" \
-    --output text)"
-  if [[ -z "$fn" || "$fn" == "None" ]]; then
-    echo "Missing CloudFormation output SchemaApplierFunctionName. Deploy RDS with SchemaApplierCodeS3Bucket/Key." >&2
-    exit 1
-  fi
-  out="$(mktemp)"
-  aws lambda invoke \
-    --region "$REGION_EU" \
-    --function-name "$fn" \
-    --cli-binary-format raw-in-base64-out \
-    --payload '{}' \
-    "$out"
-  if jq -e 'has("errorMessage")' "$out" >/dev/null 2>&1; then
-    echo "Schema applier Lambda raised (FunctionError)" >&2
-    jq -c '{errorMessage, errorType}' "$out" >&2
-    rm -f "$out"
-    exit 1
-  fi
-  if ! jq -e '.ok == true' "$out" >/dev/null 2>&1; then
-    echo "Schema applier returned non-success payload:" >&2
-    jq -c '{ok, error}' "$out" >&2 || cat "$out" >&2
-    rm -f "$out"
-    exit 1
-  fi
-  rm -f "$out"
-  echo "Schema applier succeeded."
-}
-
 package_cognito_sync_lambda() {
   local account bucket key suffix stage pkg ws
   : "${COGNITO_DOMAIN_PREFIX:?COGNITO_DOMAIN_PREFIX is required for auth stack deploy}"
@@ -649,13 +619,14 @@ ensure_zoho_smtp_secret_arn() {
 }
 
 deploy_auth_stack() {
+  require_dsql_cluster
   package_cognito_sync_lambda
   package_cognito_pre_signup_lambda
   package_cognito_custom_email_sender_lambda
   ensure_zoho_smtp_secret_arn
 
   if [[ "$DRY_RUN" == true ]]; then
-    echo "[dry-run] Would deploy auth stack: $TEMPLATES/auth-stack.yaml ($AUTH_STACK)"
+    echo "[dry-run] Would deploy auth stack: $TEMPLATES/auth-stack.yaml ($AUTH_STACK) (DsqlEndpoint set)"
     return 0
   fi
 
@@ -671,7 +642,8 @@ deploy_auth_stack() {
   RESTORE_AUTH_ENV="$ENV" \
   RESTORE_AUTH_COGNITO_DOMAIN_PREFIX="$COGNITO_DOMAIN_PREFIX" \
   RESTORE_AUTH_GOOGLE_CLIENT_ID="$GOOGLE_OAUTH_CLIENT_ID" \
-  RESTORE_AUTH_RDS_STACK="$RDS_STACK" \
+  RESTORE_AUTH_DSQL_ENDPOINT="$DSQL_ENDPOINT_RESTORE" \
+  RESTORE_AUTH_DSQL_CLUSTER_ARN="$DSQL_CLUSTER_ARN_RESTORE" \
   RESTORE_AUTH_SYNC_BUCKET="$COGNITO_SYNC_BUCKET" \
   RESTORE_AUTH_SYNC_KEY="$COGNITO_SYNC_KEY" \
   RESTORE_AUTH_PRE_SIGNUP_BUCKET="$COGNITO_PRE_SIGNUP_BUCKET" \
@@ -695,7 +667,8 @@ params = {
     "CognitoDomainPrefix": os.environ["RESTORE_AUTH_COGNITO_DOMAIN_PREFIX"],
     "GoogleClientId": os.environ["RESTORE_AUTH_GOOGLE_CLIENT_ID"],
     "GoogleClientSecret": secret,
-    "RdsStackName": os.environ["RESTORE_AUTH_RDS_STACK"],
+    "DsqlEndpoint": os.environ["RESTORE_AUTH_DSQL_ENDPOINT"],
+    "DsqlClusterArn": os.environ["RESTORE_AUTH_DSQL_CLUSTER_ARN"],
     "EnableUserProfileSync": "true",
     "CognitoUserProfileSyncCodeS3Bucket": os.environ["RESTORE_AUTH_SYNC_BUCKET"],
     "CognitoUserProfileSyncCodeS3Key": os.environ["RESTORE_AUTH_SYNC_KEY"],
@@ -819,30 +792,11 @@ echo "--- Step 2: Deploy edge hosting ---"
 deploy_edge
 
 echo ""
-echo "--- Step 3: Deploy RDS from snapshot ---"
-deploy_rds_from_snapshot
-
-echo ""
-echo "--- Step 4: Sync RDS secret after restore ---"
-sync_rds_secret
-
-echo ""
-echo "--- Step 5: Apply PostgreSQL schema (schema-applier Lambda) ---"
-invoke_schema_applier
-
-if [[ "${RESTORE_STOP_AFTER:-}" == "schema" ]]; then
-  echo ""
-  echo "RESTORE_STOP_AFTER=schema: stopping before auth/backend (run GitHub Deploy workflow to finish)."
-  print_next_steps
-  exit 0
-fi
-
-echo ""
-echo "--- Step 6: Deploy auth stack (Cognito) ---"
+echo "--- Step 3: Deploy auth stack (Cognito; DSQL profile sync) ---"
 deploy_auth_stack
 
 echo ""
-echo "--- Step 7: Deploy backend (video + API) ---"
+echo "--- Step 4: Deploy backend (video + API + payments; existing DSQL cluster) ---"
 deploy_backend
 
 echo ""

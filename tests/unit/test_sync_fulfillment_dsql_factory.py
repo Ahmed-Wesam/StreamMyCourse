@@ -54,28 +54,21 @@ def test_cognito_sync_build_connection_factory_uses_dsql(fake_dsql_connect: Magi
         ROOT / "infrastructure/lambda/cognito_user_profile_sync/repo.py",
     )
     endpoint = "cluster.dsql.eu-west-1.on.aws"
-    factory = sync_repo_mod.build_connection_factory(
-        db_secret_arn="",
-        db_host="",
-        db_name="postgres",
-        db_port=5432,
-        dsql_endpoint=endpoint,
-    )
+    factory = sync_repo_mod.build_connection_factory(dsql_endpoint=endpoint)
     factory()
     fake_dsql_connect.assert_called_once_with(endpoint)
 
 
-def test_cognito_sync_raises_when_both_db_hosts_set(fake_dsql_connect: MagicMock) -> None:
+def test_cognito_sync_raises_when_both_db_hosts_set(
+    fake_dsql_connect: MagicMock, monkeypatch: pytest.MonkeyPatch
+) -> None:
     sync_repo_mod = _load_module(
         "cognito_sync_repo_both",
         ROOT / "infrastructure/lambda/cognito_user_profile_sync/repo.py",
     )
-    with pytest.raises(RuntimeError, match="not both"):
+    monkeypatch.setenv("DB_HOST", "rds.host")
+    with pytest.raises(RuntimeError, match="DSQL_ENDPOINT only"):
         sync_repo_mod.build_connection_factory(
-            db_secret_arn="arn:secret",
-            db_host="rds.host",
-            db_name="app",
-            db_port=5432,
             dsql_endpoint="cluster.dsql.eu-west-1.on.aws",
         )
     fake_dsql_connect.assert_not_called()
@@ -90,17 +83,16 @@ def test_deploy_backend_sync_package_uses_sync_requirements() -> None:
     assert "dsql_connect.py" in block
 
 
-def test_billing_fulfillment_raises_when_both_db_hosts_set(fake_dsql_connect: MagicMock) -> None:
+def test_billing_fulfillment_raises_when_both_db_hosts_set(
+    fake_dsql_connect: MagicMock, monkeypatch: pytest.MonkeyPatch
+) -> None:
     fulfill_mod = _load_module(
         "fulfillment_repo_both",
         ROOT / "infrastructure/lambda/billing_fulfillment/fulfillment_repo.py",
     )
-    with pytest.raises(RuntimeError, match="not both"):
+    monkeypatch.setenv("DB_SECRET_ARN", "arn:secret")
+    with pytest.raises(RuntimeError, match="DSQL_ENDPOINT only"):
         fulfill_mod.build_connection_factory(
-            db_secret_arn="arn:secret",
-            db_host="rds.host",
-            db_name="app",
-            db_port=5432,
             dsql_endpoint="cluster.dsql.eu-west-1.on.aws",
         )
     fake_dsql_connect.assert_not_called()
@@ -118,12 +110,6 @@ def test_billing_fulfillment_build_connection_factory_uses_dsql(fake_dsql_connec
         ROOT / "infrastructure/lambda/billing_fulfillment/fulfillment_repo.py",
     )
     endpoint = "cluster.dsql.eu-west-1.on.aws"
-    factory = fulfill_mod.build_connection_factory(
-        db_secret_arn="",
-        db_host="",
-        db_name="postgres",
-        db_port=5432,
-        dsql_endpoint=endpoint,
-    )
+    factory = fulfill_mod.build_connection_factory(dsql_endpoint=endpoint)
     factory()
     fake_dsql_connect.assert_called_once_with(endpoint)

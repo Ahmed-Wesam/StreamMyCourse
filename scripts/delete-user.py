@@ -104,7 +104,7 @@ def _resolve_user_pool_id() -> str:
 
 def _build_service(endpoint: str) -> UserDeletionService:
     factory: Callable[[], Any] = lambda: connect(DSQL_USER_ADMIN, endpoint)
-    profile_repo = UserProfileRdsRepository(factory, tags_as_jsonb=True)
+    profile_repo = UserProfileRdsRepository(factory)
     progress_repo = LessonProgressRdsRepository(factory)
     notes_repo = LessonNotesRdsRepository(factory)
     deploy_env = (os.environ.get("DEPLOYMENT_ENVIRONMENT") or "prod").strip().lower()
@@ -112,7 +112,7 @@ def _build_service(endpoint: str) -> UserDeletionService:
     quiz_repo = QuestionBankRdsRepository(factory)
     assignments_repo = AssignmentsRdsRepository(factory)
     certificates_repo = CertificatesRdsRepository(factory)
-    research_team_repo = ResearchTeamRdsRepository(factory, areas_as_jsonb=True)
+    research_team_repo = ResearchTeamRdsRepository(factory)
     registry = UserDeletionRegistry()
     register_operator_user_steps(
         registry,

@@ -1,7 +1,6 @@
-# After CI succeeds on a push to main: CI gate → prod edge + prod RDS + DSQL cluster (parallel) →
-# apply-schema-prod / dsql-compat-spike → apply-dsql-schema → deploy-backend-prod → deploy-api-dsql →
-# integration-http-tests (prod API only; no needs on DSQL lane) → verify-prod-rds → prod SPAs.
-# verify-prod-rds calls verify-rds-reusable.yml with prod CloudFormation inputs + GitHub Environment secrets.
+# After CI succeeds on a push to main: CI gate → prod edge + DSQL cluster (parallel) →
+# dsql-compat-spike → apply-dsql-schema → deploy-backend-prod →
+# integration-http-tests (prod API; no needs on DSQL lane) → prod SPAs.
 # Manual dispatch: runs full pipeline without waiting for upstream CI (operator responsibility).
 #
 # Lambda zip is uploaded to catalog-{env}-{gitSha}.zip so LambdaCodeS3Key changes every commit
@@ -124,196 +123,7 @@ jobs:
           echo "## Edge (prod)" >> "$GITHUB_STEP_SUMMARY"
           echo "**ACM + S3 + CloudFront** in **us-east-1** (StreamMyCourse-EdgeHosting-prod) deployed or no-op changeset." >> "$GITHUB_STEP_SUMMARY"
 
-  # Deploys the RDS PostgreSQL stack (1-AZ VPC + private db.t4g.micro + Secrets Manager
-  # + VPC endpoints) and the in-VPC schema-applier Lambda (S3 zip uploaded in this job).
-  # apply-schema-prod invokes that Lambda so the runner never needs TCP 5432 to RDS.
-  deploy-rds-prod:
-    name: RDS Stack (prod) — PostgreSQL + VPC
-    runs-on: ubuntu-latest
-    environment: prod
-    needs: [gate]
-    permissions:
-      id-token: write
-      contents: read
-    if: |
-      always() && needs.gate.outputs.should_deploy == 'true' &&
-      (github.event_name == 'workflow_run' || github.event_name == 'workflow_dispatch')
-    steps:
-      - uses: actions/checkout@v6
-        with:
-          ref: ${{ needs.gate.outputs.checkout_sha }}
-
-      - name: Configure AWS credentials (OIDC)
-        uses: aws-actions/configure-aws-credentials@v6
-        with:
-          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
-          aws-region: ${{ env.AWS_REGION }}
-
-      - uses: actions/setup-python@v6
-        with:
-          python-version: "3.11"
-
-      - name: Package and upload schema-applier Lambda (psycopg2 + bundled SQL)
-        id: schema_pkg_prod
-        env:
-          CHECKOUT_SHA: ${{ needs.gate.outputs.checkout_sha }}
-        run: |
-          set -euo pipefail
-          REGION="${{ env.AWS_REGION }}"
-          ACCOUNT="$(aws sts get-caller-identity --query Account --output text --region "$REGION")"
-          BUCKET="streammycourse-artifacts-${ACCOUNT}-${REGION}"
-          SHA="${CHECKOUT_SHA:?missing gate checkout_sha}"
-          SHORT="${SHA:0:12}"
-          KEY="rds-schema-apply-prod-${SHORT}.zip"
-          STAGE="$(mktemp -d)"
-          PKG="${STAGE}/pkg"
-          mkdir -p "$PKG"
-          cp "${{ github.workspace }}/infrastructure/lambda/rds_schema_apply/index.py" "$PKG/"
-          cat \
-            "${{ github.workspace }}/infrastructure/database/migrations/001_initial_schema.sql" \
-            "${{ github.workspace }}/infrastructure/database/migrations/003_progress_course_lesson_fk.sql" \
-            "${{ github.workspace }}/infrastructure/database/migrations/004_enforce_course_created_by.sql" \
-            "${{ github.workspace }}/infrastructure/database/migrations/006_question_banks_module_quizzes.sql" \
-            "${{ github.workspace }}/infrastructure/database/migrations/007_question_bank_questions.sql" \
-            "${{ github.workspace }}/infrastructure/database/migrations/008_student_module_quiz_bindings.sql" \
-            "${{ github.workspace }}/infrastructure/database/migrations/009_module_quiz_attempts.sql" \
-            "${{ github.workspace }}/infrastructure/database/migrations/010_module_quiz_attempt_submissions.sql" \
-            "${{ github.workspace }}/infrastructure/database/migrations/011_billing_subscription.sql" \
-            "${{ github.workspace }}/infrastructure/database/migrations/012_billing_plan_price_50_jod.sql" \
-            "${{ github.workspace }}/infrastructure/database/migrations/013_student_active_session.sql" \
-            "${{ github.workspace }}/infrastructure/database/migrations/014_rate_limit_counters.sql" \
-            "${{ github.workspace }}/infrastructure/database/migrations/015_one_time_purchases.sql" \
-            "${{ github.workspace }}/infrastructure/database/migrations/016_user_profile_fields.sql" \
-            "${{ github.workspace }}/infrastructure/database/migrations/017_course_page_content.sql" \
-            "${{ github.workspace }}/infrastructure/database/migrations/018_module_quiz_pass_percent.sql" \
-            "${{ github.workspace }}/infrastructure/database/migrations/019_lesson_files_and_notes.sql" \
-            "${{ github.workspace }}/infrastructure/database/migrations/020_assignments.sql" \
-            "${{ github.workspace }}/infrastructure/database/migrations/021_certificates.sql" \
-            "${{ github.workspace }}/infrastructure/database/migrations/022_research_team.sql" \
-            "${{ github.workspace }}/infrastructure/database/migrations/023_rs16_learning_features.sql" \
-            "${{ github.workspace }}/infrastructure/database/migrations/024_hyperpay_jod.sql" \
-            "${{ github.workspace }}/infrastructure/database/migrations/025_bundle_certificates.sql" \
-            > "$PKG/schema.sql"
-          pip install psycopg2-binary==2.9.9 \
-            --quiet \
-            --platform manylinux2014_x86_64 \
-            --only-binary=:all: \
-            --python-version 3.11 \
-            --implementation cp \
-            -t "$PKG"
-          (cd "$PKG" && zip -rq "${STAGE}/bundle.zip" .)
-          aws s3 cp "${STAGE}/bundle.zip" "s3://${BUCKET}/${KEY}" --region "$REGION"
-          echo "bucket=${BUCKET}" >> "$GITHUB_OUTPUT"
-          echo "key=${KEY}" >> "$GITHUB_OUTPUT"
-          echo "Uploaded schema-applier s3://${BUCKET}/${KEY}"
-
-      - name: Deploy RDS stack (prod)
-        run: |
-          set -euo pipefail
-          BUCKET="${{ steps.schema_pkg_prod.outputs.bucket }}"
-          KEY="${{ steps.schema_pkg_prod.outputs.key }}"
-          REGION="${{ env.AWS_REGION }}"
-          STACK="StreamMyCourse-Rds-prod"
-          OVERRIDES=(
-            "Environment=prod"
-            "SchemaApplierCodeS3Bucket=${BUCKET}"
-            "SchemaApplierCodeS3Key=${KEY}"
-          )
-          if aws cloudformation describe-stacks --stack-name "$STACK" --region "$REGION" >/dev/null 2>&1; then
-            SNAPSHOT="$(aws cloudformation describe-stacks \
-              --stack-name "$STACK" \
-              --region "$REGION" \
-              --query "Stacks[0].Parameters[?ParameterKey=='DbSnapshotIdentifier'].ParameterValue | [0]" \
-              --output text 2>/dev/null || true)"
-            if [[ -n "${SNAPSHOT:-}" && "${SNAPSHOT}" != "None" && "${SNAPSHOT}" != "" ]]; then
-              OVERRIDES+=("DbSnapshotIdentifier=${SNAPSHOT}")
-              echo "Preserving DbSnapshotIdentifier=${SNAPSHOT} on stack update"
-            fi
-          fi
-          aws cloudformation validate-template \
-            --template-body "file://${{ github.workspace }}/infrastructure/templates/rds-stack.yaml" \
-            --region "$REGION"
-          aws cloudformation deploy \
-            --template-file "${{ github.workspace }}/infrastructure/templates/rds-stack.yaml" \
-            --stack-name "$STACK" \
-            --capabilities CAPABILITY_IAM CAPABILITY_NAMED_IAM \
-            --region "$REGION" \
-            --no-fail-on-empty-changeset \
-            --parameter-overrides "${OVERRIDES[@]}"
-
-      - name: Wait for RDS instance available
-        run: |
-          set -euo pipefail
-          aws rds wait db-instance-available \
-            --db-instance-identifier streammycourse-prod \
-            --region "${{ env.AWS_REGION }}"
-
-      - name: Summary
-        if: success()
-        run: |
-          echo "## RDS Stack (prod)" >> "$GITHUB_STEP_SUMMARY"
-          echo "StreamMyCourse-Rds-prod deployed (VPC + private RDS + Secrets Manager + VPC endpoints + schema-applier Lambda zip from CI)." >> "$GITHUB_STEP_SUMMARY"
-
-  apply-schema-prod:
-    name: Apply PostgreSQL schema (prod)
-    runs-on: ubuntu-latest
-    environment: prod
-    needs: [gate, deploy-rds-prod]
-    permissions:
-      id-token: write
-      contents: read
-    if: |
-      always() && needs.gate.outputs.should_deploy == 'true' &&
-      needs.deploy-rds-prod.result == 'success' &&
-      (github.event_name == 'workflow_run' || github.event_name == 'workflow_dispatch')
-    steps:
-      - uses: actions/checkout@v6
-        with:
-          ref: ${{ needs.gate.outputs.checkout_sha }}
-
-      - name: Configure AWS credentials (OIDC)
-        uses: aws-actions/configure-aws-credentials@v6
-        with:
-          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
-          aws-region: ${{ env.AWS_REGION }}
-
-      - name: Invoke schema-applier Lambda
-        run: |
-          set -euo pipefail
-          FN="$(aws cloudformation describe-stacks \
-            --stack-name StreamMyCourse-Rds-prod \
-            --region "${{ env.AWS_REGION }}" \
-            --query "Stacks[0].Outputs[?OutputKey=='SchemaApplierFunctionName'].OutputValue" \
-            --output text)"
-          if [[ -z "$FN" || "$FN" == "None" ]]; then
-            echo "Missing CloudFormation output SchemaApplierFunctionName. Deploy RDS with SchemaApplierCodeS3Bucket/Key." >&2
-            exit 1
-          fi
-          OUT=/tmp/schema-invoke-prod.json
-          aws lambda invoke \
-            --region "${{ env.AWS_REGION }}" \
-            --function-name "$FN" \
-            --cli-binary-format raw-in-base64-out \
-            --payload '{}' \
-            "$OUT"
-          if jq -e 'has("errorMessage")' "$OUT" >/dev/null 2>&1; then
-            echo "Schema applier Lambda raised (FunctionError)" >&2
-            jq -c '{errorMessage, errorType}' "$OUT" >&2
-            exit 1
-          fi
-          if ! jq -e '.ok == true' "$OUT" >/dev/null 2>&1; then
-            echo "Schema applier returned non-success payload:" >&2
-            jq -c '{ok, error}' "$OUT" >&2 || cat "$OUT" >&2
-            exit 1
-          fi
-
-      - name: Summary
-        if: success()
-        run: |
-          echo "## PostgreSQL schema (prod)" >> "$GITHUB_STEP_SUMMARY"
-          echo "Invoked **StreamMyCourse-RdsSchemaApplier-prod** (bundled \`001_initial_schema.sql\` → schema.sql, includes \`lesson_progress\`, via VPC Lambda)." >> "$GITHUB_STEP_SUMMARY"
-
-  # --- Aurora DSQL side lane (prod cluster + preview API); failures fail the workflow run.
+  # --- Aurora DSQL (prod cluster); failures fail the workflow run.
 
   deploy-dsql-prod:
     name: DSQL cluster (prod)
@@ -481,8 +291,6 @@ jobs:
     needs:
       - gate
       - deploy-edge-prod
-      - deploy-rds-prod
-      - apply-schema-prod
     permissions:
       id-token: write
       contents: read
@@ -490,11 +298,7 @@ jobs:
       always() &&
       needs.gate.outputs.should_deploy == 'true' &&
       needs.deploy-edge-prod.result == 'success' &&
-      needs.deploy-rds-prod.result == 'success' &&
-      needs.apply-schema-prod.result == 'success' &&
       (github.event_name == 'workflow_run' || github.event_name == 'workflow_dispatch')
-    env:
-      RDS_STACK_NAME: StreamMyCourse-Rds-prod
     steps:
       - uses: actions/checkout@v6
         with:
@@ -666,7 +470,6 @@ jobs:
           DSQL_AUTH_OVERRIDES=()
           if [[ -n "${{ steps.dsql_endpoint_prod.outputs.endpoint }}" ]]; then
             DSQL_AUTH_OVERRIDES+=("DsqlEndpoint=${{ steps.dsql_endpoint_prod.outputs.endpoint }}")
-            DSQL_AUTH_OVERRIDES+=("RdsStackName=")
           fi
           if [[ -n "${{ steps.dsql_cluster_arn_prod.outputs.arn }}" ]]; then
             DSQL_AUTH_OVERRIDES+=("DsqlClusterArn=${{ steps.dsql_cluster_arn_prod.outputs.arn }}")
@@ -816,86 +619,13 @@ jobs:
             --no-fail-on-empty-changeset \
             --parameter-overrides \
               "DsqlClusterArn=${{ steps.dsql_cluster_arn_prod.outputs.arn }}" \
-              "DsqlEndpoint=${{ steps.dsql_endpoint_prod.outputs.endpoint }}" \
-              "RdsStackName="
+              "DsqlEndpoint=${{ steps.dsql_endpoint_prod.outputs.endpoint }}"
 
       - name: Summary
         if: success()
         run: |
           echo "## Backend prod" >> "$GITHUB_STEP_SUMMARY"
           echo "Video stack + API stack for **prod** deployed (or no-op changeset)." >> "$GITHUB_STEP_SUMMARY"
-
-  deploy-api-dsql:
-    name: Backend preview — Api-dsql (DSQL)
-    runs-on: ubuntu-latest
-    environment: prod
-    needs:
-      - gate
-      - deploy-backend-prod
-      - apply-dsql-schema
-    permissions:
-      id-token: write
-      contents: read
-    if: |
-      always() &&
-      needs.gate.outputs.should_deploy == 'true' &&
-      needs.deploy-backend-prod.result == 'success' &&
-      needs.apply-dsql-schema.result == 'success' &&
-      (github.event_name == 'workflow_run' || github.event_name == 'workflow_dispatch')
-    env:
-      GITHUB_SHA: ${{ needs.gate.outputs.checkout_sha }}
-    steps:
-      - uses: actions/checkout@v6
-        with:
-          ref: ${{ needs.gate.outputs.checkout_sha }}
-
-      - name: Configure AWS credentials (OIDC)
-        uses: aws-actions/configure-aws-credentials@v6
-        with:
-          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
-          aws-region: ${{ env.AWS_REGION }}
-
-      - name: Deploy Api-dsql preview stack
-        env:
-          VIDEO_PROVIDER: s3
-        run: |
-          set -euo pipefail
-          chmod +x scripts/deploy-backend.sh
-          DSQL_PREVIEW=1 ./scripts/deploy-backend.sh prod
-
-      - uses: actions/setup-python@v6
-        with:
-          python-version: "3.11"
-
-      - name: Install schema applier dependencies
-        run: |
-          pip install --quiet psycopg2-binary==2.9.9 aurora-dsql-python-connector
-
-      - name: Grant preview catalog role on DSQL cluster
-        run: |
-          set -euo pipefail
-          STACK="StreamMyCourse-Dsql-prod"
-          REGION="${{ env.AWS_REGION }}"
-          ACCOUNT="$(aws sts get-caller-identity --query Account --output text --region "$REGION")"
-          ENDPOINT="$(aws cloudformation describe-stacks \
-            --stack-name "$STACK" \
-            --region "$REGION" \
-            --query "Stacks[0].Outputs[?OutputKey=='Endpoint'].OutputValue" \
-            --output text)"
-          if [[ -z "$ENDPOINT" || "$ENDPOINT" == "None" ]]; then
-            echo "Missing DSQL Endpoint output on $STACK" >&2
-            exit 1
-          fi
-          export PYTHONPATH="${{ github.workspace }}/infrastructure/lambda/catalog:${PYTHONPATH:-}"
-          python "${{ github.workspace }}/scripts/apply-dsql-schema.py" \
-            --host "$ENDPOINT" \
-            --iam-role-arn "arn:aws:iam::${ACCOUNT}:role/StreamMyCourse-CatalogLambdaRole-dsql"
-
-      - name: Summary
-        if: success()
-        run: |
-          echo "## Api-dsql preview" >> "$GITHUB_STEP_SUMMARY"
-          echo "**StreamMyCourse-Api-dsql** deployed; preview catalog role granted on DSQL." >> "$GITHUB_STEP_SUMMARY"
 
   integration-http-tests:
     name: Integration HTTP tests — pytest against deployed prod API
@@ -988,28 +718,28 @@ jobs:
 
       - name: Require Cognito credentials for integration HTTP tests
         env:
-          COGNITO_TEST_PASSWORD: ${{ secrets.COGNITO_RDS_VERIFY_TEST_PASSWORD }}
-          COGNITO_TEST_USERNAME: ${{ vars.COGNITO_RDS_VERIFY_TEST_USERNAME }}
-          LEGACY_JWT: ${{ secrets.COGNITO_RDS_VERIFY_JWT }}
+          COGNITO_TEST_PASSWORD: ${{ secrets.COGNITO_VERIFY_TEST_PASSWORD }}
+          COGNITO_TEST_USERNAME: ${{ vars.COGNITO_VERIFY_TEST_USERNAME }}
+          LEGACY_JWT: ${{ secrets.COGNITO_VERIFY_JWT }}
         run: |
           set -euo pipefail
           if [[ -z "${COGNITO_TEST_PASSWORD:-}" ]] && [[ -z "${LEGACY_JWT:-}" ]]; then
-            echo "::error::On GitHub Environment \"prod\" set secret COGNITO_RDS_VERIFY_TEST_PASSWORD and optional variable COGNITO_RDS_VERIFY_TEST_USERNAME (default ci-rds-verify@noreply.local), or secret COGNITO_RDS_VERIFY_JWT as fallback. See tests/integration/README.md."
+            echo "::error::On GitHub Environment \"prod\" set secret COGNITO_VERIFY_TEST_PASSWORD and optional variable COGNITO_VERIFY_TEST_USERNAME (default ci-rds-verify@noreply.local), or secret COGNITO_VERIFY_JWT as fallback. See tests/integration/README.md."
             exit 1
           fi
 
       - name: Ensure CI Cognito playback profile attributes (prod)
         env:
-          COGNITO_TEST_PASSWORD: ${{ secrets.COGNITO_RDS_VERIFY_TEST_PASSWORD }}
-          COGNITO_TEST_USERNAME: ${{ vars.COGNITO_RDS_VERIFY_TEST_USERNAME }}
-          COGNITO_TEST_PASSWORD_ALT: ${{ secrets.COGNITO_RDS_VERIFY_TEST_PASSWORD_ALT }}
-          COGNITO_TEST_USERNAME_ALT: ${{ vars.COGNITO_RDS_VERIFY_TEST_USERNAME_ALT }}
-          COGNITO_TEST_PASSWORD_STUDENT: ${{ secrets.COGNITO_RDS_VERIFY_TEST_PASSWORD_STUDENT }}
-          COGNITO_TEST_USERNAME_STUDENT: ${{ vars.COGNITO_RDS_VERIFY_TEST_USERNAME_STUDENT }}
+          COGNITO_TEST_PASSWORD: ${{ secrets.COGNITO_VERIFY_TEST_PASSWORD }}
+          COGNITO_TEST_USERNAME: ${{ vars.COGNITO_VERIFY_TEST_USERNAME }}
+          COGNITO_TEST_PASSWORD_ALT: ${{ secrets.COGNITO_VERIFY_TEST_PASSWORD_ALT }}
+          COGNITO_TEST_USERNAME_ALT: ${{ vars.COGNITO_VERIFY_TEST_USERNAME_ALT }}
+          COGNITO_TEST_PASSWORD_STUDENT: ${{ secrets.COGNITO_VERIFY_TEST_PASSWORD_STUDENT }}
+          COGNITO_TEST_USERNAME_STUDENT: ${{ vars.COGNITO_VERIFY_TEST_USERNAME_STUDENT }}
         run: |
           set -euo pipefail
           if [[ -z "${COGNITO_TEST_PASSWORD:-}" ]]; then
-            echo "Skipping Cognito playback profile ensure (COGNITO_RDS_VERIFY_TEST_PASSWORD unset)"
+            echo "Skipping Cognito playback profile ensure (COGNITO_VERIFY_TEST_PASSWORD unset)"
             exit 0
           fi
           export CI_RDS_VERIFY_AUTH_STACK=StreamMyCourse-Auth-prod
@@ -1017,9 +747,9 @@ jobs:
 
       - name: Mint Cognito JWT (or static JWT fallback)
         env:
-          COGNITO_TEST_PASSWORD: ${{ secrets.COGNITO_RDS_VERIFY_TEST_PASSWORD }}
-          COGNITO_TEST_USERNAME: ${{ vars.COGNITO_RDS_VERIFY_TEST_USERNAME }}
-          LEGACY_JWT: ${{ secrets.COGNITO_RDS_VERIFY_JWT }}
+          COGNITO_TEST_PASSWORD: ${{ secrets.COGNITO_VERIFY_TEST_PASSWORD }}
+          COGNITO_TEST_USERNAME: ${{ vars.COGNITO_VERIFY_TEST_USERNAME }}
+          LEGACY_JWT: ${{ secrets.COGNITO_VERIFY_JWT }}
           AUTH_STACK: StreamMyCourse-Auth-prod
         run: |
           set -euo pipefail
@@ -1068,19 +798,19 @@ jobs:
             if [[ -n "${COGNITO_TEST_PASSWORD:-}" ]]; then
               echo "::warning::Cognito token minting failed - using static JWT fallback"
             else
-              echo "Using static JWT fallback (COGNITO_RDS_VERIFY_TEST_PASSWORD unset on this environment)"
+              echo "Using static JWT fallback (COGNITO_VERIFY_TEST_PASSWORD unset on this environment)"
             fi
             echo "::add-mask::$LEGACY_JWT"
             echo "INTEGRATION_COGNITO_JWT=$LEGACY_JWT" >> "$GITHUB_ENV"
           else
-            echo "::error::Could not mint Cognito IdToken and COGNITO_RDS_VERIFY_JWT is not set on this environment"
+            echo "::error::Could not mint Cognito IdToken and COGNITO_VERIFY_JWT is not set on this environment"
             exit 1
           fi
 
       - name: Mint Cognito JWT ALT (teacher B) - conditional
         env:
-          COGNITO_TEST_PASSWORD_ALT: ${{ secrets.COGNITO_RDS_VERIFY_TEST_PASSWORD_ALT }}
-          COGNITO_TEST_USERNAME_ALT: ${{ vars.COGNITO_RDS_VERIFY_TEST_USERNAME_ALT }}
+          COGNITO_TEST_PASSWORD_ALT: ${{ secrets.COGNITO_VERIFY_TEST_PASSWORD_ALT }}
+          COGNITO_TEST_USERNAME_ALT: ${{ vars.COGNITO_VERIFY_TEST_USERNAME_ALT }}
           AUTH_STACK: StreamMyCourse-Auth-prod
         run: |
           set -euo pipefail
@@ -1089,7 +819,7 @@ jobs:
           TOKEN=""
 
           if [[ -z "${COGNITO_TEST_PASSWORD_ALT:-}" ]]; then
-            echo "Skipping ALT JWT minting (COGNITO_RDS_VERIFY_TEST_PASSWORD_ALT not set)"
+            echo "Skipping ALT JWT minting (COGNITO_VERIFY_TEST_PASSWORD_ALT not set)"
             exit 0
           fi
 
@@ -1136,8 +866,8 @@ jobs:
 
       - name: Mint Cognito JWT STUDENT - conditional
         env:
-          COGNITO_TEST_PASSWORD_STUDENT: ${{ secrets.COGNITO_RDS_VERIFY_TEST_PASSWORD_STUDENT }}
-          COGNITO_TEST_USERNAME_STUDENT: ${{ vars.COGNITO_RDS_VERIFY_TEST_USERNAME_STUDENT }}
+          COGNITO_TEST_PASSWORD_STUDENT: ${{ secrets.COGNITO_VERIFY_TEST_PASSWORD_STUDENT }}
+          COGNITO_TEST_USERNAME_STUDENT: ${{ vars.COGNITO_VERIFY_TEST_USERNAME_STUDENT }}
           AUTH_STACK: StreamMyCourse-Auth-prod
         run: |
           set -euo pipefail
@@ -1146,7 +876,7 @@ jobs:
           TOKEN=""
 
           if [[ -z "${COGNITO_TEST_PASSWORD_STUDENT:-}" ]]; then
-            echo "Skipping STUDENT JWT minting (COGNITO_RDS_VERIFY_TEST_PASSWORD_STUDENT not set)"
+            echo "Skipping STUDENT JWT minting (COGNITO_VERIFY_TEST_PASSWORD_STUDENT not set)"
             exit 0
           fi
 
@@ -1195,8 +925,8 @@ jobs:
         id: pytest
         working-directory: tests/integration
         env:
-          COGNITO_TEST_PASSWORD_STUDENT: ${{ secrets.COGNITO_RDS_VERIFY_TEST_PASSWORD_STUDENT }}
-          COGNITO_TEST_USERNAME_STUDENT: ${{ vars.COGNITO_RDS_VERIFY_TEST_USERNAME_STUDENT }}
+          COGNITO_TEST_PASSWORD_STUDENT: ${{ secrets.COGNITO_VERIFY_TEST_PASSWORD_STUDENT }}
+          COGNITO_TEST_USERNAME_STUDENT: ${{ vars.COGNITO_VERIFY_TEST_USERNAME_STUDENT }}
         run: |
           echo "[integration-diag] pytest_start=$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
           set +e
@@ -1234,42 +964,16 @@ jobs:
           path: tests/integration/results.xml
           if-no-files-found: warn
 
-  # Prod-only CloudFormation inputs; creds from GitHub Environment "prod" inside verify-rds-reusable.yml.
-  verify-prod-rds:
-    name: Verify prod RDS (integration tests)
-    uses: ./.github/workflows/verify-rds-reusable.yml
-    secrets:
-      COGNITO_RDS_VERIFY_TEST_PASSWORD: ${{ secrets.COGNITO_RDS_VERIFY_TEST_PASSWORD }}
-      COGNITO_RDS_VERIFY_JWT: ${{ secrets.COGNITO_RDS_VERIFY_JWT }}
-    needs: [gate, deploy-backend-prod, integration-http-tests]
-    if: |
-      always() && needs.gate.outputs.should_deploy == 'true' &&
-      needs.deploy-backend-prod.result == 'success' &&
-      needs.integration-http-tests.result == 'success' &&
-      (github.event_name == 'workflow_run' || github.event_name == 'workflow_dispatch')
-    with:
-      github_environment: prod
-      checkout_ref: ${{ needs.gate.outputs.checkout_sha }}
-      aws_deploy_role_arn: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
-      aws_region: eu-west-1
-      api_stack_name: StreamMyCourse-Api-prod
-      video_stack_name: StreamMyCourse-Video-prod
-      auth_stack_name: StreamMyCourse-Auth-prod
-      target_label: prod
-      api_endpoint_description: StreamMyCourse-Api-prod
-
   deploy-web-prod:
     name: Web (prod)
     needs:
       - gate
       - integration-http-tests
-      - verify-prod-rds
       - deploy-edge-prod
     if: |
       always() &&
       needs.gate.outputs.should_deploy == 'true' &&
       needs.integration-http-tests.result == 'success' &&
-      needs.verify-prod-rds.result == 'success' &&
       needs.deploy-edge-prod.result == 'success' &&
       (github.event_name == 'workflow_run' || github.event_name == 'workflow_dispatch')
     uses: ./.github/workflows/deploy-web-reusable.yml
@@ -1288,13 +992,11 @@ jobs:
     needs:
       - gate
       - integration-http-tests
-      - verify-prod-rds
       - deploy-edge-prod
     if: |
       always() &&
       needs.gate.outputs.should_deploy == 'true' &&
       needs.integration-http-tests.result == 'success' &&
-      needs.verify-prod-rds.result == 'success' &&
       needs.deploy-edge-prod.result == 'success' &&
       (github.event_name == 'workflow_run' || github.event_name == 'workflow_dispatch')
     uses: ./.github/workflows/deploy-teacher-web-reusable.yml

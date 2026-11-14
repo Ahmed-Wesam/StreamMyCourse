@@ -11,12 +11,7 @@ class AppConfig:
     default_mp4_url: str
     video_url: str
     allowed_origins: List[str]
-    # RDS / PostgreSQL (catalog + progress). Incomplete values mean the handler
-    # returns catalog_unconfigured until the api stack wires DB_* from the RDS stack.
-    db_host: str = ""
-    db_name: str = ""
-    db_port: int = 5432
-    db_secret_arn: str = ""
+    # Aurora DSQL cluster endpoint. Empty means catalog_unconfigured until wired.
     dsql_endpoint: str = ""
     # Logging configuration
     log_level: str = "INFO"
@@ -40,27 +35,8 @@ class AppConfig:
     kinescope_webhook_secret: str = ""
     rate_limit_max_overrides: Dict[str, int] = field(default_factory=dict)
 
-_DEFAULT_DB_PORT = 5432
-
-
 def _split_csv(raw: str) -> List[str]:
     return [o.strip() for o in raw.split(",") if o.strip()]
-
-
-def _parse_db_port(raw: str) -> int:
-    """Parse DB_PORT, falling back to 5432 on missing/invalid input.
-
-    We deliberately do not raise at cold start -- a bad value (e.g. an
-    unresolved CloudFormation ImportValue placeholder during a rollback) should
-    fail at first connection attempt, not at handler import time.
-    """
-    s = (raw or "").strip()
-    if not s:
-        return _DEFAULT_DB_PORT
-    try:
-        return int(s)
-    except ValueError:
-        return _DEFAULT_DB_PORT
 
 
 def _parse_float(val: str, default: float) -> float:
@@ -138,10 +114,6 @@ def load_config() -> AppConfig:
     # Fail-secure: no implicit wildcard. Use ALLOWED_ORIGINS=* explicitly for dev/tools.
     allowed_origins = _split_csv(raw_origins) if raw_origins else []
 
-    db_host = os.environ.get("DB_HOST", "").strip()
-    db_name = os.environ.get("DB_NAME", "").strip()
-    db_port = _parse_db_port(os.environ.get("DB_PORT", ""))
-    db_secret_arn = os.environ.get("DB_SECRET_ARN", "").strip()
     dsql_endpoint = os.environ.get("DSQL_ENDPOINT", "").strip()
 
     log_level = os.environ.get("LOG_LEVEL", "INFO").strip().upper()
@@ -174,10 +146,6 @@ def load_config() -> AppConfig:
         default_mp4_url=default_mp4_url,
         video_url=video_url,
         allowed_origins=allowed_origins,
-        db_host=db_host,
-        db_name=db_name,
-        db_port=db_port,
-        db_secret_arn=db_secret_arn,
         dsql_endpoint=dsql_endpoint,
         log_level=log_level,
         media_cleanup_queue_url=media_cleanup_queue_url,
