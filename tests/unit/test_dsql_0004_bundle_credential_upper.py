@@ -45,4 +45,4 @@ def test_applier_discovers_0004_after_0003() -> None:
     versions = [applier.migration_version_from_path(p) for p in paths]
     assert "0004" in versions
     assert versions.index("0003") < versions.index("0004")
-    assert paths[-1].name == "0004_bundle_credential_upper.sql"
+    assert versions.index("0004") < versions.index("0005")

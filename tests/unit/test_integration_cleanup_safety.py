@@ -26,6 +26,20 @@ from helpers.cleanup import (
 class TestEmptyEntireBucketSafety:
     """Fail-safe tests: empty_entire_bucket must refuse prod and unknown buckets."""
 
+    def test_allows_devvideo_stack_bucket(self) -> None:
+        """StreamMyCourse-DevVideo-dev physical names are allowed."""
+        import unittest.mock as mock
+
+        mock_s3 = mock.MagicMock()
+        mock_s3.list_objects_v2.return_value = {"Contents": [], "IsTruncated": False}
+
+        with mock.patch("boto3.client", return_value=mock_s3):
+            result = empty_entire_bucket(
+                "streammycourse-devvideo-dev-devvideobucket-0ialoqbjgwor",
+                region="eu-west-1",
+            )
+        assert result == []
+
     def test_allows_dev_videobucket_pattern(self) -> None:
         """Dev video stack buckets are allowed (session-end safety net targets dev in CI)."""
         import unittest.mock as mock

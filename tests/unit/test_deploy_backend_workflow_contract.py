@@ -107,12 +107,12 @@ def test_deploy_backend_uses_repository_variable_for_oidc_role_not_environment_s
     text = _workflow_text()
     assert "secrets.AWS_DEPLOY_ROLE_ARN" not in text
     assert text.count("vars.AWS_DEPLOY_ROLE_ARN") >= 8
-    pin = _job_block(text, "resolve-oidc-deploy-role", "\n  # --- Integration tests")
+    pin = _job_block(text, "resolve-oidc-deploy-role", "\n  deploy-dev-stage:")
     assert "vars.AWS_DEPLOY_ROLE_ARN" in pin
 
 
-def test_integration_http_tests_use_prod_environment_and_pinned_oidc_role_output() -> None:
-    """integration-http-tests attach `environment: prod` and resolve prod stack names."""
+def test_integration_http_tests_target_dev_with_prod_cognito_secrets() -> None:
+    """Dev API is the gate. Cognito passwords stay on the prod GitHub environment."""
     text = _workflow_text()
     http_tests = _job_block(text, "integration-http-tests", "\n  deploy-web-prod:")
     assert re.search(r"^\s+environment:\s*prod\s*$", http_tests, re.M)
@@ -121,9 +121,13 @@ def test_integration_http_tests_use_prod_environment_and_pinned_oidc_role_output
         "role-to-assume: ${{ needs.resolve-oidc-deploy-role.outputs.aws_deploy_role_arn }}"
         in http_tests
     )
-    assert "StreamMyCourse-Api-prod" in http_tests
-    assert "StreamMyCourse-Video-prod" in http_tests
-    assert "StreamMyCourse-Auth-prod" in http_tests
+    assert "deploy-dev-stage" in http_tests
+    assert "StreamMyCourse-Api-dev" in http_tests
+    assert "StreamMyCourse-DevVideo-dev" in http_tests
+    assert "StreamMyCourse-Auth-dev" in http_tests
+    assert "StreamMyCourse-Dsql-dev" in http_tests
+    assert "INTEGRATION_ALLOW_PROD_CLEANUP" not in http_tests
+    assert "cfuhjrrzy65ngud25rdqqso5t4" in http_tests
     assert "streammycourse-api" not in http_tests
     assert "deploy-backend-integ" not in text
 
@@ -141,12 +145,13 @@ def test_deploy_workflow_has_no_dev_jobs() -> None:
         assert forbidden not in text, f"dev job or stack reference must be removed: {forbidden!r}"
 
 
-def test_deploy_backend_prod_depends_on_gate_and_edge_only() -> None:
+def test_deploy_backend_prod_depends_on_dev_tests_and_edge() -> None:
     text = _workflow_text()
     start = text.index("  deploy-backend-prod:")
     end = text.index("    steps:", start)
     block = text[start:end]
     assert "      - gate" in block
+    assert "      - integration-http-tests" in block
     assert "      - deploy-edge-prod" in block
     assert "deploy-rds-prod" not in block
     assert "apply-schema-prod" not in block

@@ -1,8 +1,16 @@
-# Manual dev stage deploy only — does not run on push and does not touch prod integration targets.
+# Dev stage deploy. Manual dispatch, and called by Deploy before any prod job.
+# Does not run on push by itself and does not deploy prod.
 name: Deploy dev
 
 on:
   workflow_dispatch:
+  workflow_call:
+    inputs:
+      checkout_ref:
+        description: Commit to deploy. Empty uses the caller SHA.
+        required: false
+        type: string
+        default: ""
 
 permissions:
   id-token: write
@@ -35,6 +43,8 @@ jobs:
       prod_google_client_id_sha256: ${{ steps.hash.outputs.sha256 }}
     steps:
       - uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.checkout_ref || github.sha }}
 
       - uses: actions/setup-python@v6
         with:
@@ -56,6 +66,8 @@ jobs:
     environment: dev
     steps:
       - uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.checkout_ref || github.sha }}
 
       - uses: actions/setup-python@v6
         with:
@@ -81,6 +93,8 @@ jobs:
       contents: read
     steps:
       - uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.checkout_ref || github.sha }}
 
       - name: Configure AWS credentials (OIDC)
         uses: aws-actions/configure-aws-credentials@v6
@@ -103,6 +117,8 @@ jobs:
       contents: read
     steps:
       - uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.checkout_ref || github.sha }}
 
       - name: Configure AWS credentials (OIDC)
         uses: aws-actions/configure-aws-credentials@v6
@@ -133,6 +149,8 @@ jobs:
       contents: read
     steps:
       - uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.checkout_ref || github.sha }}
 
       - name: Configure AWS credentials (OIDC)
         uses: aws-actions/configure-aws-credentials@v6
@@ -159,13 +177,15 @@ jobs:
   deploy-video-dev:
     name: Dev video bucket (S3 only)
     runs-on: ubuntu-latest
-    needs: [resolve-oidc-deploy-role, guard-dev-google, deploy-auth-dev]
+    needs: [resolve-oidc-deploy-role, guard-dev-google]
     environment: dev
     permissions:
       id-token: write
       contents: read
     steps:
       - uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.checkout_ref || github.sha }}
 
       - name: Configure AWS credentials (OIDC)
         uses: aws-actions/configure-aws-credentials@v6
@@ -181,13 +201,15 @@ jobs:
   deploy-api-dev:
     name: API (dev) — Lambda catalog
     runs-on: ubuntu-latest
-    needs: [resolve-oidc-deploy-role, guard-dev-google, deploy-video-dev]
+    needs: [resolve-oidc-deploy-role, guard-dev-google, deploy-auth-dev, deploy-video-dev]
     environment: dev
     permissions:
       id-token: write
       contents: read
     steps:
       - uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.checkout_ref || github.sha }}
 
       - name: Configure AWS credentials (OIDC)
         uses: aws-actions/configure-aws-credentials@v6

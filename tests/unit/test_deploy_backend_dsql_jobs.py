@@ -17,21 +17,23 @@ _DSQL_JOBS = (
 )
 
 _DSQL_NEEDS: dict[str, frozenset[str]] = {
-    "deploy-dsql-prod": frozenset({"gate"}),
+    "deploy-dsql-prod": frozenset({"gate", "integration-http-tests"}),
     "dsql-compat-spike": frozenset({"gate", "deploy-dsql-prod"}),
     "apply-dsql-schema": frozenset({"gate", "dsql-compat-spike"}),
 }
 
 _PROD_NEEDS_SNAPSHOT: dict[str, frozenset[str]] = {
-    "deploy-backend-prod": frozenset({"gate", "deploy-edge-prod"}),
+    "deploy-backend-prod": frozenset(
+        {"gate", "integration-http-tests", "deploy-edge-prod"}
+    ),
     "integration-http-tests": frozenset(
-        {"gate", "deploy-backend-prod", "resolve-oidc-deploy-role"}
+        {"gate", "deploy-dev-stage", "resolve-oidc-deploy-role"}
     ),
     "deploy-web-prod": frozenset(
-        {"gate", "integration-http-tests", "deploy-edge-prod"}
+        {"gate", "integration-http-tests", "deploy-backend-prod", "deploy-edge-prod"}
     ),
     "deploy-teacher-web-prod": frozenset(
-        {"gate", "integration-http-tests", "deploy-edge-prod"}
+        {"gate", "integration-http-tests", "deploy-backend-prod", "deploy-edge-prod"}
     ),
 }
 

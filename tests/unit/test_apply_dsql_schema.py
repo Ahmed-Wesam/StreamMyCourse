@@ -198,10 +198,10 @@ def test_connection_error_host_only(applier) -> None:
 _DSQL_DIR = _ROOT / "infrastructure" / "database" / "dsql"
 
 
-def test_ordered_migration_sql_files_yields_0001_through_0004(applier) -> None:
+def test_ordered_migration_sql_files_yields_0001_through_0005(applier) -> None:
     paths = applier.ordered_migration_sql_files(_DSQL_DIR)
     versions = [applier.migration_version_from_path(p) for p in paths]
-    assert versions == ["0001", "0002", "0003", "0004"]
+    assert versions == ["0001", "0002", "0003", "0004", "0005"]
 
 
 def test_apply_migration_file_0003_does_not_drop_schema(applier) -> None:

@@ -391,9 +391,10 @@ def _read_deploy_dev_workflow() -> str:
     return path.read_text(encoding="utf-8")
 
 
-def test_deploy_dev_workflow_dispatch_only() -> None:
+def test_deploy_dev_workflow_dispatch_and_call_only() -> None:
     text = _read_deploy_dev_workflow()
     assert "workflow_dispatch" in text
+    assert "workflow_call" in text
     assert "push:" not in text
     assert "workflow_run:" not in text
     assert "pull_request:" not in text
@@ -496,7 +497,10 @@ def test_deploy_dev_sh_dev_lambda_keys_and_no_prod_refs() -> None:
         assert forbidden not in text, f"forbidden in deploy-dev.sh: {forbidden!r}"
 
 
-def test_deploy_backend_yml_still_prod_api_not_dev_api() -> None:
+def test_deploy_backend_yml_tests_dev_before_prod() -> None:
     backend = (_WORKFLOWS / "deploy-backend.yml").read_text(encoding="utf-8")
-    assert "StreamMyCourse-Api-prod" in backend
-    assert "StreamMyCourse-Api-dev" not in backend
+    assert "uses: ./.github/workflows/deploy-dev.yml" in backend
+    assert "StreamMyCourse-Api-dev" in backend
+    assert "StreamMyCourse-Api-prod" not in backend
+    assert "StreamMyCourse-Dsql-prod" in backend
+    assert "deploy-backend.sh" in backend

@@ -2,7 +2,7 @@
 
 HTTPS-driven tests that exercise a deployed backend (API Gateway + Lambda + PostgreSQL catalog + S3) end-to-end.
 
-**CI targets the prod stack** (`StreamMyCourse-Api-prod`, `StreamMyCourse-Video-prod`, region `eu-west-1`). The job uses GitHub Environment `prod` so Cognito JWT minting uses **`COGNITO_VERIFY_*`** secrets and variables (see below).
+**Deploy CI targets the dev stack** (`StreamMyCourse-Api-dev`, `StreamMyCourse-DevVideo-dev`, `StreamMyCourse-Auth-dev`, `StreamMyCourse-Dsql-dev`, region `eu-west-1`) and prod is deployed only after that suite passes. The job uses GitHub Environment `prod` so Cognito JWT minting uses **`COGNITO_VERIFY_*`** secrets and variables (see below). Local `./scripts/run-local-integration-tests.sh` still targets prod.
 
 ## What gets tested
 
@@ -33,7 +33,7 @@ python -m pytest tests/integration/test_billing_checkout_e2e.py -q
 
 Without a deployed prod API and Cognito student JWT (e.g. via `./scripts/run-local-integration-tests.sh`), collection may still require **`INTEGRATION_API_BASE_URL`** / **`INTEGRATION_VIDEO_BUCKET`** from `conftest.py`; individual tests skip when the student JWT or billing webhook is disabled.
 
-**Troubleshooting (module tests):** If `GET …/modules` returns API Gateway JWT/IAM authorization errors (`Invalid key=value pair … Authorization header`), or lesson JSON lacks `moduleId` / `moduleOrder`, the deployed **`StreamMyCourse-Api-prod`** + **catalog Lambda** are behind the repo (PostgreSQL modules + `infrastructure/templates/api-stack.yaml`). Redeploy the prod backend to match `main`; CI deploys Lambda before HTTPS tests for this reason.
+**Troubleshooting (module tests):** If `GET …/modules` returns API Gateway JWT/IAM authorization errors (`Invalid key=value pair … Authorization header`), or lesson JSON lacks `moduleId` / `moduleOrder`, the API under test is behind the repo (PostgreSQL modules + `infrastructure/templates/api-stack.yaml`). Deploy tests the dev API before prod, so a local run against prod can still be behind until the prod jobs finish.
 
 **Module delete + media:** `DELETE …/modules/{id}` with lessons carrying **video or thumbnail keys** returns **503** when **`MEDIA_CLEANUP_QUEUE_URL`** is unset (catalog refuses orphan S3 references). Prefer video-free lessons in module-delete tests unless the **`StreamMyCourse-MediaCleanup-*`** stack is deployed.
 
@@ -182,7 +182,7 @@ The HTTP test calls themselves only need **`INTEGRATION_COGNITO_JWT`** when rout
 
 ## Cognito credentials (CI vs local)
 
-GitHub Deploy workflow **Integration HTTP tests** attaches **`environment: prod`**. Resolve stack outputs against **StreamMyCourse-Api-prod** and **StreamMyCourse-Video-prod**, then mint **`INTEGRATION_COGNITO_JWT`** from **`StreamMyCourse-Auth-prod`** outputs, **`ADMIN_USER_PASSWORD_AUTH`**, and **`TeacherUserPoolClientId`** (see **`deploy-backend.yml`** integration job).
+GitHub Deploy workflow **Integration HTTP tests** attaches **`environment: prod`** for **`COGNITO_VERIFY_*`**. It resolves **`StreamMyCourse-Api-dev`**, **`StreamMyCourse-DevVideo-dev`**, and **`StreamMyCourse-Dsql-dev`**, then mints **`INTEGRATION_COGNITO_JWT`** from **`StreamMyCourse-Auth-dev`** with **`ADMIN_USER_PASSWORD_AUTH`** and **`TeacherUserPoolClientId`**. `INTEGRATION_VIDEO_PROVIDER=s3`. Prod stacks are not the target (see **`deploy-backend.yml`**).
 
 **RS-6 native sign-up:** [`test_native_signup_profile.py`](test_native_signup_profile.py) creates a disposable `rs6-test-*@researchspectrum.org` user via public **`sign_up`** + **`admin_confirm_sign_up`**, then **`PATCH /users/me`** and **`GET /users/me`**; **`admin_delete_user`** in teardown. Skips when the student client lacks SRP/COGNITO, when **`PATCH /users/me`** returns **404** (migration **016** / API method not deployed), or when **`INTEGRATION_API_BASE_URL`** / AWS stack resolution is unavailable.
 

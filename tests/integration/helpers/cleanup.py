@@ -167,7 +167,10 @@ def _assert_integration_video_bucket(bucket: str) -> None:
     if not bucket:
         raise RuntimeError("REFUSING: empty bucket name")
 
-    dev_pattern = re.compile(r"^streammycourse-video-dev-.*videobucket")
+    dev_pattern = re.compile(
+        r"^(?:streammycourse-video-dev-.*videobucket"
+        r"|streammycourse-devvideo-dev-devvideobucket-[a-z0-9]+)"
+    )
     prod_pattern = re.compile(r"^streammycourse-video-prod-.*videobucket")
     allow_prod = _integration_allow_prod_cleanup()
 
@@ -192,6 +195,7 @@ def _assert_integration_video_bucket(bucket: str) -> None:
     raise RuntimeError(
         f"REFUSING to operate on bucket '{bucket}': "
         "Bucket must match 'streammycourse-video-dev-*videobucket*' "
+        "or 'streammycourse-devvideo-dev-devvideobucket-*' "
         "or (with INTEGRATION_ALLOW_PROD_CLEANUP=1) "
         "'streammycourse-video-prod-*videobucket*'."
     )

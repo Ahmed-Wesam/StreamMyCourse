@@ -1,7 +1,8 @@
-# After CI succeeds on a push to main: CI gate → prod edge + DSQL cluster (parallel) →
-# dsql-compat-spike → apply-dsql-schema → deploy-backend-prod →
-# integration-http-tests (prod API; no needs on DSQL lane) → prod SPAs.
-# Manual dispatch: runs full pipeline without waiting for upstream CI (operator responsibility).
+# After CI succeeds on a push to main: CI gate → Deploy dev → integration tests
+# against the dev API → prod edge + DSQL cluster (parallel) → dsql-compat-spike →
+# apply-dsql-schema → deploy-backend-prod → prod SPAs.
+# Prod jobs do not start unless the dev integration tests pass.
+# Manual dispatch: runs the same order without waiting for upstream CI (operator responsibility).
 #
 # Lambda zip is uploaded to catalog-{env}-{gitSha}.zip so LambdaCodeS3Key changes every commit
 # (CFN updates the function).
@@ -82,18 +83,35 @@ jobs:
         run: |
           echo "arn=${{ vars.AWS_DEPLOY_ROLE_ARN }}" >> "$GITHUB_OUTPUT"
 
-  # --- Integration tests (HTTP suite against deployed prod API; job runs after deploy-backend-prod)
+  deploy-dev-stage:
+    name: Deploy dev
+    needs: [gate, resolve-oidc-deploy-role]
+    if: |
+      always() &&
+      needs.gate.outputs.should_deploy == 'true' &&
+      needs.resolve-oidc-deploy-role.result == 'success' &&
+      (github.event_name == 'workflow_run' || github.event_name == 'workflow_dispatch')
+    permissions:
+      id-token: write
+      contents: read
+    uses: ./.github/workflows/deploy-dev.yml
+    secrets: inherit
+    with:
+      checkout_ref: ${{ needs.gate.outputs.checkout_sha }}
+
+  # Prod starts only after the dev API has passed the integration suite.
 
   deploy-edge-prod:
     name: Edge (prod) — ACM cert + student + teacher web CF
     runs-on: ubuntu-latest
     environment: prod
-    needs: [gate]
+    needs: [gate, integration-http-tests]
     permissions:
       id-token: write
       contents: read
     if: |
       always() && needs.gate.outputs.should_deploy == 'true' &&
+      needs.integration-http-tests.result == 'success' &&
       (github.event_name == 'workflow_run' || github.event_name == 'workflow_dispatch')
     steps:
       - uses: actions/checkout@v6
@@ -129,12 +147,13 @@ jobs:
     name: DSQL cluster (prod)
     runs-on: ubuntu-latest
     environment: prod
-    needs: [gate]
+    needs: [gate, integration-http-tests]
     permissions:
       id-token: write
       contents: read
     if: |
       always() && needs.gate.outputs.should_deploy == 'true' &&
+      needs.integration-http-tests.result == 'success' &&
       (github.event_name == 'workflow_run' || github.event_name == 'workflow_dispatch')
     steps:
       - uses: actions/checkout@v6
@@ -290,6 +309,7 @@ jobs:
     environment: prod
     needs:
       - gate
+      - integration-http-tests
       - deploy-edge-prod
     permissions:
       id-token: write
@@ -297,6 +317,7 @@ jobs:
     if: |
       always() &&
       needs.gate.outputs.should_deploy == 'true' &&
+      needs.integration-http-tests.result == 'success' &&
       needs.deploy-edge-prod.result == 'success' &&
       (github.event_name == 'workflow_run' || github.event_name == 'workflow_dispatch')
     steps:
@@ -628,10 +649,11 @@ jobs:
           echo "Video stack + API stack for **prod** deployed (or no-op changeset)." >> "$GITHUB_STEP_SUMMARY"
 
   integration-http-tests:
-    name: Integration HTTP tests — pytest against deployed prod API
+    name: Integration HTTP tests — pytest against deployed dev API
     runs-on: ubuntu-latest
+    # Cognito test passwords live on the prod environment. Stack names below are dev.
     environment: prod
-    needs: [gate, deploy-backend-prod, resolve-oidc-deploy-role]
+    needs: [gate, deploy-dev-stage, resolve-oidc-deploy-role]
     permissions:
       id-token: write
       contents: read
@@ -639,7 +661,7 @@ jobs:
       always() &&
       needs.gate.outputs.should_deploy == 'true' &&
       needs.resolve-oidc-deploy-role.result == 'success' &&
-      needs.deploy-backend-prod.result == 'success' &&
+      needs.deploy-dev-stage.result == 'success' &&
       (github.event_name == 'workflow_run' || github.event_name == 'workflow_dispatch')
     steps:
       - uses: actions/checkout@v6
@@ -661,8 +683,9 @@ jobs:
 
       - name: Resolve prod stack outputs
         env:
-          API_STACK: StreamMyCourse-Api-prod
-          VIDEO_STACK: StreamMyCourse-Video-prod
+          API_STACK: StreamMyCourse-Api-dev
+          VIDEO_STACK: StreamMyCourse-DevVideo-dev
+          DSQL_STACK: StreamMyCourse-Dsql-dev
         run: |
           set -euo pipefail
           REGION="${{ env.AWS_REGION }}"
@@ -676,6 +699,11 @@ jobs:
             --region "$REGION" \
             --query "Stacks[0].Outputs[?OutputKey=='BucketName'].OutputValue" \
             --output text)"
+          DSQL_ENDPOINT="$(aws cloudformation describe-stacks \
+            --stack-name "$DSQL_STACK" \
+            --region "$REGION" \
+            --query "Stacks[0].Outputs[?OutputKey=='Endpoint'].OutputValue" \
+            --output text)"
           CORS_CSV="$(aws cloudformation describe-stacks \
             --stack-name "$API_STACK" \
             --region "$REGION" \
@@ -685,36 +713,31 @@ jobs:
           FIRST_CORS_ORIGIN="${FIRST_CORS_ORIGIN#"${FIRST_CORS_ORIGIN%%[![:space:]]*}"}"
           FIRST_CORS_ORIGIN="${FIRST_CORS_ORIGIN%"${FIRST_CORS_ORIGIN##*[![:space:]]}"}"
           if [[ -z "$FIRST_CORS_ORIGIN" || "$FIRST_CORS_ORIGIN" == "None" ]]; then
-            FIRST_CORS_ORIGIN="https://researchspectrum.org"
+            FIRST_CORS_ORIGIN="http://localhost:5173"
           fi
-          if [[ -z "$API_BASE_URL" || -z "$VIDEO_BUCKET" ]]; then
-            echo "Failed to resolve prod stack outputs (ApiEndpoint / BucketName)" >&2
+          if [[ -z "$API_BASE_URL" || -z "$VIDEO_BUCKET" || -z "$DSQL_ENDPOINT" || "$DSQL_ENDPOINT" == "None" ]]; then
+            echo "Failed to resolve dev stack outputs (ApiEndpoint / BucketName / DSQL Endpoint)" >&2
             exit 1
           fi
+          case "$DSQL_ENDPOINT" in
+            cfuhjrrzy65ngud25rdqqso5t4*)
+              echo "Refusing to run integration tests against the prod DSQL cluster" >&2
+              exit 1
+              ;;
+          esac
           {
             echo "INTEGRATION_API_BASE_URL=$API_BASE_URL"
+            echo "INTEGRATION_API_STACK=$API_STACK"
             echo "INTEGRATION_VIDEO_BUCKET=$VIDEO_BUCKET"
             echo "INTEGRATION_AWS_REGION=$REGION"
             echo "INTEGRATION_EXPECTED_CORS_ORIGIN=$FIRST_CORS_ORIGIN"
-            echo "INTEGRATION_BILLING_ENV=prod"
-            echo "INTEGRATION_AUTH_STACK=StreamMyCourse-Auth-prod"
-            echo "INTEGRATION_ALLOW_PROD_CLEANUP=1"
+            echo "INTEGRATION_BILLING_ENV=dev"
+            echo "INTEGRATION_AUTH_STACK=StreamMyCourse-Auth-dev"
             echo "INTEGRATION_VIDEO_PROVIDER=s3"
+            echo "DSQL_ENDPOINT=$DSQL_ENDPOINT"
           } >> "$GITHUB_ENV"
-          echo "Resolved prod API: $API_BASE_URL"
-          echo "Resolved prod bucket: $VIDEO_BUCKET"
-
-      - name: Require Kinescope webhook secret for integration tests (prod)
-        env:
-          KINESCOPE_WEBHOOK_SECRET: ${{ secrets.KINESCOPE_WEBHOOK_SECRET }}
-        run: |
-          set -euo pipefail
-          if [[ -z "${KINESCOPE_WEBHOOK_SECRET:-}" ]]; then
-            echo "::error::GitHub Environment \"prod\" must set KINESCOPE_WEBHOOK_SECRET for Kinescope integration tests."
-            exit 1
-          fi
-          echo "::add-mask::$KINESCOPE_WEBHOOK_SECRET"
-          echo "INTEGRATION_KINESCOPE_WEBHOOK_SECRET=$KINESCOPE_WEBHOOK_SECRET" >> "$GITHUB_ENV"
+          echo "Resolved dev API: $API_BASE_URL"
+          echo "Resolved dev bucket: $VIDEO_BUCKET"
 
       - name: Require Cognito credentials for integration HTTP tests
         env:
@@ -742,7 +765,7 @@ jobs:
             echo "Skipping Cognito playback profile ensure (COGNITO_VERIFY_TEST_PASSWORD unset)"
             exit 0
           fi
-          export CI_RDS_VERIFY_AUTH_STACK=StreamMyCourse-Auth-prod
+          export CI_RDS_VERIFY_AUTH_STACK=StreamMyCourse-Auth-dev
           bash ./scripts/ensure-integration-cognito-playback-profiles.sh
 
       - name: Mint Cognito JWT (or static JWT fallback)
@@ -750,7 +773,7 @@ jobs:
           COGNITO_TEST_PASSWORD: ${{ secrets.COGNITO_VERIFY_TEST_PASSWORD }}
           COGNITO_TEST_USERNAME: ${{ vars.COGNITO_VERIFY_TEST_USERNAME }}
           LEGACY_JWT: ${{ secrets.COGNITO_VERIFY_JWT }}
-          AUTH_STACK: StreamMyCourse-Auth-prod
+          AUTH_STACK: StreamMyCourse-Auth-dev
         run: |
           set -euo pipefail
           REGION="${{ env.AWS_REGION }}"
@@ -793,7 +816,7 @@ jobs:
           if [[ -n "${TOKEN:-}" && "$TOKEN" != "None" ]]; then
             echo "::add-mask::$TOKEN"
             echo "INTEGRATION_COGNITO_JWT=$TOKEN" >> "$GITHUB_ENV"
-            echo "Minted Cognito IdToken for integration HTTP tests (prod; user: $USERNAME)"
+            echo "Minted Cognito IdToken for integration HTTP tests (dev; user: $USERNAME)"
           elif [[ -n "${LEGACY_JWT:-}" ]]; then
             if [[ -n "${COGNITO_TEST_PASSWORD:-}" ]]; then
               echo "::warning::Cognito token minting failed - using static JWT fallback"
@@ -811,7 +834,7 @@ jobs:
         env:
           COGNITO_TEST_PASSWORD_ALT: ${{ secrets.COGNITO_VERIFY_TEST_PASSWORD_ALT }}
           COGNITO_TEST_USERNAME_ALT: ${{ vars.COGNITO_VERIFY_TEST_USERNAME_ALT }}
-          AUTH_STACK: StreamMyCourse-Auth-prod
+          AUTH_STACK: StreamMyCourse-Auth-dev
         run: |
           set -euo pipefail
           REGION="${{ env.AWS_REGION }}"
@@ -859,7 +882,7 @@ jobs:
           if [[ -n "${TOKEN:-}" && "$TOKEN" != "None" ]]; then
             echo "::add-mask::$TOKEN"
             echo "INTEGRATION_COGNITO_JWT_ALT=$TOKEN" >> "$GITHUB_ENV"
-            echo "Minted Cognito IdToken ALT for integration HTTP tests (prod; user: $USERNAME)"
+            echo "Minted Cognito IdToken ALT for integration HTTP tests (dev; user: $USERNAME)"
           else
             echo "::warning::Could not mint Cognito IdToken ALT (teacher B)"
           fi
@@ -868,7 +891,7 @@ jobs:
         env:
           COGNITO_TEST_PASSWORD_STUDENT: ${{ secrets.COGNITO_VERIFY_TEST_PASSWORD_STUDENT }}
           COGNITO_TEST_USERNAME_STUDENT: ${{ vars.COGNITO_VERIFY_TEST_USERNAME_STUDENT }}
-          AUTH_STACK: StreamMyCourse-Auth-prod
+          AUTH_STACK: StreamMyCourse-Auth-dev
         run: |
           set -euo pipefail
           REGION="${{ env.AWS_REGION }}"
@@ -916,7 +939,7 @@ jobs:
           if [[ -n "${TOKEN:-}" && "$TOKEN" != "None" ]]; then
             echo "::add-mask::$TOKEN"
             echo "INTEGRATION_COGNITO_JWT_STUDENT=$TOKEN" >> "$GITHUB_ENV"
-            echo "Minted Cognito IdToken STUDENT for integration HTTP tests (prod; user: $USERNAME)"
+            echo "Minted Cognito IdToken STUDENT for integration HTTP tests (dev; user: $USERNAME)"
           else
             echo "::warning::Could not mint Cognito IdToken STUDENT"
           fi
@@ -936,16 +959,11 @@ jobs:
           echo "[integration-diag] pytest_end=$(date -u +"%Y-%m-%dT%H:%M:%SZ") exit=$rc"
           exit $rc
 
-      - name: DSQL orphan audit (prod)
+      - name: DSQL orphan audit (dev)
         if: steps.pytest.outcome == 'success'
         run: |
           set -euo pipefail
-          ENDPOINT="$(aws cloudformation describe-stacks \
-            --stack-name StreamMyCourse-Dsql-prod \
-            --region "${{ env.AWS_REGION }}" \
-            --query "Stacks[0].Outputs[?OutputKey=='Endpoint'].OutputValue" \
-            --output text)"
-          python scripts/dsql_orphan_audit.py --host "$ENDPOINT"
+          python scripts/dsql_orphan_audit.py --host "$DSQL_ENDPOINT"
 
       - name: Summary
         if: always()
@@ -969,11 +987,13 @@ jobs:
     needs:
       - gate
       - integration-http-tests
+      - deploy-backend-prod
       - deploy-edge-prod
     if: |
       always() &&
       needs.gate.outputs.should_deploy == 'true' &&
       needs.integration-http-tests.result == 'success' &&
+      needs.deploy-backend-prod.result == 'success' &&
       needs.deploy-edge-prod.result == 'success' &&
       (github.event_name == 'workflow_run' || github.event_name == 'workflow_dispatch')
     uses: ./.github/workflows/deploy-web-reusable.yml
@@ -992,11 +1012,13 @@ jobs:
     needs:
       - gate
       - integration-http-tests
+      - deploy-backend-prod
       - deploy-edge-prod
     if: |
       always() &&
       needs.gate.outputs.should_deploy == 'true' &&
       needs.integration-http-tests.result == 'success' &&
+      needs.deploy-backend-prod.result == 'success' &&
       needs.deploy-edge-prod.result == 'success' &&
       (github.event_name == 'workflow_run' || github.event_name == 'workflow_dispatch')
     uses: ./.github/workflows/deploy-teacher-web-reusable.yml
