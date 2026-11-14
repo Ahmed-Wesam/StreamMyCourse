@@ -252,6 +252,8 @@ _api_overrides_to_args() {
   local pool_arn="$2"
   local client_ids="$3"
   local student_id="$4"
+  local cleanup_url="$5"
+  local cleanup_arn="$6"
   mapfile -t OVERRIDES < <("$PYTHON" - <<PY
 import sys
 sys.path.insert(0, "${ROOT}/scripts")
@@ -266,6 +268,8 @@ overrides = api_parameter_overrides(
     lambda_code_bucket="${ARTIFACT_BUCKET}",
     lambda_code_key="${ZIP_KEY}",
     token_authorizer_key="${AUTH_ZIP_KEY}",
+    media_cleanup_queue_url="${cleanup_url}",
+    media_cleanup_queue_arn="${cleanup_arn}",
 )
 for o in overrides:
     print(o)
@@ -395,8 +399,28 @@ api)
     CID_PARTS+=("$STUDENT_CLIENT")
   fi
   COGNITO_CLIENT_IDS="$(IFS=,; echo "${CID_PARTS[*]}")"
+  MEDIA_CLEANUP_QUEUE_URL="$(aws sqs get-queue-url \
+    --queue-name StreamMyCourse-MediaCleanup-dev \
+    --region "$REGION" \
+    --query QueueUrl \
+    --output text)"
+  if [[ -z "$MEDIA_CLEANUP_QUEUE_URL" || "$MEDIA_CLEANUP_QUEUE_URL" == "None" ]]; then
+    echo "Missing queue StreamMyCourse-MediaCleanup-dev" >&2
+    exit 1
+  fi
+  MEDIA_CLEANUP_QUEUE_ARN="$(aws sqs get-queue-attributes \
+    --queue-url "$MEDIA_CLEANUP_QUEUE_URL" \
+    --attribute-names QueueArn \
+    --region "$REGION" \
+    --query Attributes.QueueArn \
+    --output text)"
+  if [[ -z "$MEDIA_CLEANUP_QUEUE_ARN" || "$MEDIA_CLEANUP_QUEUE_ARN" == "None" ]]; then
+    echo "Missing ARN for StreamMyCourse-MediaCleanup-dev" >&2
+    exit 1
+  fi
   _upload_catalog_bundles
-  _api_overrides_to_args "$VIDEO_BUCKET" "$POOL_ARN" "$COGNITO_CLIENT_IDS" "$STUDENT_CLIENT"
+  _api_overrides_to_args "$VIDEO_BUCKET" "$POOL_ARN" "$COGNITO_CLIENT_IDS" "$STUDENT_CLIENT" \
+    "$MEDIA_CLEANUP_QUEUE_URL" "$MEDIA_CLEANUP_QUEUE_ARN"
   aws cloudformation deploy \
     --template-file "${TEMPLATE_DIR}/api-stack.yaml" \
     --s3-bucket "$ARTIFACT_BUCKET" \

@@ -260,9 +260,30 @@ def test_api_parameter_overrides_dev_shape() -> None:
     assert params["DsqlClusterArn"] == _FAKE_DEV_DSQL_ARN
     assert params["CorsAllowOrigin"] == _LOCALHOST_CORS
     assert "BillingEdgeLambdaArn" not in joined
+    assert "MediaCleanupQueueUrl" not in joined
     assert "Kinescope" not in joined
     assert "ResourceNameSuffix" not in joined
     assert "researchspectrum.org" not in joined
+
+
+def test_api_parameter_overrides_includes_media_cleanup_queue() -> None:
+    mod = _load_dev_stage()
+    overrides = mod.api_parameter_overrides(
+        video_bucket_name=_FAKE_DEV_VIDEO_BUCKET,
+        dsql_endpoint=_FAKE_DEV_DSQL_HOST,
+        dsql_cluster_arn=_FAKE_DEV_DSQL_ARN,
+        cognito_user_pool_arn=_FAKE_COGNITO_POOL_ARN,
+        cognito_client_id=_FAKE_STUDENT_CLIENT,
+        student_cognito_client_id=_FAKE_STUDENT_CLIENT,
+        lambda_code_bucket="artifacts-bucket",
+        lambda_code_key="catalog-dev-abcd.zip",
+        token_authorizer_key="catalog-token-authorizer-dev-abcd.zip",
+        media_cleanup_queue_url="https://sqs.eu-west-1.amazonaws.com/878564870560/StreamMyCourse-MediaCleanup-dev",
+        media_cleanup_queue_arn="arn:aws:sqs:eu-west-1:878564870560:StreamMyCourse-MediaCleanup-dev",
+    )
+    params = _overrides_to_dict(overrides)
+    assert params["MediaCleanupQueueUrl"].endswith("StreamMyCourse-MediaCleanup-dev")
+    assert params["MediaCleanupQueueArn"].endswith(":StreamMyCourse-MediaCleanup-dev")
 
 
 def test_api_parameter_overrides_rejects_empty_cluster_arn() -> None:

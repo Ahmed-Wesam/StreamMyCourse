@@ -118,6 +118,8 @@ def api_parameter_overrides(
     lambda_code_key: str,
     token_authorizer_key: str,
     video_url: str = "",
+    media_cleanup_queue_url: str = "",
+    media_cleanup_queue_arn: str = "",
 ) -> list[str]:
     """CloudFormation --parameter-overrides for StreamMyCourse-Api-dev."""
     _dev_dsql_guard(dsql_endpoint, dsql_cluster_arn)
@@ -138,6 +140,11 @@ def api_parameter_overrides(
     ]
     if video_url.strip():
         overrides.append(f"VideoUrl={video_url}")
+    queue_url = media_cleanup_queue_url.strip()
+    queue_arn = media_cleanup_queue_arn.strip()
+    if queue_url and queue_arn:
+        overrides.append(f"MediaCleanupQueueUrl={queue_url}")
+        overrides.append(f"MediaCleanupQueueArn={queue_arn}")
     return overrides
 
 

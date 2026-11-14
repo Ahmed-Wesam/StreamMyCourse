@@ -14,6 +14,7 @@ if str(_INTEGRATION_DIR) not in sys.path:
 from helpers.billing_access import (  # noqa: E402
     billing_environment,
     build_merchant_transaction_id,
+    skip_if_checkout_unavailable,
 )
 
 _USER_SUB = "cognito-sub-for-cart-test"
@@ -34,6 +35,29 @@ def test_merchant_transaction_id_uses_billing_environment(
     )
     env = billing_environment()
     assert cart == f"v2|{env}|{_USER_SUB}|bundle|{_PURCHASE_ID}"
+
+
+class _CheckoutResponse:
+    def __init__(self, status_code: int, text: str) -> None:
+        self.status_code = status_code
+        self.text = text
+
+    def json(self) -> dict[str, str]:
+        return {}
+
+
+def test_checkout_api_gateway_403_skips() -> None:
+    resp = _CheckoutResponse(
+        403,
+        '{"message":"Invalid key=value pair (missing equal-sign) in Authorization header"}',
+    )
+    with pytest.raises(pytest.skip.Exception):
+        skip_if_checkout_unavailable(resp)  # type: ignore[arg-type]
+
+
+def test_checkout_application_403_does_not_skip() -> None:
+    resp = _CheckoutResponse(403, '{"code":"forbidden","message":"Forbidden"}')
+    skip_if_checkout_unavailable(resp)  # type: ignore[arg-type]
 
 
 def test_merchant_transaction_id_reflects_env_override_not_hardcoded_dev(

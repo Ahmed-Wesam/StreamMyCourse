@@ -283,10 +283,19 @@ def skip_if_billing_webhook_unavailable() -> None:
         pytest.skip(reason)
 
 
+def _api_gateway_missing_method(resp: httpx.Response) -> bool:
+    """API Gateway returns 403 for a missing method when Authorization is set."""
+    if resp.status_code != 403:
+        return False
+    return "missing equal-sign" in (resp.text or "")
+
+
 def skip_if_checkout_unavailable(resp: httpx.Response) -> None:
     """Skip when checkout/manage route is missing or billing is not configured."""
     if resp.status_code == 404:
         pytest.skip("billing route not deployed (404)")
+    if _api_gateway_missing_method(resp):
+        pytest.skip("billing route not deployed (API Gateway 403)")
     if resp.status_code == 503:
         try:
             code = resp.json().get("code")
