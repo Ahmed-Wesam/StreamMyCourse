@@ -6,6 +6,12 @@
 
 ---
 
+## 2026-11-14 — SQS poll interval, API metrics, and test-mail bounces
+
+- **SQS:** Always-on event source mappings on billing fulfillment, media cleanup, and transactional mail are disabled. EventBridge `rate(1 minute)` wakes each worker; the worker calls `ReceiveMessage` four times, 15 seconds apart (~518,000 requests/month for three queues, under the 1,000,000 free tier). The GitHub deploy role can manage `StreamMyCourse-*` EventBridge rules.
+- **CloudWatch:** `MetricsEnabled` removed from the catalog API method settings. `CatalogApi4xxAlarm` stays on stage-level `4XXError`.
+- **Zoho:** Transactional notify mail whose recipient domain ends in `.local` is acknowledged and not sent. That stops integration grade and research-team tests (`ci-student@noreply.local`, `cert-*`, `rt-*`) from bouncing to `noreply@`.
+
 ## 2026-11-14 — Dev stage stacks created
 
 - **Dispatch:** [Deploy dev **43596012266**](https://github.com/Ahmed-Wesam/StreamMyCourse/actions/runs/43596012266) on **`da1007f`** succeeded. `describe-stacks` (`eu-west-1`): `StreamMyCourse-Dsql-dev` `CREATE_COMPLETE` (cluster `xnuhmtafzjya4cdlho5ex66owu`), `StreamMyCourse-Auth-dev` `UPDATE_COMPLETE`, `StreamMyCourse-Api-dev` `CREATE_COMPLETE`, `StreamMyCourse-DevVideo-dev` `CREATE_COMPLETE`.
