@@ -20,6 +20,8 @@ def test_github_deploy_role_can_manage_worker_schedules() -> None:
         assert "EventsRulesStreamMyCourse" in text
         assert "events:*" in text
         assert "rule/StreamMyCourse-*" in text
+        assert "DsqlClusterStackManage" in text
+        assert "dsql:DbConnectAdmin" in text or "dsql:*" in text
 
 
 def test_workers_check_each_queue_every_15_seconds() -> None:

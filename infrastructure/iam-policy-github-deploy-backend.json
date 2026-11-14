@@ -204,6 +204,12 @@
       }
     },
     {
+      "Sid": "DsqlClusterStackManage",
+      "Effect": "Allow",
+      "Action": "dsql:*",
+      "Resource": "arn:aws:dsql:eu-west-1:YOUR_AWS_ACCOUNT_ID:cluster/*"
+    },
+    {
       "Sid": "RdsStackManage",
       "Effect": "Allow",
       "Action": [
