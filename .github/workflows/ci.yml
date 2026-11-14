@@ -144,8 +144,8 @@ jobs:
       - name: Install Gitleaks
         run: |
           set -euo pipefail
-          release_json="$(curl -fsSL https://api.github.com/repos/gitleaks/gitleaks/releases/latest)"
-          version="$(python -c 'import json, sys; print(json.load(sys.stdin)["tag_name"])' <<< "$release_json")"
+          # Pin release; avoid api.github.com /releases/latest (403 rate limits on runners).
+          version="v8.24.2"
           archive="gitleaks_${version#v}_linux_x64.tar.gz"
           curl -fsSL "https://github.com/gitleaks/gitleaks/releases/download/${version}/${archive}" -o "/tmp/${archive}"
           tar -xzf "/tmp/${archive}" -C /tmp gitleaks
