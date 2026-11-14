@@ -4,7 +4,7 @@ Description: 'StreamMyCourse - SQS + Lambda worker for async S3 media cleanup af
 Parameters:
   Environment:
     Type: String
-    AllowedValues: [prod]
+    AllowedValues: [prod, dev]
     Default: prod
     Description: Deployment environment
 
@@ -36,12 +36,24 @@ Parameters:
     Default: 3
     Description: Receives before message goes to DLQ
 
+  ExistingQueueUrl:
+    Type: String
+    Default: ''
+    Description: When set with ExistingQueueArn, use this queue instead of creating one
+
+  ExistingQueueArn:
+    Type: String
+    Default: ''
+    Description: ARN of ExistingQueueUrl. Required together with that URL.
+
 Conditions:
   HasBucket: !Not [!Equals [!Ref VideoBucketName, '']]
+  CreateQueues: !Equals [!Ref ExistingQueueUrl, '']
 
 Resources:
   MediaCleanupDlq:
     Type: AWS::SQS::Queue
+    Condition: CreateQueues
     # Retain DLQ on stack delete to preserve any failed cleanup messages for forensic review.
     DeletionPolicy: Retain
     UpdateReplacePolicy: Retain
@@ -56,6 +68,7 @@ Resources:
 
   MediaCleanupQueue:
     Type: AWS::SQS::Queue
+    Condition: CreateQueues
     # Retain main queue on stack delete to preserve any in-flight cleanup jobs.
     DeletionPolicy: Retain
     UpdateReplacePolicy: Retain
@@ -115,7 +128,10 @@ Resources:
                   - sqs:DeleteMessage
                   - sqs:GetQueueAttributes
                   - sqs:ChangeMessageVisibility
-                Resource: !GetAtt MediaCleanupQueue.Arn
+                Resource: !If
+                  - CreateQueues
+                  - !GetAtt MediaCleanupQueue.Arn
+                  - !Ref ExistingQueueArn
       Tags:
         - Key: Project
           Value: StreamMyCourse
@@ -136,7 +152,10 @@ Resources:
         S3Key: !Ref LambdaCodeS3Key
       Environment:
         Variables:
-          WORK_QUEUE_URL: !Ref MediaCleanupQueue
+          WORK_QUEUE_URL: !If
+            - CreateQueues
+            - !Ref MediaCleanupQueue
+            - !Ref ExistingQueueUrl
           VIDEO_BUCKET: !Ref VideoBucketName
           KINESCOPE_API_TOKEN: !Ref KinescopeApiToken
           LOG_LEVEL: INFO
@@ -151,7 +170,10 @@ Resources:
     Properties:
       BatchSize: 10
       Enabled: false
-      EventSourceArn: !GetAtt MediaCleanupQueue.Arn
+      EventSourceArn: !If
+        - CreateQueues
+        - !GetAtt MediaCleanupQueue.Arn
+        - !Ref ExistingQueueArn
       FunctionName: !Ref MediaCleanupWorker
       FunctionResponseTypes:
         - ReportBatchItemFailures
@@ -179,12 +201,12 @@ Resources:
 Outputs:
   MediaCleanupQueueUrl:
     Description: URL of the media cleanup SQS queue (catalog Lambda SendMessage target)
-    Value: !Ref MediaCleanupQueue
+    Value: !If [CreateQueues, !Ref MediaCleanupQueue, !Ref ExistingQueueUrl]
     Export:
       Name: !Sub '${AWS::StackName}-MediaCleanupQueueUrl'
 
   MediaCleanupQueueArn:
     Description: ARN of the media cleanup SQS queue (IAM grant for catalog SendMessage)
-    Value: !GetAtt MediaCleanupQueue.Arn
+    Value: !If [CreateQueues, !GetAtt MediaCleanupQueue.Arn, !Ref ExistingQueueArn]
     Export:
       Name: !Sub '${AWS::StackName}-MediaCleanupQueueArn'

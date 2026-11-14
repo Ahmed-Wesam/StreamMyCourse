@@ -171,6 +171,37 @@ _upload_catalog_bundles() {
   aws s3 cp "$auth_zip" "s3://${ARTIFACT_BUCKET}/${AUTH_ZIP_KEY}" --region "$REGION"
 }
 
+_deploy_dev_media_cleanup_worker() {
+  local video_bucket="$1"
+  local queue_url="$2"
+  local queue_arn="$3"
+  local key="media-cleanup-dev-${SUFFIX}.zip"
+  local zip="/tmp/media-cleanup-dev-$$.zip"
+  local build="/tmp/media-cleanup-build-dev-$$"
+  rm -rf "$build"
+  mkdir -p "$build"
+  ( cd "$ROOT/infrastructure/lambda/media_cleanup" && \
+    find . -type f ! -path '*/__pycache__/*' ! -name '*.pyc' -print0 \
+      | xargs -0 -I{} cp --parents '{}' "$build" )
+  _zip_dir_recursive "$build" "$zip"
+  aws s3 cp "$zip" "s3://${ARTIFACT_BUCKET}/${key}" --region "$REGION" >/dev/null
+  rm -f "$zip"
+  rm -rf "$build"
+  aws cloudformation deploy \
+    --template-file "${TEMPLATE_DIR}/media-cleanup-stack.yaml" \
+    --stack-name StreamMyCourse-MediaCleanup-dev \
+    --capabilities CAPABILITY_IAM CAPABILITY_NAMED_IAM \
+    --region "$REGION" \
+    --no-fail-on-empty-changeset \
+    --parameter-overrides \
+      Environment=dev \
+      "VideoBucketName=${video_bucket}" \
+      "LambdaCodeS3Bucket=${ARTIFACT_BUCKET}" \
+      "LambdaCodeS3Key=${key}" \
+      "ExistingQueueUrl=${queue_url}" \
+      "ExistingQueueArn=${queue_arn}"
+}
+
 _package_cognito_profile_sync() {
   local key="cognito-user-profile-sync-dev-${SUFFIX}.zip"
   local stage
@@ -419,6 +450,7 @@ api)
     exit 1
   fi
   _upload_catalog_bundles
+  _deploy_dev_media_cleanup_worker "$VIDEO_BUCKET" "$MEDIA_CLEANUP_QUEUE_URL" "$MEDIA_CLEANUP_QUEUE_ARN"
   _api_overrides_to_args "$VIDEO_BUCKET" "$POOL_ARN" "$COGNITO_CLIENT_IDS" "$STUDENT_CLIENT" \
     "$MEDIA_CLEANUP_QUEUE_URL" "$MEDIA_CLEANUP_QUEUE_ARN"
   aws cloudformation deploy \

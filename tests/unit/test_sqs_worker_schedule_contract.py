@@ -51,7 +51,8 @@ def test_transactional_mail_stack_disables_esm_and_schedules_worker() -> None:
 
 def test_media_cleanup_stack_disables_esm_and_schedules_worker() -> None:
     text = _read("infrastructure/templates/media-cleanup-stack.yaml")
-    assert "WORK_QUEUE_URL: !Ref MediaCleanupQueue" in text
+    assert "MediaCleanupQueue" in text.split("WORK_QUEUE_URL:")[1].split("VIDEO_BUCKET:")[0]
+    assert "ExistingQueueUrl" in text.split("WORK_QUEUE_URL:")[1].split("VIDEO_BUCKET:")[0]
     assert "MediaCleanupWorkerScheduleRule:" in text
     assert "rate(1 minute)" in text
     esm = text.split("MediaCleanupEventSourceMapping:")[1].split("MediaCleanupWorkerScheduleRule:")[0]
