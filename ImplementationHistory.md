@@ -6,12 +6,19 @@
 
 ---
 
+## 2026-11-14 — DSQL-9: Decommission RDS, VPC, and preview API (shipped)
+
+- **Stacks removed (operator + Deploy):** `StreamMyCourse-Rds-prod` (**no final RDS snapshot** — pre-launch), RDS VPC/endpoints, `StreamMyCourse-RdsQuery-prod`, and preview **`StreamMyCourse-Api-dsql`**. **`StreamMyCourse-Dsql-prod`** retained (`DeletionProtectionEnabled`).
+- **Repo / pipeline:** RDS templates, `DB_*` bootstrap, `deploy-rds-*` / `apply-schema-prod` / `verify-prod-rds`, and **`verify-rds-reusable.yml`** removed; catalog **`DSQL_ENDPOINT`** only; **`test_persistence_smoke.py`** replaces `test_rds_path.py`; GitHub **`COGNITO_VERIFY_*`** (legacy `COGNITO_RDS_VERIFY_*` retired). Catalog Lambda **timeout 20 s**.
+- **Gates:** Post–DSQL-8 Deploy [**43527043869**](https://github.com/Ahmed-Wesam/StreamMyCourse/actions/runs/43527043869) (`ab04c21`) — **214 passed** integration, 37 skipped, `dsql_orphan_audit` **0 findings**. Infrastructure/docs commits on **`main`** include **`525966f`** (RDS path decommission), **`e6af8b7`** (payments stack DSQL resolve), **`409b592`** (CI verify script execute bit).
+- **Docs (P5):** `design.md`, `roadmap.md`, `AGENTS.md`, `module-map.md`, ADR-0016 **Accepted** — prod has no RDS/VPC.
+
 ## 2026-11-13 — DSQL-8: Prod cutover to Aurora DSQL (shipped)
 
 - **Prod persistence:** `StreamMyCourse-Catalog-prod`, `StreamMyCourse-Auth-prod-UserProfileSync`, and `StreamMyCourse-BillingFulfillment-prod` use `DSQL_ENDPOINT` `cfuhjrrzy65ngud25rdqqso5t4.dsql.eu-west-1.on.aws` and have **no VPC** (`DB_HOST` unset). [`scripts/deploy-backend.sh`](scripts/deploy-backend.sh) passes `DsqlEndpoint` and an empty `RdsStackName` when the DSQL stack exists. The RDS instance, VPC, preview stack `StreamMyCourse-Api-dsql`, and frozen RDS migrations stay until **DSQL-9**.
 - **Sync connection:** Pre Token Generation reuses the open DSQL connection (`conn.close()` before the trigger returned was the failure on the first cutover Deploy). Measured REPORT sample **2763 ms** (bar 5000 ms).
 - **Integrity gate:** [`tests/integration/test_integrity_cascades.py`](tests/integration/test_integrity_cascades.py) on prod — student delete leaves the course, course delete is clean, a purchase row returns **409** `conflict`. Deploy [**43527043869**](https://github.com/Ahmed-Wesam/StreamMyCourse/actions/runs/43527043869) (`ab04c21`): **214 passed**, 37 skipped, `dsql_orphan_audit` **0 findings**. `test_student_single_session.py` passed on prod DSQL.
-- **Left for DSQL-9:** delete preview stack, `StreamMyCourse-RdsQuery-prod`, `StreamMyCourse-Rds-prod` (no final snapshot), RDS secret and snapshots; remove RDS connection code, migrations, and CI RDS jobs; drop transitional `tags_as_jsonb` / `areas_as_jsonb`.
+- **Completed in DSQL-9 (2026-11-14):** see entry above — preview/RDS/VPC deleted, CI and bootstrap DSQL-only.
 
 ## 2026-11-13 — DSQL-7: Assignments, certificates, research team (shipped)
 

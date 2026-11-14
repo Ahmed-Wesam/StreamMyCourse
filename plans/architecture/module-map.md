@@ -2,14 +2,14 @@
 
 This document is the “public surface” map for the Python Lambda under `infrastructure/lambda/catalog/`.
 
-Related ADRs: [0011 video provider / Kinescope](./adr-0011-video-provider-port-kinescope-cutover.md), [0012 API abuse protection](./adr-0012-api-abuse-protection.md), [0013 purchases / bundle entitlements](./adr-0013-one-time-purchases-bundle-entitlements.md), [0014 student Google + SRP / Zoho](./adr-0014-student-google-cognito-srp-zoho-mail.md), [0016 RDS → Aurora DSQL](./adr-0016-rds-postgresql-to-aurora-dsql.md) (future store; **RDS PostgreSQL is still the live persistence layer** until DSQL-8).
+Related ADRs: [0011 video provider / Kinescope](./adr-0011-video-provider-port-kinescope-cutover.md), [0012 API abuse protection](./adr-0012-api-abuse-protection.md), [0013 purchases / bundle entitlements](./adr-0013-one-time-purchases-bundle-entitlements.md), [0014 student Google + SRP / Zoho](./adr-0014-student-google-cognito-srp-zoho-mail.md), [0016 RDS → Aurora DSQL](./adr-0016-rds-postgresql-to-aurora-dsql.md) (**Aurora DSQL is the live catalog store**; RDS decommissioned DSQL-9).
 
 ## Composition / entry
 
 | Module | Responsibility | Public API |
 |--------|----------------|------------|
 | `index.py` | Lambda entrypoint | `lambda_handler`; rate-limit + session middleware; routes HTTP and **internal** invoke events (video edge, billing fulfillment hooks) |
-| `bootstrap.py` | Dependency wiring (composition root) | `lambda_bootstrap()` — wires RDS repos/services when `DB_*` is complete, or DSQL factory when **`DSQL_ENDPOINT`** is set (preview **`StreamMyCourse-Api-dsql`**); adapters for cross-context ports (quiz visibility, course access, certificate entitlement, etc.) |
+| `bootstrap.py` | Dependency wiring (composition root) | `lambda_bootstrap()` — wires PostgreSQL-shaped repos via **`DSQL_ENDPOINT`** only (`_build_dsql_connection_factory`); adapters for cross-context ports (quiz visibility, course access, certificate entitlement, etc.) |
 | `config.py` | Environment configuration | `load_config()`; `pick_origin` helpers live in `services/common/http.py` |
 | `dsql_connect.py` | DSQL adapter (package root) | IAM connect via `aurora-dsql-python-connector`; `connect()` / `build_connection_factory()`; `search_path=app` |
 
@@ -44,7 +44,7 @@ Related ADRs: [0011 video provider / Kinescope](./adr-0011-video-provider-port-k
 | `service.py` | Domain/application | Profile + allowlists; depends on `UserProfileRepositoryPort` |
 | `ports.py` | Contracts | `UserProfileRepositoryPort` |
 | `rds_repo.py` | Persistence adapter (PostgreSQL) | `UserProfileRdsRepository` |
-| `session.py` | Middleware helper | Student single-session vs RDS (`session_superseded`) |
+| `session.py` | Middleware helper | Student single-session vs DSQL (`session_superseded`) |
 | `profile_allowlists.py` | Domain | Country / profession allowlists (RS-6) |
 
 **Cross-context rule:** `auth` must not import `course_management` (enforced in CI). Cognito Admin/IdP calls stay **out** of this package (ADR 0014).
@@ -73,7 +73,7 @@ Related ADRs: [0011 video provider / Kinescope](./adr-0011-video-provider-port-k
 
 **Bootstrap:** `CourseDeletionRegistry` + `register_catalog_steps` → `CourseDeletionRunner` → `CourseManagementService`. **DSQL-4:** `register_progress_deletion_steps` and `register_lesson_note_deletion_steps` at order **100** (lesson/module/course scopes). **DSQL-6:** `register_question_bank_deletion_steps` at **300**; **DSQL-7:** `register_assignment_deletion_steps` at **400** (includes course certificates on course delete). **No** purchase-delete step on course delete (409 guard in service).
 
-**Enrollment adapter:** Removed in DSQL-4 (`services/enrollment/` was unwired). `POST /courses/{id}/enroll` returns **403** `purchase_required`; legacy `enrollments` table on **RDS only** until DSQL-9. See [adr-enrollment-course-access.md](./adr-enrollment-course-access.md) and ADR 0013.
+**Enrollment adapter:** Removed in DSQL-4 (`services/enrollment/` was unwired). `POST /courses/{id}/enroll` returns **403** `purchase_required`; `app.enrollments` dropped on DSQL ([`0003_drop_enrollments.sql`](../../../infrastructure/database/dsql/0003_drop_enrollments.sql)). See [adr-enrollment-course-access.md](./adr-enrollment-course-access.md) and ADR 0013.
 
 ### `services/progress/` (implemented)
 
@@ -222,7 +222,7 @@ Cross-cutting utilities shared by multiple contexts:
 - Services may import `ports.py`, `models.py`, and `services/common/errors.py` (not HTTP helpers). They may call `sqs_client.send_*` helpers for enqueue paths (no HTTP imports).
 - Repos/storage may import `boto3` and S3/Dynamo specifics where still present.
 - `rds_repo.py` modules may import `psycopg2`; no other module may (enforced in CI).
-- `bootstrap.py` may import both `boto3` (Secrets Manager) and `psycopg2` (connection) — it is the composition root.
+- `bootstrap.py` may import `boto3` and DSQL connect helpers (`dsql_connect`, `psycopg2` via the connector path) — it is the composition root.
 - Leaf contexts must not import sibling contexts’ concrete modules; cross-context ports are wired in `bootstrap.py`.
 
 ## Enforcement
